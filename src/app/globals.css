@@ -1,26 +1,143 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+@plugin "tailwindcss-animate";
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Turbo AI inspired dark theme with purple/blue accents */
+  --background: 240 20% 8%;
+  --foreground: 0 0% 98%;
+  --card: 240 20% 10%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 20% 10%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 270 91% 65%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 20% 15%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 20% 12%;
+  --muted-foreground: 240 10% 65%;
+  --accent: 240 20% 15%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 20% 20%;
+  --input: 240 20% 12%;
+  --ring: 270 91% 65%;
+  --radius: 0.75rem;
+  
+  /* Purple/Blue glow colors */
+  --glow-purple: 270 91% 65%;
+  --glow-blue: 217 91% 60%;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  @apply border-border;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  @apply bg-background text-foreground;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(135deg, hsl(240 20% 8%) 0%, hsl(240 25% 10%) 100%);
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Animated background stars effect */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(2px 2px at 20% 30%, rgba(147, 51, 234, 0.3), transparent),
+    radial-gradient(2px 2px at 60% 70%, rgba(59, 130, 246, 0.3), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(147, 51, 234, 0.2), transparent),
+    radial-gradient(1px 1px at 80% 10%, rgba(59, 130, 246, 0.2), transparent),
+    radial-gradient(2px 2px at 90% 40%, rgba(147, 51, 234, 0.3), transparent),
+    radial-gradient(1px 1px at 33% 60%, rgba(59, 130, 246, 0.2), transparent),
+    radial-gradient(1px 1px at 66% 20%, rgba(147, 51, 234, 0.2), transparent);
+  background-size: 200% 200%;
+  background-position: 0% 0%;
+  animation: starfield 20s linear infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes starfield {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+
+/* Glow effects */
+.glow-purple {
+  box-shadow: 0 0 20px rgba(147, 51, 234, 0.3), 0 0 40px rgba(147, 51, 234, 0.2);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.2);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(240 20% 10%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(240 20% 25%);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(240 20% 35%);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(270 91% 65%) 0%, hsl(217 91% 60%) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glassmorphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
