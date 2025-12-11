@@ -17,8 +17,8 @@ interface GitHubRepo {
     name: string;
     description: string | null;
     html_url: string;
-    language: string | null;
-    stargazers_count: number;
+    language: string | null | undefined;
+    stargazers_count: number | undefined;
 }
 
 export function ProjectsEditor() {
@@ -163,7 +163,7 @@ export function ProjectsEditor() {
                                             </div>
                                         )}
                                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                                            {repo.stargazers_count > 0 && (
+                                            {repo.stargazers_count && repo.stargazers_count > 0 && (
                                                 <span className="flex items-center gap-1">
                                                     <Star className="w-3 h-3" />
                                                     {repo.stargazers_count}
