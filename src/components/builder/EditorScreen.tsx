@@ -7,7 +7,7 @@ import { LatexEditor } from '@/components/latex/LatexEditor';
 import { LatexPreview } from '@/components/latex/LatexPreview';
 import { ATSScoreCard } from './ATSScoreCard';
 import { SectionEditor } from './SectionEditor';
-import { modifyLatex, calculateATSScore } from '@/actions/ai';
+import { modifyLatex, calculateATSScore, compileLatex } from '@/actions/ai';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,6 +29,15 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
     FileText, 
@@ -50,7 +59,9 @@ import {
     Home,
     Trash2,
     Wand2,
-    Info
+    Info,
+    CheckCircle2,
+    AlertCircle
 } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { cn } from '@/lib/utils';
@@ -91,6 +102,11 @@ export function EditorScreen() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [aiInstruction, setAiInstruction] = useState('');
     const [isModifying, setIsModifying] = useState(false);
+    const [exportModalOpen, setExportModalOpen] = useState(false);
+    const [exportFileName, setExportFileName] = useState('');
+    const [isExporting, setIsExporting] = useState(false);
+    const [exportError, setExportError] = useState<string | null>(null);
+    const [exportSuccess, setExportSuccess] = useState(false);
 
     useEffect(() => {
         setEditorMode(editorTab);
@@ -132,6 +148,56 @@ export function EditorScreen() {
     const handleSectionChange = (section: SectionType) => {
         setActiveSection(section);
         setSidebarOpen(false);
+    };
+
+    const openExportModal = () => {
+        const defaultName = resumeData.personalInfo.fullName 
+            ? `${resumeData.personalInfo.fullName.replace(/\s+/g, '_')}_Resume`
+            : 'My_Resume';
+        setExportFileName(defaultName);
+        setExportError(null);
+        setExportSuccess(false);
+        setExportModalOpen(true);
+    };
+
+    const handleExport = async () => {
+        if (!latexCode || !exportFileName.trim()) return;
+        setIsExporting(true);
+        setExportError(null);
+        setExportSuccess(false);
+        
+        try {
+            const result = await compileLatex(latexCode);
+            if (result.success && result.pdfBase64) {
+                const link = document.createElement('a');
+                link.href = `data:application/pdf;base64,${result.pdfBase64}`;
+                const fileName = exportFileName.trim().replace(/\.pdf$/i, '') + '.pdf';
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setExportSuccess(true);
+                setTimeout(() => {
+                    setExportModalOpen(false);
+                    setExportSuccess(false);
+                }, 1500);
+            } else {
+                setExportError(result.error || 'Compilation failed. Check your LaTeX syntax.');
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            setExportError('Failed to export PDF. Please try again.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const closeExportModal = () => {
+        if (!isExporting) {
+            setExportModalOpen(false);
+            setExportError(null);
+            setExportSuccess(false);
+        }
     };
 
     const handleTabChange = (tab: 'visual' | 'latex') => {
@@ -232,7 +298,13 @@ export function EditorScreen() {
 
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="gradient" size="sm" className="gap-2">
+                                <Button 
+                                    variant="gradient" 
+                                    size="sm" 
+                                    className="gap-2"
+                                    onClick={openExportModal}
+                                    disabled={!latexCode}
+                                >
                                     <Download className="w-4 h-4" />
                                     <span className="hidden sm:inline">Export</span>
                                 </Button>
@@ -476,6 +548,84 @@ export function EditorScreen() {
                     )}
                 </div>
             </div>
+
+            {/* Export Modal */}
+            <Dialog open={exportModalOpen} onOpenChange={closeExportModal}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Download className="w-5 h-5 text-primary" />
+                            Export Resume
+                        </DialogTitle>
+                        <DialogDescription>
+                            Your resume will be compiled and downloaded as a PDF.
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="filename">File Name</Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    id="filename"
+                                    value={exportFileName}
+                                    onChange={(e) => setExportFileName(e.target.value)}
+                                    placeholder="My_Resume"
+                                    className="flex-1"
+                                    disabled={isExporting || exportSuccess}
+                                />
+                                <span className="text-sm text-muted-foreground">.pdf</span>
+                            </div>
+                        </div>
+
+                        {exportError && (
+                            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                <span>{exportError}</span>
+                            </div>
+                        )}
+
+                        {exportSuccess && (
+                            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm text-green-400 flex items-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                                <span>Download started!</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            onClick={closeExportModal}
+                            disabled={isExporting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleExport}
+                            disabled={isExporting || !exportFileName.trim() || exportSuccess}
+                            className="gap-2"
+                        >
+                            {isExporting ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Compiling...
+                                </>
+                            ) : exportSuccess ? (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    Done!
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-4 h-4" />
+                                    Download PDF
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </TooltipProvider>
     );
 }
