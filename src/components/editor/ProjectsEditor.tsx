@@ -32,78 +32,80 @@ export function ProjectsEditor() {
 
     return (
         <Card className="h-full flex flex-col">
-            <CardHeader className="flex flex-row items-center justify-between flex-shrink-0">
-                <CardTitle>Projects</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between pb-4">
+                <CardTitle className="text-xl">Projects</CardTitle>
                 <Button onClick={() => addProject()} size="sm" variant="outline">
                     <Plus className="w-4 h-4 mr-2" /> Add Project
                 </Button>
             </CardHeader>
-            <CardContent className="flex flex-col gap-1.5 flex-1 min-h-0 overflow-y-auto">
+            <CardContent className="flex flex-col gap-6 flex-1 min-h-0 overflow-y-auto">
                 {projects.map((item) => (
-                    <div key={item.id} className="border border-border/50 rounded-lg p-1.5 flex flex-col gap-1.5 relative group">
-                        <div className="absolute right-1.5 top-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                            <Button variant="ghost" size="icon" onClick={() => removeProject(item.id)} className="h-6 w-6">
-                                <Trash2 className="w-3 h-3 text-destructive" />
+                    <div key={item.id} className="border border-border rounded-lg p-6 flex flex-col gap-4 relative group bg-card/50">
+                        <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                            <Button variant="ghost" size="icon" onClick={() => removeProject(item.id)} className="h-8 w-8">
+                                <Trash2 className="w-4 h-4 text-destructive" />
                             </Button>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-1.5">
-                            <div className="flex flex-col gap-0.5 col-span-2">
-                                <Label className="text-xs font-medium">Project Name</Label>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-sm font-medium">Project Name</Label>
                                 <Input
                                     value={item.name}
                                     onChange={(e) => updateProject(item.id, { name: e.target.value })}
                                     placeholder="Project Name"
-                                    className="h-8 text-sm"
+                                    className="h-10"
                                 />
                             </div>
-                            <div className="flex flex-col gap-0.5">
-                                <Label className="text-xs font-medium">Project URL</Label>
+                            <div className="flex flex-col gap-2">
+                                <Label className="text-sm font-medium">Project URL</Label>
                                 <Input
                                     value={item.url}
                                     onChange={(e) => updateProject(item.id, { url: e.target.value })}
                                     placeholder="https://..."
-                                    className="h-8 text-sm"
+                                    className="h-10"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-0.5 flex-1">
+                        <div className="flex flex-col gap-2 flex-1">
                             <div className="flex justify-between items-center">
-                                <Label className="text-xs font-medium">Description</Label>
+                                <Label className="text-sm font-medium">Description</Label>
                                 <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => handleOpenRewrite(item.id, item.description)}
                                     disabled={!item.description}
-                                    className="h-6 text-xs px-2"
+                                    className="h-8 text-xs"
                                 >
-                                    <Sparkles className="w-3 h-3 mr-1" />
+                                    <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                                     AI Rewrite
                                 </Button>
                             </div>
                             <Textarea
                                 value={item.description}
                                 onChange={(e) => updateProject(item.id, { description: e.target.value })}
-                                placeholder="Describe the project..."
-                                className="flex-1 min-h-[200px] text-sm resize-y"
+                                placeholder="Describe the project, your role, technologies used, and key achievements..."
+                                className="flex-1 min-h-[200px] resize-y"
                             />
                         </div>
 
-                        <div className="flex flex-col gap-0.5">
-                            <Label className="text-xs font-medium">Technologies (comma separated)</Label>
+                        <div className="flex flex-col gap-2">
+                            <Label className="text-sm font-medium">Technologies</Label>
                             <Input
                                 value={item.technologies.join(', ')}
                                 onChange={(e) => updateProject(item.id, { technologies: e.target.value.split(',').map(s => s.trim()) })}
                                 placeholder="React, Node.js, TypeScript"
-                                className="h-8 text-sm"
+                                className="h-10"
                             />
+                            <p className="text-xs text-muted-foreground">Separate technologies with commas</p>
                         </div>
                     </div>
                 ))}
                 {projects.length === 0 && (
-                    <div className="text-center text-muted-foreground py-8">
-                        No projects added yet.
+                    <div className="text-center text-muted-foreground py-12">
+                        <p className="text-sm">No projects added yet.</p>
+                        <p className="text-xs mt-1">Click "Add Project" to get started.</p>
                     </div>
                 )}
             </CardContent>

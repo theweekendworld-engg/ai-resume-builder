@@ -44,9 +44,9 @@ export function ResumeForm() {
                 activeSection={activeSection} 
                 onSectionChange={setActiveSection}
             />
-            <div className="flex-1 overflow-y-auto">
-                <div className="p-1.5 w-full h-full flex flex-col">
-                    <div className="flex-1 min-h-0 w-full">
+            <div className="flex-1 overflow-y-auto bg-background">
+                <div className="p-6 w-full h-full flex flex-col">
+                    <div className="flex-1 min-h-0 w-full max-w-4xl">
                         <ActiveComponent />
                     </div>
                 </div>

@@ -3,9 +3,37 @@ import { persist } from 'zustand/middleware';
 import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
 
+export interface ATSScore {
+    overall: number;
+    breakdown: {
+        keywordMatch: number;
+        skillsMatch: number;
+        experienceRelevance: number;
+        formattingScore: number;
+    };
+    matchedKeywords: string[];
+    missingKeywords: string[];
+    suggestions: string[];
+}
+
 interface ResumeState {
     resumeData: ResumeData;
+    jobDescription: string;
+    githubUsername: string;
+    latexCode: string;
+    atsScore: ATSScore | null;
+    editorMode: 'visual' | 'latex';
+    isGenerating: boolean;
+    
+    // Setters
     setResumeData: (data: ResumeData) => void;
+    setJobDescription: (description: string) => void;
+    setGithubUsername: (username: string) => void;
+    setLatexCode: (code: string) => void;
+    setAtsScore: (score: ATSScore | null) => void;
+    setEditorMode: (mode: 'visual' | 'latex') => void;
+    setIsGenerating: (generating: boolean) => void;
+    
     updatePersonalInfo: (info: Partial<ResumeData['personalInfo']>) => void;
 
     // Experience
@@ -30,18 +58,48 @@ interface ResumeState {
 
     // Section Order
     updateSectionOrder: (order: SectionType[]) => void;
+    
+    // Reset
+    resetResume: () => void;
 }
+
+const initialATSScore: ATSScore = {
+    overall: 0,
+    breakdown: {
+        keywordMatch: 0,
+        skillsMatch: 0,
+        experienceRelevance: 0,
+        formattingScore: 0,
+    },
+    matchedKeywords: [],
+    missingKeywords: [],
+    suggestions: [],
+};
 
 export const useResumeStore = create<ResumeState>()(
     persist(
         (set) => ({
             resumeData: initialResumeData,
+            jobDescription: '',
+            githubUsername: '',
+            latexCode: '',
+            atsScore: null,
+            editorMode: 'visual',
+            isGenerating: false,
+            
             setResumeData: (data) => set({ 
                 resumeData: {
                     ...data,
                     sectionOrder: data.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills']
                 }
             }),
+            setJobDescription: (description) => set({ jobDescription: description }),
+            setGithubUsername: (username) => set({ githubUsername: username }),
+            setLatexCode: (code) => set({ latexCode: code }),
+            setAtsScore: (score) => set({ atsScore: score }),
+            setEditorMode: (mode) => set({ editorMode: mode }),
+            setIsGenerating: (generating) => set({ isGenerating: generating }),
+            
             updatePersonalInfo: (info) =>
                 set((state) => ({
                     resumeData: {
@@ -174,11 +232,16 @@ export const useResumeStore = create<ResumeState>()(
                         sectionOrder: order 
                     },
                 })),
+                
+            resetResume: () => set({ 
+                resumeData: initialResumeData,
+                atsScore: null,
+                latexCode: '',
+            }),
         }),
         {
             name: 'resume-storage',
             merge: (persistedState: any, currentState) => {
-                // Migration: ensure sectionOrder exists in persisted data
                 if (persistedState?.resumeData) {
                     if (!persistedState.resumeData.sectionOrder) {
                         persistedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];

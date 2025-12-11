@@ -46,11 +46,11 @@ export function ResumeFormSidebar({ activeSection, onSectionChange }: ResumeForm
     const mainSections = ['personal', 'section-order', ...order];
 
     return (
-        <div className="w-56 border-r border-border/50 glass bg-card/30 backdrop-blur-sm h-full overflow-y-auto flex-shrink-0">
-            <div className="p-3 space-y-0.5">
+        <div className="w-64 border-r border-border bg-card h-full overflow-y-auto flex-shrink-0">
+            <div className="p-4 space-y-1">
                 {/* Tools Section */}
-                <div className="mb-4">
-                    <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-2">
+                <div className="mb-6">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">
                         Tools
                     </div>
                     {toolsSections.map((section) => {
@@ -60,15 +60,15 @@ export function ResumeFormSidebar({ activeSection, onSectionChange }: ResumeForm
                                 key={section}
                                 variant="ghost"
                                 className={cn(
-                                    "w-full justify-start gap-2.5 h-8 px-3 rounded-md transition-all duration-200 ease-in-out",
+                                    "w-full justify-start gap-3 h-10 px-3 rounded-md transition-colors",
                                     activeSection === section 
-                                        ? "bg-primary/20 text-primary border-l-2 border-primary" 
-                                        : "hover:bg-secondary/50 text-foreground/80"
+                                        ? "bg-primary/10 text-primary font-medium border-l-2 border-primary" 
+                                        : "hover:bg-secondary text-foreground/90"
                                 )}
                                 onClick={() => onSectionChange(section)}
                             >
-                                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="text-xs font-medium truncate">{label}</span>
+                                <Icon className="w-4 h-4 flex-shrink-0" />
+                                <span className="text-sm truncate">{label}</span>
                             </Button>
                         );
                     })}
@@ -76,7 +76,7 @@ export function ResumeFormSidebar({ activeSection, onSectionChange }: ResumeForm
 
                 {/* Main Sections */}
                 <div>
-                    <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-2">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 mb-3">
                         Sections
                     </div>
                     {mainSections.map((section) => {
@@ -86,15 +86,15 @@ export function ResumeFormSidebar({ activeSection, onSectionChange }: ResumeForm
                                 key={section}
                                 variant="ghost"
                                 className={cn(
-                                    "w-full justify-start gap-2.5 h-8 px-3 rounded-md transition-all duration-200 ease-in-out",
+                                    "w-full justify-start gap-3 h-10 px-3 rounded-md transition-colors",
                                     activeSection === section 
-                                        ? "bg-primary/20 text-primary border-l-2 border-primary" 
-                                        : "hover:bg-secondary/50 text-foreground/80"
+                                        ? "bg-primary/10 text-primary font-medium border-l-2 border-primary" 
+                                        : "hover:bg-secondary text-foreground/90"
                                 )}
                                 onClick={() => onSectionChange(section)}
                             >
-                                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="text-xs font-medium truncate">{label}</span>
+                                <Icon className="w-4 h-4 flex-shrink-0" />
+                                <span className="text-sm truncate">{label}</span>
                             </Button>
                         );
                     })}

@@ -8,8 +8,8 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className="relative z-10">
+      <html lang="en" className="dark" style={{ colorScheme: 'dark' }}>
+        <body className="relative z-10 dark">
           {children}
         </body>
       </html>

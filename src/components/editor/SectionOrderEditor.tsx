@@ -29,26 +29,26 @@ export function SectionOrderEditor() {
     };
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-sm">Section Order</CardTitle>
+        <Card className="h-full flex flex-col">
+            <CardHeader className="pb-4">
+                <CardTitle className="text-xl">Section Order</CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="space-y-2">
+                <div className="space-y-3">
                     {sectionOrder.map((section, index) => (
                         <div
                             key={section}
-                            className="flex items-center justify-between p-3 border border-border/50 rounded-lg bg-secondary/30 glass backdrop-blur-sm"
+                            className="flex items-center justify-between p-4 border border-border rounded-lg bg-card/50"
                         >
-                            <div className="flex items-center gap-2">
-                                <GripVertical className="w-4 h-4 text-muted-foreground" />
+                            <div className="flex items-center gap-3">
+                                <GripVertical className="w-5 h-5 text-muted-foreground" />
                                 <span className="text-sm font-medium">{sectionLabels[section]}</span>
                             </div>
                             <div className="flex gap-1">
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 hover:bg-secondary/50"
+                                    className="h-9 w-9"
                                     onClick={() => moveSection(index, 'up')}
                                     disabled={index === 0}
                                 >
@@ -57,7 +57,7 @@ export function SectionOrderEditor() {
                                 <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 hover:bg-secondary/50"
+                                    className="h-9 w-9"
                                     onClick={() => moveSection(index, 'down')}
                                     disabled={index === sectionOrder.length - 1}
                                 >
