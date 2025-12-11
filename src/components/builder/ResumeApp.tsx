@@ -29,7 +29,7 @@ export function ResumeApp() {
             {phase === 'generate' ? (
                 <GenerateScreen onComplete={() => setPhase('editor')} />
             ) : (
-                <EditorScreen onBack={() => setPhase('generate')} />
+                <EditorScreen />
             )}
         </div>
     );
