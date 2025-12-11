@@ -1,25 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useResumeStore } from '@/store/resumeStore';
-import { ResumePreview } from '@/components/preview/ResumePreview';
 import { LatexEditor } from '@/components/latex/LatexEditor';
 import { LatexPreview } from '@/components/latex/LatexPreview';
 import { ATSScoreCard } from './ATSScoreCard';
 import { SectionEditor } from './SectionEditor';
-import { modifyLatex, resumeToLatex, calculateATSScore } from '@/actions/ai';
+import { modifyLatex, calculateATSScore } from '@/actions/ai';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
     FileText, 
     Code2, 
     Eye,
     Download,
-    Wand2,
     Loader2,
-    ArrowLeft,
     Target,
     RefreshCw,
     EyeOff,
@@ -30,43 +46,62 @@ import {
     GraduationCap,
     Code,
     Settings,
-    Sparkles
+    Sparkles,
+    Home,
+    Trash2,
+    Wand2,
+    Info
 } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { cn } from '@/lib/utils';
+import { TEMPLATE_OPTIONS, LatexTemplateType } from '@/templates/latex';
 
-interface EditorScreenProps {
-    onBack: () => void;
-}
+type SectionType = 'personal' | 'experience' | 'projects' | 'education' | 'skills' | 'section-order' | 'job-target';
 
-type SectionType = 'personal' | 'experience' | 'projects' | 'education' | 'skills' | 'section-order';
-
-const sections: { id: SectionType; label: string; icon: React.ReactNode }[] = [
-    { id: 'personal', label: 'Personal Info', icon: <User className="w-4 h-4" /> },
-    { id: 'experience', label: 'Experience', icon: <Briefcase className="w-4 h-4" /> },
-    { id: 'projects', label: 'Projects', icon: <FolderKanban className="w-4 h-4" /> },
-    { id: 'education', label: 'Education', icon: <GraduationCap className="w-4 h-4" /> },
-    { id: 'skills', label: 'Skills', icon: <Code className="w-4 h-4" /> },
-    { id: 'section-order', label: 'Section Order', icon: <Settings className="w-4 h-4" /> },
+const sections: { id: SectionType; label: string; icon: React.ReactNode; isSmart?: boolean; tooltip?: string }[] = [
+    { id: 'job-target', label: 'Job Target', icon: <Target className="w-4 h-4" />, isSmart: true, tooltip: 'Add a job description to get match scores and tailored suggestions' },
+    { id: 'personal', label: 'Personal Info', icon: <User className="w-4 h-4" />, tooltip: 'Your name, contact info, and links' },
+    { id: 'experience', label: 'Experience', icon: <Briefcase className="w-4 h-4" />, tooltip: 'Work history with bullet points' },
+    { id: 'projects', label: 'Projects', icon: <FolderKanban className="w-4 h-4" />, tooltip: 'Personal and professional projects' },
+    { id: 'education', label: 'Education', icon: <GraduationCap className="w-4 h-4" />, tooltip: 'Degrees and certifications' },
+    { id: 'skills', label: 'Skills', icon: <Code className="w-4 h-4" />, tooltip: 'Technical and soft skills' },
+    { id: 'section-order', label: 'Section Order', icon: <Settings className="w-4 h-4" />, tooltip: 'Rearrange resume sections' },
 ];
 
-export function EditorScreen({ onBack }: EditorScreenProps) {
+export function EditorScreen() {
+    const router = useRouter();
     const { 
         latexCode, 
         setLatexCode, 
         resumeData,
         jobDescription,
         atsScore,
-        setAtsScore
+        setAtsScore,
+        selectedTemplate,
+        setSelectedTemplate,
+        setEditorMode,
+        generateLatexFromData,
+        isUsingSampleData,
+        resetResume,
     } = useResumeStore();
     
     const [editorTab, setEditorTab] = useState<'visual' | 'latex'>('visual');
     const [showPreview, setShowPreview] = useState(true);
-    const [activeSection, setActiveSection] = useState<SectionType>('personal');
+    const [activeSection, setActiveSection] = useState<SectionType>('job-target');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [aiInstruction, setAiInstruction] = useState('');
     const [isModifying, setIsModifying] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
+
+    useEffect(() => {
+        setEditorMode(editorTab);
+        if (editorTab === 'visual') {
+            generateLatexFromData();
+        }
+    }, [editorTab, setEditorMode, generateLatexFromData]);
+
+    useEffect(() => {
+        generateLatexFromData();
+    }, [generateLatexFromData]);
 
     const handleAiModify = async () => {
         if (!aiInstruction || !latexCode) return;
@@ -78,21 +113,9 @@ export function EditorScreen({ onBack }: EditorScreenProps) {
                 setAiInstruction('');
             }
         } catch (error) {
-            console.error("AI modification failed:", error);
+            console.error("Modification failed:", error);
         } finally {
             setIsModifying(false);
-        }
-    };
-
-    const handleSyncToLatex = async () => {
-        setIsSyncing(true);
-        try {
-            const latex = await resumeToLatex(resumeData);
-            setLatexCode(latex);
-        } catch (error) {
-            console.error("Failed to sync to LaTeX:", error);
-        } finally {
-            setIsSyncing(false);
         }
     };
 
@@ -111,229 +134,348 @@ export function EditorScreen({ onBack }: EditorScreenProps) {
         setSidebarOpen(false);
     };
 
-    return (
-        <div className="h-screen flex flex-col">
-            {/* Header */}
-            <header className="h-14 border-b border-border/50 bg-card/50 backdrop-blur-sm flex items-center justify-between px-4 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={onBack}
-                        className="gap-2"
-                    >
-                        <ArrowLeft className="w-4 h-4" />
-                        <span className="hidden sm:inline">New Job</span>
-                    </Button>
-                    
-                    <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border/50">
-                        <div className="w-8 h-8 rounded-lg gradient-btn flex items-center justify-center">
-                            <FileText className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="font-semibold gradient-text">Resume Editor</span>
-                    </div>
-                </div>
+    const handleTabChange = (tab: 'visual' | 'latex') => {
+        setEditorTab(tab);
+    };
 
-                <div className="flex items-center gap-2">
-                    {/* ATS Score Badge */}
-                    {atsScore && (
-                        <Sheet>
-                            <SheetTrigger asChild>
+    return (
+        <TooltipProvider>
+            <div className="h-screen flex flex-col">
+                <header className="h-14 border-b border-border/50 bg-card/50 backdrop-blur-sm flex items-center justify-between px-4 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
                                 <Button 
-                                    variant="outline" 
+                                    variant="ghost" 
                                     size="sm" 
-                                    className={cn(
-                                        "gap-2 font-semibold border-2",
-                                        atsScore.overall >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10 hover:bg-green-500/20" :
-                                        atsScore.overall >= 60 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20" :
-                                        "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
-                                    )}
+                                    onClick={() => router.push('/')}
+                                    className="gap-2"
                                 >
-                                    <Target className="w-4 h-4" />
-                                    <span>{atsScore.overall}%</span>
+                                    <Home className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Home</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Back to home page</TooltipContent>
+                        </Tooltip>
+                        
+                        <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border/50">
+                            <div className="w-8 h-8 rounded-lg gradient-btn flex items-center justify-center">
+                                <FileText className="w-4 h-4 text-white" />
+                            </div>
+                            <span className="font-semibold gradient-text">Resume Editor</span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {atsScore && (
+                            <Sheet>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <SheetTrigger asChild>
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                className={cn(
+                                                    "gap-2 font-semibold border-2",
+                                                    atsScore.overall >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10 hover:bg-green-500/20" :
+                                                    atsScore.overall >= 60 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20" :
+                                                    "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
+                                                )}
+                                            >
+                                                <Target className="w-4 h-4" />
+                                                <span>{atsScore.overall}%</span>
+                                            </Button>
+                                        </SheetTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>View detailed match analysis</TooltipContent>
+                                </Tooltip>
+                                <SheetContent className="w-80 sm:w-96 overflow-y-auto bg-card border-border">
+                                    <SheetHeader>
+                                        <SheetTitle className="gradient-text flex items-center gap-2">
+                                            Match Analysis
+                                        </SheetTitle>
+                                    </SheetHeader>
+                                    <div className="space-y-4 pt-4">
+                                        <ATSScoreCard />
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    className="w-full gap-2"
+                                                    onClick={handleRecalculateScore}
+                                                >
+                                                    <RefreshCw className="w-3 h-3" />
+                                                    Recalculate Score
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Refresh the match score based on current resume</TooltipContent>
+                                        </Tooltip>
+                                    </div>
+                                </SheetContent>
+                            </Sheet>
+                        )}
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setShowPreview(!showPreview)}
+                                    className="hidden lg:flex"
+                                >
+                                    {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{showPreview ? "Hide preview" : "Show preview"}</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="gradient" size="sm" className="gap-2">
+                                    <Download className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Export</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Download as PDF</TooltipContent>
+                        </Tooltip>
+
+                        <SignedOut>
+                            <SignInButton mode="modal">
+                                <Button size="sm" variant="outline">Sign In</Button>
+                            </SignInButton>
+                        </SignedOut>
+                        <SignedIn>
+                            <UserButton />
+                        </SignedIn>
+                    </div>
+                </header>
+
+                <div className="h-12 border-b border-border/50 bg-card/30 flex items-center justify-between px-4 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+                            <SheetTrigger asChild>
+                                <Button variant="outline" size="sm" className="gap-2">
+                                    <Menu className="w-4 h-4" />
+                                    <span className="hidden sm:inline">{sections.find(s => s.id === activeSection)?.label}</span>
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent className="w-80 sm:w-96 overflow-y-auto bg-card border-border">
-                                <SheetHeader>
-                                    <SheetTitle className="gradient-text">ATS Analysis</SheetTitle>
+                            <SheetContent side="left" className="w-72 p-0 bg-card border-border">
+                                <SheetHeader className="p-4 border-b border-border">
+                                    <SheetTitle className="text-left gradient-text">Sections</SheetTitle>
                                 </SheetHeader>
-                                <div className="space-y-4 pt-4">
-                                    <ATSScoreCard />
-                                    <Button 
-                                        variant="outline" 
-                                        size="sm" 
-                                        className="w-full gap-2"
-                                        onClick={handleRecalculateScore}
-                                    >
-                                        <RefreshCw className="w-3 h-3" />
-                                        Recalculate Score
-                                    </Button>
+                                <div className="p-2 flex-1">
+                                    {sections.map((section) => (
+                                        <Tooltip key={section.id}>
+                                            <TooltipTrigger asChild>
+                                                <button
+                                                    onClick={() => handleSectionChange(section.id)}
+                                                    className={cn(
+                                                        "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all",
+                                                        activeSection === section.id 
+                                                            ? "bg-primary/20 text-primary" 
+                                                            : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                                                        section.isSmart && "smart-feature"
+                                                    )}
+                                                >
+                                                    {section.icon}
+                                                    {section.label}
+                                                    {section.isSmart && (
+                                                        <Sparkles className="w-3 h-3 text-indigo-400 ml-auto" />
+                                                    )}
+                                                </button>
+                                            </TooltipTrigger>
+                                            {section.tooltip && (
+                                                <TooltipContent side="right">
+                                                    {section.tooltip}
+                                                </TooltipContent>
+                                            )}
+                                        </Tooltip>
+                                    ))}
+                                </div>
+                                <div className="p-4 border-t border-border">
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 gap-2"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                Reset to Sample Data
+                                            </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                                <AlertDialogTitle className="flex items-center gap-2">
+                                                    <Trash2 className="w-5 h-5 text-destructive" />
+                                                    Reset Resume Data?
+                                                </AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                    This will replace all your current resume data with the sample template. 
+                                                    Any changes you&apos;ve made will be lost. This action cannot be undone.
+                                                </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    onClick={() => {
+                                                        resetResume();
+                                                        setSidebarOpen(false);
+                                                    }}
+                                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                >
+                                                    Reset Data
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
                                 </div>
                             </SheetContent>
                         </Sheet>
-                    )}
 
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setShowPreview(!showPreview)}
-                        className="hidden lg:flex"
-                        title={showPreview ? "Hide Preview" : "Show Preview"}
-                    >
-                        {showPreview ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </Button>
+                        <Tabs value={editorTab} onValueChange={(v) => handleTabChange(v as 'visual' | 'latex')}>
+                            <TabsList className="h-8 bg-secondary/50">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <TabsTrigger value="visual" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+                                            <Eye className="w-3.5 h-3.5" />
+                                            Visual
+                                        </TabsTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Edit with form fields</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <TabsTrigger value="latex" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+                                            <Code2 className="w-3.5 h-3.5" />
+                                            LaTeX
+                                        </TabsTrigger>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Edit raw LaTeX code</TooltipContent>
+                                </Tooltip>
+                            </TabsList>
+                        </Tabs>
+                    </div>
 
-                    <Button variant="gradient" size="sm" className="gap-2">
-                        <Download className="w-4 h-4" />
-                        <span className="hidden sm:inline">Export</span>
-                    </Button>
-
-                    <SignedOut>
-                        <SignInButton mode="modal">
-                            <Button size="sm" variant="outline">Sign In</Button>
-                        </SignInButton>
-                    </SignedOut>
-                    <SignedIn>
-                        <UserButton />
-                    </SignedIn>
-                </div>
-            </header>
-
-            {/* Sub Header - Tabs */}
-            <div className="h-12 border-b border-border/50 bg-card/30 flex items-center justify-between px-4 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                    {/* Section Drawer Trigger */}
-                    <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-                        <SheetTrigger asChild>
-                            <Button variant="outline" size="sm" className="gap-2">
-                                <Menu className="w-4 h-4" />
-                                <span className="hidden sm:inline">{sections.find(s => s.id === activeSection)?.label}</span>
-                            </Button>
-                        </SheetTrigger>
-                        <SheetContent side="left" className="w-72 p-0 bg-card border-border">
-                            <SheetHeader className="p-4 border-b border-border">
-                                <SheetTitle className="text-left gradient-text">Sections</SheetTitle>
-                            </SheetHeader>
-                            <div className="p-2">
-                                {sections.map((section) => (
-                                    <button
-                                        key={section.id}
-                                        onClick={() => handleSectionChange(section.id)}
-                                        className={cn(
-                                            "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all",
-                                            activeSection === section.id 
-                                                ? "bg-primary/20 text-primary" 
-                                                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                                        )}
-                                    >
-                                        {section.icon}
-                                        {section.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </SheetContent>
-                    </Sheet>
-
-                    <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as 'visual' | 'latex')}>
-                        <TabsList className="h-8 bg-secondary/50">
-                            <TabsTrigger value="visual" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-                                <Eye className="w-3.5 h-3.5" />
-                                Visual
-                            </TabsTrigger>
-                            <TabsTrigger value="latex" className="text-xs gap-1.5 h-7 px-3 data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-                                <Code2 className="w-3.5 h-3.5" />
-                                LaTeX
-                            </TabsTrigger>
-                        </TabsList>
-                    </Tabs>
-                </div>
-
-                {editorTab === 'visual' && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={handleSyncToLatex}
-                        disabled={isSyncing}
-                        className="text-xs gap-1.5 h-7"
-                    >
-                        {isSyncing ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                        ) : (
-                            <RefreshCw className="w-3 h-3" />
-                        )}
-                        Sync to LaTeX
-                    </Button>
-                )}
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Editor Panel */}
-                <div className={cn(
-                    "flex flex-col overflow-hidden transition-all duration-300",
-                    showPreview ? "w-full lg:w-[55%]" : "w-full"
-                )}>
-                    {editorTab === 'visual' ? (
-                        <div className="flex-1 overflow-y-auto p-4 md:p-6">
-                            <div className="max-w-3xl mx-auto">
-                                <SectionEditor section={activeSection} />
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="h-full flex flex-col">
-                            {/* AI Toolbar for LaTeX */}
-                            <div className="h-12 border-b border-border/50 bg-card/30 flex items-center gap-2 px-4 flex-shrink-0">
-                                <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
-                                <Input
-                                    value={aiInstruction}
-                                    onChange={(e) => setAiInstruction(e.target.value)}
-                                    placeholder="AI: 'Add certifications section' or 'Make skills two columns'..."
-                                    className="flex-1 h-8 text-xs bg-secondary/50 border-border/50"
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAiModify()}
-                                />
-                                <Button
-                                    onClick={handleAiModify}
-                                    disabled={isModifying || !aiInstruction}
-                                    size="sm"
-                                    className="h-7 text-xs px-3"
-                                >
-                                    {isModifying ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Apply'}
-                                </Button>
-                            </div>
-                            
-                            {/* LaTeX Editor */}
-                            <div className="flex-1 overflow-hidden">
-                                <LatexEditor
-                                    code={latexCode}
-                                    onChange={(val) => setLatexCode(val || '')}
-                                />
-                            </div>
+                    {editorTab === 'visual' && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground hidden sm:inline">Template:</span>
+                            <Select 
+                                value={selectedTemplate} 
+                                onValueChange={(v) => setSelectedTemplate(v as LatexTemplateType)}
+                            >
+                                <SelectTrigger className="w-[160px] h-7 text-xs">
+                                    <SelectValue placeholder="Select Template" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {TEMPLATE_OPTIONS.map((template) => (
+                                        <SelectItem key={template.value} value={template.value}>
+                                            {template.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
                     )}
                 </div>
 
-                {/* Preview Panel */}
-                {showPreview && (
-                    <div className="hidden lg:flex w-[45%] border-l border-border/50 flex-col overflow-hidden bg-muted/10">
-                        <div className="h-12 border-b border-border/50 bg-card/30 flex items-center px-4 flex-shrink-0">
-                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                                {editorTab === 'latex' ? 'PDF Preview' : 'Live Preview'}
-                            </span>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4">
-                            {editorTab === 'latex' ? (
-                                <div className="h-full rounded-xl overflow-hidden border border-border/50 bg-white shadow-xl">
-                                    <LatexPreview code={latexCode} />
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-xl border border-border/50 shadow-xl overflow-hidden">
-                                    <ResumePreview />
-                                </div>
-                            )}
-                        </div>
+                {isUsingSampleData() && (
+                    <div className="h-10 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-indigo-500/10 border-b border-indigo-500/20 flex items-center justify-center gap-2 text-sm text-indigo-300 flex-shrink-0">
+                        <Info className="w-4 h-4" />
+                        <span>You&apos;re editing sample data. Replace it with your own information!</span>
                     </div>
                 )}
+
+                <div className="flex-1 flex overflow-hidden">
+                    <div className={cn(
+                        "flex flex-col overflow-hidden transition-all duration-300",
+                        showPreview ? "w-full lg:w-[55%]" : "w-full"
+                    )}>
+                        {editorTab === 'visual' ? (
+                            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                                <div className="max-w-3xl mx-auto">
+                                    <SectionEditor section={activeSection} />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col">
+                                <div className="h-12 border-b border-border/50 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-indigo-500/5 flex items-center gap-2 px-4 flex-shrink-0">
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <Wand2 className="w-4 h-4 text-indigo-400" />
+                                                <span className="feature-badge hidden sm:flex">Smart Edit</span>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Describe changes in plain English</TooltipContent>
+                                    </Tooltip>
+                                    <Input
+                                        value={aiInstruction}
+                                        onChange={(e) => setAiInstruction(e.target.value)}
+                                        placeholder="'Add certifications section', 'Make skills two columns'..."
+                                        className="flex-1 h-8 text-xs bg-secondary/50 border-indigo-500/20 focus:border-indigo-500/50"
+                                        onKeyDown={(e) => e.key === 'Enter' && handleAiModify()}
+                                    />
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                onClick={handleAiModify}
+                                                disabled={isModifying || !aiInstruction}
+                                                variant="ai"
+                                                size="sm"
+                                                className="h-7 text-xs px-3"
+                                            >
+                                                {isModifying ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Apply'}
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Apply your changes to the LaTeX</TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                
+                                <div className="flex-1 overflow-hidden">
+                                    <LatexEditor
+                                        code={latexCode}
+                                        onChange={(val) => setLatexCode(val || '')}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {showPreview && (
+                        <div className="hidden lg:flex w-[45%] border-l border-border/50 flex-col overflow-hidden bg-muted/10">
+                            <div className="h-12 border-b border-border/50 bg-card/30 flex items-center justify-between px-4 flex-shrink-0">
+                                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                                    Live Preview
+                                </span>
+                                {editorTab === 'latex' && (
+                                    <Select 
+                                        value={selectedTemplate} 
+                                        onValueChange={(v) => setSelectedTemplate(v as LatexTemplateType)}
+                                    >
+                                        <SelectTrigger className="w-[140px] h-7 text-xs">
+                                            <SelectValue placeholder="Template" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {TEMPLATE_OPTIONS.map((template) => (
+                                                <SelectItem key={template.value} value={template.value}>
+                                                    {template.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                            <div className="flex-1 overflow-hidden">
+                                <div className="h-full rounded-xl overflow-hidden border border-border/50 bg-white shadow-xl m-4">
+                                    <LatexPreview code={latexCode} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
+        </TooltipProvider>
     );
 }

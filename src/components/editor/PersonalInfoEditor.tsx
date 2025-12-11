@@ -127,18 +127,19 @@ export function PersonalInfoEditor() {
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <Button
-                                        variant="ghost"
+                                        variant="ai"
                                         size="sm"
                                         onClick={() => setRewriteModalOpen(true)}
                                         disabled={!personalInfo.summary}
-                                        className="h-8 text-xs"
+                                        className="h-8 text-xs gap-1.5"
                                     >
-                                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                                        AI Rewrite
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">AI Rewrite</span>
+                                        <span className="ai-badge sm:hidden">AI</span>
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    <p>Use AI to improve your summary</p>
+                                    <p>✨ Use AI to improve your summary</p>
                                 </TooltipContent>
                             </Tooltip>
                         </TooltipProvider>

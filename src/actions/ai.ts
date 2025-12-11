@@ -26,13 +26,10 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are an expert resume writer. Always output only the requested content, never include instructions or meta-commentary." },
                 { role: "user", content: prompt }
             ],
-            max_tokens: 300,
-            temperature: 0.7,
         });
 
         const content = response.choices[0].message.content?.trim() || text;
@@ -46,22 +43,23 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 export async function extractKeywords(jobDescription: string) {
     if (!jobDescription) return [];
 
-    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON array of strings. Output ONLY the JSON.\n\nJob Description:\n${jobDescription}`;
+    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON array of strings with key "keywords". Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are an expert ATS keyword extractor." },
                 { role: "user", content: prompt }
             ],
-            response_format: { type: "json_object" },
         });
 
         const content = response.choices[0].message.content;
         if (!content) return [];
 
-        const parsed = JSON.parse(content);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return [];
+        
+        const parsed = JSON.parse(jsonMatch[0]);
         return parsed.keywords || parsed.skills || [];
     } catch (error) {
         console.error("AI Keyword Error:", error);
@@ -106,19 +104,19 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are an expert ATS (Applicant Tracking System) analyzer. Provide accurate scoring and actionable feedback." },
                 { role: "user", content: prompt }
             ],
-            response_format: { type: "json_object" },
-            temperature: 0.3,
         });
 
         const content = response.choices[0].message.content;
         if (!content) throw new Error("No response");
 
-        const result = JSON.parse(content);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON in response");
+
+        const result = JSON.parse(jsonMatch[0]);
         return {
             overall: Math.min(100, Math.max(0, result.overall || 0)),
             breakdown: {
@@ -176,21 +174,20 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are an expert resume writer and ATS optimization specialist. Generate professional, tailored resumes." },
                 { role: "user", content: prompt }
             ],
-            response_format: { type: "json_object" },
-            temperature: 0.5,
         });
 
         const content = response.choices[0].message.content;
         if (!content) throw new Error("No response");
 
-        const result = JSON.parse(content);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("No JSON in response");
+
+        const result = JSON.parse(jsonMatch[0]);
         
-        // Ensure all required fields exist
         return {
             personalInfo: {
                 fullName: result.personalInfo?.fullName || existingData.personalInfo.fullName,
@@ -227,12 +224,10 @@ ${currentCode}`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are a Latex code generator. Return only the raw Latex code." },
                 { role: "user", content: prompt }
             ],
-            temperature: 0.2,
         });
 
         const content = response.choices[0].message.content?.trim() || "";
@@ -264,12 +259,10 @@ Output ONLY the raw LaTeX code. No markdown, no explanations.`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are a LaTeX expert. Generate clean, compilable LaTeX resume code." },
                 { role: "user", content: prompt }
             ],
-            temperature: 0.3,
         });
 
         const content = response.choices[0].message.content?.trim() || "";
@@ -370,12 +363,10 @@ Output ONLY the improved content. No explanations.`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: config.openai.model,
             messages: [
-                { role: "system", content: "You are an expert resume writer and ATS optimization specialist." },
                 { role: "user", content: prompt }
             ],
-            temperature: 0.6,
         });
 
         return response.choices[0].message.content?.trim() || currentContent;

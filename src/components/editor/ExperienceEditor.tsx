@@ -105,25 +105,25 @@ export function ExperienceEditor() {
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex justify-between items-center">
                                 <Label className="text-sm font-medium">Job Description</Label>
-                                <TooltipProvider>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleOpenRewrite(item.id, item.description)}
-                                                disabled={!item.description}
-                                                className="h-8 text-xs"
-                                            >
-                                                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                                                AI Rewrite
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>Use AI to improve your job description</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
+<TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ai"
+                                            size="sm"
+                                            onClick={() => handleOpenRewrite(item.id, item.description)}
+                                            disabled={!item.description}
+                                            className="h-8 text-xs gap-1.5"
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                            <span className="hidden sm:inline">Enhance</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>Improve with action verbs and metrics</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                             </div>
                             <Textarea
                                 value={item.description}

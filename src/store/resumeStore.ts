@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
+import { LatexTemplateType, generateLatexFromResume, DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
 
 export interface ATSScore {
     overall: number;
@@ -23,6 +24,7 @@ interface ResumeState {
     latexCode: string;
     atsScore: ATSScore | null;
     editorMode: 'visual' | 'latex';
+    selectedTemplate: LatexTemplateType;
     isGenerating: boolean;
     
     // Setters
@@ -32,8 +34,10 @@ interface ResumeState {
     setLatexCode: (code: string) => void;
     setAtsScore: (score: ATSScore | null) => void;
     setEditorMode: (mode: 'visual' | 'latex') => void;
+    setSelectedTemplate: (template: LatexTemplateType) => void;
     setIsGenerating: (generating: boolean) => void;
     
+    generateLatexFromData: () => void;
     updatePersonalInfo: (info: Partial<ResumeData['personalInfo']>) => void;
 
     // Experience
@@ -61,6 +65,9 @@ interface ResumeState {
     
     // Reset
     resetResume: () => void;
+    
+    // Check if using sample data
+    isUsingSampleData: () => boolean;
 }
 
 const initialATSScore: ATSScore = {
@@ -78,13 +85,14 @@ const initialATSScore: ATSScore = {
 
 export const useResumeStore = create<ResumeState>()(
     persist(
-        (set) => ({
+        (set, get) => ({
             resumeData: initialResumeData,
             jobDescription: '',
             githubUsername: '',
-            latexCode: '',
+            latexCode: DEFAULT_LATEX_TEMPLATE,
             atsScore: null,
             editorMode: 'visual',
+            selectedTemplate: 'ats-simple' as LatexTemplateType,
             isGenerating: false,
             
             setResumeData: (data) => set({ 
@@ -98,146 +106,238 @@ export const useResumeStore = create<ResumeState>()(
             setLatexCode: (code) => set({ latexCode: code }),
             setAtsScore: (score) => set({ atsScore: score }),
             setEditorMode: (mode) => set({ editorMode: mode }),
+            setSelectedTemplate: (template) => {
+                const { resumeData, editorMode } = get();
+                set({ selectedTemplate: template });
+                if (editorMode === 'visual') {
+                    const latex = generateLatexFromResume(resumeData, template);
+                    set({ latexCode: latex });
+                }
+            },
             setIsGenerating: (generating) => set({ isGenerating: generating }),
             
-            updatePersonalInfo: (info) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        personalInfo: { ...state.resumeData.personalInfo, ...info },
-                    },
-                })),
+            generateLatexFromData: () => {
+                const { resumeData, selectedTemplate } = get();
+                const latex = generateLatexFromResume(resumeData, selectedTemplate);
+                set({ latexCode: latex });
+            },
+            
+            updatePersonalInfo: (info) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    personalInfo: { ...resumeData.personalInfo, ...info },
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
 
-            addExperience: () =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        experience: [
-                            ...state.resumeData.experience,
-                            {
-                                id: uuidv4(),
-                                company: "New Company",
-                                role: "Role",
-                                startDate: "",
-                                endDate: "",
-                                current: false,
-                                location: "",
-                                description: "<ul><li>Responsibility 1</li></ul>",
-                            },
-                        ],
-                    },
-                })),
-            updateExperience: (id, item) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        experience: state.resumeData.experience.map((exp) =>
-                            exp.id === id ? { ...exp, ...item } : exp
-                        ),
-                    },
-                })),
-            removeExperience: (id) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        experience: state.resumeData.experience.filter((exp) => exp.id !== id),
-                    },
-                })),
-            reorderExperience: (items) =>
-                set((state) => ({
-                    resumeData: { ...state.resumeData, experience: items },
-                })),
+            addExperience: () => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    experience: [
+                        ...resumeData.experience,
+                        {
+                            id: uuidv4(),
+                            company: "New Company",
+                            role: "Role",
+                            startDate: "",
+                            endDate: "",
+                            current: false,
+                            location: "",
+                            description: "Responsibility 1",
+                        },
+                    ],
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            updateExperience: (id, item) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    experience: resumeData.experience.map((exp) =>
+                        exp.id === id ? { ...exp, ...item } : exp
+                    ),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            removeExperience: (id) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    experience: resumeData.experience.filter((exp) => exp.id !== id),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            reorderExperience: (items) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = { ...resumeData, experience: items };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
 
-            addProject: (data) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        projects: [
-                            ...state.resumeData.projects,
-                            {
-                                id: uuidv4(),
-                                name: data?.name || "New Project",
-                                description: data?.description || "Project description...",
-                                url: data?.url || "",
-                                technologies: data?.technologies || [],
-                            },
-                        ],
-                    },
-                })),
-            updateProject: (id, item) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        projects: state.resumeData.projects.map((proj) =>
-                            proj.id === id ? { ...proj, ...item } : proj
-                        ),
-                    },
-                })),
-            removeProject: (id) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        projects: state.resumeData.projects.filter((proj) => proj.id !== id),
-                    },
-                })),
-            reorderProjects: (items) =>
-                set((state) => ({
-                    resumeData: { ...state.resumeData, projects: items },
-                })),
+            addProject: (data) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    projects: [
+                        ...resumeData.projects,
+                        {
+                            id: uuidv4(),
+                            name: data?.name || "New Project",
+                            description: data?.description || "Project description...",
+                            url: data?.url || "",
+                            technologies: data?.technologies || [],
+                        },
+                    ],
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            updateProject: (id, item) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    projects: resumeData.projects.map((proj) =>
+                        proj.id === id ? { ...proj, ...item } : proj
+                    ),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            removeProject: (id) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    projects: resumeData.projects.filter((proj) => proj.id !== id),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            reorderProjects: (items) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = { ...resumeData, projects: items };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
 
-            addEducation: () =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        education: [
-                            ...state.resumeData.education,
-                            {
-                                id: uuidv4(),
-                                institution: "University",
-                                degree: "Degree",
-                                fieldOfStudy: "Field",
-                                startDate: "",
-                                endDate: "",
-                                current: false,
-                            },
-                        ],
-                    },
-                })),
-            updateEducation: (id, item) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        education: state.resumeData.education.map((edu) =>
-                            edu.id === id ? { ...edu, ...item } : edu
-                        ),
-                    },
-                })),
-            removeEducation: (id) =>
-                set((state) => ({
-                    resumeData: {
-                        ...state.resumeData,
-                        education: state.resumeData.education.filter((edu) => edu.id !== id),
-                    },
-                })),
+            addEducation: () => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    education: [
+                        ...resumeData.education,
+                        {
+                            id: uuidv4(),
+                            institution: "University",
+                            degree: "Degree",
+                            fieldOfStudy: "Field",
+                            startDate: "",
+                            endDate: "",
+                            current: false,
+                        },
+                    ],
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            updateEducation: (id, item) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    education: resumeData.education.map((edu) =>
+                        edu.id === id ? { ...edu, ...item } : edu
+                    ),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
+            removeEducation: (id) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = {
+                    ...resumeData,
+                    education: resumeData.education.filter((edu) => edu.id !== id),
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
 
-            updateSkills: (skills) =>
-                set((state) => ({
-                    resumeData: { ...state.resumeData, skills },
-                })),
+            updateSkills: (skills) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = { ...resumeData, skills };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
 
-            updateSectionOrder: (order) =>
-                set((state) => ({
-                    resumeData: { 
-                        ...state.resumeData, 
-                        sectionOrder: order 
-                    },
-                })),
+            updateSectionOrder: (order) => {
+                const { resumeData, selectedTemplate, editorMode } = get();
+                const newResumeData = { 
+                    ...resumeData, 
+                    sectionOrder: order 
+                };
+                const updates: Partial<ResumeState> = { resumeData: newResumeData };
+                if (editorMode === 'visual') {
+                    updates.latexCode = generateLatexFromResume(newResumeData, selectedTemplate);
+                }
+                set(updates);
+            },
                 
             resetResume: () => set({ 
                 resumeData: initialResumeData,
+                jobDescription: '',
+                githubUsername: '',
                 atsScore: null,
-                latexCode: '',
+                latexCode: DEFAULT_LATEX_TEMPLATE,
             }),
+            
+            isUsingSampleData: () => {
+                const { resumeData } = get();
+                return resumeData.personalInfo.fullName === 'Alex Johnson' && 
+                       resumeData.personalInfo.email === 'alex.johnson@email.com';
+            },
         }),
         {
             name: 'resume-storage',
@@ -245,6 +345,16 @@ export const useResumeStore = create<ResumeState>()(
                 if (persistedState?.resumeData) {
                     if (!persistedState.resumeData.sectionOrder) {
                         persistedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
+                    }
+                    if (!persistedState.selectedTemplate) {
+                        persistedState.selectedTemplate = 'ats-simple';
+                    }
+                    // Generate latex if empty
+                    if (!persistedState.latexCode) {
+                        persistedState.latexCode = generateLatexFromResume(
+                            persistedState.resumeData, 
+                            persistedState.selectedTemplate || 'ats-simple'
+                        );
                     }
                     return {
                         ...currentState,

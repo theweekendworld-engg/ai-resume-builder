@@ -9,10 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Wand2, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
-import { DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
+import { generateLatexFromResume } from '@/templates/latex';
+import { initialResumeData } from '@/types/resume';
 
 export default function LatexEditorPage() {
-    const [code, setCode] = useState<string>(DEFAULT_LATEX_TEMPLATE);
+    const [code, setCode] = useState<string>(generateLatexFromResume(initialResumeData, 'ats-simple'));
     const [instruction, setInstruction] = useState('');
     const [isModifying, setIsModifying] = useState(false);
 

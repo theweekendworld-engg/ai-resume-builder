@@ -13,7 +13,7 @@ export function ATSScoreCard() {
             <div className="gradient-border rounded-xl p-6 text-center">
                 <Target className="w-10 h-10 mx-auto text-muted-foreground/50 mb-3" />
                 <p className="text-sm text-muted-foreground">
-                    Enter a job description to see your ATS match score
+                    Enter a job description to see your match score
                 </p>
             </div>
         );
