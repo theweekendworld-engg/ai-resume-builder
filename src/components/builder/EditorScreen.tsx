@@ -72,6 +72,8 @@ import { Switch } from '@/components/ui/switch';
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { cn } from '@/lib/utils';
 import { TEMPLATE_OPTIONS, LatexTemplateType } from '@/templates/latex';
+import { ResumeCopilot } from '@/components/copilot';
+import { toast } from 'sonner';
 
 type SectionType = 'personal' | 'experience' | 'projects' | 'education' | 'skills' | 'section-order' | 'job-target';
 
@@ -99,7 +101,6 @@ export function EditorScreen() {
         selectedTemplate,
         setSelectedTemplate,
         setEditorMode,
-        generateLatexFromData,
         isUsingSampleData,
         resetResume,
         cloudSyncEnabled,
@@ -108,6 +109,12 @@ export function EditorScreen() {
         setSyncStatus,
         lastSyncedAt,
         setLastSyncedAt,
+        isOutOfSync,
+        hasVisualChanges,
+        hasLatexChanges,
+        syncVisualToLatex,
+        syncLatexToVisual,
+        isSyncingLatexToVisual,
     } = useResumeStore();
 
     const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -127,14 +134,21 @@ export function EditorScreen() {
 
     useEffect(() => {
         setEditorMode(editorTab);
-        if (editorTab === 'visual') {
-            generateLatexFromData();
-        }
-    }, [editorTab, setEditorMode, generateLatexFromData]);
+    }, [editorTab, setEditorMode]);
 
-    useEffect(() => {
-        generateLatexFromData();
-    }, [generateLatexFromData]);
+    const handleSyncVisualToLatex = () => {
+        syncVisualToLatex();
+        toast.success('LaTeX regenerated from visual editor');
+    };
+
+    const handleSyncLatexToVisual = async () => {
+        try {
+            await syncLatexToVisual();
+            toast.success('Visual editor updated from LaTeX');
+        } catch {
+            toast.error('Failed to parse LaTeX. Please check your LaTeX syntax.');
+        }
+    };
 
     // Load from cloud on mount if sync enabled and signed in
     useEffect(() => {
@@ -378,6 +392,8 @@ export function EditorScreen() {
                             </Sheet>
                         )}
 
+                        <ResumeCopilot />
+
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
@@ -563,6 +579,58 @@ export function EditorScreen() {
                                 </Tooltip>
                             </TabsList>
                         </Tabs>
+
+                        {isOutOfSync() && (
+                            <div className="flex items-center gap-2">
+                                {hasVisualChanges() && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={hasVisualChanges() && !hasLatexChanges() ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={handleSyncVisualToLatex}
+                                                className={cn(
+                                                    "h-7 text-xs gap-1.5",
+                                                    hasVisualChanges() && !hasLatexChanges() 
+                                                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                                                        : "border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+                                                )}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                Visual → LaTeX
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Regenerate LaTeX from visual editor data</TooltipContent>
+                                    </Tooltip>
+                                )}
+                                {hasLatexChanges() && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={hasLatexChanges() && !hasVisualChanges() ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={handleSyncLatexToVisual}
+                                                disabled={isSyncingLatexToVisual}
+                                                className={cn(
+                                                    "h-7 text-xs gap-1.5",
+                                                    hasLatexChanges() && !hasVisualChanges()
+                                                        ? "bg-green-600 hover:bg-green-700 text-white"
+                                                        : "border-green-500/50 text-green-500 hover:bg-green-500/10"
+                                                )}
+                                            >
+                                                {isSyncingLatexToVisual ? (
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                ) : (
+                                                    <RefreshCw className="w-3 h-3" />
+                                                )}
+                                                LaTeX → Visual
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Parse LaTeX and update visual editor (AI-powered)</TooltipContent>
+                                    </Tooltip>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {editorTab === 'visual' && (

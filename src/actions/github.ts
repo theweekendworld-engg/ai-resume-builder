@@ -5,6 +5,8 @@ import { GitHubRepo, GitHubRepoDetails, FetchReposOptions } from '@/types/github
 
 /**
  * Fetch GitHub repos with pagination and filtering support.
+ * Token is optional - works for public repos without auth (60 requests/hour limit).
+ * With token: 5000 requests/hour.
  */
 export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitHubRepo[]> {
     const {
@@ -18,7 +20,12 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
     } = options;
 
     try {
-        const octokit = new Octokit({ auth: token });
+        const octokit = new Octokit({ 
+            ...(token ? { auth: token } : {}),
+            request: {
+                timeout: 10000,
+            }
+        });
 
         const response = await octokit.request('GET /users/{username}/repos', {
             username,
@@ -63,6 +70,7 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
 
 /**
  * Fetch detailed repo information including README, languages, and topics.
+ * Token is optional - works for public repos without auth.
  */
 export async function fetchRepoDetails(
     username: string,
@@ -70,7 +78,10 @@ export async function fetchRepoDetails(
     token?: string
 ): Promise<GitHubRepoDetails> {
     try {
-        const octokit = new Octokit({ auth: token });
+        const octokit = new Octokit({ 
+            ...(token ? { auth: token } : {}),
+            request: { timeout: 10000 }
+        });
 
         // Fetch README
         let readme = '';

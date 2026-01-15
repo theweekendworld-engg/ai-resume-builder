@@ -3,7 +3,7 @@ name: polish-claims-alignment
 overview: Make the project’s resume bullets unambiguously true by strengthening privacy-first defaults (local-first with opt-in cloud sync), improving ATS/job-tailoring quality, hardening GitHub import + AI summarization, and polishing UX/reliability.
 todos:
   - id: agentic-chat-tailor
-    content: Replace the current tailor/score UX with an agentic chat flow that gathers context (resume, KB, GitHub) and proposes section-by-section changes for user approval.
+    content: Replace the current tailor/score UX with an agentic chat flow that gathers context (resume, KB, GitHub) and proposes section-by-section changes for user approval (no direct overwrite).
     status: pending
   - id: cloud-sync-resume
     content: Implement opt-in resume cloud sync (Prisma + Clerk userId) and add editor UI toggle + debounced autosave.
@@ -12,14 +12,14 @@ todos:
     content: Add local Knowledge Base storage/search by default; gate Qdrant KB sync/search behind cloud-sync toggle.
     status: pending
   - id: ai-json-validation
-    content: Add Zod validation + repair strategy for AI JSON outputs (ATS score, tailored resume).
-    status: pending
+    content: Expand Zod validation + repair across all AI structured outputs (ATS score, tailored resume, keywords extraction, and the new copilot patch format).
+    status: in_progress
   - id: ats-actionability
-    content: Blend deterministic ATS signals with LLM analysis and add one-click actions to apply suggestions.
+    content: Blend deterministic ATS signals with LLM analysis and drive improvements via explicit patch proposals (section-by-section apply), not silent overwrite.
     status: pending
   - id: github-import-upgrade
-    content: "Upgrade GitHub import: pagination/filtering, optional token, fetch README/languages/topics, structured AI project extraction, remove any types."
-    status: pending
+    content: "Copilot-grade GitHub ingestion: ask for username during tailoring, fetch repos efficiently, fetch README/languages/topics only for selected repos, and return structured project outputs (summary + impact bullets + tech)."
+    status: in_progress
   - id: latex-export-polish
     content: "Polish LaTeX export: disclose external compiler, add settings, remove debug logs, improve error UX."
     status: pending
@@ -37,10 +37,92 @@ todos:
 - **GitHub import + AI summarization**: make import robust (auth, pagination, richer repo signals) and produce structured, resume-ready project entries.
 - **Privacy-first**: **local-first by default**, with **opt-in cloud sync** for signed-in users; minimize backend storage and keep third-party sharing explicit.
 
+## Current state audit (so we don’t redo work)
+
+### Already implemented
+- Tailoring already recreates the resume (not just advice): `JobTargetEditor.tsx` calls `generateTailoredResume()` and overwrites `resumeData`.
+- ATS scoring + breakdown UI already exists.
+- AI JSON hardening is already partially implemented: `src/actions/ai.ts` uses Zod/repair (`parseWithRetry`) for ATS + tailored resume.
+- GitHub import is already substantially upgraded: optional token, filters, topics/languages, typed repos, toasts.
+- LaTeX compile/export works (currently via external compiler).
+
+### Missing / gaps (what we still need to build)
+- No preview/approval: tailoring directly mutates resume; user can’t review Before/After per section.
+- No agentic context gathering: KB bullets + GitHub + saved cloud resume aren’t pulled into one pipeline.
+- KB is not local-first: currently Qdrant-first.
+- Prisma Resume cloud sync isn’t wired.
+- ATS scoring is still fully LLM-based (validated, but not blended with deterministic signals).
+- External LaTeX compiler isn’t disclosed/configurable.
+
 ## Key product change: agentic chat tailoring (replaces the limited buttons)
 
 ### Why change it
-- Today, **“Tailor Resume” and “Score” overlap** (both depend on the same job description + resume context) and the tailoring is a black box.\n+- The new flow should feel like a real process: **collect context → propose edits → show what changed → user approves → apply**.\n+\n+### New UX (section-by-section approval)\n+- Add an **AI Copilot** chat panel (sheet/drawer or right-side panel) accessible from the editor header.\n+- The copilot runs a guided workflow:\n+  - Step 1: Ask for **job description** if missing.\n+  - Step 2: Ensure **GitHub username** is present; if missing, ask.\n+  - Step 3: Pull context:\n+    - Current resume data (localStorage; if cloud sync ON, prefer latest server copy)\n+    - Knowledge base bullets (local by default; if sync ON, also query Qdrant for JD-relevant bullets)\n+    - GitHub repos (public-only by username; optionally fetch README for selected repos)\n+  - Step 4: Generate a **proposed resume patch** (Summary/Experience/Projects/Skills) and a **new ATS score**.\n+  - Step 5: Show **Before vs After** previews per section + a short “What changed” explanation.\n+  - Step 6: User can **Apply per section** (your chosen approval mode).\n+\n+### Chat UI elements\n+- Message bubbles for user/assistant\n+- “Work log” style system messages during run:\n+  - `Collecting job requirements…`\n+  - `Searching knowledge base…`\n+  - `Fetching GitHub repositories…`\n+  - `Drafting resume updates…`\n+  - `Computing ATS score…`\n+- A **Proposed Changes** card with tabs:\n+  - Summary / Experience / Projects / Skills\n+  - Each tab shows Before/After + `Apply this section` button\n+  - A final `Apply selected` button\n+\n+### Data-efficiency / agentic behavior rules\n+- **Context caching**:\n+  - Cache extracted JD keywords/requirements for the session.\n+  - Cache GitHub repo list for username for the session.\n+  - Only fetch READMEs for repos the agent selects or the user selects.\n+- **Minimize tokens**:\n+  - Don’t send entire resume JSON blindly; send compact section text.\n+  - For KB: retrieve top N relevant bullets, not whole database.\n+\n+## Updated architecture for the tailoring run\n+\n+```mermaid\n+sequenceDiagram\n+  participant User\n+  participant CopilotUI as Copilot_UI\n+  participant Store as LocalStore\n+  participant NextServer\n+  participant OpenAI\n+  participant GH as GitHub_API\n+  participant KBLocal as KB_Local\n+  participant KBCloud as KB_Qdrant\n+\n+  User->>CopilotUI: StartTailor\n+  CopilotUI->>Store: Read(resumeData,jobDescription,githubUsername)\n+  alt MissingJobDescription\n+    CopilotUI-->>User: AskForJobDescription\n+  end\n+  alt MissingGithubUsername\n+    CopilotUI-->>User: AskForGithubUsername\n+  end\n+\n+  CopilotUI->>KBLocal: SearchRelevantBullets(jobDescription)\n+  opt CloudSyncEnabled\n+    CopilotUI->>NextServer: SearchKnowledgeBase(jobDescription)\n+    NextServer->>KBCloud: VectorSearch(userId,jobDescription)\n+    NextServer-->>CopilotUI: topBullets\n+  end\n+\n+  CopilotUI->>NextServer: FetchGitHubRepos(username)\n+  NextServer->>GH: ListRepos\n+  NextServer-->>CopilotUI: repos\n+\n+  CopilotUI->>NextServer: ProposeResumePatch(resumeSections,jobDescription,repos,bullets)\n+  NextServer->>OpenAI: GenerateStructuredPatchAndScore\n+  NextServer-->>CopilotUI: proposedPatch,proposedScore\n+  CopilotUI-->>User: PreviewChanges(perSection)\n+  User->>CopilotUI: ApproveSelectedSections\n+  CopilotUI->>Store: ApplyPatchToResumeData\n+```\n+\n ## Proposed architecture (local-first + opt-in sync)
+- Today, “Tailor Resume” and “Score” overlap and the tailoring is a black box.
+- The new flow should feel like a real process: collect context → propose edits → show what changed → user approves → apply.
+
+### New UX (section-by-section approval)
+- Add an AI Copilot chat panel (sheet/drawer or right-side panel) accessible from the editor header.
+- Copilot workflow:
+  - Ask for job description if missing.
+  - Ask for GitHub username if missing.
+  - Gather context:
+    - Resume baseline (local; if cloud sync ON, prefer latest server copy)
+    - Knowledge base bullets (local by default; optionally Qdrant when sync ON)
+    - GitHub repos (public by username; fetch READMEs only for shortlisted repos)
+  - Produce a proposed patch + new ATS score.
+  - Show Before/After per section with Apply buttons.
+
+### “Chat-like” transparency
+- Work-log system messages during run (fetching repos, searching KB, drafting updates, scoring).
+- Proposed Changes card with tabs: Summary / Experience / Projects / Skills.
+- Apply mode: per-section apply (your choice).
+
+### Data-efficiency rules
+- Cache JD extraction and GitHub repo lists per session.
+- Fetch README only for shortlisted repos.
+- Send compact section text instead of full resume JSON when possible.
+
+## Updated architecture for the tailoring run
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant CopilotUI as Copilot_UI
+  participant Store as LocalStore
+  participant NextServer
+  participant OpenAI
+  participant GH as GitHub_API
+  participant KBLocal as KB_Local
+  participant KBCloud as KB_Qdrant
+
+  User->>CopilotUI: StartTailor
+  CopilotUI->>Store: Read(resumeData,jobDescription,githubUsername)
+  alt MissingJobDescription
+    CopilotUI-->>User: AskForJobDescription
+  end
+  alt MissingGithubUsername
+    CopilotUI-->>User: AskForGithubUsername
+  end
+
+  CopilotUI->>KBLocal: SearchRelevantBullets(jobDescription)
+  opt CloudSyncEnabled
+    CopilotUI->>NextServer: SearchKnowledgeBase(jobDescription)
+    NextServer->>KBCloud: VectorSearch(userId,jobDescription)
+    NextServer-->>CopilotUI: topBullets
+  end
+
+  CopilotUI->>NextServer: FetchGitHubRepos(username)
+  NextServer->>GH: ListRepos
+  NextServer-->>CopilotUI: repos
+
+  CopilotUI->>NextServer: ProposeResumePatch(resumeSections,jobDescription,repos,bullets)
+  NextServer->>OpenAI: GenerateStructuredPatchAndScore
+  NextServer-->>CopilotUI: proposedPatch,proposedScore
+  CopilotUI-->>User: PreviewChanges(perSection)
+  User->>CopilotUI: ApproveSelectedSections
+  CopilotUI->>Store: ApplyPatchToResumeData
+```
+
 ## Proposed architecture (local-first + opt-in sync)
 
 ```mermaid
@@ -71,7 +153,26 @@ sequenceDiagram
 
 ### 0) Agentic chat tailoring flow (primary feature upgrade)
 
-- **Unify “Score” + “Tailor”** into one agent action:\n+  - “Run analysis” always computes ATS + produces proposed edits.\n+  - “Score only” becomes an optional command inside the chat (or a secondary button) that skips patch generation.\n+- **Create a structured output contract** for the agent:\n+  - `ProposedResumePatch` = `{ sections: { summary?, experience?, projects?, skills? }, rationale: string[], atsScore: ATSScore }`\n+  - Each section output should be both:\n+    - Updated resume JSON for that section\n+    - A “diff-friendly” text summary (Before/After)\n+- **Implementation pieces**:\n+  - UI: new `Copilot` component mounted in the editor (sheet/right panel)\n+  - Store: temporary state for `proposedPatch`, `selectedSectionsToApply`, `copilotMessages`\n+  - Server: an action `proposeResumePatch()` that:\n+    - Gathers/accepts inputs: resume sections, JD, KB bullets, GitHub repos\n+    - Calls OpenAI to produce structured patch + ATS score\n+    - Validates with Zod; retries if invalid\n+- **Files (expected)**:\n+  - Add `[...]/src/components/copilot/ResumeCopilot.tsx`\n+  - Add `[...]/src/components/copilot/ProposedChangesCard.tsx`\n+  - Add `[...]/src/actions/copilot.ts` (or extend `[...]/src/actions/ai.ts`)\n+  - Extend `[...]/src/store/resumeStore.ts` with copilot/proposal state\n+  - Update `[...]/src/components/editor/JobTargetEditor.tsx` to either:\n+    - become the entry point for the copilot, or\n+    - be replaced by the copilot UI inside the “Job Target” section\n+\n ### 1) Privacy-first: opt-in cloud sync for resumes (Prisma model is currently unused)
+- Unify Score + Tailor into one agent action:
+  - “Run analysis” computes ATS + produces proposed edits.
+  - “Score only” becomes a chat command/secondary action.
+- Proposal-based patching (no direct overwrite):
+  - Agent returns `ProposedResumePatch` + diffs.
+  - User applies per section.
+- Wire real context into the run:
+  - Resume baseline: local; if cloud sync ON, load latest.
+  - Knowledge base: local-first; optionally Qdrant when sync ON.
+  - GitHub: ask for username if missing; fetch public repos; fetch README only for shortlisted repos.
+- Structured output contracts:
+  - `ProposedResumePatch` = `{ sections: { summary?, experience?, projects?, skills? }, rationale: string[], atsScore: ATSScore, diffs: { summary?, experience?, projects?, skills? } }`
+- Files (expected):
+  - Add `[...]/src/components/copilot/ResumeCopilot.tsx`
+  - Add `[...]/src/components/copilot/ProposedChangesCard.tsx`
+  - Add `[...]/src/actions/copilot.ts` (or extend `[...]/src/actions/ai.ts`)
+  - Extend `[...]/src/store/resumeStore.ts` with copilot/proposal state
+  - Replace/rework `[...]/src/components/editor/JobTargetEditor.tsx` to become the copilot entry point
+
+### 1) Privacy-first: opt-in cloud sync for resumes (Prisma model is currently unused)
 ### 1) Privacy-first: opt-in cloud sync for resumes (Prisma model is currently unused)
 
 - **Add server actions** to upsert/fetch resume by Clerk `userId` using existing Prisma model.
@@ -97,11 +198,11 @@ sequenceDiagram
 
 ### 3) Harden LLM outputs (reduce “it broke” cases)
 
-- **Validate all AI JSON** with Zod schemas; retry/repair on invalid JSON.
-  - File: `[...]/src/actions/ai.ts`
-  - Add `[...]/src/lib/aiSchemas.ts` (Zod schemas for ATSScore and ResumeData-like outputs)
-- **Improve prompting to structured outputs** (explicit JSON keys, no prose).
-- **Clamp/sanitize** returned resume fields (IDs, arrays, required fields).
+- Already partially done for ATS + tailored resume.
+- Extend to the rest:
+  - Update `extractKeywords()` to use the same `parseWithRetry` strategy (avoid regex JSON guessing).
+  - Add Zod schema + repair for the new copilot patch format.
+  - Keep a single shared parsing/repair helper.
 
 ### 4) ATS scoring + JD-aware optimization: make it more actionable
 
@@ -117,17 +218,12 @@ sequenceDiagram
 
 ### 5) GitHub import polish (make the claim strong)
 
-- **Support pagination + repo filtering** (stars, language, updated, topics).
-  - Files:
-    - `[...]/src/actions/github.ts`
-    - `[...]/src/components/editor/GitHubImport.tsx`
-- **Copilot integration**:
-  - If GitHub username missing, the copilot asks for it.
-  - Copilot can propose “include these 2–4 repos” and only then fetch READMEs for those.\n 
-- **Richer project extraction**:
-  - Fetch README + languages + topics.
-  - AI returns structured JSON: `{ impactBullets[], tech[], summary }` then map into resume project entry.
-  - Replace `any` types with proper TS interfaces.
+- Already partially done (filters, optional token, topics/languages, typed repos, toasts).
+- Remaining work (to make it “agentic”):
+  - Copilot asks for username if missing.
+  - Copilot shortlists relevant repos for the job description.
+  - Fetch README/languages/topics only for shortlisted repos.
+  - AI returns structured project output: `{ summary, impactBullets[], tech[] }`, then map into resume projects.
 
 ### 6) LaTeX/export reliability + transparency
 

@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
-import { ATSScoreSchema, ResumeDataSchema, parseWithRetry } from '@/lib/aiSchemas';
+import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
 
 const openai = new OpenAI({
     apiKey: config.openai.apiKey,
@@ -43,10 +43,10 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
     }
 }
 
-export async function extractKeywords(jobDescription: string) {
+export async function extractKeywords(jobDescription: string): Promise<string[]> {
     if (!jobDescription) return [];
 
-    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON array of strings with key "keywords". Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
+    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
 
     try {
         const response = await openai.chat.completions.create({
@@ -59,15 +59,52 @@ export async function extractKeywords(jobDescription: string) {
         const content = response.choices[0].message.content;
         if (!content) return [];
 
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return [];
-
-        const parsed = JSON.parse(jsonMatch[0]);
-        return parsed.keywords || parsed.skills || [];
+        const parseResult = await parseWithRetry(content, KeywordsResponseSchema);
+        if (parseResult.success) {
+            return parseResult.data.keywords;
+        }
+        
+        return [];
     } catch (error) {
         console.error("AI Keyword Error:", error);
         return [];
     }
+}
+
+function calculateDeterministicScore(resumeData: ResumeData, jobDescription: string) {
+    const jdLower = jobDescription.toLowerCase();
+    const resumeText = JSON.stringify(resumeData).toLowerCase();
+    
+    const jdWords = jdLower.split(/\W+/).filter(w => w.length > 3);
+    const uniqueJdWords = [...new Set(jdWords)];
+    
+    const matchedWords = uniqueJdWords.filter(w => resumeText.includes(w));
+    const keywordOverlap = uniqueJdWords.length > 0 
+        ? (matchedWords.length / uniqueJdWords.length) * 100 
+        : 0;
+    
+    const skillsLower = resumeData.skills.map(s => s.toLowerCase());
+    const skillMatches = uniqueJdWords.filter(w => 
+        skillsLower.some(s => s.includes(w) || w.includes(s))
+    );
+    const targetSkillCount = Math.min(15, uniqueJdWords.length);
+    const skillsMatch = targetSkillCount > 0 
+        ? (skillMatches.length / targetSkillCount) * 100 
+        : 0;
+    
+    const hasExperience = resumeData.experience.length > 0;
+    const hasProjects = resumeData.projects.length > 0;
+    const hasSummary = resumeData.personalInfo.summary.length > 50;
+    const hasSkills = resumeData.skills.length >= 5;
+    const completeness = [hasExperience, hasProjects, hasSummary, hasSkills]
+        .filter(Boolean).length * 25;
+    
+    return {
+        keywordOverlap: Math.round(Math.min(100, keywordOverlap)),
+        skillsMatch: Math.round(Math.min(100, skillsMatch)),
+        completeness: Math.round(completeness),
+        matchedWords: matchedWords.slice(0, 20),
+    };
 }
 
 export async function calculateATSScore(resumeData: ResumeData, jobDescription: string): Promise<ATSScore> {
@@ -81,6 +118,7 @@ export async function calculateATSScore(resumeData: ResumeData, jobDescription: 
         };
     }
 
+    const deterministicScores = calculateDeterministicScore(resumeData, jobDescription);
     const resumeText = JSON.stringify(resumeData);
 
     const prompt = `Analyze this resume against the job description and provide an ATS compatibility score.
@@ -121,15 +159,30 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 
         if (parseResult.success) {
             const validated = parseResult.data;
+            
+            const blendedKeywordMatch = Math.round(
+                (deterministicScores.keywordOverlap * 0.3) + (validated.breakdown.keywordMatch * 0.7)
+            );
+            const blendedSkillsMatch = Math.round(
+                (deterministicScores.skillsMatch * 0.3) + (validated.breakdown.skillsMatch * 0.7)
+            );
+            
+            const blendedOverall = Math.round(
+                (blendedKeywordMatch * 0.3) + 
+                (blendedSkillsMatch * 0.25) + 
+                (validated.breakdown.experienceRelevance * 0.35) + 
+                (validated.breakdown.formattingScore * 0.1)
+            );
+            
             return {
-                overall: Math.min(100, Math.max(0, validated.overall)),
+                overall: Math.min(100, Math.max(0, blendedOverall)),
                 breakdown: {
-                    keywordMatch: validated.breakdown.keywordMatch,
-                    skillsMatch: validated.breakdown.skillsMatch,
+                    keywordMatch: blendedKeywordMatch,
+                    skillsMatch: blendedSkillsMatch,
                     experienceRelevance: validated.breakdown.experienceRelevance,
                     formattingScore: validated.breakdown.formattingScore,
                 },
-                matchedKeywords: validated.matchedKeywords,
+                matchedKeywords: [...new Set([...deterministicScores.matchedWords, ...validated.matchedKeywords])].slice(0, 15),
                 missingKeywords: validated.missingKeywords,
                 suggestions: validated.suggestions,
             };
@@ -283,6 +336,131 @@ Output ONLY the raw LaTeX code. No markdown, no explanations.`;
     } catch (error) {
         console.error("Resume to LaTeX Error:", error);
         throw new Error("Failed to convert resume to LaTeX");
+    }
+}
+
+export async function latexToResume(latexCode: string): Promise<ResumeData> {
+    const prompt = `Parse the following LaTeX resume document and extract all the information into a structured JSON format.
+
+LATEX CODE:
+${latexCode}
+
+Extract and return a JSON object with this EXACT structure:
+{
+  "personalInfo": {
+    "fullName": "string",
+    "title": "string (job title/role)",
+    "email": "string",
+    "phone": "string",
+    "location": "string",
+    "website": "string (without https://)",
+    "linkedin": "string (without https://)",
+    "github": "string (without https://)",
+    "summary": "string (professional summary paragraph)"
+  },
+  "experience": [
+    {
+      "id": "unique-id",
+      "company": "string",
+      "role": "string",
+      "startDate": "string (e.g., Jan 2022)",
+      "endDate": "string (empty if current)",
+      "current": boolean,
+      "location": "string",
+      "description": "string (bullet points separated by newlines, each starting with •)"
+    }
+  ],
+  "projects": [
+    {
+      "id": "unique-id",
+      "name": "string",
+      "description": "string",
+      "url": "string",
+      "technologies": ["array", "of", "tech"]
+    }
+  ],
+  "education": [
+    {
+      "id": "unique-id",
+      "institution": "string",
+      "degree": "string",
+      "fieldOfStudy": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "current": boolean
+    }
+  ],
+  "skills": ["array", "of", "skills"],
+  "sectionOrder": ["summary", "experience", "projects", "education", "skills"]
+}
+
+Important:
+- Generate unique IDs for each item (use format like "exp-1", "proj-1", "edu-1")
+- For experience descriptions, format bullet points with "• " prefix and "\\n" between them
+- If a field is not found in the LaTeX, use an empty string or empty array
+- Determine sectionOrder based on the order sections appear in the LaTeX
+
+Output ONLY valid JSON, no markdown, no explanations.`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: config.openai.model,
+            messages: [
+                { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" },
+        });
+
+        const content = response.choices[0].message.content?.trim() || "{}";
+        const parsed = JSON.parse(content);
+        
+        // Validate and ensure all required fields exist
+        const result: ResumeData = {
+            personalInfo: {
+                fullName: parsed.personalInfo?.fullName || "",
+                title: parsed.personalInfo?.title || "",
+                email: parsed.personalInfo?.email || "",
+                phone: parsed.personalInfo?.phone || "",
+                location: parsed.personalInfo?.location || "",
+                website: parsed.personalInfo?.website || "",
+                linkedin: parsed.personalInfo?.linkedin || "",
+                github: parsed.personalInfo?.github || "",
+                summary: parsed.personalInfo?.summary || "",
+            },
+            experience: (parsed.experience || []).map((exp: any, i: number) => ({
+                id: exp.id || `exp-${i + 1}`,
+                company: exp.company || "",
+                role: exp.role || "",
+                startDate: exp.startDate || "",
+                endDate: exp.endDate || "",
+                current: exp.current || false,
+                location: exp.location || "",
+                description: exp.description || "",
+            })),
+            projects: (parsed.projects || []).map((proj: any, i: number) => ({
+                id: proj.id || `proj-${i + 1}`,
+                name: proj.name || "",
+                description: proj.description || "",
+                url: proj.url || "",
+                technologies: proj.technologies || [],
+            })),
+            education: (parsed.education || []).map((edu: any, i: number) => ({
+                id: edu.id || `edu-${i + 1}`,
+                institution: edu.institution || "",
+                degree: edu.degree || "",
+                fieldOfStudy: edu.fieldOfStudy || "",
+                startDate: edu.startDate || "",
+                endDate: edu.endDate || "",
+                current: edu.current || false,
+            })),
+            skills: parsed.skills || [],
+            sectionOrder: parsed.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills'],
+        };
+
+        return result;
+    } catch (error) {
+        console.error("LaTeX to Resume Error:", error);
+        throw new Error("Failed to parse LaTeX to resume data");
     }
 }
 

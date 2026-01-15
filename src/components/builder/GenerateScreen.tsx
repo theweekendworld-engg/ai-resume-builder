@@ -28,9 +28,8 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
         githubUsername,
         setJobDescription,
         setGithubUsername,
-        setResumeData,
         setAtsScore,
-        setLatexCode,
+        setResumeAndLatexInSync,
     } = useResumeStore();
 
     const [githubRepos, setGithubRepos] = useState<any[]>([]);
@@ -77,15 +76,13 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
                 githubData.length > 0 ? githubData : undefined
             );
 
-            setResumeData(tailoredResume);
-
             const [score, latex] = await Promise.all([
                 calculateATSScore(tailoredResume, jobDescription),
                 resumeToLatex(tailoredResume)
             ]);
 
+            setResumeAndLatexInSync(tailoredResume, latex);
             setAtsScore(score);
-            setLatexCode(latex);
             setStep('done');
 
             setTimeout(() => {

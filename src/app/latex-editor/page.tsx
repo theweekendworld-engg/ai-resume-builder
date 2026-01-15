@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LatexEditor } from '@/components/latex/LatexEditor';
 import { LatexPreview } from '@/components/latex/LatexPreview';
 import { modifyLatex } from '@/actions/ai';
@@ -8,16 +8,34 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Wand2, ArrowLeft, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-
+import { useResumeStore } from '@/store/resumeStore';
 import { generateLatexFromResume } from '@/templates/latex';
 import { initialResumeData } from '@/types/resume';
 
 export default function LatexEditorPage() {
-    const [code, setCode] = useState<string>(generateLatexFromResume(initialResumeData, 'ats-simple'));
+    const { latexCode, setLatexCode } = useResumeStore();
+    const [code, setCode] = useState<string>('');
     const [instruction, setInstruction] = useState('');
     const [isModifying, setIsModifying] = useState(false);
-
     const [error, setError] = useState<string | null>(null);
+    const initializedRef = useRef(false);
+
+    useEffect(() => {
+        if (!initializedRef.current) {
+            const initialCode = latexCode || generateLatexFromResume(initialResumeData, 'ats-simple');
+            setCode(initialCode);
+            if (!latexCode) {
+                setLatexCode(initialCode);
+            }
+            initializedRef.current = true;
+        }
+    }, [latexCode, setLatexCode]);
+
+    const handleCodeChange = (val: string | undefined) => {
+        const newCode = val || '';
+        setCode(newCode);
+        setLatexCode(newCode);
+    };
 
     const handleAiModify = async () => {
         if (!instruction || !code) return;
@@ -28,6 +46,7 @@ export default function LatexEditorPage() {
             const newCode = await modifyLatex(code, instruction);
             if (newCode && newCode !== code) {
                 setCode(newCode);
+                setLatexCode(newCode);
                 setInstruction('');
             } else {
                 setError("AI could not generate a modification. Try a different instruction.");
@@ -105,7 +124,7 @@ export default function LatexEditorPage() {
                     <div className="flex-1">
                         <LatexEditor
                             code={code}
-                            onChange={(val) => setCode(val || '')}
+                            onChange={handleCodeChange}
                         />
                     </div>
                 </div>

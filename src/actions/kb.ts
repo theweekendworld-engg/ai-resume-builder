@@ -2,6 +2,7 @@
 
 import { QdrantClient } from '@qdrant/js-client-rest';
 import OpenAI from 'openai';
+import { v4 as uuidv4 } from 'uuid';
 
 const qdrantClient = new QdrantClient({
     url: process.env.QDRANT_URL || 'http://localhost:6333',
@@ -53,7 +54,7 @@ export async function saveToKnowledgeBase(
     try {
         await ensureCollection();
         const embedding = await generateEmbedding(content);
-        const id = crypto.randomUUID();
+        const id = uuidv4();
 
         // Qdrant supports UUID strings as point IDs
         await qdrantClient.upsert(COLLECTION_NAME, {

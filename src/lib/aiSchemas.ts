@@ -86,9 +86,54 @@ export const ResumeDataSchema = z.object({
     sectionOrder: z.array(z.enum(['experience', 'projects', 'education', 'skills', 'summary'])).default(['summary', 'experience', 'projects', 'education', 'skills']),
 });
 
+/**
+ * Zod schema for keywords extraction response
+ */
+export const KeywordsResponseSchema = z.object({
+    keywords: z.array(z.string()).default([]),
+});
+
+/**
+ * Zod schema for section diff (before/after comparison)
+ */
+export const SectionDiffSchema = z.object({
+    before: z.string(),
+    after: z.string(),
+    changed: z.boolean(),
+});
+
+/**
+ * Zod schema for proposed resume patch from copilot
+ * Note: diffs are optional since we generate them from sections data
+ */
+export const ProposedResumePatchSchema = z.object({
+    sections: z.object({
+        summary: z.string().optional(),
+        experience: z.array(ExperienceItemSchema).optional(),
+        projects: z.array(ProjectItemSchema).optional(),
+        skills: z.array(z.string()).optional(),
+    }),
+    rationale: z.array(z.string()).default([]),
+    proposedAtsScore: z.number().min(0).max(100).default(75),
+});
+
+/**
+ * Zod schema for GitHub repo relevance scoring
+ */
+export const ScoredRepoSchema = z.object({
+    name: z.string(),
+    description: z.string().nullable(),
+    relevanceScore: z.number(),
+    relevanceReason: z.string(),
+});
+
 // Type exports
 export type ATSScoreType = z.infer<typeof ATSScoreSchema>;
 export type ResumeDataType = z.infer<typeof ResumeDataSchema>;
+export type KeywordsResponseType = z.infer<typeof KeywordsResponseSchema>;
+export type SectionDiffType = z.infer<typeof SectionDiffSchema>;
+export type ProposedResumePatchType = z.infer<typeof ProposedResumePatchSchema>;
+export type ScoredRepoType = z.infer<typeof ScoredRepoSchema>;
 
 /**
  * Safely parse JSON from AI response with validation.
