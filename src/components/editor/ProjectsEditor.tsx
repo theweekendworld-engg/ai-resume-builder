@@ -27,7 +27,7 @@ export function ProjectsEditor() {
     const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
     const [currentRewriteId, setCurrentRewriteId] = useState<string | null>(null);
     const [currentRewriteText, setCurrentRewriteText] = useState('');
-    
+
     // GitHub state
     const [repos, setRepos] = useState<GitHubRepo[]>([]);
     const [loading, setLoading] = useState(false);
@@ -51,7 +51,7 @@ export function ProjectsEditor() {
         if (!githubUsername) return;
         setLoading(true);
         try {
-            const data = await fetchGitHubRepos(githubUsername);
+            const data = await fetchGitHubRepos({ username: githubUsername });
             setRepos(data);
             if (data.length > 0) {
                 setShowGitHub(true);
@@ -66,11 +66,11 @@ export function ProjectsEditor() {
     const handleImportRepo = async (repo: GitHubRepo) => {
         setImportingId(repo.id);
         try {
-            const readme = await fetchRepoDetails(githubUsername, repo.name);
+            const details = await fetchRepoDetails(githubUsername, repo.name);
 
             let description = repo.description || "";
-            if (readme) {
-                const context = readme.substring(0, 2000);
+            if (details.readme) {
+                const context = details.readme.substring(0, 2000);
                 description = await improveText(context, 'project');
             } else if (description) {
                 description = await improveText(description, 'project');
@@ -124,7 +124,7 @@ export function ProjectsEditor() {
                             </Button>
                         )}
                     </div>
-                    
+
                     <div className="flex gap-2">
                         <Input
                             value={githubUsername}
@@ -133,8 +133,8 @@ export function ProjectsEditor() {
                             className="h-9"
                             onKeyDown={(e) => e.key === 'Enter' && handleFetchRepos()}
                         />
-                        <Button 
-                            onClick={handleFetchRepos} 
+                        <Button
+                            onClick={handleFetchRepos}
                             disabled={loading || !githubUsername}
                             variant="secondary"
                             size="sm"
@@ -151,8 +151,8 @@ export function ProjectsEditor() {
                                 Click import to add a repo. Description will be auto-enhanced.
                             </p>
                             {repos.map((repo) => (
-                                <div 
-                                    key={repo.id} 
+                                <div
+                                    key={repo.id}
                                     className="flex items-center justify-between p-3 border border-border rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
                                 >
                                     <div className="overflow-hidden flex-1 mr-3">
@@ -268,7 +268,7 @@ export function ProjectsEditor() {
                         </div>
                     </div>
                 ))}
-                
+
                 {projects.length === 0 && (
                     <div className="text-center text-muted-foreground py-12">
                         <p className="text-sm">No projects added yet.</p>

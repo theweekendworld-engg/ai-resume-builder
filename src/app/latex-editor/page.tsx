@@ -22,21 +22,17 @@ export default function LatexEditorPage() {
     const handleAiModify = async () => {
         if (!instruction || !code) return;
 
-        console.log("Starting AI modification...", { instruction, codeLength: code.length });
         setError(null);
         setIsModifying(true);
         try {
             const newCode = await modifyLatex(code, instruction);
-            console.log("AI Response received", { newCodeLength: newCode?.length });
             if (newCode && newCode !== code) {
                 setCode(newCode);
                 setInstruction('');
             } else {
-                console.warn("AI returned same or empty code");
                 setError("AI could not generate a modification. Try a different instruction.");
             }
-        } catch (err) {
-            console.error("AI Modification Error:", err);
+        } catch {
             setError("Failed to modify code with AI. Please try again.");
         } finally {
             setIsModifying(false);

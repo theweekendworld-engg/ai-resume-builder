@@ -17,6 +17,8 @@ export interface ATSScore {
     suggestions: string[];
 }
 
+export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
+
 interface ResumeState {
     resumeData: ResumeData;
     jobDescription: string;
@@ -26,7 +28,12 @@ interface ResumeState {
     editorMode: 'visual' | 'latex';
     selectedTemplate: LatexTemplateType;
     isGenerating: boolean;
-    
+
+    // Cloud sync state
+    cloudSyncEnabled: boolean;
+    syncStatus: SyncStatus;
+    lastSyncedAt: Date | null;
+
     // Setters
     setResumeData: (data: ResumeData) => void;
     setJobDescription: (description: string) => void;
@@ -36,7 +43,12 @@ interface ResumeState {
     setEditorMode: (mode: 'visual' | 'latex') => void;
     setSelectedTemplate: (template: LatexTemplateType) => void;
     setIsGenerating: (generating: boolean) => void;
-    
+
+    // Cloud sync setters
+    setCloudSyncEnabled: (enabled: boolean) => void;
+    setSyncStatus: (status: SyncStatus) => void;
+    setLastSyncedAt: (date: Date | null) => void;
+
     generateLatexFromData: () => void;
     updatePersonalInfo: (info: Partial<ResumeData['personalInfo']>) => void;
 
@@ -62,10 +74,10 @@ interface ResumeState {
 
     // Section Order
     updateSectionOrder: (order: SectionType[]) => void;
-    
+
     // Reset
     resetResume: () => void;
-    
+
     // Check if using sample data
     isUsingSampleData: () => boolean;
 }
@@ -94,8 +106,13 @@ export const useResumeStore = create<ResumeState>()(
             editorMode: 'visual',
             selectedTemplate: 'ats-simple' as LatexTemplateType,
             isGenerating: false,
-            
-            setResumeData: (data) => set({ 
+
+            // Cloud sync state (default OFF for privacy-first)
+            cloudSyncEnabled: false,
+            syncStatus: 'idle' as SyncStatus,
+            lastSyncedAt: null,
+
+            setResumeData: (data) => set({
                 resumeData: {
                     ...data,
                     sectionOrder: data.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills']
@@ -115,13 +132,18 @@ export const useResumeStore = create<ResumeState>()(
                 }
             },
             setIsGenerating: (generating) => set({ isGenerating: generating }),
-            
+
+            // Cloud sync setters
+            setCloudSyncEnabled: (enabled) => set({ cloudSyncEnabled: enabled }),
+            setSyncStatus: (status) => set({ syncStatus: status }),
+            setLastSyncedAt: (date) => set({ lastSyncedAt: date }),
+
             generateLatexFromData: () => {
                 const { resumeData, selectedTemplate } = get();
                 const latex = generateLatexFromResume(resumeData, selectedTemplate);
                 set({ latexCode: latex });
             },
-            
+
             updatePersonalInfo: (info) => {
                 const { resumeData, selectedTemplate, editorMode } = get();
                 const newResumeData = {
@@ -314,9 +336,9 @@ export const useResumeStore = create<ResumeState>()(
 
             updateSectionOrder: (order) => {
                 const { resumeData, selectedTemplate, editorMode } = get();
-                const newResumeData = { 
-                    ...resumeData, 
-                    sectionOrder: order 
+                const newResumeData = {
+                    ...resumeData,
+                    sectionOrder: order
                 };
                 const updates: Partial<ResumeState> = { resumeData: newResumeData };
                 if (editorMode === 'visual') {
@@ -324,19 +346,19 @@ export const useResumeStore = create<ResumeState>()(
                 }
                 set(updates);
             },
-                
-            resetResume: () => set({ 
+
+            resetResume: () => set({
                 resumeData: initialResumeData,
                 jobDescription: '',
                 githubUsername: '',
                 atsScore: null,
                 latexCode: DEFAULT_LATEX_TEMPLATE,
             }),
-            
+
             isUsingSampleData: () => {
                 const { resumeData } = get();
-                return resumeData.personalInfo.fullName === 'Alex Johnson' && 
-                       resumeData.personalInfo.email === 'alex.johnson@email.com';
+                return resumeData.personalInfo.fullName === 'Alex Johnson' &&
+                    resumeData.personalInfo.email === 'alex.johnson@email.com';
             },
         }),
         {
@@ -352,7 +374,7 @@ export const useResumeStore = create<ResumeState>()(
                     // Generate latex if empty
                     if (!persistedState.latexCode) {
                         persistedState.latexCode = generateLatexFromResume(
-                            persistedState.resumeData, 
+                            persistedState.resumeData,
                             persistedState.selectedTemplate || 'ats-simple'
                         );
                     }
