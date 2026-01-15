@@ -4,10 +4,13 @@ import OpenAI from 'openai';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
+import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
 
 const openai = new OpenAI({
     apiKey: config.openai.apiKey,
 });
+
+
 
 export async function improveText(text: string, type: 'summary' | 'bullet' | 'project', customInstruction?: string) {
     if (!text) return "";
@@ -40,10 +43,10 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
     }
 }
 
-export async function extractKeywords(jobDescription: string) {
+export async function extractKeywords(jobDescription: string): Promise<string[]> {
     if (!jobDescription) return [];
 
-    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON array of strings with key "keywords". Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
+    const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
 
     try {
         const response = await openai.chat.completions.create({
@@ -56,15 +59,52 @@ export async function extractKeywords(jobDescription: string) {
         const content = response.choices[0].message.content;
         if (!content) return [];
 
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) return [];
+        const parseResult = await parseWithRetry(content, KeywordsResponseSchema);
+        if (parseResult.success) {
+            return parseResult.data.keywords;
+        }
         
-        const parsed = JSON.parse(jsonMatch[0]);
-        return parsed.keywords || parsed.skills || [];
+        return [];
     } catch (error) {
         console.error("AI Keyword Error:", error);
         return [];
     }
+}
+
+function calculateDeterministicScore(resumeData: ResumeData, jobDescription: string) {
+    const jdLower = jobDescription.toLowerCase();
+    const resumeText = JSON.stringify(resumeData).toLowerCase();
+    
+    const jdWords = jdLower.split(/\W+/).filter(w => w.length > 3);
+    const uniqueJdWords = [...new Set(jdWords)];
+    
+    const matchedWords = uniqueJdWords.filter(w => resumeText.includes(w));
+    const keywordOverlap = uniqueJdWords.length > 0 
+        ? (matchedWords.length / uniqueJdWords.length) * 100 
+        : 0;
+    
+    const skillsLower = resumeData.skills.map(s => s.toLowerCase());
+    const skillMatches = uniqueJdWords.filter(w => 
+        skillsLower.some(s => s.includes(w) || w.includes(s))
+    );
+    const targetSkillCount = Math.min(15, uniqueJdWords.length);
+    const skillsMatch = targetSkillCount > 0 
+        ? (skillMatches.length / targetSkillCount) * 100 
+        : 0;
+    
+    const hasExperience = resumeData.experience.length > 0;
+    const hasProjects = resumeData.projects.length > 0;
+    const hasSummary = resumeData.personalInfo.summary.length > 50;
+    const hasSkills = resumeData.skills.length >= 5;
+    const completeness = [hasExperience, hasProjects, hasSummary, hasSkills]
+        .filter(Boolean).length * 25;
+    
+    return {
+        keywordOverlap: Math.round(Math.min(100, keywordOverlap)),
+        skillsMatch: Math.round(Math.min(100, skillsMatch)),
+        completeness: Math.round(completeness),
+        matchedWords: matchedWords.slice(0, 20),
+    };
 }
 
 export async function calculateATSScore(resumeData: ResumeData, jobDescription: string): Promise<ATSScore> {
@@ -78,8 +118,9 @@ export async function calculateATSScore(resumeData: ResumeData, jobDescription: 
         };
     }
 
+    const deterministicScores = calculateDeterministicScore(resumeData, jobDescription);
     const resumeText = JSON.stringify(resumeData);
-    
+
     const prompt = `Analyze this resume against the job description and provide an ATS compatibility score.
 
 JOB DESCRIPTION:
@@ -113,22 +154,42 @@ Be accurate and helpful. Output ONLY valid JSON.`;
         const content = response.choices[0].message.content;
         if (!content) throw new Error("No response");
 
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("No JSON in response");
+        // Use Zod validation with repair capability
+        const parseResult = await parseWithRetry(content, ATSScoreSchema);
 
-        const result = JSON.parse(jsonMatch[0]);
-        return {
-            overall: Math.min(100, Math.max(0, result.overall || 0)),
-            breakdown: {
-                keywordMatch: result.breakdown?.keywordMatch || 0,
-                skillsMatch: result.breakdown?.skillsMatch || 0,
-                experienceRelevance: result.breakdown?.experienceRelevance || 0,
-                formattingScore: result.breakdown?.formattingScore || 85,
-            },
-            matchedKeywords: result.matchedKeywords || [],
-            missingKeywords: result.missingKeywords || [],
-            suggestions: result.suggestions || [],
-        };
+        if (parseResult.success) {
+            const validated = parseResult.data;
+            
+            const blendedKeywordMatch = Math.round(
+                (deterministicScores.keywordOverlap * 0.3) + (validated.breakdown.keywordMatch * 0.7)
+            );
+            const blendedSkillsMatch = Math.round(
+                (deterministicScores.skillsMatch * 0.3) + (validated.breakdown.skillsMatch * 0.7)
+            );
+            
+            const blendedOverall = Math.round(
+                (blendedKeywordMatch * 0.3) + 
+                (blendedSkillsMatch * 0.25) + 
+                (validated.breakdown.experienceRelevance * 0.35) + 
+                (validated.breakdown.formattingScore * 0.1)
+            );
+            
+            return {
+                overall: Math.min(100, Math.max(0, blendedOverall)),
+                breakdown: {
+                    keywordMatch: blendedKeywordMatch,
+                    skillsMatch: blendedSkillsMatch,
+                    experienceRelevance: validated.breakdown.experienceRelevance,
+                    formattingScore: validated.breakdown.formattingScore,
+                },
+                matchedKeywords: [...new Set([...deterministicScores.matchedWords, ...validated.matchedKeywords])].slice(0, 15),
+                missingKeywords: validated.missingKeywords,
+                suggestions: validated.suggestions,
+            };
+        } else {
+            console.error("ATS Score Validation Error:", parseResult.error);
+            throw new Error("Invalid ATS score format from AI");
+        }
     } catch (error) {
         console.error("ATS Score Error:", error);
         throw new Error("Failed to calculate ATS score");
@@ -136,7 +197,7 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 }
 
 export async function generateTailoredResume(
-    jobDescription: string, 
+    jobDescription: string,
     existingData: ResumeData,
     githubRepos?: { name: string; description: string; language: string; url: string }[],
     knowledgeBullets?: string[]
@@ -183,29 +244,34 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
         const content = response.choices[0].message.content;
         if (!content) throw new Error("No response");
 
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("No JSON in response");
+        // Use Zod validation with repair capability
+        const parseResult = await parseWithRetry(content, ResumeDataSchema);
 
-        const result = JSON.parse(jsonMatch[0]);
-        
-        return {
-            personalInfo: {
-                fullName: result.personalInfo?.fullName || existingData.personalInfo.fullName,
-                title: result.personalInfo?.title || existingData.personalInfo.title,
-                email: result.personalInfo?.email || existingData.personalInfo.email,
-                phone: result.personalInfo?.phone || existingData.personalInfo.phone,
-                location: result.personalInfo?.location || existingData.personalInfo.location,
-                website: result.personalInfo?.website || existingData.personalInfo.website,
-                linkedin: result.personalInfo?.linkedin || existingData.personalInfo.linkedin,
-                github: result.personalInfo?.github || existingData.personalInfo.github,
-                summary: result.personalInfo?.summary || existingData.personalInfo.summary,
-            },
-            experience: result.experience || existingData.experience,
-            projects: result.projects || existingData.projects,
-            education: result.education || existingData.education,
-            skills: result.skills || existingData.skills,
-            sectionOrder: result.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills'],
-        };
+        if (parseResult.success) {
+            const validated = parseResult.data;
+            // Merge with existing data for fields that might be missing
+            return {
+                personalInfo: {
+                    fullName: validated.personalInfo.fullName || existingData.personalInfo.fullName,
+                    title: validated.personalInfo.title || existingData.personalInfo.title,
+                    email: validated.personalInfo.email || existingData.personalInfo.email,
+                    phone: validated.personalInfo.phone || existingData.personalInfo.phone,
+                    location: validated.personalInfo.location || existingData.personalInfo.location,
+                    website: validated.personalInfo.website || existingData.personalInfo.website,
+                    linkedin: validated.personalInfo.linkedin || existingData.personalInfo.linkedin,
+                    github: validated.personalInfo.github || existingData.personalInfo.github,
+                    summary: validated.personalInfo.summary || existingData.personalInfo.summary,
+                },
+                experience: validated.experience.length > 0 ? validated.experience : existingData.experience,
+                projects: validated.projects.length > 0 ? validated.projects : existingData.projects,
+                education: validated.education.length > 0 ? validated.education : existingData.education,
+                skills: validated.skills.length > 0 ? validated.skills : existingData.skills,
+                sectionOrder: validated.sectionOrder || existingData.sectionOrder,
+            };
+        } else {
+            console.error("Resume Validation Error:", parseResult.error);
+            throw new Error("Invalid resume format from AI");
+        }
     } catch (error) {
         console.error("Generate Resume Error:", error);
         throw new Error("Failed to generate tailored resume");
@@ -273,6 +339,131 @@ Output ONLY the raw LaTeX code. No markdown, no explanations.`;
     }
 }
 
+export async function latexToResume(latexCode: string): Promise<ResumeData> {
+    const prompt = `Parse the following LaTeX resume document and extract all the information into a structured JSON format.
+
+LATEX CODE:
+${latexCode}
+
+Extract and return a JSON object with this EXACT structure:
+{
+  "personalInfo": {
+    "fullName": "string",
+    "title": "string (job title/role)",
+    "email": "string",
+    "phone": "string",
+    "location": "string",
+    "website": "string (without https://)",
+    "linkedin": "string (without https://)",
+    "github": "string (without https://)",
+    "summary": "string (professional summary paragraph)"
+  },
+  "experience": [
+    {
+      "id": "unique-id",
+      "company": "string",
+      "role": "string",
+      "startDate": "string (e.g., Jan 2022)",
+      "endDate": "string (empty if current)",
+      "current": boolean,
+      "location": "string",
+      "description": "string (bullet points separated by newlines, each starting with •)"
+    }
+  ],
+  "projects": [
+    {
+      "id": "unique-id",
+      "name": "string",
+      "description": "string",
+      "url": "string",
+      "technologies": ["array", "of", "tech"]
+    }
+  ],
+  "education": [
+    {
+      "id": "unique-id",
+      "institution": "string",
+      "degree": "string",
+      "fieldOfStudy": "string",
+      "startDate": "string",
+      "endDate": "string",
+      "current": boolean
+    }
+  ],
+  "skills": ["array", "of", "skills"],
+  "sectionOrder": ["summary", "experience", "projects", "education", "skills"]
+}
+
+Important:
+- Generate unique IDs for each item (use format like "exp-1", "proj-1", "edu-1")
+- For experience descriptions, format bullet points with "• " prefix and "\\n" between them
+- If a field is not found in the LaTeX, use an empty string or empty array
+- Determine sectionOrder based on the order sections appear in the LaTeX
+
+Output ONLY valid JSON, no markdown, no explanations.`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: config.openai.model,
+            messages: [
+                { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" },
+        });
+
+        const content = response.choices[0].message.content?.trim() || "{}";
+        const parsed = JSON.parse(content);
+        
+        // Validate and ensure all required fields exist
+        const result: ResumeData = {
+            personalInfo: {
+                fullName: parsed.personalInfo?.fullName || "",
+                title: parsed.personalInfo?.title || "",
+                email: parsed.personalInfo?.email || "",
+                phone: parsed.personalInfo?.phone || "",
+                location: parsed.personalInfo?.location || "",
+                website: parsed.personalInfo?.website || "",
+                linkedin: parsed.personalInfo?.linkedin || "",
+                github: parsed.personalInfo?.github || "",
+                summary: parsed.personalInfo?.summary || "",
+            },
+            experience: (parsed.experience || []).map((exp: any, i: number) => ({
+                id: exp.id || `exp-${i + 1}`,
+                company: exp.company || "",
+                role: exp.role || "",
+                startDate: exp.startDate || "",
+                endDate: exp.endDate || "",
+                current: exp.current || false,
+                location: exp.location || "",
+                description: exp.description || "",
+            })),
+            projects: (parsed.projects || []).map((proj: any, i: number) => ({
+                id: proj.id || `proj-${i + 1}`,
+                name: proj.name || "",
+                description: proj.description || "",
+                url: proj.url || "",
+                technologies: proj.technologies || [],
+            })),
+            education: (parsed.education || []).map((edu: any, i: number) => ({
+                id: edu.id || `edu-${i + 1}`,
+                institution: edu.institution || "",
+                degree: edu.degree || "",
+                fieldOfStudy: edu.fieldOfStudy || "",
+                startDate: edu.startDate || "",
+                endDate: edu.endDate || "",
+                current: edu.current || false,
+            })),
+            skills: parsed.skills || [],
+            sectionOrder: parsed.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills'],
+        };
+
+        return result;
+    } catch (error) {
+        console.error("LaTeX to Resume Error:", error);
+        throw new Error("Failed to parse LaTeX to resume data");
+    }
+}
+
 export async function compileLatex(latexCode: string): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
     if (!latexCode) {
         return { success: false, error: "No LaTeX code provided" };
@@ -298,13 +489,13 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
         if (!response.ok) {
             const errorText = await response.text();
             console.error('LaTeX compilation failed:', response.status, errorText);
-            
+
             let errorMessage = `Compilation failed (${response.status})`;
             try {
                 const errorJson = JSON.parse(errorText);
                 if (errorJson.logs) {
                     const logLines = errorJson.logs.split('\n');
-                    const errorLines = logLines.filter((line: string) => 
+                    const errorLines = logLines.filter((line: string) =>
                         line.includes('!') || line.includes('Error') || line.includes('error')
                     ).slice(0, 10);
                     errorMessage = errorLines.join('\n') || errorMessage;
@@ -312,19 +503,19 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
             } catch {
                 errorMessage = errorText.slice(0, 500);
             }
-            
+
             return { success: false, error: errorMessage };
         }
 
         const pdfBuffer = await response.arrayBuffer();
         const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
-        
+
         return { success: true, pdfBase64 };
     } catch (error) {
         console.error('LaTeX compilation error:', error);
-        return { 
-            success: false, 
-            error: error instanceof Error ? error.message : 'Unknown compilation error' 
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown compilation error'
         };
     }
 }
@@ -337,7 +528,7 @@ export async function improveSection(
 ): Promise<string> {
     const context = jobDescription ? `\n\nTARGET JOB DESCRIPTION:\n${jobDescription}` : '';
     const customInstruction = instruction ? `\n\nADDITIONAL INSTRUCTION: ${instruction}` : '';
-    
+
     let basePrompt = '';
     switch (sectionType) {
         case 'summary':

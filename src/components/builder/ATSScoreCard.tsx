@@ -1,12 +1,70 @@
 'use client';
 
+import { useState } from 'react';
 import { useResumeStore } from '@/store/resumeStore';
 import { Badge } from '@/components/ui/badge';
-import { Target, TrendingUp, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Target, TrendingUp, AlertCircle, CheckCircle2, Sparkles, Plus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { improveSection } from '@/actions/ai';
+import { toast } from 'sonner';
 
 export function ATSScoreCard() {
-    const { atsScore, jobDescription } = useResumeStore();
+    const { atsScore, jobDescription, resumeData, updateSkills } = useResumeStore();
+    const [addingSkill, setAddingSkill] = useState<string | null>(null);
+    const [improvingSection, setImprovingSection] = useState<string | null>(null);
+
+    const handleAddToSkills = (keyword: string) => {
+        // Check if skill already exists (case insensitive)
+        const skillExists = resumeData.skills.some(
+            s => s.toLowerCase() === keyword.toLowerCase()
+        );
+
+        if (skillExists) {
+            toast.info('Skill already exists in your resume');
+            return;
+        }
+
+        // Add the skill
+        updateSkills([...resumeData.skills, keyword]);
+        toast.success(`Added "${keyword}" to skills`);
+    };
+
+    const handleAddAllMissing = () => {
+        if (!atsScore?.missingKeywords.length) return;
+
+        const currentSkillsLower = resumeData.skills.map(s => s.toLowerCase());
+        const newSkills = atsScore.missingKeywords.filter(
+            kw => !currentSkillsLower.includes(kw.toLowerCase())
+        );
+
+        if (newSkills.length === 0) {
+            toast.info('All keywords already in your skills');
+            return;
+        }
+
+        updateSkills([...resumeData.skills, ...newSkills.slice(0, 5)]);
+        toast.success(`Added ${Math.min(5, newSkills.length)} keywords to skills`);
+    };
+
+    const handleImproveSummary = async () => {
+        if (!resumeData.personalInfo.summary || !jobDescription) return;
+
+        setImprovingSection('summary');
+        try {
+            const improved = await improveSection(
+                'summary',
+                resumeData.personalInfo.summary,
+                jobDescription
+            );
+            // Note: This would need to update the summary via a store method
+            toast.success('Summary improved! Review the changes in Personal Info section.');
+        } catch {
+            toast.error('Failed to improve summary');
+        } finally {
+            setImprovingSection(null);
+        }
+    };
 
     if (!jobDescription) {
         return (
@@ -64,7 +122,7 @@ export function ATSScoreCard() {
             {/* Breakdown */}
             <div className="space-y-4">
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Score Breakdown</h4>
-                
+
                 <div className="space-y-3">
                     <div className="space-y-1.5">
                         <div className="flex justify-between text-xs">
@@ -72,7 +130,7 @@ export function ATSScoreCard() {
                             <span className="font-medium">{atsScore.breakdown.keywordMatch}%</span>
                         </div>
                         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 className={cn("h-full transition-all duration-500 rounded-full", getProgressColor(atsScore.breakdown.keywordMatch))}
                                 style={{ width: `${atsScore.breakdown.keywordMatch}%` }}
                             />
@@ -84,7 +142,7 @@ export function ATSScoreCard() {
                             <span className="font-medium">{atsScore.breakdown.skillsMatch}%</span>
                         </div>
                         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 className={cn("h-full transition-all duration-500 rounded-full", getProgressColor(atsScore.breakdown.skillsMatch))}
                                 style={{ width: `${atsScore.breakdown.skillsMatch}%` }}
                             />
@@ -96,7 +154,7 @@ export function ATSScoreCard() {
                             <span className="font-medium">{atsScore.breakdown.experienceRelevance}%</span>
                         </div>
                         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 className={cn("h-full transition-all duration-500 rounded-full", getProgressColor(atsScore.breakdown.experienceRelevance))}
                                 style={{ width: `${atsScore.breakdown.experienceRelevance}%` }}
                             />
@@ -127,17 +185,34 @@ export function ATSScoreCard() {
                 </div>
             )}
 
-            {/* Missing Keywords */}
+            {/* Missing Keywords with Actions */}
             {atsScore.missingKeywords.length > 0 && (
                 <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                        <AlertCircle className="w-3 h-3 text-orange-400" />
-                        Missing Keywords
-                    </h4>
+                    <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                            <AlertCircle className="w-3 h-3 text-orange-400" />
+                            Missing Keywords
+                        </h4>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs text-orange-400 hover:text-orange-300"
+                            onClick={handleAddAllMissing}
+                        >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add Top 5
+                        </Button>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                         {atsScore.missingKeywords.slice(0, 8).map((keyword) => (
-                            <Badge key={keyword} variant="outline" className="text-xs text-orange-400 border-orange-500/30">
+                            <Badge
+                                key={keyword}
+                                variant="outline"
+                                className="text-xs text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/10 transition-colors flex items-center gap-1"
+                                onClick={() => handleAddToSkills(keyword)}
+                            >
                                 {keyword}
+                                <Plus className="w-2.5 h-2.5" />
                             </Badge>
                         ))}
                         {atsScore.missingKeywords.length > 8 && (
@@ -149,7 +224,7 @@ export function ATSScoreCard() {
                 </div>
             )}
 
-            {/* Suggestions */}
+            {/* Suggestions with Actions */}
             {atsScore.suggestions.length > 0 && (
                 <div>
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">

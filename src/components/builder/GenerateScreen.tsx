@@ -7,10 +7,10 @@ import { generateTailoredResume, calculateATSScore, resumeToLatex } from '@/acti
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { 
-    Sparkles, 
-    Github, 
-    Loader2, 
+import {
+    Sparkles,
+    Github,
+    Loader2,
     ArrowRight,
     FileText,
     CheckCircle2,
@@ -22,17 +22,16 @@ interface GenerateScreenProps {
 }
 
 export function GenerateScreen({ onComplete }: GenerateScreenProps) {
-    const { 
+    const {
         resumeData,
-        jobDescription, 
+        jobDescription,
         githubUsername,
-        setJobDescription, 
+        setJobDescription,
         setGithubUsername,
-        setResumeData,
         setAtsScore,
-        setLatexCode,
+        setResumeAndLatexInSync,
     } = useResumeStore();
-    
+
     const [githubRepos, setGithubRepos] = useState<any[]>([]);
     const [fetchingRepos, setFetchingRepos] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -44,7 +43,7 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
         setFetchingRepos(true);
         setError(null);
         try {
-            const repos = await fetchGitHubRepos(githubUsername);
+            const repos = await fetchGitHubRepos({ username: githubUsername });
             setGithubRepos(repos.slice(0, 10));
         } catch (err) {
             setError('Failed to fetch GitHub repos');
@@ -58,11 +57,11 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
             setError('Please enter a job description');
             return;
         }
-        
+
         setError(null);
         setIsGenerating(true);
         setStep('generating');
-        
+
         try {
             const githubData = githubRepos.map(r => ({
                 name: r.name,
@@ -76,22 +75,20 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
                 resumeData,
                 githubData.length > 0 ? githubData : undefined
             );
-            
-            setResumeData(tailoredResume);
 
             const [score, latex] = await Promise.all([
                 calculateATSScore(tailoredResume, jobDescription),
                 resumeToLatex(tailoredResume)
             ]);
-            
+
+            setResumeAndLatexInSync(tailoredResume, latex);
             setAtsScore(score);
-            setLatexCode(latex);
             setStep('done');
-            
+
             setTimeout(() => {
                 onComplete();
             }, 1500);
-            
+
         } catch (err) {
             console.error(err);
             setError('Failed to generate resume. Please try again.');
@@ -181,8 +178,8 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
                                         placeholder="your-username"
                                         className="text-sm bg-secondary/30 border-border/50 focus:border-primary/50"
                                     />
-                                    <Button 
-                                        onClick={handleFetchGitHub} 
+                                    <Button
+                                        onClick={handleFetchGitHub}
                                         disabled={fetchingRepos || !githubUsername}
                                         variant="secondary"
                                         size="default"
@@ -223,16 +220,16 @@ export function GenerateScreen({ onComplete }: GenerateScreenProps) {
                     {/* Footer */}
                     {step === 'input' && (
                         <div className="px-6 py-4 bg-secondary/20 border-t border-border/50 flex items-center justify-between">
-                            <Button 
-                                variant="ghost" 
+                            <Button
+                                variant="ghost"
                                 onClick={onComplete}
                                 className="text-muted-foreground hover:text-foreground"
                             >
                                 Skip to Editor
                                 <ArrowRight className="w-4 h-4 ml-2" />
                             </Button>
-                            
-                            <Button 
+
+                            <Button
                                 onClick={handleGenerate}
                                 disabled={!jobDescription.trim() || isGenerating}
                                 size="lg"

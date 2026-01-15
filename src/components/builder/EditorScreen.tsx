@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useResumeStore } from '@/store/resumeStore';
+import { useResumeStore, SyncStatus } from '@/store/resumeStore';
 import { LatexEditor } from '@/components/latex/LatexEditor';
 import { LatexPreview } from '@/components/latex/LatexPreview';
 import { ATSScoreCard } from './ATSScoreCard';
 import { SectionEditor } from './SectionEditor';
 import { modifyLatex, calculateATSScore, compileLatex } from '@/actions/ai';
+import { saveResumeToCloud, loadResumeFromCloud } from '@/actions/resume';
+import { useUser } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -39,9 +41,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { 
-    FileText, 
-    Code2, 
+import {
+    FileText,
+    Code2,
     Eye,
     Download,
     Loader2,
@@ -61,11 +63,17 @@ import {
     Wand2,
     Info,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Cloud,
+    CloudOff,
+    RefreshCcw
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import { cn } from '@/lib/utils';
 import { TEMPLATE_OPTIONS, LatexTemplateType } from '@/templates/latex';
+import { ResumeCopilot } from '@/components/copilot';
+import { toast } from 'sonner';
 
 type SectionType = 'personal' | 'experience' | 'projects' | 'education' | 'skills' | 'section-order' | 'job-target';
 
@@ -81,21 +89,37 @@ const sections: { id: SectionType; label: string; icon: React.ReactNode; isSmart
 
 export function EditorScreen() {
     const router = useRouter();
-    const { 
-        latexCode, 
-        setLatexCode, 
+    const { user, isSignedIn } = useUser();
+    const {
+        latexCode,
+        setLatexCode,
         resumeData,
+        setResumeData,
         jobDescription,
         atsScore,
         setAtsScore,
         selectedTemplate,
         setSelectedTemplate,
         setEditorMode,
-        generateLatexFromData,
         isUsingSampleData,
         resetResume,
+        cloudSyncEnabled,
+        setCloudSyncEnabled,
+        syncStatus,
+        setSyncStatus,
+        lastSyncedAt,
+        setLastSyncedAt,
+        isOutOfSync,
+        hasVisualChanges,
+        hasLatexChanges,
+        syncVisualToLatex,
+        syncLatexToVisual,
+        isSyncingLatexToVisual,
     } = useResumeStore();
-    
+
+    const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const initialLoadDone = useRef(false);
+
     const [editorTab, setEditorTab] = useState<'visual' | 'latex'>('visual');
     const [showPreview, setShowPreview] = useState(true);
     const [activeSection, setActiveSection] = useState<SectionType>('job-target');
@@ -110,14 +134,100 @@ export function EditorScreen() {
 
     useEffect(() => {
         setEditorMode(editorTab);
-        if (editorTab === 'visual') {
-            generateLatexFromData();
+    }, [editorTab, setEditorMode]);
+
+    const handleSyncVisualToLatex = () => {
+        syncVisualToLatex();
+        toast.success('LaTeX regenerated from visual editor');
+    };
+
+    const handleSyncLatexToVisual = async () => {
+        try {
+            await syncLatexToVisual();
+            toast.success('Visual editor updated from LaTeX');
+        } catch {
+            toast.error('Failed to parse LaTeX. Please check your LaTeX syntax.');
         }
-    }, [editorTab, setEditorMode, generateLatexFromData]);
+    };
+
+    // Load from cloud on mount if sync enabled and signed in
+    useEffect(() => {
+        if (isSignedIn && cloudSyncEnabled && !initialLoadDone.current) {
+            initialLoadDone.current = true;
+            loadResumeFromCloud().then((result) => {
+                if (result.success && result.data) {
+                    setResumeData(result.data);
+                    setLastSyncedAt(result.updatedAt || new Date());
+                }
+            });
+        }
+    }, [isSignedIn, cloudSyncEnabled, setResumeData, setLastSyncedAt]);
+
+    // Debounced autosave when resumeData changes
+    const triggerSync = useCallback(async () => {
+        if (!cloudSyncEnabled || !isSignedIn) return;
+
+        setSyncStatus('syncing');
+        try {
+            const result = await saveResumeToCloud(resumeData);
+            if (result.success) {
+                setSyncStatus('synced');
+                setLastSyncedAt(new Date());
+            } else {
+                setSyncStatus('error');
+            }
+        } catch {
+            setSyncStatus('error');
+        }
+    }, [cloudSyncEnabled, isSignedIn, resumeData, setSyncStatus, setLastSyncedAt]);
 
     useEffect(() => {
-        generateLatexFromData();
-    }, [generateLatexFromData]);
+        if (!cloudSyncEnabled || !isSignedIn || !initialLoadDone.current) return;
+
+        // Debounce save by 2 seconds
+        if (syncTimeoutRef.current) {
+            clearTimeout(syncTimeoutRef.current);
+        }
+        syncTimeoutRef.current = setTimeout(() => {
+            triggerSync();
+        }, 2000);
+
+        return () => {
+            if (syncTimeoutRef.current) {
+                clearTimeout(syncTimeoutRef.current);
+            }
+        };
+    }, [resumeData, cloudSyncEnabled, isSignedIn, triggerSync]);
+
+    const handleSyncToggle = async (enabled: boolean) => {
+        setCloudSyncEnabled(enabled);
+        if (enabled && isSignedIn) {
+            // Load from cloud when enabling
+            setSyncStatus('syncing');
+            const result = await loadResumeFromCloud();
+            if (result.success && result.data) {
+                setResumeData(result.data);
+                setSyncStatus('synced');
+                setLastSyncedAt(result.updatedAt || new Date());
+            } else if (result.success) {
+                // No cloud data, save current data
+                await triggerSync();
+            } else {
+                setSyncStatus('error');
+            }
+        } else {
+            setSyncStatus('idle');
+        }
+    };
+
+    const formatLastSynced = (date: Date | null) => {
+        if (!date) return 'Never';
+        const now = new Date();
+        const diff = Math.floor((now.getTime() - new Date(date).getTime()) / 1000);
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        return new Date(date).toLocaleTimeString();
+    };
 
     const handleAiModify = async () => {
         if (!aiInstruction || !latexCode) return;
@@ -151,7 +261,7 @@ export function EditorScreen() {
     };
 
     const openExportModal = () => {
-        const defaultName = resumeData.personalInfo.fullName 
+        const defaultName = resumeData.personalInfo.fullName
             ? `${resumeData.personalInfo.fullName.replace(/\s+/g, '_')}_Resume`
             : 'My_Resume';
         setExportFileName(defaultName);
@@ -165,7 +275,7 @@ export function EditorScreen() {
         setIsExporting(true);
         setExportError(null);
         setExportSuccess(false);
-        
+
         try {
             const result = await compileLatex(latexCode);
             if (result.success && result.pdfBase64) {
@@ -211,9 +321,9 @@ export function EditorScreen() {
                     <div className="flex items-center gap-3">
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button 
-                                    variant="ghost" 
-                                    size="sm" 
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     onClick={() => router.push('/')}
                                     className="gap-2"
                                 >
@@ -223,7 +333,7 @@ export function EditorScreen() {
                             </TooltipTrigger>
                             <TooltipContent>Back to home page</TooltipContent>
                         </Tooltip>
-                        
+
                         <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-border/50">
                             <div className="w-8 h-8 rounded-lg gradient-btn flex items-center justify-center">
                                 <FileText className="w-4 h-4 text-white" />
@@ -238,14 +348,14 @@ export function EditorScreen() {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <SheetTrigger asChild>
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
                                                 className={cn(
                                                     "gap-2 font-semibold border-2",
                                                     atsScore.overall >= 80 ? "text-green-400 border-green-500/30 bg-green-500/10 hover:bg-green-500/20" :
-                                                    atsScore.overall >= 60 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20" :
-                                                    "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
+                                                        atsScore.overall >= 60 ? "text-yellow-400 border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20" :
+                                                            "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20"
                                                 )}
                                             >
                                                 <Target className="w-4 h-4" />
@@ -265,9 +375,9 @@ export function EditorScreen() {
                                         <ATSScoreCard />
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Button 
-                                                    variant="outline" 
-                                                    size="sm" 
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
                                                     className="w-full gap-2"
                                                     onClick={handleRecalculateScore}
                                                 >
@@ -281,6 +391,8 @@ export function EditorScreen() {
                                 </SheetContent>
                             </Sheet>
                         )}
+
+                        <ResumeCopilot />
 
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -298,9 +410,9 @@ export function EditorScreen() {
 
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button 
-                                    variant="gradient" 
-                                    size="sm" 
+                                <Button
+                                    variant="gradient"
+                                    size="sm"
                                     className="gap-2"
                                     onClick={openExportModal}
                                     disabled={!latexCode}
@@ -318,6 +430,45 @@ export function EditorScreen() {
                             </SignInButton>
                         </SignedOut>
                         <SignedIn>
+                            {/* Cloud Sync Toggle */}
+                            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-secondary/50">
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-2">
+                                            {cloudSyncEnabled ? (
+                                                <Cloud className="w-4 h-4 text-primary" />
+                                            ) : (
+                                                <CloudOff className="w-4 h-4 text-muted-foreground" />
+                                            )}
+                                            <Switch
+                                                checked={cloudSyncEnabled}
+                                                onCheckedChange={handleSyncToggle}
+                                                className="data-[state=checked]:bg-primary"
+                                            />
+                                        </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        {cloudSyncEnabled
+                                            ? 'Cloud sync enabled - your resume syncs across devices'
+                                            : 'Cloud sync disabled - data stays local only'}
+                                    </TooltipContent>
+                                </Tooltip>
+                                {cloudSyncEnabled && (
+                                    <div className="flex items-center gap-1.5 text-xs">
+                                        {syncStatus === 'syncing' && (
+                                            <RefreshCcw className="w-3 h-3 animate-spin text-muted-foreground" />
+                                        )}
+                                        {syncStatus === 'synced' && (
+                                            <span className="text-muted-foreground">
+                                                {formatLastSynced(lastSyncedAt)}
+                                            </span>
+                                        )}
+                                        {syncStatus === 'error' && (
+                                            <span className="text-destructive">Sync error</span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <UserButton />
                         </SignedIn>
                     </div>
@@ -344,8 +495,8 @@ export function EditorScreen() {
                                                     onClick={() => handleSectionChange(section.id)}
                                                     className={cn(
                                                         "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all",
-                                                        activeSection === section.id 
-                                                            ? "bg-primary/20 text-primary" 
+                                                        activeSection === section.id
+                                                            ? "bg-primary/20 text-primary"
                                                             : "text-muted-foreground hover:bg-secondary hover:text-foreground",
                                                         section.isSmart && "smart-feature"
                                                     )}
@@ -384,7 +535,7 @@ export function EditorScreen() {
                                                     Reset Resume Data?
                                                 </AlertDialogTitle>
                                                 <AlertDialogDescription>
-                                                    This will replace all your current resume data with the sample template. 
+                                                    This will replace all your current resume data with the sample template.
                                                     Any changes you&apos;ve made will be lost. This action cannot be undone.
                                                 </AlertDialogDescription>
                                             </AlertDialogHeader>
@@ -428,13 +579,65 @@ export function EditorScreen() {
                                 </Tooltip>
                             </TabsList>
                         </Tabs>
+
+                        {isOutOfSync() && (
+                            <div className="flex items-center gap-2">
+                                {hasVisualChanges() && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={hasVisualChanges() && !hasLatexChanges() ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={handleSyncVisualToLatex}
+                                                className={cn(
+                                                    "h-7 text-xs gap-1.5",
+                                                    hasVisualChanges() && !hasLatexChanges() 
+                                                        ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                                                        : "border-blue-500/50 text-blue-500 hover:bg-blue-500/10"
+                                                )}
+                                            >
+                                                <RefreshCw className="w-3 h-3" />
+                                                Visual → LaTeX
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Regenerate LaTeX from visual editor data</TooltipContent>
+                                    </Tooltip>
+                                )}
+                                {hasLatexChanges() && (
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Button
+                                                variant={hasLatexChanges() && !hasVisualChanges() ? "default" : "outline"}
+                                                size="sm"
+                                                onClick={handleSyncLatexToVisual}
+                                                disabled={isSyncingLatexToVisual}
+                                                className={cn(
+                                                    "h-7 text-xs gap-1.5",
+                                                    hasLatexChanges() && !hasVisualChanges()
+                                                        ? "bg-green-600 hover:bg-green-700 text-white"
+                                                        : "border-green-500/50 text-green-500 hover:bg-green-500/10"
+                                                )}
+                                            >
+                                                {isSyncingLatexToVisual ? (
+                                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                                ) : (
+                                                    <RefreshCw className="w-3 h-3" />
+                                                )}
+                                                LaTeX → Visual
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Parse LaTeX and update visual editor (AI-powered)</TooltipContent>
+                                    </Tooltip>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {editorTab === 'visual' && (
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-muted-foreground hidden sm:inline">Template:</span>
-                            <Select 
-                                value={selectedTemplate} 
+                            <Select
+                                value={selectedTemplate}
                                 onValueChange={(v) => setSelectedTemplate(v as LatexTemplateType)}
                             >
                                 <SelectTrigger className="w-[160px] h-7 text-xs">
@@ -504,7 +707,7 @@ export function EditorScreen() {
                                         <TooltipContent>Apply your changes to the LaTeX</TooltipContent>
                                     </Tooltip>
                                 </div>
-                                
+
                                 <div className="flex-1 overflow-hidden">
                                     <LatexEditor
                                         code={latexCode}
@@ -522,8 +725,8 @@ export function EditorScreen() {
                                     Live Preview
                                 </span>
                                 {editorTab === 'latex' && (
-                                    <Select 
-                                        value={selectedTemplate} 
+                                    <Select
+                                        value={selectedTemplate}
                                         onValueChange={(v) => setSelectedTemplate(v as LatexTemplateType)}
                                     >
                                         <SelectTrigger className="w-[140px] h-7 text-xs">
@@ -558,10 +761,10 @@ export function EditorScreen() {
                             Export Resume
                         </DialogTitle>
                         <DialogDescription>
-                            Your resume will be compiled and downloaded as a PDF.
+                            Your resume will be compiled and downloaded as a PDF using an external LaTeX compiler service (latex.ytotech.com).
                         </DialogDescription>
                     </DialogHeader>
-                    
+
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
                             <Label htmlFor="filename">File Name</Label>
