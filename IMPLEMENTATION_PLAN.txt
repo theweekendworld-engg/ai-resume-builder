@@ -1,0 +1,324 @@
+AI RESUME BUILDER - IMPLEMENTATION PLAN
+========================================
+
+This document outlines the detailed implementation approach for each feature.
+
+================================================================================
+1. AGENTIC COPILOT FEATURE (PRIMARY UPGRADE)
+================================================================================
+
+## File: src/components/copilot/ResumeCopilot.tsx
+
+PURPOSE: Main copilot chat panel component
+
+DEPENDENCIES:
+- @/components/ui/sheet
+- @/components/ui/button
+- @/store/resumeStore
+- @/actions/copilot
+
+IMPLEMENTATION:
+```tsx
+interface CopilotMessage {
+    id: string;
+    type: 'system' | 'user' | 'assistant' | 'proposal';
+    content: string;
+    timestamp: Date;
+    proposal?: ProposedResumePatch;
+}
+
+interface CopilotState {
+    messages: CopilotMessage[];
+    isProcessing: boolean;
+    currentProposal: ProposedResumePatch | null;
+}
+```
+
+WORKFLOW:
+1. User clicks "AI Copilot" button in editor header
+2. Sheet opens with chat interface
+3. Copilot checks for JD, prompts if missing
+4. Copilot checks for GitHub username, prompts if missing
+5. User clicks "Tailor Resume" or enters custom instruction
+6. Work-log messages appear (Fetching repos..., Searching KB..., Analyzing...)
+7. Proposal card appears with Before/After per section
+8. User applies sections individually or all at once
+
+--------------------------------------------------------------------------------
+
+## File: src/components/copilot/ProposedChangesCard.tsx
+
+PURPOSE: Display proposed changes with Before/After diff
+
+DEPENDENCIES:
+- @/components/ui/tabs
+- @/components/ui/card
+- @/components/ui/button
+- @/store/resumeStore
+
+IMPLEMENTATION:
+```tsx
+interface ProposedChangesCardProps {
+    proposal: ProposedResumePatch;
+    onApplySection: (section: SectionKey) => void;
+    onApplyAll: () => void;
+    onReject: () => void;
+}
+
+type SectionKey = 'summary' | 'experience' | 'projects' | 'skills';
+```
+
+UI SECTIONS:
+- Tabs: Summary | Experience | Projects | Skills
+- Each tab shows:
+  - "Before" card (current content, muted)
+  - "After" card (proposed content, highlighted)
+  - "Apply This Section" button
+- Bottom: "Apply All Changes" and "Reject" buttons
+- New ATS score preview
+
+--------------------------------------------------------------------------------
+
+## File: src/actions/copilot.ts
+
+PURPOSE: Server actions for copilot workflow
+
+FUNCTIONS:
+
+1. gatherContext(resumeData, jobDescription, githubUsername, cloudSyncEnabled)
+   - Get KB bullets (local or Qdrant based on sync setting)
+   - Get GitHub repos (shortlisted by JD relevance)
+   - Return combined context object
+
+2. proposeResumePatch(context) -> ProposedResumePatch
+   - Call OpenAI with structured output
+   - Return validated patch with diffs and rationale
+
+3. scoreRepos(repos, jobDescription) -> ScoredRepo[]
+   - Score repos by relevance to JD
+   - Return top 5 with scores
+
+ZOD SCHEMAS:
+```typescript
+const SectionDiffSchema = z.object({
+    before: z.string(),
+    after: z.string(),
+    changed: z.boolean(),
+});
+
+const ProposedResumePatchSchema = z.object({
+    sections: z.object({
+        summary: z.string().optional(),
+        experience: z.array(ExperienceItemSchema).optional(),
+        projects: z.array(ProjectItemSchema).optional(),
+        skills: z.array(z.string()).optional(),
+    }),
+    diffs: z.object({
+        summary: SectionDiffSchema.optional(),
+        experience: SectionDiffSchema.optional(),
+        projects: SectionDiffSchema.optional(),
+        skills: SectionDiffSchema.optional(),
+    }),
+    rationale: z.array(z.string()),
+    atsScore: ATSScoreSchema,
+});
+```
+
+--------------------------------------------------------------------------------
+
+## File: src/store/resumeStore.ts (EXTEND)
+
+ADD STATE:
+```typescript
+// Copilot state
+copilotProposal: ProposedResumePatch | null;
+copilotSessionId: string | null;
+
+// Actions
+setCopilotProposal: (proposal: ProposedResumePatch | null) => void;
+applyCopilotSection: (section: SectionKey) => void;
+applyCopilotAll: () => void;
+clearCopilotSession: () => void;
+```
+
+================================================================================
+2. ATS SCORING IMPROVEMENTS
+================================================================================
+
+## File: src/actions/ai.ts (MODIFY calculateATSScore)
+
+ADD DETERMINISTIC SIGNALS:
+
+```typescript
+function calculateDeterministicScore(resumeData: ResumeData, jobDescription: string) {
+    const jdLower = jobDescription.toLowerCase();
+    const resumeText = JSON.stringify(resumeData).toLowerCase();
+    
+    // Extract keywords from JD (simple approach)
+    const jdWords = jdLower.split(/\W+/).filter(w => w.length > 3);
+    const uniqueJdWords = [...new Set(jdWords)];
+    
+    // Count matches
+    const matchedWords = uniqueJdWords.filter(w => resumeText.includes(w));
+    const keywordOverlap = (matchedWords.length / uniqueJdWords.length) * 100;
+    
+    // Skills match
+    const skillsLower = resumeData.skills.map(s => s.toLowerCase());
+    const skillMatches = uniqueJdWords.filter(w => 
+        skillsLower.some(s => s.includes(w))
+    );
+    const skillsMatch = (skillMatches.length / Math.min(15, uniqueJdWords.length)) * 100;
+    
+    // Section completeness
+    const hasExperience = resumeData.experience.length > 0;
+    const hasProjects = resumeData.projects.length > 0;
+    const hasSummary = resumeData.personalInfo.summary.length > 50;
+    const hasSkills = resumeData.skills.length >= 5;
+    const completeness = [hasExperience, hasProjects, hasSummary, hasSkills]
+        .filter(Boolean).length * 25;
+    
+    return {
+        keywordOverlap: Math.round(keywordOverlap),
+        skillsMatch: Math.round(skillsMatch),
+        completeness: Math.round(completeness),
+    };
+}
+```
+
+BLEND WITH LLM:
+- Deterministic weight: 30%
+- LLM weight: 70%
+- Final score = (deterministic * 0.3) + (llmScore * 0.7)
+
+================================================================================
+3. EXTRACTKEYWORDS FIX
+================================================================================
+
+## File: src/lib/aiSchemas.ts (ADD)
+
+```typescript
+export const KeywordsResponseSchema = z.object({
+    keywords: z.array(z.string()).default([]),
+});
+```
+
+## File: src/actions/ai.ts (MODIFY extractKeywords)
+
+```typescript
+export async function extractKeywords(jobDescription: string): Promise<string[]> {
+    if (!jobDescription) return [];
+    
+    // ... existing prompt ...
+    
+    const content = response.choices[0].message.content;
+    if (!content) return [];
+    
+    const parseResult = await parseWithRetry(content, KeywordsResponseSchema);
+    if (parseResult.success) {
+        return parseResult.data.keywords;
+    }
+    
+    return [];
+}
+```
+
+================================================================================
+4. GITHUB REPO SHORTLISTING
+================================================================================
+
+## File: src/actions/copilot.ts (ADD)
+
+```typescript
+export async function scoreReposForJob(
+    repos: GitHubRepo[],
+    jobDescription: string
+): Promise<Array<GitHubRepo & { relevanceScore: number }>> {
+    // Quick relevance scoring without AI
+    const jdLower = jobDescription.toLowerCase();
+    
+    return repos.map(repo => {
+        let score = 0;
+        
+        // Language match
+        if (repo.language && jdLower.includes(repo.language.toLowerCase())) {
+            score += 30;
+        }
+        
+        // Topic matches
+        for (const topic of repo.topics) {
+            if (jdLower.includes(topic.toLowerCase())) {
+                score += 15;
+            }
+        }
+        
+        // Description match
+        if (repo.description) {
+            const descWords = repo.description.toLowerCase().split(/\W+/);
+            const matches = descWords.filter(w => jdLower.includes(w)).length;
+            score += Math.min(25, matches * 5);
+        }
+        
+        // Stars boost
+        score += Math.min(10, repo.stargazers_count);
+        
+        return { ...repo, relevanceScore: score };
+    })
+    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+```
+
+================================================================================
+5. UI POLISH
+================================================================================
+
+## Files to audit for alert() usage:
+- src/components/editor/*.tsx
+- src/components/builder/*.tsx
+
+REPLACE WITH:
+```typescript
+import { toast } from 'sonner';
+
+// Instead of: alert('Error message');
+// Use: toast.error('Error message');
+
+// Instead of: alert('Success!');
+// Use: toast.success('Success!');
+```
+
+## File: src/app/latex-editor/page.tsx
+- Remove console.log statements
+- Keep error handling but use toast for user feedback
+
+================================================================================
+IMPLEMENTATION ORDER (COMPLETED)
+================================================================================
+
+1. [x] Create src/components/copilot/ folder
+2. [x] Add Zod schemas to aiSchemas.ts
+3. [x] Create copilot.ts server actions
+4. [x] Create ResumeCopilot.tsx component
+5. [x] Create ProposedChangesCard.tsx component
+6. [x] Extend resumeStore with copilot state
+7. [x] Add copilot trigger to EditorScreen.tsx
+8. [x] Modify calculateATSScore for deterministic blend
+9. [x] Fix extractKeywords with parseWithRetry
+10. [x] Add repo shortlisting to copilot flow
+11. [x] Clean up debug logs
+12. [x] Audit and fix remaining alerts
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+[ ] Copilot opens from editor header
+[ ] Work-log messages show during processing
+[ ] Proposal card displays Before/After correctly
+[ ] Apply section works for each section type
+[ ] Apply all works correctly
+[ ] ATS score updates after applying changes
+[ ] Local-first mode works (sync OFF)
+[ ] Cloud sync mode works (sync ON)
+[ ] GitHub import uses shortlisting
+[ ] No remaining alert() calls
+[ ] No debug console.logs in production
