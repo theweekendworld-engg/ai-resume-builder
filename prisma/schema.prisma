@@ -217,3 +217,40 @@ model ChannelLinkToken {
     @@index([userId, channel, createdAt])
     @@index([channel, token])
 }
+
+model ApiUsageLog {
+    id           String   @id @default(cuid())
+    userId       String
+    sessionId    String?
+    operation    String
+    provider     String
+    model        String
+    inputTokens  Int      @default(0)
+    outputTokens Int      @default(0)
+    totalTokens  Int      @default(0)
+    costUsd      Float    @default(0)
+    latencyMs    Int      @default(0)
+    status       String   @default("success")
+    metadata     Json?
+    createdAt    DateTime @default(now())
+
+    @@index([userId, createdAt])
+    @@index([sessionId])
+    @@index([createdAt])
+}
+
+model UserUsageSummary {
+    id               String   @id @default(cuid())
+    userId           String
+    periodStart      DateTime
+    periodEnd        DateTime
+    totalTokens      Int      @default(0)
+    totalCostUsd     Float    @default(0)
+    totalGenerations Int      @default(0)
+    totalPdfs        Int      @default(0)
+    breakdown        Json?
+    createdAt        DateTime @default(now())
+
+    @@unique([userId, periodStart])
+    @@index([userId])
+}

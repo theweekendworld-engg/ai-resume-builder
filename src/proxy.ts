@@ -6,9 +6,25 @@ const isPublicRoute = createRouteMatcher([
     '/sign-up(.*)',
 ]);
 
+function isAdminUserId(userId: string | null | undefined): boolean {
+    if (!userId) return false;
+    const admins = new Set(
+        (process.env.ADMIN_USER_IDS ?? '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+    );
+    return admins.has(userId);
+}
+
 export default clerkMiddleware(async (auth, req) => {
     if (!isPublicRoute(req)) {
-        await auth.protect();
+        const session = await auth.protect();
+        const pathname = req.nextUrl.pathname;
+        const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+        if (isAdminRoute && !isAdminUserId(session.userId)) {
+            return Response.redirect(new URL('/dashboard', req.url));
+        }
     }
 });
 

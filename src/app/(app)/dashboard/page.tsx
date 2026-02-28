@@ -1,14 +1,18 @@
 import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { listResumes } from '@/actions/resume';
 import { getUserProfile } from '@/actions/profile';
 import { listUserProjects } from '@/actions/projects';
+import { isAdminUserId } from '@/lib/adminAuth';
 import { CreateResumeCard } from '@/components/dashboard/CreateResumeCard';
 import { ResumeCard } from '@/components/dashboard/ResumeCard';
 import { ProfilePanel } from '@/components/dashboard/ProfilePanel';
 import { ProjectLibraryPanel } from '@/components/dashboard/ProjectLibraryPanel';
 
 export default async function DashboardPage() {
+  const { userId } = await auth();
+  const isAdmin = isAdminUserId(userId);
   const [resumeResult, profileResult, projectsResult] = await Promise.all([
     listResumes(),
     getUserProfile(),
@@ -26,6 +30,11 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Your resumes</h1>
         </div>
         <div className="flex items-center gap-3">
+          {isAdmin && (
+            <Link href="/admin">
+              <span className="text-sm text-muted-foreground hover:text-foreground transition-colors">Admin</span>
+            </Link>
+          )}
           <Link href="/">
             <span className="text-sm text-muted-foreground hover:text-foreground transition-colors">Home</span>
           </Link>

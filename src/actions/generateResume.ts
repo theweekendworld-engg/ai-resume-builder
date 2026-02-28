@@ -2,7 +2,6 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { KnowledgeType, type KnowledgeItem, type UserProject } from '@prisma/client';
-import OpenAI from 'openai';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { calculateATSScore } from '@/actions/ai';
@@ -11,9 +10,8 @@ import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import { trackedChatCompletion } from '@/lib/usageTracker';
 import { initialResumeData, type ResumeData, type ExperienceItem, type ProjectItem } from '@/types/resume';
-
-const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
 const ParsedJDSchema = z.object({
   role: z.string().default(''),
@@ -37,6 +35,7 @@ const SmartGenerateOptionsSchema = z.object({
   focusAreas: z.array(z.string().max(100)).max(20).optional(),
   fallbackResumeData: ResumeDataSchema.optional(),
   actorUserId: z.string().min(1).max(255).optional(),
+  actorSessionId: z.string().cuid().optional(),
 });
 
 const jdCache = new Map<string, z.infer<typeof ParsedJDSchema>>();
@@ -135,7 +134,12 @@ function scoreKnowledge(params: {
   return (semantic * 0.75) + (skillCoverage * 0.15) + quantifiedBonus;
 }
 
-async function parseJobDescription(jobDescription: string): Promise<z.infer<typeof ParsedJDSchema>> {
+async function parseJobDescription(params: {
+  jobDescription: string;
+  userId: string;
+  sessionId?: string;
+}): Promise<z.infer<typeof ParsedJDSchema>> {
+  const jobDescription = params.jobDescription;
   const hash = createHash('sha256').update(jobDescription.trim()).digest('hex');
   const cached = jdCache.get(hash);
   if (cached) return cached;
@@ -147,10 +151,14 @@ If missing, use empty strings/arrays.
 
 JOB DESCRIPTION:\n${jobDescription}`;
 
-  const response = await openai.chat.completions.create({
+  const response = await trackedChatCompletion({
     model: config.openai.model,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
+  }, {
+    userId: params.userId,
+    sessionId: params.sessionId,
+    operation: 'jd_parse',
   });
 
   const content = response.choices[0].message.content ?? '{}';
@@ -317,6 +325,8 @@ async function paraphraseStaticData(params: {
   selectedProjects: ProjectItem[];
   selectedKnowledge: Pick<KnowledgeItem, 'title' | 'content'>[];
   tonePreference: 'formal' | 'conversational' | 'technical';
+  userId: string;
+  sessionId?: string;
 }): Promise<z.infer<typeof ParaphraseSchema>> {
   const prompt = `You are tailoring resume content for a specific job.
 Rules:
@@ -345,10 +355,14 @@ Return JSON as:
   "skills": ["ordered", "skills", "for", "this", "JD"]
 }`;
 
-  const response = await openai.chat.completions.create({
+  const response = await trackedChatCompletion({
     model: config.openai.model,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
+  }, {
+    userId: params.userId,
+    sessionId: params.sessionId,
+    operation: 'paraphrase_experience',
   });
 
   const content = response.choices[0].message.content ?? '{}';
@@ -411,6 +425,7 @@ export async function generateSmartResume(
     focusAreas?: string[];
     fallbackResumeData?: ResumeData;
     actorUserId?: string;
+    actorSessionId?: string;
   }
 ): Promise<SmartResumeResult> {
   const trimmedJobDescription = jobDescription?.trim();
@@ -424,8 +439,13 @@ export async function generateSmartResume(
   const resolvedUserId = parsedOptions.actorUserId?.trim();
   const userId = resolvedUserId || (await auth()).userId;
   if (!userId) throw new Error('Not authenticated');
+  const sessionId = parsedOptions.actorSessionId?.trim();
 
-  const parsedJD = await parseJobDescription(trimmedJobDescription);
+  const parsedJD = await parseJobDescription({
+    jobDescription: trimmedJobDescription,
+    userId,
+    sessionId,
+  });
   const jdSkills = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills, ...(parsedOptions.focusAreas ?? [])]);
 
   const profileForPreferences = await prisma.userProfile.findUnique({
@@ -446,8 +466,8 @@ export async function generateSmartResume(
   }
 
   const [projectSearch, ...knowledgeSearches] = await Promise.all([
-    searchQdrantByUser({ userId, query: trimmedJobDescription, type: 'project', limit: 10 }),
-    ...knowledgeTypes.map((type) => searchQdrantByUser({ userId, query: trimmedJobDescription, type, limit: 4 })),
+    searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type: 'project', limit: 10 }),
+    ...knowledgeTypes.map((type) => searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type, limit: 4 })),
   ]);
 
   const projectScores = new Map<string, number>();
@@ -542,6 +562,8 @@ export async function generateSmartResume(
     selectedProjects,
     selectedKnowledge: rankedKnowledge.map(({ item }) => ({ title: item.title, content: item.content })),
     tonePreference: preferences.tonePreference,
+    userId,
+    sessionId,
   });
 
   const paraphrasedMap = new Map(paraphrased.experience.map((entry) => [entry.id, entry.description]));
@@ -614,7 +636,11 @@ export async function generateSmartResume(
   let atsEstimate = computeAtsEstimate(sanitizedResume, parsedJD);
 
   try {
-    const atsPrimary = await calculateATSScore(sanitizedResume, trimmedJobDescription);
+    const atsPrimary = await calculateATSScore(sanitizedResume, trimmedJobDescription, {
+      userId,
+      sessionId,
+      operation: 'ats_scoring',
+    });
     atsEstimate = atsPrimary.overall;
 
     if (atsPrimary.overall < 70) {
@@ -627,7 +653,11 @@ export async function generateSmartResume(
 
       const improvedValidation = validateClaims(improved, sourceTextCorpus);
       if (improvedValidation.coverageRate >= 0.5) {
-        const improvedAts = await calculateATSScore(improved, trimmedJobDescription);
+        const improvedAts = await calculateATSScore(improved, trimmedJobDescription, {
+          userId,
+          sessionId,
+          operation: 'ats_scoring',
+        });
         if (improvedAts.overall >= atsPrimary.overall) {
           finalResume = improved;
           validation = improvedValidation;

@@ -1,6 +1,5 @@
 'use server';
 
-import OpenAI from 'openai';
 import { auth } from '@clerk/nextjs/server';
 import { config } from '@/lib/config';
 import { ResumeData, ExperienceItem, ProjectItem } from '@/types/resume';
@@ -11,10 +10,7 @@ import {
     KeywordsResponseSchema,
     parseWithRetry,
 } from '@/lib/aiSchemas';
-
-const openai = new OpenAI({
-    apiKey: config.openai.apiKey,
-});
+import { trackedChatCompletion } from '@/lib/usageTracker';
 
 export interface CopilotContext {
     resumeData: ResumeData;
@@ -81,9 +77,16 @@ Job Description:
 ${jobDescription}`;
 
     try {
-        const response = await openai.chat.completions.create({
+        const { userId } = await auth();
+        if (!userId) throw new Error('Not authenticated');
+
+        const response = await trackedChatCompletion({
             model: config.openai.model,
             messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'extract_keywords',
+            metadata: { source: 'copilot' },
         });
 
         const content = response.choices[0].message.content;
@@ -119,6 +122,7 @@ export async function proposeResumePatch(context: CopilotContext): Promise<Propo
         const limit = await checkAiRateLimit(`ai:copilot:${userId}`);
         if (!limit.allowed) throw new Error(limit.error);
     }
+    if (!userId) throw new Error('Not authenticated');
 
     const { resumeData, jobDescription, kbBullets, githubRepos } = context;
 
@@ -161,9 +165,13 @@ IMPORTANT RULES:
 Output ONLY valid JSON, no markdown.`;
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
             messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'resume_assembly',
+            metadata: { source: 'copilot_patch' },
         });
 
         const content = response.choices[0].message.content;

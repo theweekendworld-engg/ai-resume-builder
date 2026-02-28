@@ -395,6 +395,7 @@ async function continueSession(params: {
       fallbackResumeData: params.fallbackResumeData,
       focusAreas: mergedPayload.gaps,
       actorUserId: params.userId,
+      actorSessionId: session.id,
     });
 
     const resumeId = await saveGeneratedResumeForUser({

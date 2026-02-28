@@ -1,14 +1,19 @@
 'use server';
 
-import OpenAI from 'openai';
+import { auth } from '@clerk/nextjs/server';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
 import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
+import { logUsageEvent, trackedChatCompletion } from '@/lib/usageTracker';
 
-const openai = new OpenAI({
-    apiKey: config.openai.apiKey,
-});
+function resolveTrackingUserId(value?: string): Promise<string> {
+    if (value?.trim()) return Promise.resolve(value.trim());
+    return auth().then(({ userId }) => {
+        if (!userId) throw new Error('Not authenticated');
+        return userId;
+    });
+}
 
 
 
@@ -26,13 +31,16 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
     const instruction = customInstruction ? ` ${customInstruction}` : '';
     const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${text}"`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'improve_text',
+            metadata: { type },
         });
 
         const content = response.choices[0].message.content?.trim() || text;
@@ -47,13 +55,15 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
     if (!jobDescription) return [];
 
     const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'extract_keywords',
         });
 
         const content = response.choices[0].message.content;
@@ -107,7 +117,11 @@ function calculateDeterministicScore(resumeData: ResumeData, jobDescription: str
     };
 }
 
-export async function calculateATSScore(resumeData: ResumeData, jobDescription: string): Promise<ATSScore> {
+export async function calculateATSScore(
+    resumeData: ResumeData,
+    jobDescription: string,
+    tracking?: { userId?: string; sessionId?: string; operation?: string }
+): Promise<ATSScore> {
     if (!jobDescription || !resumeData) {
         return {
             overall: 0,
@@ -142,13 +156,16 @@ Analyze and return a JSON object with:
 5. "suggestions": Array of 3-5 specific actionable suggestions to improve match
 
 Be accurate and helpful. Output ONLY valid JSON.`;
+    const userId = await resolveTrackingUserId(tracking?.userId);
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: tracking?.operation ?? 'ats_scoring',
         });
 
         const content = response.choices[0].message.content;
@@ -200,7 +217,8 @@ export async function generateTailoredResume(
     jobDescription: string,
     existingData: ResumeData,
     githubRepos?: { name: string; description: string; language: string; url: string }[],
-    knowledgeBullets?: string[]
+    knowledgeBullets?: string[],
+    tracking?: { userId?: string; sessionId?: string }
 ): Promise<ResumeData> {
     const prompt = `Generate a tailored resume for this job description. Use the existing personal info and enhance/tailor the content.
 
@@ -232,13 +250,16 @@ Output a valid JSON object matching this structure:
 }
 
 IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY valid JSON.`;
+    const userId = await resolveTrackingUserId(tracking?.userId);
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: 'resume_assembly',
         });
 
         const content = response.choices[0].message.content;
@@ -287,13 +308,15 @@ Instruction: ${instruction}
 
 Current Code:
 ${currentCode}`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'latex_modify',
         });
 
         const content = response.choices[0].message.content?.trim() || "";
@@ -322,13 +345,15 @@ Generate a complete, compilable LaTeX document with:
 6. Use proper itemize environments for bullet points
 
 Output ONLY the raw LaTeX code. No markdown, no explanations.`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'resume_to_latex',
         });
 
         const content = response.choices[0].message.content?.trim() || "";
@@ -401,14 +426,16 @@ Important:
 - Determine sectionOrder based on the order sections appear in the LaTeX
 
 Output ONLY valid JSON, no markdown, no explanations.`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
+        }, {
+            userId,
+            operation: 'latex_to_resume',
         });
 
         const content = response.choices[0].message.content?.trim() || "{}";
@@ -509,6 +536,8 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
         return { success: false, error: "No LaTeX code provided" };
     }
 
+    const userId = await resolveTrackingUserId();
+    const start = Date.now();
     try {
         const response = await fetch('https://latex.ytotech.com/builds/sync', {
             method: 'POST',
@@ -544,15 +573,45 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
                 errorMessage = errorText.slice(0, 500);
             }
 
+            await logUsageEvent({
+                userId,
+                operation: 'latex_compile',
+                provider: 'latex_api',
+                model: 'pdflatex',
+                latencyMs: Date.now() - start,
+                status: 'failed',
+                metadata: { error: errorMessage, statusCode: response.status },
+            });
             return { success: false, error: errorMessage };
         }
 
         const pdfBuffer = await response.arrayBuffer();
         const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
 
+        await logUsageEvent({
+            userId,
+            operation: 'latex_compile',
+            provider: 'latex_api',
+            model: 'pdflatex',
+            latencyMs: Date.now() - start,
+            status: 'success',
+            metadata: {
+                fileSizeBytes: pdfBuffer.byteLength,
+            },
+        });
+
         return { success: true, pdfBase64 };
     } catch (error) {
         console.error('LaTeX compilation error:', error);
+        await logUsageEvent({
+            userId,
+            operation: 'latex_compile',
+            provider: 'latex_api',
+            model: 'pdflatex',
+            latencyMs: Date.now() - start,
+            status: 'failed',
+            metadata: { error: error instanceof Error ? error.message : 'Unknown compilation error' },
+        });
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown compilation error'
@@ -591,13 +650,16 @@ CURRENT CONTENT:
 ${currentContent}
 
 Output ONLY the improved content. No explanations.`;
+    const userId = await resolveTrackingUserId();
 
     try {
-        const response = await openai.chat.completions.create({
+        const response = await trackedChatCompletion({
             model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'improve_section',
+            metadata: { sectionType },
         });
 
         return response.choices[0].message.content?.trim() || currentContent;

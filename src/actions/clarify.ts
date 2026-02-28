@@ -241,6 +241,7 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
     const smart = await generateSmartResume(enrichedJobDescription, {
       fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
       focusAreas: mergedPayload.gaps,
+      actorSessionId: session.id,
     });
 
     await prisma.generationSession.update({
