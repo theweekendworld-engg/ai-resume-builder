@@ -21,13 +21,13 @@ Redesign the data model to separate static user data (profile, experience, educa
 - [x] **Phase 2:** Auto-embed pipeline — trigger on project/KB item create/update (NOT experience/education)
 - [x] **Phase 2:** Refactor GitHub import to auto-create UserProject + auto-embed + dedup
 - [x] **Phase 2:** Re-embed utility for rebuilding Qdrant from Postgres
-- [ ] **Phase 3:** JD parser — extract role, skills, requirements into structured format
-- [ ] **Phase 3:** Semantic matching for projects/achievements (Qdrant) + load all static data (Postgres)
-- [ ] **Phase 3:** AI paraphraser — rewrite experience descriptions and summary to match JD (same facts, different emphasis)
-- [ ] **Phase 3:** Smart resume generator — assemble from profile + selected projects + paraphrased experience
-- [ ] **Phase 3:** Claim validator — verify every bullet maps to source data
-- [ ] **Phase 3:** One-click generate UI — paste JD, get resume
-- [ ] **Phase 4:** Clarification engine — gap detection, question generation, session state
+- [x] **Phase 3:** JD parser — extract role, skills, requirements into structured format
+- [x] **Phase 3:** Semantic matching for projects/achievements (Qdrant) + load all static data (Postgres)
+- [x] **Phase 3:** AI paraphraser — rewrite experience descriptions and summary to match JD (same facts, different emphasis)
+- [x] **Phase 3:** Smart resume generator — assemble from profile + selected projects + paraphrased experience
+- [x] **Phase 3:** Claim validator — verify every bullet maps to source data
+- [x] **Phase 3:** One-click generate UI — paste JD, get resume
+- [x] **Phase 4:** Clarification engine — gap detection, question generation, session state
 - [ ] **Phase 5:** Channel-agnostic generation API endpoint
 - [ ] **Phase 5:** Telegram bot — webhook, identity linking, conversational flow
 - [ ] **Phase 6:** Quality guardrails — auto ATS scoring, truth enforcement, user preferences

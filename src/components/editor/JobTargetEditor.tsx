@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useResumeStore } from '@/store/resumeStore';
-import { generateTailoredResume, calculateATSScore } from '@/actions/ai';
+import { calculateATSScore } from '@/actions/ai';
+import { startClarificationSession, submitClarificationAnswers } from '@/actions/clarify';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -36,9 +37,13 @@ export function JobTargetEditor() {
     } = useResumeStore();
     
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isClarifying, setIsClarifying] = useState(false);
     const [isCalculating, setIsCalculating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const [clarificationSessionId, setClarificationSessionId] = useState<string | null>(null);
+    const [clarificationQuestions, setClarificationQuestions] = useState<Array<{ id: string; question: string; gap: string }>>([]);
+    const [clarificationAnswers, setClarificationAnswers] = useState<Record<string, string>>({});
 
     const handleGenerateTailored = async () => {
         if (!jobDescription.trim()) {
@@ -49,16 +54,39 @@ export function JobTargetEditor() {
         setError(null);
         setSuccess(null);
         setIsGenerating(true);
+        setClarificationQuestions([]);
+        setClarificationAnswers({});
+        setClarificationSessionId(null);
         
         try {
-            const tailoredResume = await generateTailoredResume(
+            const clarification = await startClarificationSession({
                 jobDescription,
-                resumeData
-            );
+                fallbackResumeData: resumeData,
+            });
+
+            if (!clarification.success) {
+                throw new Error(clarification.error || 'Failed to start clarification');
+            }
+
+            if (
+                clarification.status === 'awaiting_clarification'
+                && clarification.sessionId
+                && clarification.questions
+                && clarification.questions.length > 0
+            ) {
+                setClarificationSessionId(clarification.sessionId);
+                setClarificationQuestions(clarification.questions);
+                setSuccess('We found a few gaps. Answer these questions to improve accuracy.');
+                return;
+            }
+
+            if (!clarification.resume) {
+                throw new Error('Resume generation did not return data');
+            }
             
-            setResumeData(tailoredResume);
+            setResumeData(clarification.resume);
             
-            const score = await calculateATSScore(tailoredResume, jobDescription);
+            const score = await calculateATSScore(clarification.resume, jobDescription);
             setAtsScore(score);
             generateLatexFromData();
             
@@ -69,6 +97,45 @@ export function JobTargetEditor() {
             setError('Failed to generate. Please try again.');
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    const handleSubmitClarifications = async () => {
+        if (!clarificationSessionId) {
+            setError('Clarification session expired. Please generate again.');
+            return;
+        }
+
+        setError(null);
+        setSuccess(null);
+        setIsClarifying(true);
+
+        try {
+            const result = await submitClarificationAnswers({
+                sessionId: clarificationSessionId,
+                answers: clarificationAnswers,
+                fallbackResumeData: resumeData,
+            });
+
+            if (!result.success || !result.resume) {
+                throw new Error(result.error || 'Failed to generate resume from clarifications');
+            }
+
+            setResumeData(result.resume);
+            const score = await calculateATSScore(result.resume, jobDescription);
+            setAtsScore(score);
+            generateLatexFromData();
+
+            setClarificationSessionId(null);
+            setClarificationQuestions([]);
+            setClarificationAnswers({});
+            setSuccess('Resume tailored with your clarifications!');
+            setTimeout(() => setSuccess(null), 3000);
+        } catch (err) {
+            console.error(err);
+            setError('Failed to apply clarifications. Please try again.');
+        } finally {
+            setIsClarifying(false);
         }
     };
 
@@ -137,7 +204,7 @@ export function JobTargetEditor() {
                             <TooltipTrigger asChild>
                                 <Button
                                     onClick={handleGenerateTailored}
-                                    disabled={isGenerating || !jobDescription.trim()}
+                                    disabled={isGenerating || isClarifying || !jobDescription.trim()}
                                     className="flex-1"
                                 >
                                     {isGenerating ? (
@@ -190,6 +257,48 @@ export function JobTargetEditor() {
                         <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-sm text-green-400 flex items-center gap-2">
                             <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                             {success}
+                        </div>
+                    )}
+
+                    {clarificationQuestions.length > 0 && (
+                        <div className="border border-border rounded-lg p-4 space-y-4 bg-card/50">
+                            <div className="space-y-1">
+                                <p className="text-sm font-medium">Clarification questions</p>
+                                <p className="text-xs text-muted-foreground">
+                                    Answer briefly with real, verifiable details only.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                {clarificationQuestions.map((item) => (
+                                    <div key={item.id} className="space-y-2">
+                                        <Label className="text-xs font-medium">{item.question}</Label>
+                                        <Textarea
+                                            value={clarificationAnswers[item.id] || ''}
+                                            onChange={(e) =>
+                                                setClarificationAnswers((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                            }
+                                            placeholder="Example: Built a Kubernetes deployment pipeline for 15 microservices and reduced deploy time by 35%."
+                                            className="min-h-[84px] text-sm"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+
+                            <Button
+                                onClick={handleSubmitClarifications}
+                                disabled={isClarifying}
+                                className="w-full"
+                            >
+                                {isClarifying ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Applying Clarifications...
+                                    </>
+                                ) : (
+                                    'Generate With Clarifications'
+                                )}
+                            </Button>
                         </div>
                     )}
 
