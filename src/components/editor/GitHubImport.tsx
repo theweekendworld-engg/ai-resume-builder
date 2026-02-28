@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { fetchGitHubRepos, fetchRepoDetails } from '@/actions/github';
+import { fetchGitHubRepos, importGitHubRepoToLibrary } from '@/actions/github';
 import { getUniqueLanguages } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Github, Loader2, Download, Star, Key, Filter } from 'lucide-react';
 import { useResumeStore } from '@/store/resumeStore';
-import { improveText } from '@/actions/ai';
 import { GitHubRepo } from '@/types/github';
 import { toast } from 'sonner';
 
@@ -21,7 +20,7 @@ export function GitHubImport() {
     const [loading, setLoading] = useState(false);
     const [importingId, setImportingId] = useState<number | null>(null);
     const [languageFilter, setLanguageFilter] = useState<string>('all');
-    const [minStars, setMinStars] = useState<number>(0);
+    const minStars = 0;
     const { addProject } = useResumeStore();
 
     const handleTokenChange = (value: string) => {
@@ -54,33 +53,37 @@ export function GitHubImport() {
     const handleImport = async (repo: GitHubRepo) => {
         setImportingId(repo.id);
         try {
-            // Fetch detailed repo info
-            const details = await fetchRepoDetails(username, repo.name, token || undefined);
+            const result = await importGitHubRepoToLibrary({
+                username,
+                repoName: repo.name,
+                repoUrl: repo.html_url,
+                repoDescription: repo.description || '',
+                token: token || undefined,
+                fallbackLanguage: repo.language || undefined,
+            });
 
-            // AI Summarize README or description
-            let description = repo.description || "";
-            if (details.readme) {
-                const context = details.readme.substring(0, 2000);
-                description = await improveText(context, 'project');
-            } else if (description) {
-                description = await improveText(description, 'project');
+            if (!result.success) {
+                toast.error(result.error || 'Failed to import repository');
+                return;
             }
 
-            // Combine languages from API with detected topics
-            const technologies = [
-                ...details.languages,
-                ...details.topics.filter(t => !details.languages.includes(t))
-            ].slice(0, 8);
+            if (result.deduped) {
+                toast.info(`"${repo.name}" already exists in your project library`);
+            }
 
             // Add to Store
             addProject({
                 name: repo.name,
-                description: description,
+                description: repo.description || `${repo.name} imported from GitHub.`,
                 url: repo.html_url,
-                technologies: technologies.length > 0 ? technologies : (repo.language ? [repo.language] : []),
+                technologies: repo.language ? [repo.language] : [],
             });
 
-            toast.success(`Imported "${repo.name}" to projects`);
+            if (result.warning) {
+                toast.warning(result.warning);
+            } else {
+                toast.success(`Imported "${repo.name}" to projects and library`);
+            }
         } catch (error) {
             console.error(error);
             toast.error('Failed to import project');
@@ -104,7 +107,7 @@ export function GitHubImport() {
                     <Github className="w-5 h-5" /> Import from GitHub
                 </CardTitle>
                 <CardDescription>
-                    Fetch your repositories and import them as projects
+                    Fetch repositories and import into your project library. Imported summaries primarily come from README content.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

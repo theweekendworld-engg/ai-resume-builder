@@ -13,6 +13,20 @@ enum ResumeVersionSource {
     import
 }
 
+enum ProjectSource {
+    github
+    manual
+}
+
+enum KnowledgeType {
+    achievement
+    oss_contribution
+    certification
+    award
+    publication
+    custom
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
@@ -60,4 +74,88 @@ model JobTarget {
     updatedAt   DateTime @updatedAt
 
     @@index([userId, updatedAt])
+}
+
+model UserProfile {
+    id              String   @id @default(cuid())
+    userId          String   @unique
+    fullName        String   @default("")
+    email           String   @default("")
+    phone           String   @default("")
+    location        String   @default("")
+    website         String   @default("")
+    linkedin        String   @default("")
+    github          String   @default("")
+    defaultTitle    String   @default("")
+    defaultSummary  String   @default("")
+    yearsExperience String   @default("")
+    preferences     Json?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+}
+
+model UserProject {
+    id            String        @id @default(cuid())
+    userId        String
+    name          String
+    description   String        @default("")
+    url           String        @default("")
+    githubUrl     String?
+    technologies  Json          @default("[]")
+    readme        String        @default("")
+    source        ProjectSource @default(manual)
+    qdrantPointId String?
+    embedded      Boolean       @default(false)
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
+
+    @@unique([userId, githubUrl])
+    @@index([userId, updatedAt])
+}
+
+model UserExperience {
+    id          String   @id @default(cuid())
+    userId      String
+    company     String
+    role        String
+    startDate   String
+    endDate     String   @default("")
+    current     Boolean  @default(false)
+    location    String   @default("")
+    description String   @default("")
+    highlights  Json     @default("[]")
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+}
+
+model UserEducation {
+    id           String   @id @default(cuid())
+    userId       String
+    institution  String
+    degree       String
+    fieldOfStudy String   @default("")
+    startDate    String
+    endDate      String   @default("")
+    current      Boolean  @default(false)
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    @@index([userId])
+}
+
+model KnowledgeItem {
+    id            String        @id @default(cuid())
+    userId        String
+    type          KnowledgeType
+    title         String
+    content       String
+    metadata      Json?
+    qdrantPointId String?
+    embedded      Boolean       @default(false)
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
+
+    @@index([userId, type])
 }

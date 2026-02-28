@@ -14,13 +14,13 @@ Redesign the data model to separate static user data (profile, experience, educa
 
 ## Todos / Checklist
 
-- [ ] **Phase 1:** Add Prisma models (UserProfile, UserProject, UserExperience, UserEducation, KnowledgeItem) + migration
-- [ ] **Phase 1:** Build CRUD server actions for profile, projects, experiences, education
-- [ ] **Phase 1:** Profile page + project library UI on dashboard
-- [ ] **Phase 2:** Build embedding service (embed.ts) — generateEmbedding, upsertToQdrant, deleteFromQdrant
-- [ ] **Phase 2:** Auto-embed pipeline — trigger on project/KB item create/update (NOT experience/education)
-- [ ] **Phase 2:** Refactor GitHub import to auto-create UserProject + auto-embed + dedup
-- [ ] **Phase 2:** Re-embed utility for rebuilding Qdrant from Postgres
+- [x] **Phase 1:** Add Prisma models (UserProfile, UserProject, UserExperience, UserEducation, KnowledgeItem) + migration
+- [x] **Phase 1:** Build CRUD server actions for profile, projects, experiences, education
+- [x] **Phase 1:** Profile page + project library UI on dashboard
+- [x] **Phase 2:** Build embedding service (embed.ts) — generateEmbedding, upsertToQdrant, deleteFromQdrant
+- [x] **Phase 2:** Auto-embed pipeline — trigger on project/KB item create/update (NOT experience/education)
+- [x] **Phase 2:** Refactor GitHub import to auto-create UserProject + auto-embed + dedup
+- [x] **Phase 2:** Re-embed utility for rebuilding Qdrant from Postgres
 - [ ] **Phase 3:** JD parser — extract role, skills, requirements into structured format
 - [ ] **Phase 3:** Semantic matching for projects/achievements (Qdrant) + load all static data (Postgres)
 - [ ] **Phase 3:** AI paraphraser — rewrite experience descriptions and summary to match JD (same facts, different emphasis)

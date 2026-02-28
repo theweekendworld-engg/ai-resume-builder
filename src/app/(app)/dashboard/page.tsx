@@ -1,12 +1,22 @@
 import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs';
 import { listResumes } from '@/actions/resume';
+import { getUserProfile } from '@/actions/profile';
+import { listUserProjects } from '@/actions/projects';
 import { CreateResumeCard } from '@/components/dashboard/CreateResumeCard';
 import { ResumeCard } from '@/components/dashboard/ResumeCard';
+import { ProfilePanel } from '@/components/dashboard/ProfilePanel';
+import { ProjectLibraryPanel } from '@/components/dashboard/ProjectLibraryPanel';
 
 export default async function DashboardPage() {
-  const result = await listResumes();
-  const resumes = result.success ? result.resumes ?? [] : [];
+  const [resumeResult, profileResult, projectsResult] = await Promise.all([
+    listResumes(),
+    getUserProfile(),
+    listUserProjects(),
+  ]);
+  const resumes = resumeResult.success ? resumeResult.resumes ?? [] : [];
+  const profile = profileResult.success ? profileResult.profile : undefined;
+  const projects = projectsResult.success ? projectsResult.projects ?? [] : [];
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
@@ -23,11 +33,16 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {!result.success && (
+      {!resumeResult.success && (
         <div className="mb-6 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {result.error ?? 'Failed to load your resumes.'}
+          {resumeResult.error ?? 'Failed to load your resumes.'}
         </div>
       )}
+
+      <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <ProfilePanel profile={profile} />
+        <ProjectLibraryPanel projects={projects} />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <CreateResumeCard />
@@ -47,7 +62,7 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {resumes.length === 0 && result.success && (
+      {resumes.length === 0 && resumeResult.success && (
         <div className="mt-8 rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
           You don&apos;t have any resumes yet. Start with the create card above.
         </div>

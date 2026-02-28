@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useResumeStore } from '@/store/resumeStore';
-import { fetchGitHubRepos, fetchRepoDetails } from '@/actions/github';
-import { improveText } from '@/actions/ai';
+import { fetchGitHubRepos, importGitHubRepoToLibrary } from '@/actions/github';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Plus, Sparkles, Github, Loader2, Download, Star, ChevronDown, ChevronUp } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
+import { toast } from 'sonner';
 
 interface GitHubRepo {
     id: number;
@@ -66,27 +66,38 @@ export function ProjectsEditor() {
     const handleImportRepo = async (repo: GitHubRepo) => {
         setImportingId(repo.id);
         try {
-            const details = await fetchRepoDetails(githubUsername, repo.name);
+            const result = await importGitHubRepoToLibrary({
+                username: githubUsername,
+                repoName: repo.name,
+                repoUrl: repo.html_url,
+                repoDescription: repo.description || '',
+                fallbackLanguage: repo.language || undefined,
+            });
 
-            let description = repo.description || "";
-            if (details.readme) {
-                const context = details.readme.substring(0, 2000);
-                description = await improveText(context, 'project');
-            } else if (description) {
-                description = await improveText(description, 'project');
+            if (!result.success) {
+                toast.error(result.error || 'Failed to import repository');
+                return;
             }
 
             addProject({
                 name: repo.name,
-                description: description,
+                description: repo.description || `${repo.name} imported from GitHub.`,
                 url: repo.html_url,
                 technologies: repo.language ? [repo.language] : [],
             });
 
             // Remove from list after importing
             setRepos(repos.filter(r => r.id !== repo.id));
+            if (result.deduped) {
+                toast.info(`"${repo.name}" already exists in your project library`);
+            } else if (result.warning) {
+                toast.warning(result.warning);
+            } else {
+                toast.success(`Imported "${repo.name}" to projects and library`);
+            }
         } catch (error) {
             console.error(error);
+            toast.error('Failed to import project');
         } finally {
             setImportingId(null);
         }
@@ -148,7 +159,7 @@ export function ProjectsEditor() {
                     {showGitHub && repos.length > 0 && (
                         <div className="space-y-2 max-h-[250px] overflow-y-auto border-t border-border pt-3">
                             <p className="text-xs text-muted-foreground mb-2">
-                                Click import to add a repo. Description will be auto-enhanced.
+                                Click import to add a repo. Library project details are sourced from the repository README when available.
                             </p>
                             {repos.map((repo) => (
                                 <div
