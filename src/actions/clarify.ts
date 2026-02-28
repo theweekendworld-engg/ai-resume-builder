@@ -5,6 +5,7 @@ import { GenerationStatus, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { generateSmartResume } from '@/actions/generateResume';
 import { prisma } from '@/lib/prisma';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
 
 const StartClarificationSchema = z.object({
@@ -134,7 +135,14 @@ export async function startClarificationSession(input: unknown): Promise<{
       resume: smart.resume,
     });
 
-    const questions = buildQuestions(gaps, parsed.data.maxQuestions ?? 3);
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { preferences: true },
+    });
+    const preferences = parseUserGenerationPreferences(profile?.preferences);
+    const questions = preferences.autoGenerate
+      ? []
+      : buildQuestions(gaps, parsed.data.maxQuestions ?? 3);
 
     const clarifications: ClarificationPayload = {
       questions,

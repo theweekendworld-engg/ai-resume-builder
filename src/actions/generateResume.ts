@@ -5,10 +5,12 @@ import { KnowledgeType, type KnowledgeItem, type UserProject } from '@prisma/cli
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
 import { z } from 'zod';
+import { calculateATSScore } from '@/actions/ai';
 import { searchQdrantByUser } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { initialResumeData, type ResumeData, type ExperienceItem, type ProjectItem } from '@/types/resume';
 
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
@@ -50,6 +52,7 @@ type ClaimValidation = {
   coverageRate: number;
   unsupportedClaims: string[];
   mappings: Record<string, string>;
+  unsupportedMetricClaims: string[];
 };
 
 type SmartResumeResult = {
@@ -68,6 +71,11 @@ function tokenize(value: string): string[] {
     .split(' ')
     .map((token) => token.trim())
     .filter((token) => token.length >= 3);
+}
+
+function extractMetricTokens(value: string): string[] {
+  const matches = value.match(/\b\d+(?:[.,]\d+)?(?:%|\+|x|k|m|b)?\b/gi) ?? [];
+  return matches.map((entry) => entry.toLowerCase());
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -176,6 +184,10 @@ function computeAtsEstimate(resume: ResumeData, parsedJD: z.infer<typeof ParsedJ
 }
 
 function validateClaims(resume: ResumeData, sources: Array<{ id: string; text: string }>): ClaimValidation {
+  const sourceMetricTokens = new Set(
+    sources.flatMap((source) => extractMetricTokens(source.text))
+  );
+
   const sourceTokens = sources.map((source) => ({
     id: source.id,
     tokens: new Set(tokenize(source.text)),
@@ -192,11 +204,20 @@ function validateClaims(resume: ResumeData, sources: Array<{ id: string; text: s
 
   const mappings: Record<string, string> = {};
   const unsupportedClaims: string[] = [];
+  const unsupportedMetricClaims: string[] = [];
 
   for (const line of claimLines) {
     const claimTokens = tokenize(line);
     if (claimTokens.length < 3) {
       mappings[line] = 'short-claim';
+      continue;
+    }
+
+    const metricTokens = extractMetricTokens(line);
+    const hasUnsupportedMetric = metricTokens.some((token) => !sourceMetricTokens.has(token));
+    if (hasUnsupportedMetric) {
+      unsupportedClaims.push(line);
+      unsupportedMetricClaims.push(line);
       continue;
     }
 
@@ -231,6 +252,7 @@ function validateClaims(resume: ResumeData, sources: Array<{ id: string; text: s
     coverageRate,
     unsupportedClaims,
     mappings,
+    unsupportedMetricClaims,
   };
 }
 
@@ -248,13 +270,42 @@ function sanitizeUnsupportedClaims(resume: ResumeData, unsupportedClaims: string
 
       return {
         ...exp,
-        description: filtered.join('\n') || exp.description,
+        description: filtered.join('\n'),
       };
     }),
     projects: resume.projects.map((project) => ({
       ...project,
       description: bad.has(project.description.trim()) ? '' : project.description,
     })),
+  };
+}
+
+function improveResumeForLowAts(params: {
+  resume: ResumeData;
+  parsedJD: z.infer<typeof ParsedJDSchema>;
+  missingKeywords: string[];
+  sourceTextCorpus: string;
+}): ResumeData {
+  const sourceText = normalizeText(params.sourceTextCorpus);
+  const candidateSkills = uniqueStrings([
+    ...params.resume.skills,
+    ...params.parsedJD.requiredSkills,
+    ...params.parsedJD.preferredSkills,
+    ...params.missingKeywords,
+  ]).filter((entry) => {
+    const normalized = normalizeText(entry);
+    return normalized.length > 0 && sourceText.includes(normalized);
+  });
+
+  const ordered = uniqueStrings([
+    ...params.parsedJD.requiredSkills,
+    ...params.parsedJD.preferredSkills,
+    ...candidateSkills,
+  ]).slice(0, 20);
+
+  return {
+    ...params.resume,
+    skills: ordered.length > 0 ? ordered : params.resume.skills,
   };
 }
 
@@ -265,12 +316,14 @@ async function paraphraseStaticData(params: {
   experiences: ExperienceItem[];
   selectedProjects: ProjectItem[];
   selectedKnowledge: Pick<KnowledgeItem, 'title' | 'content'>[];
+  tonePreference: 'formal' | 'conversational' | 'technical';
 }): Promise<z.infer<typeof ParaphraseSchema>> {
   const prompt = `You are tailoring resume content for a specific job.
 Rules:
 - Keep facts, metrics, companies, and dates truthful to source data.
 - Do not invent numbers, tools, projects, or achievements.
 - Only rewrite wording and ordering to emphasize relevance.
+- Tone preference: ${params.tonePreference}
 - Output ONLY JSON.
 
 Parsed JD:\n${JSON.stringify(params.parsedJD, null, 2)}
@@ -326,6 +379,7 @@ function buildBaseResume(params: {
   skills: string[];
   jdRole: string;
   parsedSummary: string;
+  sectionOrder: ResumeData['sectionOrder'];
 }): ResumeData {
   const fallbackInfo = params.fallback.personalInfo;
 
@@ -345,7 +399,7 @@ function buildBaseResume(params: {
     projects: params.projects.length > 0 ? params.projects : params.fallback.projects,
     education: params.education.length > 0 ? params.education : params.fallback.education,
     skills: params.skills.length > 0 ? params.skills : params.fallback.skills,
-    sectionOrder: ['summary', 'experience', 'projects', 'education', 'skills'],
+    sectionOrder: params.sectionOrder,
   };
 }
 
@@ -374,14 +428,22 @@ export async function generateSmartResume(
   const parsedJD = await parseJobDescription(trimmedJobDescription);
   const jdSkills = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills, ...(parsedOptions.focusAreas ?? [])]);
 
+  const profileForPreferences = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: { preferences: true },
+  });
+  const preferences = parseUserGenerationPreferences(profileForPreferences?.preferences);
+
   const knowledgeTypes: KnowledgeType[] = [
     KnowledgeType.achievement,
-    KnowledgeType.oss_contribution,
     KnowledgeType.certification,
     KnowledgeType.award,
     KnowledgeType.publication,
     KnowledgeType.custom,
   ];
+  if (preferences.includeOSS) {
+    knowledgeTypes.push(KnowledgeType.oss_contribution);
+  }
 
   const [projectSearch, ...knowledgeSearches] = await Promise.all([
     searchQdrantByUser({ userId, query: trimmedJobDescription, type: 'project', limit: 10 }),
@@ -422,7 +484,7 @@ export async function generateSmartResume(
       : Promise.resolve([]),
   ]);
 
-  const projectLimit = parsedOptions.maxProjects ?? 4;
+  const projectLimit = parsedOptions.maxProjects ?? preferences.maxProjects;
   const rankedProjects = projectsRaw
     .map((project) => ({
       project,
@@ -479,6 +541,7 @@ export async function generateSmartResume(
     experiences: sourceExperiences,
     selectedProjects,
     selectedKnowledge: rankedKnowledge.map(({ item }) => ({ title: item.title, content: item.content })),
+    tonePreference: preferences.tonePreference,
   });
 
   const paraphrasedMap = new Map(paraphrased.experience.map((entry) => [entry.id, entry.description]));
@@ -536,20 +599,54 @@ export async function generateSmartResume(
     skills: orderedSkills,
     jdRole: parsedJD.role,
     parsedSummary: paraphrased.summary,
+    sectionOrder: preferences.defaultSectionOrder,
   });
 
   const validationBeforeSanitize = validateClaims(assembled, sourceTextCorpus);
   const sanitizedResume = sanitizeUnsupportedClaims(assembled, validationBeforeSanitize.unsupportedClaims);
-  const validation = validateClaims(sanitizedResume, sourceTextCorpus);
+  let validation = validateClaims(sanitizedResume, sourceTextCorpus);
+
+  if (validation.coverageRate < 0.5) {
+    throw new Error('Truth enforcement rejected generation: less than 50% of claims are traceable to source data');
+  }
+
+  let finalResume = sanitizedResume;
+  let atsEstimate = computeAtsEstimate(sanitizedResume, parsedJD);
+
+  try {
+    const atsPrimary = await calculateATSScore(sanitizedResume, trimmedJobDescription);
+    atsEstimate = atsPrimary.overall;
+
+    if (atsPrimary.overall < 70) {
+      const improved = improveResumeForLowAts({
+        resume: sanitizedResume,
+        parsedJD,
+        missingKeywords: atsPrimary.missingKeywords,
+        sourceTextCorpus: sourceTextCorpus.map((entry) => entry.text).join(' '),
+      });
+
+      const improvedValidation = validateClaims(improved, sourceTextCorpus);
+      if (improvedValidation.coverageRate >= 0.5) {
+        const improvedAts = await calculateATSScore(improved, trimmedJobDescription);
+        if (improvedAts.overall >= atsPrimary.overall) {
+          finalResume = improved;
+          validation = improvedValidation;
+          atsEstimate = improvedAts.overall;
+        }
+      }
+    }
+  } catch {
+    // Fall back to deterministic ATS estimate if AI ATS scoring fails.
+  }
 
   return {
-    resume: sanitizedResume,
+    resume: finalResume,
     sources: {
       projects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
       knowledgeItems: rankedKnowledge.map((entry) => ({ id: entry.item.id, score: Number(entry.score.toFixed(4)) })),
       parsedJD,
     },
-    atsEstimate: computeAtsEstimate(sanitizedResume, parsedJD),
+    atsEstimate,
     validation,
   };
 }

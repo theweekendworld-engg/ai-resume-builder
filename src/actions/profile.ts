@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
+import { defaultUserGenerationPreferences, parseUserGenerationPreferences, UserGenerationPreferencesSchema } from '@/lib/userPreferences';
 import { Prisma } from '@prisma/client';
 
 const ProfileInputSchema = z.object({
@@ -42,6 +43,27 @@ async function getUserId(): Promise<string | null> {
   return userId ?? null;
 }
 
+function normalizePreferenceInput(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const obj = value as Record<string, unknown>;
+
+  const maxProjectsRaw = obj.maxProjects;
+  const maxProjects = typeof maxProjectsRaw === 'string'
+    ? Number.parseInt(maxProjectsRaw, 10)
+    : maxProjectsRaw;
+
+  const orderRaw = obj.defaultSectionOrder;
+  const defaultSectionOrder = typeof orderRaw === 'string'
+    ? orderRaw.split(',').map((item) => item.trim()).filter(Boolean)
+    : orderRaw;
+
+  return {
+    ...obj,
+    maxProjects,
+    defaultSectionOrder,
+  };
+}
+
 export async function getUserProfile(): Promise<{
   success: boolean;
   profile?: UserProfileDTO;
@@ -54,7 +76,13 @@ export async function getUserProfile(): Promise<{
     const profile = await prisma.userProfile.findUnique({ where: { userId } });
     if (!profile) return { success: true, profile: undefined };
 
-    return { success: true, profile };
+    return {
+      success: true,
+      profile: {
+        ...profile,
+        preferences: parseUserGenerationPreferences(profile.preferences),
+      },
+    };
   } catch (error) {
     return {
       success: false,
@@ -77,7 +105,8 @@ export async function upsertUserProfile(input: unknown): Promise<{
     const userId = await getUserId();
     if (!userId) return { success: false, error: 'Not authenticated' };
 
-    const preferences = parsed.data.preferences as Prisma.InputJsonValue | undefined;
+    const parsedPreferences = parseUserGenerationPreferences(normalizePreferenceInput(parsed.data.preferences));
+    const preferences = parsedPreferences as Prisma.InputJsonValue;
 
     const profile = await prisma.userProfile.upsert({
       where: { userId },
@@ -102,7 +131,72 @@ export async function upsertUserProfile(input: unknown): Promise<{
       },
     });
 
-    return { success: true, profile };
+    return {
+      success: true,
+      profile: {
+        ...profile,
+        preferences: parseUserGenerationPreferences(profile.preferences),
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+const UserPreferencesInputSchema = UserGenerationPreferencesSchema.partial();
+
+export async function updateUserPreferences(input: unknown): Promise<{
+  success: boolean;
+  preferences?: unknown;
+  error?: string;
+}> {
+  const parsed = UserPreferencesInputSchema.safeParse(normalizePreferenceInput(input ?? {}));
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  }
+
+  try {
+    const userId = await getUserId();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const existing = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { preferences: true },
+    });
+    const normalizedInput = normalizePreferenceInput(parsed.data);
+
+    const existingPreferencesObject = (
+      existing?.preferences && typeof existing.preferences === 'object' && !Array.isArray(existing.preferences)
+        ? existing.preferences
+        : {}
+    ) as Record<string, unknown>;
+    const inputPreferencesObject = (
+      normalizedInput && typeof normalizedInput === 'object' && !Array.isArray(normalizedInput)
+        ? normalizedInput
+        : {}
+    ) as Record<string, unknown>;
+
+    const mergedPreferences = parseUserGenerationPreferences({
+      ...defaultUserGenerationPreferences,
+      ...existingPreferencesObject,
+      ...inputPreferencesObject,
+    });
+
+    await prisma.userProfile.upsert({
+      where: { userId },
+      create: {
+        userId,
+        preferences: mergedPreferences as Prisma.InputJsonValue,
+      },
+      update: {
+        preferences: mergedPreferences as Prisma.InputJsonValue,
+      },
+    });
+
+    return { success: true, preferences: mergedPreferences };
   } catch (error) {
     return {
       success: false,

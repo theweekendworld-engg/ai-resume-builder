@@ -5,6 +5,7 @@ import { Channel, GenerationStatus, Prisma, ResumeVersionSource } from '@prisma/
 import { z } from 'zod';
 import { generateSmartResume } from '@/actions/generateResume';
 import { prisma } from '@/lib/prisma';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
 
 type ClarificationQuestion = {
@@ -229,7 +230,15 @@ async function startNewSession(params: {
     resume: smart.resume,
   });
 
-  const questions = buildQuestions(gaps, params.maxQuestions);
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId: params.userId },
+    select: { preferences: true },
+  });
+  const preferences = parseUserGenerationPreferences(profile?.preferences);
+
+  const questions = preferences.autoGenerate
+    ? []
+    : buildQuestions(gaps, params.maxQuestions);
 
   const session = await prisma.generationSession.create({
     data: {
