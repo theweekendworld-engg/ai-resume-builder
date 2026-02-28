@@ -1,8 +1,11 @@
 'use server';
 
+import { z } from 'zod';
 import { QdrantClient } from '@qdrant/js-client-rest';
 import OpenAI from 'openai';
+import { auth } from '@clerk/nextjs/server';
 import { v4 as uuidv4 } from 'uuid';
+import { checkKbRateLimit } from '@/lib/rateLimit';
 
 const qdrantClient = new QdrantClient({
     url: process.env.QDRANT_URL || 'http://localhost:6333',
@@ -10,6 +13,17 @@ const qdrantClient = new QdrantClient({
 
 const COLLECTION_NAME = 'knowledge_base';
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const MAX_CONTENT_LENGTH = 5000;
+const MAX_QUERY_LENGTH = 1000;
+const MAX_TAGS = 10;
+
+function sanitizeTags(tags: string[]): string[] {
+    return tags
+        .filter((tag) => typeof tag === 'string')
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, MAX_TAGS);
+}
 
 // Helper to generate embedding
 async function generateEmbedding(text: string): Promise<number[]> {
@@ -43,18 +57,37 @@ async function ensureCollection() {
     }
 }
 
-export async function saveToKnowledgeBase(
-    userId: string,
-    content: string,
-    type: string,
-    tags: string[]
-) {
-    if (!userId || !content) return null;
+const SaveKbSchema = z.object({
+    content: z.string().min(1).max(MAX_CONTENT_LENGTH),
+    type: z.string().min(1),
+    tags: z.array(z.string()),
+});
+
+export async function saveToKnowledgeBase(content: string, type: string, tags: string[]) {
+    const parsed = SaveKbSchema.safeParse({
+        content: typeof content === 'string' ? content.trim() : '',
+        type: typeof type === 'string' ? type.trim() : '',
+        tags: Array.isArray(tags) ? tags : [],
+    });
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+    }
+    const { content: trimmedContent, type: trimmedType, tags: tagList } = parsed.data;
+    if (!trimmedContent || !trimmedType) {
+        return { success: false, error: 'Content and type are required' };
+    }
+
+    const { userId } = await auth();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const limit = await checkKbRateLimit(`kb:save:${userId}`);
+    if (!limit.allowed) return { success: false, error: limit.error };
 
     try {
         await ensureCollection();
-        const embedding = await generateEmbedding(content);
+        const embedding = await generateEmbedding(trimmedContent);
         const id = uuidv4();
+        const safeTags = sanitizeTags(tagList);
 
         // Qdrant supports UUID strings as point IDs
         await qdrantClient.upsert(COLLECTION_NAME, {
@@ -65,9 +98,9 @@ export async function saveToKnowledgeBase(
                     vector: embedding,
                     payload: {
                         userId,
-                        content,
-                        type,
-                        tags,
+                        content: trimmedContent,
+                        type: trimmedType,
+                        tags: safeTags,
                         createdAt: new Date().toISOString(),
                     },
                 },
@@ -81,12 +114,21 @@ export async function saveToKnowledgeBase(
     }
 }
 
-export async function searchKnowledgeBase(userId: string, query: string) {
-    if (!userId || !query) return [];
+const SearchKbSchema = z.string().min(1).max(MAX_QUERY_LENGTH);
+
+export async function searchKnowledgeBase(query: string) {
+    const parsed = SearchKbSchema.safeParse(typeof query === 'string' ? query.trim() : '');
+    if (!parsed.success) return [];
+
+    const { userId } = await auth();
+    if (!userId) return [];
+
+    const limit = await checkKbRateLimit(`kb:search:${userId}`);
+    if (!limit.allowed) return [];
 
     try {
         await ensureCollection();
-        const embedding = await generateEmbedding(query);
+        const embedding = await generateEmbedding(parsed.data);
 
         const searchResult = await qdrantClient.search(COLLECTION_NAME, {
             vector: embedding,

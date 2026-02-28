@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { fetchGitHubRepos, fetchRepoDetails } from '@/actions/github';
 import { getUniqueLanguages } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -24,20 +24,8 @@ export function GitHubImport() {
     const [minStars, setMinStars] = useState<number>(0);
     const { addProject } = useResumeStore();
 
-    // Load saved token from localStorage
-    useEffect(() => {
-        const savedToken = localStorage.getItem('github-pat');
-        if (savedToken) setToken(savedToken);
-    }, []);
-
-    // Save token to localStorage when changed
     const handleTokenChange = (value: string) => {
         setToken(value);
-        if (value) {
-            localStorage.setItem('github-pat', value);
-        } else {
-            localStorage.removeItem('github-pat');
-        }
     };
 
     const handleFetch = async () => {
@@ -150,6 +138,11 @@ export function GitHubImport() {
                             placeholder="ghp_xxxxx (for private repos or higher rate limit)"
                             className="text-sm"
                         />
+                    )}
+                    {showToken && (
+                        <p className="text-xs text-muted-foreground">
+                            Token is used only for this session and is not stored in your browser.
+                        </p>
                     )}
                 </div>
 

@@ -60,8 +60,6 @@ interface ResumeState {
     visualDataVersion: number;
     latexVersion: number;
 
-    // Cloud sync state
-    cloudSyncEnabled: boolean;
     syncStatus: SyncStatus;
     lastSyncedAt: Date | null;
 
@@ -89,8 +87,6 @@ interface ResumeState {
     isSyncingLatexToVisual: boolean;
     setSyncingLatexToVisual: (syncing: boolean) => void;
 
-    // Cloud sync setters
-    setCloudSyncEnabled: (enabled: boolean) => void;
     setSyncStatus: (status: SyncStatus) => void;
     setLastSyncedAt: (date: Date | null) => void;
 
@@ -165,8 +161,7 @@ export const useResumeStore = create<ResumeState>()(
             latexVersion: 0,
             isSyncingLatexToVisual: false,
 
-            // Cloud sync state (default OFF for privacy-first)
-            cloudSyncEnabled: false,
+            // Cloud sync state (always on for authenticated flows)
             syncStatus: 'idle' as SyncStatus,
             lastSyncedAt: null,
 
@@ -245,8 +240,6 @@ export const useResumeStore = create<ResumeState>()(
             },
             setSyncingLatexToVisual: (syncing) => set({ isSyncingLatexToVisual: syncing }),
 
-            // Cloud sync setters
-            setCloudSyncEnabled: (enabled) => set({ cloudSyncEnabled: enabled }),
             setSyncStatus: (status) => set({ syncStatus: status }),
             setLastSyncedAt: (date) => set({ lastSyncedAt: date }),
 
@@ -258,7 +251,7 @@ export const useResumeStore = create<ResumeState>()(
                 const { copilotProposal, resumeData, visualDataVersion } = get();
                 if (!copilotProposal) return;
 
-                let newResumeData = { ...resumeData };
+                const newResumeData = { ...resumeData };
 
                 switch (section) {
                     case 'summary':
@@ -513,34 +506,35 @@ export const useResumeStore = create<ResumeState>()(
         }),
         {
             name: 'resume-storage',
-            merge: (persistedState: any, currentState) => {
-                if (persistedState?.resumeData) {
-                    if (!persistedState.resumeData.sectionOrder) {
-                        persistedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
+            merge: (persistedState: unknown, currentState) => {
+                const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;
+                if (hydratedState.resumeData) {
+                    if (!hydratedState.resumeData.sectionOrder) {
+                        hydratedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
                     }
-                    if (!persistedState.selectedTemplate) {
-                        persistedState.selectedTemplate = 'ats-simple';
+                    if (!hydratedState.selectedTemplate) {
+                        hydratedState.selectedTemplate = 'ats-simple';
                     }
                     // Generate latex if empty
-                    if (!persistedState.latexCode) {
-                        persistedState.latexCode = generateLatexFromResume(
-                            persistedState.resumeData,
-                            persistedState.selectedTemplate || 'ats-simple'
+                    if (!hydratedState.latexCode) {
+                        hydratedState.latexCode = generateLatexFromResume(
+                            hydratedState.resumeData,
+                            hydratedState.selectedTemplate || 'ats-simple'
                         );
                     }
                     // Initialize sync tracking
-                    if (!persistedState.lastSyncedLatex) {
-                        persistedState.lastSyncedLatex = persistedState.latexCode;
+                    if (!hydratedState.lastSyncedLatex) {
+                        hydratedState.lastSyncedLatex = hydratedState.latexCode;
                     }
-                    if (persistedState.visualDataVersion === undefined) {
-                        persistedState.visualDataVersion = 0;
+                    if (hydratedState.visualDataVersion === undefined) {
+                        hydratedState.visualDataVersion = 0;
                     }
-                    if (persistedState.latexVersion === undefined) {
-                        persistedState.latexVersion = 0;
+                    if (hydratedState.latexVersion === undefined) {
+                        hydratedState.latexVersion = 0;
                     }
                     return {
                         ...currentState,
-                        ...persistedState,
+                        ...hydratedState,
                     };
                 }
                 return currentState;

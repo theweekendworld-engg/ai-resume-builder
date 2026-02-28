@@ -1,5 +1,11 @@
 import { ClerkProvider } from '@clerk/nextjs'
+import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
+
+export const metadata = {
+  title: 'ResumePilot',
+  description: 'AI-tailored resume builder with ATS scoring and live preview.',
+}
 
 export default function RootLayout({
   children,
@@ -8,9 +14,10 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en" className="dark" style={{ colorScheme: 'dark' }} suppressHydrationWarning>
-        <body className="relative z-10 dark">
+      <html lang="en" suppressHydrationWarning>
+        <body className="relative z-10 min-h-screen bg-background text-foreground antialiased">
           {children}
+          <Toaster />
         </body>
       </html>
     </ClerkProvider>

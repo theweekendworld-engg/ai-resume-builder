@@ -138,7 +138,7 @@ export function JobTargetEditor() {
                                 <Button
                                     onClick={handleGenerateTailored}
                                     disabled={isGenerating || !jobDescription.trim()}
-                                    className="flex-1 smart-glow"
+                                    className="flex-1"
                                 >
                                     {isGenerating ? (
                                         <>

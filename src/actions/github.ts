@@ -1,14 +1,39 @@
 'use server';
 
+import { z } from 'zod';
 import { Octokit } from 'octokit';
+import { auth } from '@clerk/nextjs/server';
 import { GitHubRepo, GitHubRepoDetails, FetchReposOptions } from '@/types/github';
+import { checkGitHubRateLimit } from '@/lib/rateLimit';
 
-/**
- * Fetch GitHub repos with pagination and filtering support.
- * Token is optional - works for public repos without auth (60 requests/hour limit).
- * With token: 5000 requests/hour.
- */
+const FetchReposSchema = z.object({
+    username: z.string().min(1).max(200),
+    token: z.string().max(500).optional(),
+    page: z.number().int().min(1).max(100).optional(),
+    perPage: z.number().int().min(1).max(100).optional(),
+    minStars: z.number().int().min(0).optional(),
+    language: z.string().max(50).optional(),
+    excludeForks: z.boolean().optional(),
+});
+
 export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitHubRepo[]> {
+    const parsed = FetchReposSchema.safeParse({
+        username: options.username,
+        token: options.token,
+        page: options.page,
+        perPage: options.perPage,
+        minStars: options.minStars,
+        language: options.language,
+        excludeForks: options.excludeForks,
+    });
+    if (!parsed.success) return [];
+
+    const { userId } = await auth();
+    if (userId) {
+        const limit = await checkGitHubRateLimit(`gh:${userId}`);
+        if (!limit.allowed) return [];
+    }
+
     const {
         username,
         token,
@@ -16,8 +41,8 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
         perPage = 20,
         minStars = 0,
         language,
-        excludeForks = true
-    } = options;
+        excludeForks = true,
+    } = parsed.data;
 
     try {
         const octokit = new Octokit({ 
@@ -68,27 +93,39 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
     }
 }
 
-/**
- * Fetch detailed repo information including README, languages, and topics.
- * Token is optional - works for public repos without auth.
- */
+const FetchRepoDetailsSchema = z.object({
+    username: z.string().min(1).max(200),
+    repo: z.string().min(1).max(200),
+    token: z.string().max(500).optional(),
+});
+
 export async function fetchRepoDetails(
     username: string,
     repo: string,
     token?: string
 ): Promise<GitHubRepoDetails> {
+    const parsed = FetchRepoDetailsSchema.safeParse({ username, repo, token });
+    if (!parsed.success) return { readme: '', languages: [], topics: [] };
+
+    const { userId } = await auth();
+    if (userId) {
+        const limit = await checkGitHubRateLimit(`gh:details:${userId}`);
+        if (!limit.allowed) return { readme: '', languages: [], topics: [] };
+    }
+
+    const { username: u, repo: r, token: t } = parsed.data;
     try {
-        const octokit = new Octokit({ 
-            ...(token ? { auth: token } : {}),
-            request: { timeout: 10000 }
+        const octokit = new Octokit({
+            ...(t ? { auth: t } : {}),
+            request: { timeout: 10000 },
         });
 
         // Fetch README
         let readme = '';
         try {
             const readmeResponse = await octokit.request('GET /repos/{owner}/{repo}/readme', {
-                owner: username,
-                repo,
+                owner: u,
+                repo: r,
                 headers: { 'X-GitHub-Api-Version': '2022-11-28' }
             });
             readme = Buffer.from(readmeResponse.data.content, 'base64').toString('utf-8');
@@ -100,8 +137,8 @@ export async function fetchRepoDetails(
         let languages: string[] = [];
         try {
             const langResponse = await octokit.request('GET /repos/{owner}/{repo}/languages', {
-                owner: username,
-                repo,
+                owner: u,
+                repo: r,
             });
             languages = Object.keys(langResponse.data);
         } catch {
@@ -112,8 +149,8 @@ export async function fetchRepoDetails(
         let topics: string[] = [];
         try {
             const topicsResponse = await octokit.request('GET /repos/{owner}/{repo}/topics', {
-                owner: username,
-                repo,
+                owner: u,
+                repo: r,
                 headers: { Accept: 'application/vnd.github.mercy-preview+json' }
             });
             topics = topicsResponse.data.names || [];

@@ -103,7 +103,7 @@ export function AIRewriteModal({ open, onOpenChange, originalText, onAccept, typ
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Wand2 className="w-5 h-5 text-indigo-400" />
-                            <span className="gradient-text">Smart Rewrite</span>
+                            <span>Smart Rewrite</span>
                         </DialogTitle>
                         <DialogDescription>
                             Choose how you want to improve this text, then review and accept the result.
@@ -164,7 +164,7 @@ export function AIRewriteModal({ open, onOpenChange, originalText, onAccept, typ
                         <Button
                             onClick={handleRewrite}
                             disabled={loading || !originalText}
-                            className="w-full smart-glow"
+                            className="w-full"
                         >
                             {loading ? (
                                 <>

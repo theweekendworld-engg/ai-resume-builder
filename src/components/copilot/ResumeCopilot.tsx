@@ -1,24 +1,17 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useResumeStore, CopilotProposal } from '@/store/resumeStore';
 import { useKnowledgeBaseStore } from '@/store/knowledgeBaseStore';
 import { proposeResumePatch, scoreReposForJob, CopilotContext } from '@/actions/copilot';
 import { fetchGitHubRepos } from '@/actions/github';
 import { searchKnowledgeBase } from '@/actions/kb';
-import { useUser } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-    SheetTrigger,
-} from '@/components/ui/sheet';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProposedChangesCard } from '@/components/copilot';
 import { 
@@ -43,15 +36,17 @@ interface WorkLogMessage {
     timestamp: Date;
 }
 
-export function ResumeCopilot() {
-    const { user } = useUser();
+interface ResumeCopilotProps {
+    embedded?: boolean;
+}
+
+export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
     const {
         resumeData,
         jobDescription,
         setJobDescription,
         githubUsername,
         setGithubUsername,
-        cloudSyncEnabled,
         copilotProposal,
         setCopilotProposal,
         copilotOpen,
@@ -93,13 +88,12 @@ export function ResumeCopilot() {
             // Gather KB bullets
             addWorkLog('info', 'Searching knowledge base for relevant achievements...');
             let kbBullets: string[] = [];
-            
-            if (cloudSyncEnabled && user) {
-                const cloudResults = await searchKnowledgeBase(user.id, localJD);
-                kbBullets = cloudResults.map(r => String(r.content)).filter(Boolean);
-            } else {
+            try {
+                const cloudResults = await searchKnowledgeBase(localJD);
+                kbBullets = cloudResults.map((r) => String(r.content)).filter(Boolean);
+            } catch {
                 const localResults = searchItems(localJD);
-                kbBullets = localResults.map(r => r.content);
+                kbBullets = localResults.map((r) => r.content);
             }
             
             if (kbBullets.length > 0) {
@@ -190,31 +184,8 @@ export function ResumeCopilot() {
 
     const needsJobDescription = !localJD.trim();
 
-    return (
-        <Sheet open={copilotOpen} onOpenChange={setCopilotOpen}>
-            <SheetTrigger asChild>
-                <Button
-                    variant="ai"
-                    size="sm"
-                    className="gap-2"
-                >
-                    <Bot className="w-4 h-4" />
-                    <span className="hidden sm:inline">AI Copilot</span>
-                </Button>
-            </SheetTrigger>
-            <SheetContent className="w-full sm:w-[540px] sm:max-w-[540px] p-0 flex flex-col">
-                <SheetHeader className="p-6 pb-4 border-b border-border">
-                    <SheetTitle className="flex items-center gap-2">
-                        <Bot className="w-5 h-5 text-primary" />
-                        Resume Copilot
-                    </SheetTitle>
-                    <SheetDescription>
-                        Tailor your resume for the job with AI assistance
-                    </SheetDescription>
-                </SheetHeader>
-
-                <ScrollArea className="flex-1">
-                    <div className="p-6 space-y-6">
+    const content = (
+        <div className="space-y-6">
                         {/* Job Description Input */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
@@ -323,6 +294,45 @@ export function ResumeCopilot() {
                             </div>
                         )}
                     </div>
+    );
+
+    if (embedded) {
+        return (
+            <Card className="h-full">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-primary" />
+                        Resume Copilot
+                    </CardTitle>
+                    <CardDescription>Tailor your resume for a target role with AI assistance.</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[calc(100%-5rem)] overflow-auto">
+                    {content}
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Sheet open={copilotOpen} onOpenChange={setCopilotOpen}>
+            <SheetTrigger asChild>
+                <Button variant="secondary" size="sm" className="gap-2">
+                    <Bot className="w-4 h-4" />
+                    <span className="hidden sm:inline">AI Copilot</span>
+                </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full sm:w-[540px] sm:max-w-[540px] p-0 flex flex-col">
+                <SheetHeader className="p-6 pb-4 border-b border-border">
+                    <SheetTitle className="flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-primary" />
+                        Resume Copilot
+                    </SheetTitle>
+                    <SheetDescription>
+                        Tailor your resume for the job with AI assistance
+                    </SheetDescription>
+                </SheetHeader>
+                <ScrollArea className="flex-1">
+                    <div className="p-6">{content}</div>
                 </ScrollArea>
             </SheetContent>
         </Sheet>

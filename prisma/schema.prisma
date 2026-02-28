@@ -7,11 +7,57 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+enum ResumeVersionSource {
+    manual
+    ai
+    import
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
     title     String   @default("My Resume")
-    content   Json // Stores the entire resume JSON structure
+    targetRole    String?
+    targetCompany String?
+    atsScore      Int?
+    atsSummary    String?
+    /// Legacy payload. New writes should go to `ResumeVersion`.
+    content   Json?
+    currentVersionId String? @unique
+    currentVersion   ResumeVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+    versions         ResumeVersion[] @relation("ResumeVersions")
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+}
+
+model ResumeVersion {
+    id            String   @id @default(cuid())
+    userId        String
+    resumeId      String
+    resume        Resume   @relation("ResumeVersions", fields: [resumeId], references: [id], onDelete: Cascade)
+    /// Back-reference for Resume.currentVersion (0..1).
+    currentFor    Resume?  @relation("CurrentVersion")
+
+    schemaVersion Int      @default(1)
+    source        ResumeVersionSource @default(manual)
+    content       Json
+
+    createdAt     DateTime @default(now())
+
+    @@index([userId, createdAt])
+    @@index([resumeId, createdAt])
+}
+
+model JobTarget {
+    id          String   @id @default(cuid())
+    userId      String
+    company     String   @default("")
+    role        String   @default("")
+    description String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@index([userId, updatedAt])
 }

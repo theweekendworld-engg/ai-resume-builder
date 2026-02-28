@@ -109,7 +109,7 @@ export function ExperienceEditor() {
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
-                                            variant="ai"
+                                            variant="secondary"
                                             size="sm"
                                             onClick={() => handleOpenRewrite(item.id, item.description)}
                                             disabled={!item.description}
@@ -137,7 +137,7 @@ export function ExperienceEditor() {
                 {experience.length === 0 && (
                     <div className="text-center text-muted-foreground py-12">
                         <p className="text-sm">No work experience added yet.</p>
-                        <p className="text-xs mt-1">Click "Add Position" to get started.</p>
+                        <p className="text-xs mt-1">Click &quot;Add Position&quot; to get started.</p>
                     </div>
                 )}
             </CardContent>

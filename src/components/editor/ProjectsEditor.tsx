@@ -107,7 +107,7 @@ export function ProjectsEditor() {
                         <div className="flex items-center gap-2">
                             <Github className="w-5 h-5" />
                             <span className="font-medium">Import from GitHub</span>
-                            <span className="feature-badge">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                                 <Sparkles className="w-2.5 h-2.5" />
                                 Smart Import
                             </span>
@@ -178,7 +178,7 @@ export function ProjectsEditor() {
                                     </div>
                                     <Button
                                         size="sm"
-                                        variant="ai"
+                                        variant="secondary"
                                         onClick={() => handleImportRepo(repo)}
                                         disabled={importingId === repo.id}
                                         className="h-8 text-xs gap-1.5 flex-shrink-0"
@@ -237,12 +237,12 @@ export function ProjectsEditor() {
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex justify-between items-center">
                                 <Label className="text-sm font-medium">Description</Label>
-                                <Button
-                                    variant="ai"
-                                    size="sm"
-                                    onClick={() => handleOpenRewrite(item.id, item.description)}
-                                    disabled={!item.description}
-                                    className="h-8 text-xs gap-1.5"
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => handleOpenRewrite(item.id, item.description)}
+                                            disabled={!item.description}
+                                            className="h-8 text-xs gap-1.5"
                                 >
                                     <Sparkles className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">Enhance</span>

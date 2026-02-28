@@ -1,13 +1,15 @@
 'use server';
 
 import OpenAI from 'openai';
+import { auth } from '@clerk/nextjs/server';
 import { config } from '@/lib/config';
 import { ResumeData, ExperienceItem, ProjectItem } from '@/types/resume';
 import { GitHubRepo } from '@/types/github';
-import { 
-    ProposedResumePatchSchema, 
+import { checkAiRateLimit } from '@/lib/rateLimit';
+import {
+    ProposedResumePatchSchema,
     KeywordsResponseSchema,
-    parseWithRetry 
+    parseWithRetry,
 } from '@/lib/aiSchemas';
 
 const openai = new OpenAI({
@@ -112,6 +114,12 @@ function formatProjectsForDiff(projects: ProjectItem[]): string {
 }
 
 export async function proposeResumePatch(context: CopilotContext): Promise<ProposedResumePatch> {
+    const { userId } = await auth();
+    if (userId) {
+        const limit = await checkAiRateLimit(`ai:copilot:${userId}`);
+        if (!limit.allowed) throw new Error(limit.error);
+    }
+
     const { resumeData, jobDescription, kbBullets, githubRepos } = context;
 
     const prompt = `You are a resume optimization expert. Analyze this resume against the job description and propose targeted improvements.

@@ -58,12 +58,25 @@ function parseDescription(description: string): string[] {
     return lines;
 }
 
-export type LatexTemplateType = 'ats-simple' | 'modern-professional';
+export type LatexTemplateType = 'ats-simple' | 'modern' | 'classic';
+type LegacyLatexTemplateType = LatexTemplateType | 'modern-professional';
 
-export function generateLatexFromResume(data: ResumeData, template: LatexTemplateType = 'ats-simple'): string {
-    switch (template) {
-        case 'modern-professional':
+function normalizeTemplate(template: LegacyLatexTemplateType): LatexTemplateType {
+    if (template === 'modern-professional') {
+        return 'modern';
+    }
+
+    return template;
+}
+
+export function generateLatexFromResume(data: ResumeData, template: LegacyLatexTemplateType = 'ats-simple'): string {
+    const normalizedTemplate = normalizeTemplate(template);
+
+    switch (normalizedTemplate) {
+        case 'modern':
             return generateModernProfessionalTemplate(data);
+        case 'classic':
+            return generateATSSimpleTemplate(data);
         case 'ats-simple':
         default:
             return generateATSSimpleTemplate(data);
@@ -319,9 +332,14 @@ export const TEMPLATE_OPTIONS: { value: LatexTemplateType; label: string; descri
         description: 'Clean, ATS-friendly format with traditional layout' 
     },
     { 
-        value: 'modern-professional', 
-        label: 'Modern Professional', 
+        value: 'modern',
+        label: 'Modern Professional',
         description: 'Contemporary design with icons and accent colors' 
+    },
+    {
+        value: 'classic',
+        label: 'Classic',
+        description: 'Traditional single-column resume style focused on readability'
     }
 ];
 

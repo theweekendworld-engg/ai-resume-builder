@@ -66,6 +66,8 @@ export function LatexPreview({ code }: LatexPreviewProps) {
         };
     }, [code, compile]);
 
+    const previewSrc = pdfDataUrl ? `${pdfDataUrl}#view=FitH&zoom=page-width` : null;
+
     return (
         <div className="h-full w-full bg-white text-black overflow-hidden relative flex flex-col">
             {/* Header */}
@@ -108,9 +110,9 @@ export function LatexPreview({ code }: LatexPreviewProps) {
 
             {/* PDF Preview */}
             <div className="flex-1 overflow-auto bg-gray-100">
-                {pdfDataUrl ? (
+                {previewSrc ? (
                     <iframe
-                        src={pdfDataUrl}
+                        src={previewSrc}
                         className="w-full h-full border-0"
                         title="PDF Preview"
                     />

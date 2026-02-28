@@ -299,7 +299,7 @@ ${currentCode}`;
         const content = response.choices[0].message.content?.trim() || "";
         if (!content) return currentCode;
 
-        let clean = content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
+        const clean = content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
         return clean;
     } catch (error) {
         console.error("AI Latex Error:", error);
@@ -412,7 +412,47 @@ Output ONLY valid JSON, no markdown, no explanations.`;
         });
 
         const content = response.choices[0].message.content?.trim() || "{}";
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(content) as {
+            personalInfo?: {
+                fullName?: string;
+                title?: string;
+                email?: string;
+                phone?: string;
+                location?: string;
+                website?: string;
+                linkedin?: string;
+                github?: string;
+                summary?: string;
+            };
+            experience?: Array<{
+                id?: string;
+                company?: string;
+                role?: string;
+                startDate?: string;
+                endDate?: string;
+                current?: boolean;
+                location?: string;
+                description?: string;
+            }>;
+            projects?: Array<{
+                id?: string;
+                name?: string;
+                description?: string;
+                url?: string;
+                technologies?: string[];
+            }>;
+            education?: Array<{
+                id?: string;
+                institution?: string;
+                degree?: string;
+                fieldOfStudy?: string;
+                startDate?: string;
+                endDate?: string;
+                current?: boolean;
+            }>;
+            skills?: string[];
+            sectionOrder?: ResumeData['sectionOrder'];
+        };
         
         // Validate and ensure all required fields exist
         const result: ResumeData = {
@@ -427,7 +467,7 @@ Output ONLY valid JSON, no markdown, no explanations.`;
                 github: parsed.personalInfo?.github || "",
                 summary: parsed.personalInfo?.summary || "",
             },
-            experience: (parsed.experience || []).map((exp: any, i: number) => ({
+            experience: (parsed.experience || []).map((exp, i: number) => ({
                 id: exp.id || `exp-${i + 1}`,
                 company: exp.company || "",
                 role: exp.role || "",
@@ -437,14 +477,14 @@ Output ONLY valid JSON, no markdown, no explanations.`;
                 location: exp.location || "",
                 description: exp.description || "",
             })),
-            projects: (parsed.projects || []).map((proj: any, i: number) => ({
+            projects: (parsed.projects || []).map((proj, i: number) => ({
                 id: proj.id || `proj-${i + 1}`,
                 name: proj.name || "",
                 description: proj.description || "",
                 url: proj.url || "",
                 technologies: proj.technologies || [],
             })),
-            education: (parsed.education || []).map((edu: any, i: number) => ({
+            education: (parsed.education || []).map((edu, i: number) => ({
                 id: edu.id || `edu-${i + 1}`,
                 institution: edu.institution || "",
                 degree: edu.degree || "",
