@@ -34,6 +34,7 @@ const SmartGenerateOptionsSchema = z.object({
   maxProjects: z.number().int().min(1).max(6).optional(),
   focusAreas: z.array(z.string().max(100)).max(20).optional(),
   fallbackResumeData: ResumeDataSchema.optional(),
+  actorUserId: z.string().min(1).max(255).optional(),
 });
 
 const jdCache = new Map<string, z.infer<typeof ParsedJDSchema>>();
@@ -355,6 +356,7 @@ export async function generateSmartResume(
     maxProjects?: number;
     focusAreas?: string[];
     fallbackResumeData?: ResumeData;
+    actorUserId?: string;
   }
 ): Promise<SmartResumeResult> {
   const trimmedJobDescription = jobDescription?.trim();
@@ -365,10 +367,9 @@ export async function generateSmartResume(
   const parsedOptions = SmartGenerateOptionsSchema.parse(options ?? {});
   const fallback = parsedOptions.fallbackResumeData ?? structuredClone(initialResumeData);
 
-  const { userId } = await auth();
-  if (!userId) {
-    throw new Error('Not authenticated');
-  }
+  const resolvedUserId = parsedOptions.actorUserId?.trim();
+  const userId = resolvedUserId || (await auth()).userId;
+  if (!userId) throw new Error('Not authenticated');
 
   const parsedJD = await parseJobDescription(trimmedJobDescription);
   const jdSkills = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills, ...(parsedOptions.focusAreas ?? [])]);

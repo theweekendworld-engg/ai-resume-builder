@@ -192,3 +192,28 @@ model GenerationSession {
     @@index([userId, updatedAt])
     @@index([status, updatedAt])
 }
+
+model ChannelIdentity {
+    id         String   @id @default(cuid())
+    userId     String
+    channel    Channel
+    externalId String
+    verified   Boolean  @default(false)
+    createdAt  DateTime @default(now())
+
+    @@unique([channel, externalId])
+    @@index([userId])
+}
+
+model ChannelLinkToken {
+    id         String   @id @default(cuid())
+    userId     String
+    channel    Channel
+    token      String   @unique
+    expiresAt  DateTime
+    consumedAt DateTime?
+    createdAt  DateTime @default(now())
+
+    @@index([userId, channel, createdAt])
+    @@index([channel, token])
+}

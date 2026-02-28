@@ -28,8 +28,8 @@ Redesign the data model to separate static user data (profile, experience, educa
 - [x] **Phase 3:** Claim validator — verify every bullet maps to source data
 - [x] **Phase 3:** One-click generate UI — paste JD, get resume
 - [x] **Phase 4:** Clarification engine — gap detection, question generation, session state
-- [ ] **Phase 5:** Channel-agnostic generation API endpoint
-- [ ] **Phase 5:** Telegram bot — webhook, identity linking, conversational flow
+- [x] **Phase 5:** Channel-agnostic generation API endpoint
+- [x] **Phase 5:** Telegram bot — webhook, identity linking, conversational flow
 - [ ] **Phase 6:** Quality guardrails — auto ATS scoring, truth enforcement, user preferences
 - [ ] **Phase 7:** Admin dashboard — aggregated pipeline metrics, total/per-user token usage, cost tracking, billing data
 - [ ] **Phase 7:** API usage logging — log every OpenAI/embedding call with tokens, cost, latency, userId, sessionId
