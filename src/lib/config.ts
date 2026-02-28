@@ -1,14 +1,14 @@
 export const config = {
     openai: {
         apiKey: process.env.OPENAI_API_KEY as string,
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        model: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-4o-mini",
         models: {
             general: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-4o-mini",
-            jdParse: process.env.OPENAI_MODEL_JD_PARSE || process.env.OPENAI_MODEL || "gpt-4o-mini",
-            paraphrase: process.env.OPENAI_MODEL_PARAPHRASE || process.env.OPENAI_MODEL || "gpt-4o-mini",
-            atsScore: process.env.OPENAI_MODEL_ATS_SCORE || process.env.OPENAI_MODEL || "gpt-4o-mini",
-            assembly: process.env.OPENAI_MODEL_ASSEMBLY || process.env.OPENAI_MODEL || "gpt-4o-mini",
-            claimValidation: process.env.OPENAI_MODEL_CLAIM_VALIDATION || process.env.OPENAI_MODEL || "gpt-4o-mini",
+            jdParse: process.env.OPENAI_MODEL_JD_PARSE || "gpt-4o-mini",
+            paraphrase: process.env.OPENAI_MODEL_PARAPHRASE || "gpt-4o",
+            atsScore: process.env.OPENAI_MODEL_ATS_SCORE || "gpt-4o-mini",
+            assembly: process.env.OPENAI_MODEL_ASSEMBLY || "gpt-4o",
+            claimValidation: process.env.OPENAI_MODEL_CLAIM_VALIDATION || "gpt-4o-mini",
         },
     },
     app: {
