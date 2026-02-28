@@ -81,8 +81,11 @@ ${jobDescription}`;
         if (!userId) throw new Error('Not authenticated');
 
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.jdParse,
+            messages: [
+                { role: "system", content: "You extract high-signal hiring keywords from job descriptions with precision." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             operation: 'extract_keywords',
@@ -132,7 +135,7 @@ JOB DESCRIPTION:
 ${jobDescription}
 
 CURRENT RESUME:
-${JSON.stringify(resumeData, null, 2)}
+${JSON.stringify(resumeData)}
 
 ${kbBullets.length > 0 ? `CANDIDATE'S ACHIEVEMENT LIBRARY (use relevant bullets):
 ${kbBullets.join('\n')}` : ''}
@@ -166,8 +169,11 @@ Output ONLY valid JSON, no markdown.`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.assembly,
+            messages: [
+                { role: "system", content: "You are a resume optimization copilot. Improve relevance while preserving factual truth and structure constraints." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             operation: 'resume_assembly',

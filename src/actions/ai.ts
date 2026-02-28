@@ -35,8 +35,11 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.paraphrase,
+            messages: [
+                { role: "system", content: "You are an expert resume writing assistant. Preserve factual accuracy and never invent claims." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             operation: 'improve_text',
@@ -59,8 +62,11 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.jdParse,
+            messages: [
+                { role: "system", content: "You extract structured hiring keywords from job descriptions with high precision." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             operation: 'extract_keywords',
@@ -160,8 +166,11 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.atsScore,
+            messages: [
+                { role: "system", content: "You are an ATS simulator. Score resume relevance objectively and provide precise keyword gaps." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             sessionId: tracking?.sessionId,
@@ -226,9 +235,9 @@ JOB DESCRIPTION:
 ${jobDescription}
 
 EXISTING RESUME DATA:
-${JSON.stringify(existingData, null, 2)}
+${JSON.stringify(existingData)}
 
-${githubRepos?.length ? `GITHUB PROJECTS TO CONSIDER:\n${JSON.stringify(githubRepos, null, 2)}` : ''}
+${githubRepos?.length ? `GITHUB PROJECTS TO CONSIDER:\n${JSON.stringify(githubRepos)}` : ''}
 
 ${knowledgeBullets?.length ? `CANDIDATE'S ACHIEVEMENTS/BULLETS:\n${knowledgeBullets.join('\n')}` : ''}
 
@@ -254,8 +263,11 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
-            messages: [{ role: "user", content: prompt }],
+            model: config.openai.models.assembly,
+            messages: [
+                { role: "system", content: "You assemble ATS-friendly resumes using only provided factual data. Never fabricate achievements or metrics." },
+                { role: "user", content: prompt },
+            ],
         }, {
             userId,
             sessionId: tracking?.sessionId,
@@ -312,7 +324,7 @@ ${currentCode}`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
+            model: config.openai.models.general,
             messages: [{ role: "user", content: prompt }],
         }, {
             userId,
@@ -334,7 +346,7 @@ export async function resumeToLatex(resumeData: ResumeData): Promise<string> {
     const prompt = `Convert this resume data into a professional LaTeX resume document.
 
 RESUME DATA:
-${JSON.stringify(resumeData, null, 2)}
+${JSON.stringify(resumeData)}
 
 Generate a complete, compilable LaTeX document with:
 1. Clean professional formatting
@@ -349,7 +361,7 @@ Output ONLY the raw LaTeX code. No markdown, no explanations.`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
+            model: config.openai.models.general,
             messages: [{ role: "user", content: prompt }],
         }, {
             userId,
@@ -430,7 +442,7 @@ Output ONLY valid JSON, no markdown, no explanations.`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
+            model: config.openai.models.general,
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
         }, {
@@ -660,7 +672,7 @@ Output ONLY the improved content. No explanations.`;
 
     try {
         const response = await trackedChatCompletion({
-            model: config.openai.model,
+            model: config.openai.models.general,
             messages: [{ role: "user", content: prompt }],
         }, {
             userId,

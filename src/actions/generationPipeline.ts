@@ -3,7 +3,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { GenerationStatus, PipelineStep, Prisma, ResumeVersionSource } from '@prisma/client';
 import { compileLatex } from '@/actions/ai';
-import { generateSmartResumePipeline, type SmartPipelineStep } from '@/actions/generateResume';
+import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
 import { prisma } from '@/lib/prisma';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
@@ -326,6 +326,10 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       jobDescription: true,
       status: true,
       currentStep: true,
+      parsedJD: true,
+      matchedProjects: true,
+      matchedAchievements: true,
+      staticData: true,
       draftResume: true,
       resultResumeId: true,
       pdfUrl: true,
@@ -412,6 +416,17 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
     }
 
     let pipelineResult = null as Awaited<ReturnType<typeof generateSmartResumePipeline>> | null;
+    const artifactSeed: SmartResumeArtifactSeed = (
+      session.parsedJD
+      && session.matchedProjects
+      && session.matchedAchievements
+      && session.staticData
+    ) ? {
+      parsedJD: session.parsedJD,
+      matchedProjects: session.matchedProjects,
+      matchedAchievements: session.matchedAchievements,
+      staticData: session.staticData,
+    } as unknown as SmartResumeArtifactSeed : undefined;
     if (
       activeStep === PipelineStep.jd_parsing ||
       activeStep === PipelineStep.semantic_search ||
@@ -428,6 +443,12 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         templatePreference: options.templatePreference,
         actorUserId: options.userId,
         actorSessionId: session.id,
+        artifactSeed: activeStep === PipelineStep.paraphrasing
+          || activeStep === PipelineStep.resume_assembly
+          || activeStep === PipelineStep.claim_validation
+          || activeStep === PipelineStep.ats_scoring
+          ? artifactSeed
+          : undefined,
         onStepStart: async (step) => {
           activeStep = toPipelineStep(step);
           await prisma.generationSession.update({

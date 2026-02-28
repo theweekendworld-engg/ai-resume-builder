@@ -8,6 +8,7 @@ import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 const COLLECTION_NAME = 'knowledge_base';
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
 const EMBEDDING_SIZE = Number(process.env.OPENAI_EMBEDDING_SIZE || 1536);
+const PROJECT_README_EMBED_CHARS = 1200;
 
 const qdrantClient = new QdrantClient({
   url: process.env.QDRANT_URL || 'http://localhost:6333',
@@ -103,7 +104,7 @@ function buildProjectEmbeddingText(project: Pick<UserProject, 'name' | 'descript
     project.name,
     project.description,
     technologies.length > 0 ? `Technologies: ${technologies.join(', ')}` : '',
-    project.readme?.slice(0, 2000) || '',
+    project.readme?.slice(0, PROJECT_README_EMBED_CHARS) || '',
   ]
     .filter(Boolean)
     .join('. ')
@@ -196,7 +197,6 @@ export async function searchQdrantByUser(params: {
   type?: string;
   sessionId?: string;
 }) {
-  await ensureKnowledgeBaseCollection();
   const vector = await generateEmbedding({
     text: params.query,
     userId: params.userId,
@@ -207,6 +207,24 @@ export async function searchQdrantByUser(params: {
       type: params.type ?? 'all',
     },
   });
+
+  return searchQdrantByVector({
+    userId: params.userId,
+    vector,
+    limit: params.limit,
+    type: params.type,
+    sessionId: params.sessionId,
+  });
+}
+
+export async function searchQdrantByVector(params: {
+  userId: string;
+  vector: number[];
+  limit?: number;
+  type?: string;
+  sessionId?: string;
+}) {
+  await ensureKnowledgeBaseCollection();
 
   const must: Array<Record<string, unknown>> = [
     {
@@ -225,7 +243,7 @@ export async function searchQdrantByUser(params: {
   const start = Date.now();
   try {
     const result = await qdrantClient.search(COLLECTION_NAME, {
-      vector,
+      vector: params.vector,
       limit: params.limit ?? 5,
       filter: { must },
     });

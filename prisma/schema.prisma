@@ -303,3 +303,14 @@ model UserUsageSummary {
     @@unique([userId, periodStart])
     @@index([userId])
 }
+
+model ParsedJDCache {
+    id        String   @id @default(cuid())
+    jdHash    String   @unique
+    parsedJD  Json
+    createdAt DateTime @default(now())
+    expiresAt DateTime
+
+    @@index([jdHash])
+    @@index([expiresAt])
+}

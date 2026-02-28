@@ -1,11 +1,11 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { KnowledgeType, type KnowledgeItem, type UserProject } from '@prisma/client';
+import { KnowledgeType, type KnowledgeItem, type UserProject, type Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { calculateATSScore } from '@/actions/ai';
-import { searchQdrantByUser } from '@/actions/embed';
+import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
@@ -26,6 +26,7 @@ const ParsedJDSchema = z.object({
 const ParaphraseSchema = z.object({
   summary: z.string().default(''),
   experience: z.array(z.object({ id: z.string(), description: z.string().default('') })).default([]),
+  projects: z.array(z.object({ id: z.string(), description: z.string().default('') })).default([]),
   skills: z.array(z.string()).default([]),
 });
 
@@ -36,9 +37,52 @@ const SmartGenerateOptionsSchema = z.object({
   fallbackResumeData: ResumeDataSchema.optional(),
   actorUserId: z.string().min(1).max(255).optional(),
   actorSessionId: z.string().cuid().optional(),
+  artifactSeed: z.object({
+    parsedJD: ParsedJDSchema,
+    matchedProjects: z.array(z.object({ id: z.string(), score: z.number().default(0) })).default([]),
+    matchedAchievements: z.array(z.object({
+      id: z.string(),
+      score: z.number().default(0),
+      type: z.nativeEnum(KnowledgeType),
+    })).default([]),
+    staticData: z.object({
+      profile: z.object({
+        fullName: z.string().default(''),
+        email: z.string().default(''),
+        phone: z.string().default(''),
+        location: z.string().default(''),
+        website: z.string().default(''),
+        linkedin: z.string().default(''),
+        github: z.string().default(''),
+        defaultTitle: z.string().default(''),
+        defaultSummary: z.string().default(''),
+      }).nullable(),
+      experiences: z.array(z.object({
+        id: z.string(),
+        company: z.string().default(''),
+        role: z.string().default(''),
+        startDate: z.string().default(''),
+        endDate: z.string().default(''),
+        current: z.boolean().default(false),
+        location: z.string().default(''),
+        description: z.string().default(''),
+      })).default([]),
+      education: z.array(z.object({
+        id: z.string(),
+        institution: z.string().default(''),
+        degree: z.string().default(''),
+        fieldOfStudy: z.string().default(''),
+        startDate: z.string().default(''),
+        endDate: z.string().default(''),
+        current: z.boolean().default(false),
+      })).default([]),
+    }),
+  }).optional(),
 });
 
 const jdCache = new Map<string, z.infer<typeof ParsedJDSchema>>();
+const JD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PROJECT_README_CONTEXT_CHARS = 1200;
 
 type SourceMap = {
   projects: { id: string; score: number }[];
@@ -89,6 +133,8 @@ export type SmartResumePipelineResult = SmartResumeResult & {
   artifacts: SmartResumePipelineArtifacts;
 };
 
+export type SmartResumeArtifactSeed = z.infer<typeof SmartGenerateOptionsSchema>['artifactSeed'];
+
 export type SmartPipelineStep =
   | 'jd_parsing'
   | 'semantic_search'
@@ -97,6 +143,43 @@ export type SmartPipelineStep =
   | 'resume_assembly'
   | 'claim_validation'
   | 'ats_scoring';
+
+const BOILERPLATE_SECTIONS = [
+  /equal opportunity employer[\s\S]*$/i,
+  /benefits[\s\S]*$/i,
+  /how to apply[\s\S]*$/i,
+  /about (the )?company[\s\S]*$/i,
+];
+
+const URL_ONLY_PATTERN = /^https?:\/\/\S+$/i;
+
+function preprocessJobDescription(raw: string): { cleaned: string; searchText: string } {
+  let text = raw
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!text) {
+    throw new Error('Job description is required');
+  }
+
+  if (URL_ONLY_PATTERN.test(text)) {
+    throw new Error('Please paste the full job description text instead of a URL');
+  }
+
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (text.length < 100 || wordCount < 20) {
+    throw new Error('Job description is too short. Please provide at least 20 words of job details');
+  }
+
+  for (const pattern of BOILERPLATE_SECTIONS) {
+    text = text.replace(pattern, '').trim();
+  }
+
+  const searchText = text.slice(0, 15000);
+  return { cleaned: text, searchText };
+}
 
 function normalizeText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -120,11 +203,58 @@ function uniqueStrings(values: string[]): string[] {
 
 function getProjectText(project: Pick<UserProject, 'name' | 'description' | 'technologies' | 'readme'>): string {
   const technologies = Array.isArray(project.technologies) ? (project.technologies as string[]) : [];
-  return [project.name, project.description, technologies.join(' '), project.readme.slice(0, 1200)].join(' ').trim();
+  return [project.name, project.description, technologies.join(' '), project.readme.slice(0, PROJECT_README_CONTEXT_CHARS)].join(' ').trim();
 }
 
 function getKnowledgeText(item: Pick<KnowledgeItem, 'title' | 'content'>): string {
   return `${item.title} ${item.content}`.trim();
+}
+
+function toCompactJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function formatExperienceContext(experiences: ExperienceItem[], relevanceById: Map<string, number>): string {
+  return experiences.map((item) => {
+    const relevance = relevanceById.get(item.id) ?? 0;
+    return `[Experience:${item.id}] ${item.role} at ${item.company} (${item.startDate} - ${item.current ? 'Present' : item.endDate || 'N/A'}, ${item.location})
+Relevance:${relevance.toFixed(2)}
+${item.description}`;
+  }).join('\n\n');
+}
+
+function formatProjectContext(projects: ProjectItem[]): string {
+  return projects.map((item) => {
+    const tech = item.technologies.length > 0 ? item.technologies.join(', ') : 'N/A';
+    return `[Project:${item.id}] ${item.name}
+Tech:${tech}
+${item.description}`;
+  }).join('\n\n');
+}
+
+function formatKnowledgeContext(items: Pick<KnowledgeItem, 'title' | 'content'>[]): string {
+  return items.map((item) => `[Knowledge] ${item.title}: ${item.content}`).join('\n');
+}
+
+function buildFocusedSemanticQuery(parsedJD: z.infer<typeof ParsedJDSchema>, focusAreas: string[] = []): string {
+  const role = parsedJD.role.trim();
+  const company = parsedJD.company.trim();
+  const required = uniqueStrings([...parsedJD.requiredSkills, ...focusAreas]).join(', ');
+  const preferred = uniqueStrings(parsedJD.preferredSkills).join(', ');
+  const responsibilities = uniqueStrings(parsedJD.keyResponsibilities).slice(0, 6).join('. ');
+  const domain = parsedJD.industryDomain.trim();
+
+  return [
+    role ? `Role: ${role}` : '',
+    company ? `Company: ${company}` : '',
+    required ? `Required skills: ${required}` : '',
+    preferred ? `Preferred skills: ${preferred}` : '',
+    responsibilities ? `Key responsibilities: ${responsibilities}` : '',
+    domain ? `Domain: ${domain}` : '',
+  ]
+    .filter(Boolean)
+    .join('. ')
+    .slice(0, 4000);
 }
 
 function buildExperienceDescription(item: { description: string; highlights: unknown }): string {
@@ -171,6 +301,49 @@ function scoreKnowledge(params: {
   return (semantic * 0.75) + (skillCoverage * 0.15) + quantifiedBonus;
 }
 
+function scoreExperienceRelevance(params: {
+  item: ExperienceItem;
+  jdSkills: string[];
+  parsedJD: z.infer<typeof ParsedJDSchema>;
+}): number {
+  const text = normalizeText([
+    params.item.role,
+    params.item.company,
+    params.item.description,
+  ].join(' '));
+
+  const skillHits = params.jdSkills.filter((skill) => text.includes(normalizeText(skill))).length;
+  const skillCoverage = params.jdSkills.length > 0 ? Math.min(1, skillHits / params.jdSkills.length) : 0;
+  const roleSignal = params.parsedJD.role
+    ? (text.includes(normalizeText(params.parsedJD.role)) ? 1 : 0)
+    : 0;
+  const responsibilityHits = params.parsedJD.keyResponsibilities
+    .slice(0, 8)
+    .filter((entry) => text.includes(normalizeText(entry))).length;
+  const responsibilityCoverage = params.parsedJD.keyResponsibilities.length > 0
+    ? Math.min(1, responsibilityHits / Math.min(8, params.parsedJD.keyResponsibilities.length))
+    : 0;
+
+  return (skillCoverage * 0.55) + (roleSignal * 0.2) + (responsibilityCoverage * 0.25);
+}
+
+function parseYearsExperience(raw: string): number {
+  const match = raw.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', yearsExperience: number) {
+  const resolved = targetLength === 'auto'
+    ? (yearsExperience >= 5 ? '2-page' : '1-page')
+    : targetLength;
+
+  if (resolved === '1-page') {
+    return { maxExperiences: 3, maxProjects: 3, maxSkills: 15 };
+  }
+
+  return { maxExperiences: 5, maxProjects: 4, maxSkills: 20 };
+}
+
 async function parseJobDescription(params: {
   jobDescription: string;
   userId: string;
@@ -181,6 +354,18 @@ async function parseJobDescription(params: {
   const cached = jdCache.get(hash);
   if (cached) return cached;
 
+  const persisted = await prisma.parsedJDCache.findUnique({
+    where: { jdHash: hash },
+    select: { parsedJD: true, expiresAt: true },
+  });
+  if (persisted && persisted.expiresAt.getTime() > Date.now()) {
+    const parsed = ParsedJDSchema.safeParse(persisted.parsedJD);
+    if (parsed.success) {
+      jdCache.set(hash, parsed.data);
+      return parsed.data;
+    }
+  }
+
   const prompt = `Parse the job description into structured JSON.
 Return ONLY JSON with keys:
 role, company, requiredSkills, preferredSkills, experienceLevel, keyResponsibilities, industryDomain.
@@ -189,8 +374,14 @@ If missing, use empty strings/arrays.
 JOB DESCRIPTION:\n${jobDescription}`;
 
   const response = await trackedChatCompletion({
-    model: config.openai.model,
-    messages: [{ role: 'user', content: prompt }],
+    model: config.openai.models.jdParse,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a job description parser. Extract only explicit facts present in the JD and never invent missing details.',
+      },
+      { role: 'user', content: prompt },
+    ],
     response_format: { type: 'json_object' },
   }, {
     userId: params.userId,
@@ -204,6 +395,18 @@ JOB DESCRIPTION:\n${jobDescription}`;
     throw new Error(`Failed to parse JD: ${parsed.error}`);
   }
 
+  await prisma.parsedJDCache.upsert({
+    where: { jdHash: hash },
+    update: {
+      parsedJD: parsed.data as unknown as Prisma.InputJsonValue,
+      expiresAt: new Date(Date.now() + JD_CACHE_TTL_MS),
+    },
+    create: {
+      jdHash: hash,
+      parsedJD: parsed.data as unknown as Prisma.InputJsonValue,
+      expiresAt: new Date(Date.now() + JD_CACHE_TTL_MS),
+    },
+  });
   jdCache.set(hash, parsed.data);
   return parsed.data;
 }
@@ -355,16 +558,20 @@ function improveResumeForLowAts(params: {
 }
 
 async function paraphraseStaticData(params: {
-  jobDescription: string;
   parsedJD: z.infer<typeof ParsedJDSchema>;
+  targetContext: string;
   baseSummary: string;
   experiences: ExperienceItem[];
+  experienceRelevance: Map<string, number>;
   selectedProjects: ProjectItem[];
   selectedKnowledge: Pick<KnowledgeItem, 'title' | 'content'>[];
   tonePreference: 'formal' | 'conversational' | 'technical';
   userId: string;
   sessionId?: string;
 }): Promise<z.infer<typeof ParaphraseSchema>> {
+  const experienceContext = formatExperienceContext(params.experiences, params.experienceRelevance);
+  const projectContext = formatProjectContext(params.selectedProjects);
+  const knowledgeContext = formatKnowledgeContext(params.selectedKnowledge);
   const prompt = `You are tailoring resume content for a specific job.
 Rules:
 - Keep facts, metrics, companies, and dates truthful to source data.
@@ -373,28 +580,34 @@ Rules:
 - Tone preference: ${params.tonePreference}
 - Output ONLY JSON.
 
-Parsed JD:\n${JSON.stringify(params.parsedJD, null, 2)}
-
-Raw JD:\n${params.jobDescription}
+Target context: ${params.targetContext}
+Parsed JD: ${toCompactJson(params.parsedJD)}
 
 Current summary:\n${params.baseSummary}
 
-Experiences:\n${JSON.stringify(params.experiences, null, 2)}
+Experiences:\n${experienceContext}
 
-Selected projects:\n${JSON.stringify(params.selectedProjects, null, 2)}
+Selected projects:\n${projectContext}
 
-Selected achievements/knowledge:\n${JSON.stringify(params.selectedKnowledge, null, 2)}
+Selected achievements/knowledge:\n${knowledgeContext}
 
 Return JSON as:
 {
   "summary": "string",
   "experience": [{"id": "experience-id", "description": "rewritten bullet text"}],
+  "projects": [{"id": "project-id", "description": "rewritten project description"}],
   "skills": ["ordered", "skills", "for", "this", "JD"]
 }`;
 
   const response = await trackedChatCompletion({
-    model: config.openai.model,
-    messages: [{ role: 'user', content: prompt }],
+    model: config.openai.models.paraphrase,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert resume writer focused on ATS optimization. Preserve factual truth and never fabricate achievements or metrics.',
+      },
+      { role: 'user', content: prompt },
+    ],
     response_format: { type: 'json_object' },
   }, {
     userId: params.userId,
@@ -463,14 +676,13 @@ export async function generateSmartResumePipeline(
     fallbackResumeData?: ResumeData;
     actorUserId?: string;
     actorSessionId?: string;
+    artifactSeed?: z.infer<typeof SmartGenerateOptionsSchema>['artifactSeed'];
     onStepStart?: (step: SmartPipelineStep) => Promise<void> | void;
     onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
   }
 ): Promise<SmartResumePipelineResult> {
-  const trimmedJobDescription = jobDescription?.trim();
-  if (!trimmedJobDescription) {
-    throw new Error('Job description is required');
-  }
+  const preprocessed = preprocessJobDescription(jobDescription ?? '');
+  const trimmedJobDescription = preprocessed.cleaned;
 
   const onStepStart = options?.onStepStart;
   const onStepComplete = options?.onStepComplete;
@@ -482,20 +694,29 @@ export async function generateSmartResumePipeline(
   if (!userId) throw new Error('Not authenticated');
   const sessionId = parsedOptions.actorSessionId?.trim();
 
-  await onStepStart?.('jd_parsing');
-  const parsedJD = await parseJobDescription({
-    jobDescription: trimmedJobDescription,
-    userId,
-    sessionId,
-  });
-  await onStepComplete?.('jd_parsing', { parsedJD });
+  const seeded = parsedOptions.artifactSeed;
+  let parsedJD = seeded?.parsedJD ?? null;
+  if (!parsedJD) {
+    await onStepStart?.('jd_parsing');
+    parsedJD = await parseJobDescription({
+      jobDescription: preprocessed.searchText,
+      userId,
+      sessionId,
+    });
+    await onStepComplete?.('jd_parsing', { parsedJD });
+  }
+  if (!parsedJD) {
+    throw new Error('Failed to parse job description');
+  }
   const jdSkills = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills, ...(parsedOptions.focusAreas ?? [])]);
 
   const profileForPreferences = await prisma.userProfile.findUnique({
     where: { userId },
-    select: { preferences: true },
+    select: { preferences: true, yearsExperience: true },
   });
   const preferences = parseUserGenerationPreferences(profileForPreferences?.preferences);
+  const yearsExperience = parseYearsExperience(profileForPreferences?.yearsExperience ?? '');
+  const lengthConstraints = resolveLengthConstraints(preferences.targetLength, yearsExperience);
 
   const knowledgeTypes: KnowledgeType[] = [
     KnowledgeType.achievement,
@@ -508,38 +729,72 @@ export async function generateSmartResumePipeline(
     knowledgeTypes.push(KnowledgeType.oss_contribution);
   }
 
-  await onStepStart?.('semantic_search');
-  const [projectSearch, ...knowledgeSearches] = await Promise.all([
-    searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type: 'project', limit: 10 }),
-    ...knowledgeTypes.map((type) => searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type, limit: 4 })),
-  ]);
-
   const projectScores = new Map<string, number>();
   const projectIds: string[] = [];
-  for (const result of projectSearch) {
-    const payload = (result.payload ?? {}) as Record<string, unknown>;
-    const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
-    if (!sourceId || projectScores.has(sourceId)) continue;
-    projectScores.set(sourceId, Number(result.score ?? 0));
-    projectIds.push(sourceId);
-  }
-
   const knowledgeScores = new Map<string, number>();
   const knowledgeIds: string[] = [];
-  for (const batch of knowledgeSearches) {
-    for (const result of batch) {
+
+  if (seeded) {
+    for (const item of seeded.matchedProjects) {
+      if (!projectScores.has(item.id)) {
+        projectScores.set(item.id, item.score);
+        projectIds.push(item.id);
+      }
+    }
+    for (const item of seeded.matchedAchievements) {
+      if (!knowledgeScores.has(item.id)) {
+        knowledgeScores.set(item.id, item.score);
+        knowledgeIds.push(item.id);
+      }
+    }
+  } else {
+    await onStepStart?.('semantic_search');
+    const semanticQuery = buildFocusedSemanticQuery(parsedJD, parsedOptions.focusAreas ?? []);
+    const queryEmbedding = await generateEmbedding({
+      text: semanticQuery,
+      userId,
+      sessionId,
+      operation: 'embedding_generate',
+      metadata: {
+        reason: 'semantic_search_query',
+        type: 'all',
+      },
+    });
+
+    const [projectSearch, ...knowledgeSearches] = await Promise.all([
+      searchQdrantByVector({ userId, sessionId, vector: queryEmbedding, type: 'project', limit: 10 }),
+      ...knowledgeTypes.map((type) => searchQdrantByVector({ userId, sessionId, vector: queryEmbedding, type, limit: 4 })),
+    ]);
+
+    for (const result of projectSearch) {
       const payload = (result.payload ?? {}) as Record<string, unknown>;
       const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
-      if (!sourceId || knowledgeScores.has(sourceId)) continue;
-      knowledgeScores.set(sourceId, Number(result.score ?? 0));
-      knowledgeIds.push(sourceId);
+      if (!sourceId || projectScores.has(sourceId)) continue;
+      projectScores.set(sourceId, Number(result.score ?? 0));
+      projectIds.push(sourceId);
+    }
+
+    for (const batch of knowledgeSearches) {
+      for (const result of batch) {
+        const payload = (result.payload ?? {}) as Record<string, unknown>;
+        const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
+        if (!sourceId || knowledgeScores.has(sourceId)) continue;
+        knowledgeScores.set(sourceId, Number(result.score ?? 0));
+        knowledgeIds.push(sourceId);
+      }
     }
   }
 
   const [profile, experiencesRaw, educationRaw, projectsRaw, knowledgeRaw] = await Promise.all([
-    prisma.userProfile.findUnique({ where: { userId } }),
-    prisma.userExperience.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
-    prisma.userEducation.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
+    seeded?.staticData.profile
+      ? Promise.resolve(seeded.staticData.profile)
+      : prisma.userProfile.findUnique({ where: { userId } }),
+    seeded?.staticData.experiences
+      ? Promise.resolve(seeded.staticData.experiences)
+      : prisma.userExperience.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
+    seeded?.staticData.education
+      ? Promise.resolve(seeded.staticData.education)
+      : prisma.userEducation.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' } }),
     projectIds.length > 0
       ? prisma.userProject.findMany({ where: { userId, id: { in: projectIds } } })
       : Promise.resolve([]),
@@ -548,7 +803,10 @@ export async function generateSmartResumePipeline(
       : Promise.resolve([]),
   ]);
 
-  const projectLimit = parsedOptions.maxProjects ?? preferences.maxProjects;
+  const projectLimit = Math.min(
+    parsedOptions.maxProjects ?? preferences.maxProjects,
+    lengthConstraints.maxProjects
+  );
   const rankedProjects = projectsRaw
     .map((project) => ({
       project,
@@ -572,14 +830,16 @@ export async function generateSmartResumePipeline(
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
-  await onStepComplete?.('semantic_search', {
-    matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
-    matchedAchievements: rankedKnowledge.map((entry) => ({
-      id: entry.item.id,
-      score: Number(entry.score.toFixed(4)),
-      type: entry.item.type,
-    })),
-  });
+  if (!seeded) {
+    await onStepComplete?.('semantic_search', {
+      matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+      matchedAchievements: rankedKnowledge.map((entry) => ({
+        id: entry.item.id,
+        score: Number(entry.score.toFixed(4)),
+        type: entry.item.type,
+      })),
+    });
+  }
 
   const selectedProjects = rankedProjects.map((entry) => toResumeProject(entry.project));
 
@@ -591,8 +851,30 @@ export async function generateSmartResumePipeline(
     endDate: item.endDate,
     current: item.current,
     location: item.location,
-    description: buildExperienceDescription(item),
+    description: 'highlights' in item
+      ? buildExperienceDescription(item as { description: string; highlights: unknown })
+      : (item.description || '').trim(),
   }));
+  const rankedExperiences = sourceExperiences
+    .map((item) => ({
+      item,
+      score: scoreExperienceRelevance({ item, jdSkills, parsedJD }),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, lengthConstraints.maxExperiences);
+  const experienceRelevance = new Map(rankedExperiences.map((entry) => [entry.item.id, entry.score]));
+  const scopedExperiences = rankedExperiences.map((entry) => {
+    if (entry.score >= 0.25) return entry.item;
+    const topLines = entry.item.description
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 2);
+    return {
+      ...entry.item,
+      description: topLines.join('\n') || entry.item.description,
+    };
+  });
 
   const education = educationRaw.map((item) => ({
     id: item.id,
@@ -604,34 +886,39 @@ export async function generateSmartResumePipeline(
     current: item.current,
   }));
 
-  await onStepStart?.('static_data_load');
+  if (!seeded) {
+    await onStepStart?.('static_data_load');
+  }
   const baseSummary = profile?.defaultSummary || fallback.personalInfo.summary;
-  await onStepComplete?.('static_data_load', {
-    staticData: {
-      profile: profile
-        ? {
-          fullName: profile.fullName,
-          email: profile.email,
-          phone: profile.phone,
-          location: profile.location,
-          website: profile.website,
-          linkedin: profile.linkedin,
-          github: profile.github,
-          defaultTitle: profile.defaultTitle,
-          defaultSummary: profile.defaultSummary,
-        }
-        : null,
-      experiences: sourceExperiences,
-      education,
-    },
-  });
+  if (!seeded) {
+    await onStepComplete?.('static_data_load', {
+      staticData: {
+        profile: profile
+          ? {
+            fullName: profile.fullName,
+            email: profile.email,
+            phone: profile.phone,
+            location: profile.location,
+            website: profile.website,
+            linkedin: profile.linkedin,
+            github: profile.github,
+            defaultTitle: profile.defaultTitle,
+            defaultSummary: profile.defaultSummary,
+          }
+          : null,
+        experiences: sourceExperiences,
+        education,
+      },
+    });
+  }
 
   await onStepStart?.('paraphrasing');
   const paraphrased = await paraphraseStaticData({
-    jobDescription: trimmedJobDescription,
     parsedJD,
+    targetContext: `${parsedJD.role || 'Role'} @ ${parsedJD.company || 'Company'} ${parsedJD.industryDomain ? `| ${parsedJD.industryDomain}` : ''}`.trim(),
     baseSummary,
-    experiences: sourceExperiences,
+    experiences: scopedExperiences,
+    experienceRelevance,
     selectedProjects,
     selectedKnowledge: rankedKnowledge.map(({ item }) => ({ title: item.title, content: item.content })),
     tonePreference: preferences.tonePreference,
@@ -641,9 +928,14 @@ export async function generateSmartResumePipeline(
   await onStepComplete?.('paraphrasing', { paraphrasedContent: paraphrased });
 
   const paraphrasedMap = new Map(paraphrased.experience.map((entry) => [entry.id, entry.description]));
-  const finalExperiences = sourceExperiences.map((item) => ({
+  const paraphrasedProjectsMap = new Map(paraphrased.projects.map((entry) => [entry.id, entry.description]));
+  const finalExperiences = scopedExperiences.map((item) => ({
     ...item,
     description: paraphrasedMap.get(item.id)?.trim() || item.description,
+  }));
+  const finalProjects = selectedProjects.map((item) => ({
+    ...item,
+    description: paraphrasedProjectsMap.get(item.id)?.trim() || item.description,
   }));
 
   const sourceTextCorpus = [
@@ -672,7 +964,7 @@ export async function generateSmartResumePipeline(
     const normalized = normalizeText(skill);
     if (!normalized) return false;
     return normalizedCorpus.includes(normalized) || projectTechSkills.some((tech) => normalizeText(tech) === normalized);
-  }).slice(0, 20);
+  }).slice(0, lengthConstraints.maxSkills);
 
   await onStepStart?.('resume_assembly');
   const assembled = buildBaseResume({
@@ -692,7 +984,7 @@ export async function generateSmartResumePipeline(
       : null,
     experiences: finalExperiences,
     education,
-    projects: selectedProjects,
+    projects: finalProjects,
     skills: orderedSkills,
     jdRole: parsedJD.role,
     parsedSummary: paraphrased.summary,
@@ -732,15 +1024,11 @@ export async function generateSmartResumePipeline(
 
       const improvedValidation = validateClaims(improved, sourceTextCorpus);
       if (improvedValidation.coverageRate >= 0.5) {
-        const improvedAts = await calculateATSScore(improved, trimmedJobDescription, {
-          userId,
-          sessionId,
-          operation: 'ats_scoring',
-        });
-        if (improvedAts.overall >= atsPrimary.overall) {
+        const deterministicImprovedScore = computeAtsEstimate(improved, parsedJD);
+        if (deterministicImprovedScore >= atsPrimary.overall) {
           finalResume = improved;
           validation = improvedValidation;
-          atsEstimate = improvedAts.overall;
+          atsEstimate = deterministicImprovedScore;
         }
       }
     }
@@ -803,6 +1091,7 @@ export async function generateSmartResume(
     fallbackResumeData?: ResumeData;
     actorUserId?: string;
     actorSessionId?: string;
+    artifactSeed?: z.infer<typeof SmartGenerateOptionsSchema>['artifactSeed'];
   }
 ): Promise<SmartResumeResult> {
   const result = await generateSmartResumePipeline(jobDescription, options);
@@ -812,4 +1101,25 @@ export async function generateSmartResume(
     atsEstimate: result.atsEstimate,
     validation: result.validation,
   };
+}
+
+export async function generateSmartResumeFromArtifacts(params: {
+  jobDescription: string;
+  artifactSeed: SmartResumeArtifactSeed;
+  fallbackResumeData?: ResumeData;
+  focusAreas?: string[];
+  actorUserId?: string;
+  actorSessionId?: string;
+}): Promise<SmartResumeResult> {
+  if (!params.artifactSeed) {
+    throw new Error('artifactSeed is required for artifact-based generation');
+  }
+
+  return generateSmartResume(params.jobDescription, {
+    fallbackResumeData: params.fallbackResumeData,
+    focusAreas: params.focusAreas,
+    actorUserId: params.actorUserId,
+    actorSessionId: params.actorSessionId,
+    artifactSeed: params.artifactSeed,
+  });
 }

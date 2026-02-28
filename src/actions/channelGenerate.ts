@@ -3,7 +3,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { generateSmartResume } from '@/actions/generateResume';
+import { generateSmartResumePipeline } from '@/actions/generateResume';
 import { runGenerationSession } from '@/actions/generationPipeline';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
@@ -161,7 +161,7 @@ async function startNewSession(params: {
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
-  const smart = await generateSmartResume(params.message, {
+  const smart = await generateSmartResumePipeline(params.message, {
     fallbackResumeData: params.fallbackResumeData,
     actorUserId: params.userId,
   });
@@ -186,8 +186,10 @@ async function startNewSession(params: {
       userId: params.userId,
       channel: params.channel,
       jobDescription: params.message,
-      currentStep: PipelineStep.reuse_check,
       parsedJD: smart.sources.parsedJD as Prisma.InputJsonValue,
+      matchedProjects: smart.artifacts.matchedProjects as Prisma.InputJsonValue,
+      matchedAchievements: smart.artifacts.matchedAchievements as Prisma.InputJsonValue,
+      staticData: smart.artifacts.staticData as unknown as Prisma.InputJsonValue,
       matchedItems: {
         projects: smart.sources.projects,
         knowledgeItems: smart.sources.knowledgeItems,
@@ -197,6 +199,10 @@ async function startNewSession(params: {
         answers: {},
         gaps,
       } as Prisma.InputJsonValue,
+      draftResume: questions.length === 0 ? (smart.resume as unknown as Prisma.InputJsonValue) : undefined,
+      validationResult: questions.length === 0 ? (smart.validation as unknown as Prisma.InputJsonValue) : undefined,
+      atsScore: questions.length === 0 ? smart.atsEstimate : undefined,
+      currentStep: questions.length === 0 ? PipelineStep.pdf_generation : PipelineStep.reuse_check,
       status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.generating,
     },
     select: { id: true },
@@ -327,7 +333,7 @@ async function continueSession(params: {
     where: { id: session.id },
     data: {
       status: GenerationStatus.generating,
-      currentStep: PipelineStep.reuse_check,
+      currentStep: PipelineStep.paraphrasing,
       errorMessage: null,
       errorStep: null,
       jobDescription: enrichedJobDescription,

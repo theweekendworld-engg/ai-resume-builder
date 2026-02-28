@@ -50,6 +50,10 @@ export interface EducationItem {
     current: boolean;
 }
 
+export interface ResumeGenerationPreferences {
+    targetLength?: '1-page' | '2-page' | 'auto';
+}
+
 export const initialResumeData: ResumeData = {
     personalInfo: {
         fullName: "Alex Johnson",

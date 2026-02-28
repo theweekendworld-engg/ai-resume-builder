@@ -1,9 +1,9 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { GenerationStatus, Prisma } from '@prisma/client';
+import { GenerationStatus, KnowledgeType, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { generateSmartResume } from '@/actions/generateResume';
+import { generateSmartResumeFromArtifacts, generateSmartResumePipeline } from '@/actions/generateResume';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -126,7 +126,7 @@ export async function startClarificationSession(input: unknown): Promise<{
   if (!userId) return { success: false, error: 'Not authenticated' };
 
   try {
-    const smart = await generateSmartResume(parsed.data.jobDescription, {
+    const smart = await generateSmartResumePipeline(parsed.data.jobDescription, {
       fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
     });
 
@@ -155,6 +155,9 @@ export async function startClarificationSession(input: unknown): Promise<{
         userId,
         jobDescription: parsed.data.jobDescription,
         parsedJD: smart.sources.parsedJD as Prisma.InputJsonValue,
+        matchedProjects: smart.artifacts.matchedProjects as Prisma.InputJsonValue,
+        matchedAchievements: smart.artifacts.matchedAchievements as Prisma.InputJsonValue,
+        staticData: smart.artifacts.staticData as unknown as Prisma.InputJsonValue,
         matchedItems: {
           projects: smart.sources.projects,
           knowledgeItems: smart.sources.knowledgeItems,
@@ -211,6 +214,10 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
         id: true,
         jobDescription: true,
         clarifications: true,
+        parsedJD: true,
+        matchedProjects: true,
+        matchedAchievements: true,
+        staticData: true,
       },
     });
 
@@ -238,11 +245,80 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
     const clarificationContext = buildClarificationContext(mergedPayload);
     const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;
 
-    const smart = await generateSmartResume(enrichedJobDescription, {
-      fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
-      focusAreas: mergedPayload.gaps,
-      actorSessionId: session.id,
-    });
+    const parsedJDSchemaResult = z.object({
+      role: z.string().default(''),
+      company: z.string().default(''),
+      requiredSkills: z.array(z.string()).default([]),
+      preferredSkills: z.array(z.string()).default([]),
+      experienceLevel: z.string().default(''),
+      keyResponsibilities: z.array(z.string()).default([]),
+      industryDomain: z.string().default(''),
+    }).safeParse(session.parsedJD ?? {});
+    const matchedProjects = z.array(z.object({ id: z.string(), score: z.number().default(0) }))
+      .safeParse(session.matchedProjects ?? []);
+    const matchedAchievements = z.array(z.object({
+      id: z.string(),
+      score: z.number().default(0),
+      type: z.nativeEnum(KnowledgeType),
+    })).safeParse(session.matchedAchievements ?? []);
+    const staticData = z.object({
+      profile: z.object({
+        fullName: z.string().default(''),
+        email: z.string().default(''),
+        phone: z.string().default(''),
+        location: z.string().default(''),
+        website: z.string().default(''),
+        linkedin: z.string().default(''),
+        github: z.string().default(''),
+        defaultTitle: z.string().default(''),
+        defaultSummary: z.string().default(''),
+      }).nullable(),
+      experiences: z.array(z.object({
+        id: z.string(),
+        company: z.string().default(''),
+        role: z.string().default(''),
+        startDate: z.string().default(''),
+        endDate: z.string().default(''),
+        current: z.boolean().default(false),
+        location: z.string().default(''),
+        description: z.string().default(''),
+      })).default([]),
+      education: z.array(z.object({
+        id: z.string(),
+        institution: z.string().default(''),
+        degree: z.string().default(''),
+        fieldOfStudy: z.string().default(''),
+        startDate: z.string().default(''),
+        endDate: z.string().default(''),
+        current: z.boolean().default(false),
+      })).default([]),
+    }).safeParse(session.staticData ?? {});
+
+    const canReuseArtifacts = parsedJDSchemaResult.success && matchedProjects.success && matchedAchievements.success && staticData.success;
+    const smart = canReuseArtifacts
+      ? await generateSmartResumeFromArtifacts({
+        jobDescription: enrichedJobDescription,
+        fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
+        focusAreas: mergedPayload.gaps,
+        actorSessionId: session.id,
+        actorUserId: userId,
+        artifactSeed: {
+          parsedJD: parsedJDSchemaResult.data,
+          matchedProjects: matchedProjects.data,
+          matchedAchievements: matchedAchievements.data.map((item) => ({
+            id: item.id,
+            score: item.score,
+            type: item.type,
+          })),
+          staticData: staticData.data,
+        },
+      })
+      : await generateSmartResumePipeline(enrichedJobDescription, {
+        fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
+        focusAreas: mergedPayload.gaps,
+        actorSessionId: session.id,
+        actorUserId: userId,
+      });
 
     await prisma.generationSession.update({
       where: { id: session.id },
