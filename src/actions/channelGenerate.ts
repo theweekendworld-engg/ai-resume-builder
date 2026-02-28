@@ -1,9 +1,10 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { Channel, GenerationStatus, Prisma, ResumeVersionSource } from '@prisma/client';
+import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { generateSmartResume } from '@/actions/generateResume';
+import { runGenerationSession } from '@/actions/generationPipeline';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -39,6 +40,7 @@ export type ChannelGenerateResponse = {
   resume?: ResumeData;
   resumeId?: string;
   atsEstimate?: number;
+  pdfUrl?: string;
   error?: string;
 };
 
@@ -122,67 +124,6 @@ function getNextUnansweredQuestion(payload: ClarificationPayload): Clarification
   return payload.questions.find((question) => !payload.answers[question.id]?.trim());
 }
 
-function deriveResumeMetadata(resumeData: ResumeData, atsScore?: number) {
-  const targetRole = resumeData.personalInfo.title?.trim() || resumeData.experience[0]?.role?.trim() || null;
-  const targetCompany = resumeData.experience[0]?.company?.trim() || null;
-  const summaryRaw = resumeData.personalInfo.summary?.trim() || '';
-  const atsSummary = summaryRaw ? summaryRaw.slice(0, 180) : null;
-
-  return {
-    targetRole,
-    targetCompany,
-    atsScore: typeof atsScore === 'number' ? atsScore : null,
-    atsSummary,
-  };
-}
-
-async function saveGeneratedResumeForUser(params: {
-  userId: string;
-  resume: ResumeData;
-  atsEstimate?: number;
-}): Promise<string> {
-  const title = params.resume.personalInfo.fullName?.trim()
-    ? `${params.resume.personalInfo.fullName.trim()} Resume`
-    : 'Generated Resume';
-
-  const payload = params.resume as unknown as object;
-
-  const resume = await prisma.resume.create({
-    data: {
-      userId: params.userId,
-      title,
-      content: payload,
-    },
-    select: { id: true, title: true },
-  });
-
-  const version = await prisma.resumeVersion.create({
-    data: {
-      userId: params.userId,
-      resumeId: resume.id,
-      content: payload,
-      source: ResumeVersionSource.ai,
-    },
-    select: { id: true },
-  });
-
-  const metadata = deriveResumeMetadata(params.resume, params.atsEstimate);
-
-  await prisma.resume.update({
-    where: { id: resume.id },
-    data: {
-      currentVersionId: version.id,
-      targetRole: metadata.targetRole,
-      targetCompany: metadata.targetCompany,
-      atsScore: metadata.atsScore,
-      atsSummary: metadata.atsSummary,
-      updatedAt: new Date(),
-    },
-  });
-
-  return resume.id;
-}
-
 async function resolveUserId(params: {
   userId?: string;
   channel: Channel;
@@ -245,6 +186,7 @@ async function startNewSession(params: {
       userId: params.userId,
       channel: params.channel,
       jobDescription: params.message,
+      currentStep: PipelineStep.reuse_check,
       parsedJD: smart.sources.parsedJD as Prisma.InputJsonValue,
       matchedItems: {
         projects: smart.sources.projects,
@@ -255,7 +197,7 @@ async function startNewSession(params: {
         answers: {},
         gaps,
       } as Prisma.InputJsonValue,
-      status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.completed,
+      status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.generating,
     },
     select: { id: true },
   });
@@ -270,25 +212,29 @@ async function startNewSession(params: {
     };
   }
 
-  const resumeId = await saveGeneratedResumeForUser({
-    userId: params.userId,
-    resume: smart.resume,
-    atsEstimate: smart.atsEstimate,
-  });
+  try {
+    const result = await runGenerationSession({
+      sessionId: session.id,
+      userId: params.userId,
+      fallbackResumeData: params.fallbackResumeData,
+    });
 
-  await prisma.generationSession.update({
-    where: { id: session.id },
-    data: { resultResumeId: resumeId },
-  });
-
-  return {
-    success: true,
-    sessionId: session.id,
-    status: 'completed',
-    resume: smart.resume,
-    resumeId,
-    atsEstimate: smart.atsEstimate,
-  };
+    return {
+      success: true,
+      sessionId: session.id,
+      status: result.status,
+      resume: result.resume,
+      resumeId: result.resumeId,
+      atsEstimate: result.atsEstimate,
+      pdfUrl: result.pdfUrl,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      sessionId: session.id,
+      error: error instanceof Error ? error.message : 'Failed to generate resume',
+    };
+  }
 }
 
 async function continueSession(params: {
@@ -310,6 +256,9 @@ async function continueSession(params: {
       status: true,
       clarifications: true,
       resultResumeId: true,
+      draftResume: true,
+      atsScore: true,
+      pdfUrl: true,
     },
   });
 
@@ -318,22 +267,14 @@ async function continueSession(params: {
   }
 
   if (session.status === GenerationStatus.completed) {
-    if (!session.resultResumeId) {
-      return { success: true, sessionId: session.id, status: 'completed' };
-    }
-
-    const resume = await prisma.resume.findFirst({
-      where: { id: session.resultResumeId, userId: params.userId },
-      include: { currentVersion: true },
-    });
-
     return {
       success: true,
       sessionId: session.id,
       status: 'completed',
-      resumeId: session.resultResumeId,
-      resume: (resume?.currentVersion?.content ?? resume?.content ?? null) as ResumeData | null ?? undefined,
-      atsEstimate: resume?.atsScore ?? undefined,
+      resumeId: session.resultResumeId ?? undefined,
+      resume: (session.draftResume as ResumeData | null) ?? undefined,
+      atsEstimate: session.atsScore ?? undefined,
+      pdfUrl: session.pdfUrl ?? undefined,
     };
   }
 
@@ -379,56 +320,39 @@ async function continueSession(params: {
     };
   }
 
+  const clarificationContext = buildClarificationContext(mergedPayload);
+  const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;
+
   await prisma.generationSession.update({
     where: { id: session.id },
     data: {
       status: GenerationStatus.generating,
+      currentStep: PipelineStep.reuse_check,
+      errorMessage: null,
+      errorStep: null,
+      jobDescription: enrichedJobDescription,
       clarifications: mergedPayload as unknown as Prisma.InputJsonValue,
     },
   });
 
   try {
-    const clarificationContext = buildClarificationContext(mergedPayload);
-    const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;
-
-    const smart = await generateSmartResume(enrichedJobDescription, {
+    const result = await runGenerationSession({
+      sessionId: session.id,
+      userId: params.userId,
       fallbackResumeData: params.fallbackResumeData,
       focusAreas: mergedPayload.gaps,
-      actorUserId: params.userId,
-      actorSessionId: session.id,
-    });
-
-    const resumeId = await saveGeneratedResumeForUser({
-      userId: params.userId,
-      resume: smart.resume,
-      atsEstimate: smart.atsEstimate,
-    });
-
-    await prisma.generationSession.update({
-      where: { id: session.id },
-      data: {
-        status: GenerationStatus.completed,
-        resultResumeId: resumeId,
-        clarifications: mergedPayload as unknown as Prisma.InputJsonValue,
-      },
     });
 
     return {
       success: true,
       sessionId: session.id,
-      status: 'completed',
-      resume: smart.resume,
-      resumeId,
-      atsEstimate: smart.atsEstimate,
+      status: result.status,
+      resume: result.resume,
+      resumeId: result.resumeId,
+      atsEstimate: result.atsEstimate,
+      pdfUrl: result.pdfUrl,
     };
   } catch (error) {
-    await prisma.generationSession.update({
-      where: { id: session.id },
-      data: {
-        status: GenerationStatus.failed,
-      },
-    });
-
     return {
       success: false,
       sessionId: session.id,

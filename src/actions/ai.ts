@@ -531,12 +531,15 @@ Output ONLY valid JSON, no markdown, no explanations.`;
     }
 }
 
-export async function compileLatex(latexCode: string): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
+export async function compileLatex(
+    latexCode: string,
+    tracking?: { userId?: string; sessionId?: string }
+): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
     if (!latexCode) {
         return { success: false, error: "No LaTeX code provided" };
     }
 
-    const userId = await resolveTrackingUserId();
+    const userId = await resolveTrackingUserId(tracking?.userId);
     const start = Date.now();
     try {
         const response = await fetch('https://latex.ytotech.com/builds/sync', {
@@ -575,6 +578,7 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
 
             await logUsageEvent({
                 userId,
+                sessionId: tracking?.sessionId,
                 operation: 'latex_compile',
                 provider: 'latex_api',
                 model: 'pdflatex',
@@ -590,6 +594,7 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
 
         await logUsageEvent({
             userId,
+            sessionId: tracking?.sessionId,
             operation: 'latex_compile',
             provider: 'latex_api',
             model: 'pdflatex',
@@ -605,6 +610,7 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
         console.error('LaTeX compilation error:', error);
         await logUsageEvent({
             userId,
+            sessionId: tracking?.sessionId,
             operation: 'latex_compile',
             provider: 'latex_api',
             model: 'pdflatex',

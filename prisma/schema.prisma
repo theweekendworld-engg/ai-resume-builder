@@ -42,6 +42,20 @@ enum Channel {
     email
 }
 
+enum PipelineStep {
+    reuse_check
+    jd_parsing
+    semantic_search
+    static_data_load
+    awaiting_clarification
+    paraphrasing
+    resume_assembly
+    claim_validation
+    ats_scoring
+    pdf_generation
+    completed
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
@@ -180,17 +194,52 @@ model GenerationSession {
     userId         String
     jobTargetId    String?
     jobDescription String
+    channel        Channel          @default(web)
+    currentStep    PipelineStep     @default(reuse_check)
     parsedJD       Json?
     matchedItems   Json?
+    matchedProjects Json?
+    matchedAchievements Json?
+    staticData     Json?
+    paraphrasedContent Json?
+    draftResume    Json?
+    validationResult Json?
+    atsScore       Int?
+    pdfBlobKey     String?
+    pdfUrl         String?
     clarifications Json?
     status         GenerationStatus @default(pending)
     resultResumeId String?
-    channel        Channel          @default(web)
+    errorMessage   String?
+    errorStep      PipelineStep?
+    startedAt      DateTime         @default(now())
+    completedAt    DateTime?
+    totalLatencyMs Int?
+    totalTokensUsed Int?
+    totalCostUsd   Float?
     createdAt      DateTime         @default(now())
     updatedAt      DateTime         @updatedAt
 
     @@index([userId, updatedAt])
     @@index([status, updatedAt])
+    @@index([status])
+}
+
+model GeneratedPdf {
+    id            String   @id @default(cuid())
+    userId        String
+    resumeId      String
+    sessionId     String?
+    blobKey       String
+    blobUrl       String
+    fileSizeBytes Int
+    template      String   @default("ats-simple")
+    createdAt     DateTime @default(now())
+    expiresAt     DateTime?
+
+    @@index([userId, createdAt])
+    @@index([resumeId])
+    @@index([sessionId])
 }
 
 model ChannelIdentity {

@@ -61,6 +61,43 @@ type SmartResumeResult = {
   validation: ClaimValidation;
 };
 
+type SmartResumePipelineArtifacts = {
+  parsedJD: z.infer<typeof ParsedJDSchema>;
+  matchedProjects: Array<{ id: string; score: number }>;
+  matchedAchievements: Array<{ id: string; score: number; type: KnowledgeType }>;
+  staticData: {
+    profile: {
+      fullName: string;
+      email: string;
+      phone: string;
+      location: string;
+      website: string;
+      linkedin: string;
+      github: string;
+      defaultTitle: string;
+      defaultSummary: string;
+    } | null;
+    experiences: ExperienceItem[];
+    education: ResumeData['education'];
+  };
+  paraphrasedContent: z.infer<typeof ParaphraseSchema>;
+  draftResume: ResumeData;
+  validationResult: ClaimValidation;
+};
+
+export type SmartResumePipelineResult = SmartResumeResult & {
+  artifacts: SmartResumePipelineArtifacts;
+};
+
+export type SmartPipelineStep =
+  | 'jd_parsing'
+  | 'semantic_search'
+  | 'static_data_load'
+  | 'paraphrasing'
+  | 'resume_assembly'
+  | 'claim_validation'
+  | 'ats_scoring';
+
 function normalizeText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -417,7 +454,7 @@ function buildBaseResume(params: {
   };
 }
 
-export async function generateSmartResume(
+export async function generateSmartResumePipeline(
   jobDescription: string,
   options?: {
     templatePreference?: 'ats-simple' | 'modern' | 'classic';
@@ -426,13 +463,17 @@ export async function generateSmartResume(
     fallbackResumeData?: ResumeData;
     actorUserId?: string;
     actorSessionId?: string;
+    onStepStart?: (step: SmartPipelineStep) => Promise<void> | void;
+    onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
   }
-): Promise<SmartResumeResult> {
+): Promise<SmartResumePipelineResult> {
   const trimmedJobDescription = jobDescription?.trim();
   if (!trimmedJobDescription) {
     throw new Error('Job description is required');
   }
 
+  const onStepStart = options?.onStepStart;
+  const onStepComplete = options?.onStepComplete;
   const parsedOptions = SmartGenerateOptionsSchema.parse(options ?? {});
   const fallback = parsedOptions.fallbackResumeData ?? structuredClone(initialResumeData);
 
@@ -441,11 +482,13 @@ export async function generateSmartResume(
   if (!userId) throw new Error('Not authenticated');
   const sessionId = parsedOptions.actorSessionId?.trim();
 
+  await onStepStart?.('jd_parsing');
   const parsedJD = await parseJobDescription({
     jobDescription: trimmedJobDescription,
     userId,
     sessionId,
   });
+  await onStepComplete?.('jd_parsing', { parsedJD });
   const jdSkills = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills, ...(parsedOptions.focusAreas ?? [])]);
 
   const profileForPreferences = await prisma.userProfile.findUnique({
@@ -465,6 +508,7 @@ export async function generateSmartResume(
     knowledgeTypes.push(KnowledgeType.oss_contribution);
   }
 
+  await onStepStart?.('semantic_search');
   const [projectSearch, ...knowledgeSearches] = await Promise.all([
     searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type: 'project', limit: 10 }),
     ...knowledgeTypes.map((type) => searchQdrantByUser({ userId, sessionId, query: trimmedJobDescription, type, limit: 4 })),
@@ -528,6 +572,14 @@ export async function generateSmartResume(
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
+  await onStepComplete?.('semantic_search', {
+    matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+    matchedAchievements: rankedKnowledge.map((entry) => ({
+      id: entry.item.id,
+      score: Number(entry.score.toFixed(4)),
+      type: entry.item.type,
+    })),
+  });
 
   const selectedProjects = rankedProjects.map((entry) => toResumeProject(entry.project));
 
@@ -552,8 +604,29 @@ export async function generateSmartResume(
     current: item.current,
   }));
 
+  await onStepStart?.('static_data_load');
   const baseSummary = profile?.defaultSummary || fallback.personalInfo.summary;
+  await onStepComplete?.('static_data_load', {
+    staticData: {
+      profile: profile
+        ? {
+          fullName: profile.fullName,
+          email: profile.email,
+          phone: profile.phone,
+          location: profile.location,
+          website: profile.website,
+          linkedin: profile.linkedin,
+          github: profile.github,
+          defaultTitle: profile.defaultTitle,
+          defaultSummary: profile.defaultSummary,
+        }
+        : null,
+      experiences: sourceExperiences,
+      education,
+    },
+  });
 
+  await onStepStart?.('paraphrasing');
   const paraphrased = await paraphraseStaticData({
     jobDescription: trimmedJobDescription,
     parsedJD,
@@ -565,6 +638,7 @@ export async function generateSmartResume(
     userId,
     sessionId,
   });
+  await onStepComplete?.('paraphrasing', { paraphrasedContent: paraphrased });
 
   const paraphrasedMap = new Map(paraphrased.experience.map((entry) => [entry.id, entry.description]));
   const finalExperiences = sourceExperiences.map((item) => ({
@@ -600,6 +674,7 @@ export async function generateSmartResume(
     return normalizedCorpus.includes(normalized) || projectTechSkills.some((tech) => normalizeText(tech) === normalized);
   }).slice(0, 20);
 
+  await onStepStart?.('resume_assembly');
   const assembled = buildBaseResume({
     fallback,
     profile: profile
@@ -623,7 +698,9 @@ export async function generateSmartResume(
     parsedSummary: paraphrased.summary,
     sectionOrder: preferences.defaultSectionOrder,
   });
+  await onStepComplete?.('resume_assembly', { draftResume: assembled });
 
+  await onStepStart?.('claim_validation');
   const validationBeforeSanitize = validateClaims(assembled, sourceTextCorpus);
   const sanitizedResume = sanitizeUnsupportedClaims(assembled, validationBeforeSanitize.unsupportedClaims);
   let validation = validateClaims(sanitizedResume, sourceTextCorpus);
@@ -631,7 +708,9 @@ export async function generateSmartResume(
   if (validation.coverageRate < 0.5) {
     throw new Error('Truth enforcement rejected generation: less than 50% of claims are traceable to source data');
   }
+  await onStepComplete?.('claim_validation', { validationResult: validation, draftResume: sanitizedResume });
 
+  await onStepStart?.('ats_scoring');
   let finalResume = sanitizedResume;
   let atsEstimate = computeAtsEstimate(sanitizedResume, parsedJD);
 
@@ -668,6 +747,11 @@ export async function generateSmartResume(
   } catch {
     // Fall back to deterministic ATS estimate if AI ATS scoring fails.
   }
+  await onStepComplete?.('ats_scoring', {
+    atsScore: atsEstimate,
+    validationResult: validation,
+    draftResume: finalResume,
+  });
 
   return {
     resume: finalResume,
@@ -678,5 +762,54 @@ export async function generateSmartResume(
     },
     atsEstimate,
     validation,
+    artifacts: {
+      parsedJD,
+      matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+      matchedAchievements: rankedKnowledge.map((entry) => ({
+        id: entry.item.id,
+        score: Number(entry.score.toFixed(4)),
+        type: entry.item.type,
+      })),
+      staticData: {
+        profile: profile
+          ? {
+            fullName: profile.fullName,
+            email: profile.email,
+            phone: profile.phone,
+            location: profile.location,
+            website: profile.website,
+            linkedin: profile.linkedin,
+            github: profile.github,
+            defaultTitle: profile.defaultTitle,
+            defaultSummary: profile.defaultSummary,
+          }
+          : null,
+        experiences: sourceExperiences,
+        education,
+      },
+      paraphrasedContent: paraphrased,
+      draftResume: assembled,
+      validationResult: validation,
+    },
+  };
+}
+
+export async function generateSmartResume(
+  jobDescription: string,
+  options?: {
+    templatePreference?: 'ats-simple' | 'modern' | 'classic';
+    maxProjects?: number;
+    focusAreas?: string[];
+    fallbackResumeData?: ResumeData;
+    actorUserId?: string;
+    actorSessionId?: string;
+  }
+): Promise<SmartResumeResult> {
+  const result = await generateSmartResumePipeline(jobDescription, options);
+  return {
+    resume: result.resume,
+    sources: result.sources,
+    atsEstimate: result.atsEstimate,
+    validation: result.validation,
   };
 }

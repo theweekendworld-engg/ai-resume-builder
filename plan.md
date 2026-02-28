@@ -34,9 +34,9 @@ Redesign the data model to separate static user data (profile, experience, educa
 - [x] **Phase 7:** Admin dashboard with proper nextjs authentication only admin allowed to see it — aggregated pipeline metrics, total/per-user token usage, cost tracking, billing data
 - [x] **Phase 7:** API usage logging — log every OpenAI/embedding call with tokens, cost, latency, userId, sessionId
 - [x] **Phase 7:** Per-user usage limits and billing-ready usage summaries
-- [ ] **Phase 8:** Pipeline state persistence — checkpoint every step of generation so failures can resume
-- [ ] **Phase 8:** PDF blob storage — store all generated PDFs (S3/R2/Vercel Blob) (keep a feature-flag for local or production, locally it can be file based pdf keeping for testing) to avoid costly re-generation
-- [ ] **Phase 8:** Smart resume reuse — before generating, check if an existing resume already scores high for this JD/role, carefull with feature-flag based fetching
+- [x] **Phase 8:** Pipeline state persistence — checkpoint every step of generation so failures can resume
+- [x] **Phase 8:** PDF blob storage — store all generated PDFs (S3/R2/Vercel Blob) (keep a feature-flag for local or production, locally it can be file based pdf keeping for testing) to avoid costly re-generation
+- [x] **Phase 8:** Smart resume reuse — before generating, check if an existing resume already scores high for this JD/role, carefull with feature-flag based fetching
 
 ---
 
