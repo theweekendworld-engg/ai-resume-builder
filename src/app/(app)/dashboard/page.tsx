@@ -29,6 +29,7 @@ export default async function DashboardPage() {
     githubUrl: p.githubUrl,
     technologies: p.technologies,
     source: p.source as 'github' | 'manual',
+    embedded: p.embedded,
     updatedAt: p.updatedAt,
   }));
 

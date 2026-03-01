@@ -127,6 +127,76 @@ export const ScoredRepoSchema = z.object({
     relevanceReason: z.string(),
 });
 
+const ParsedResumeKnowledgeType = z.enum([
+    'achievement', 'oss_contribution', 'certification', 'award', 'publication', 'custom',
+]);
+
+export const ParsedResumePersonalInfoSchema = z.object({
+    fullName: z.string().default(''),
+    email: z.string().default(''),
+    phone: z.string().default(''),
+    location: z.string().default(''),
+    linkedin: z.string().default(''),
+    github: z.string().default(''),
+    website: z.string().default(''),
+    summary: z.string().default(''),
+    title: z.string().default(''),
+});
+
+export const ParsedResumeExperienceSchema = z.object({
+    company: z.string().default(''),
+    role: z.string().default(''),
+    startDate: z.string().default(''),
+    endDate: z.string().default(''),
+    current: z.boolean().default(false),
+    location: z.string().default(''),
+    description: z.string().default(''),
+    highlights: z.array(z.string()).default([]),
+});
+
+export const ParsedResumeEducationSchema = z.object({
+    institution: z.string().default(''),
+    degree: z.string().default(''),
+    fieldOfStudy: z.string().default(''),
+    startDate: z.string().default(''),
+    endDate: z.string().default(''),
+    current: z.boolean().default(false),
+});
+
+export const ParsedResumeProjectSchema = z.object({
+    name: z.string().default(''),
+    description: z.string().default(''),
+    githubUrl: z.string().optional(),
+    liveUrl: z.string().optional(),
+    technologies: z.array(z.string()).default([]),
+});
+
+export const ParsedResumeAchievementSchema = z.object({
+    title: z.string().default(''),
+    description: z.string().default(''),
+    type: ParsedResumeKnowledgeType.default('achievement'),
+});
+
+export const ParsedResumeSchema = z.object({
+    personalInfo: ParsedResumePersonalInfoSchema,
+    experiences: z.array(ParsedResumeExperienceSchema).default([]),
+    education: z.array(ParsedResumeEducationSchema).default([]),
+    projects: z.array(ParsedResumeProjectSchema).default([]),
+    achievements: z.array(ParsedResumeAchievementSchema).default([]),
+    skills: z.array(z.string()).default([]),
+});
+
+export const RESUME_PARSE_PROMPT = `You are a resume parser. Extract structured data from the resume text below.
+Return a single JSON object with exactly these keys:
+- personalInfo: { fullName, email, phone, location, linkedin, github, website, summary, title }
+- experiences: array of { company, role, startDate, endDate, current (boolean), location, description, highlights (array of bullet strings) }
+- education: array of { institution, degree, fieldOfStudy, startDate, endDate, current (boolean) }
+- projects: array of { name, description, githubUrl (if GitHub link present), liveUrl (if demo/live link present), technologies (array) }
+- achievements: array of { title, description, type } where type is one of: achievement, oss_contribution, certification, award, publication, custom
+- skills: array of skill strings
+
+Use empty string or empty array for missing values. Extract URLs from text (e.g. github.com/..., https://...) for githubUrl and liveUrl.`;
+
 // Type exports
 export type ATSScoreType = z.infer<typeof ATSScoreSchema>;
 export type ResumeDataType = z.infer<typeof ResumeDataSchema>;
@@ -134,6 +204,7 @@ export type KeywordsResponseType = z.infer<typeof KeywordsResponseSchema>;
 export type SectionDiffType = z.infer<typeof SectionDiffSchema>;
 export type ProposedResumePatchType = z.infer<typeof ProposedResumePatchSchema>;
 export type ScoredRepoType = z.infer<typeof ScoredRepoSchema>;
+export type ParsedResumeData = z.infer<typeof ParsedResumeSchema>;
 
 /**
  * Safely parse JSON from AI response with validation.

@@ -126,20 +126,40 @@ export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationSta
   };
 }
 
+function extractReadmeSummary(readme: string): string {
+  const withoutCode = readme
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`\n]+`/g, '');
+
+  const lines = withoutCode
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => {
+      if (!line || line.length < 10) return false;
+      if (line.startsWith('#')) return false;
+      if (line.startsWith('[![') || line.startsWith('![') || line.startsWith('[!')) return false;
+      if (line.startsWith('|') || line.startsWith('---') || line.startsWith('===')) return false;
+      if (line.startsWith('<!--') || line.startsWith('-->')) return false;
+      if (line.match(/^\[!\[/)) return false;
+      if (line.match(/^https?:\/\/\S+$/)) return false;
+      return true;
+    });
+
+  return lines.slice(0, 6).join(' ').slice(0, 600);
+}
+
 function deriveDescription(repoName: string, repoDescription?: string, readme?: string) {
-  if (readme) {
-    const text = readme
-      .replace(/^#\s+/gm, '')
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 5)
-      .join(' ')
-      .slice(0, 600);
-    if (text) return text;
+  const readmeSummary = readme ? extractReadmeSummary(readme) : '';
+
+  if (repoDescription && repoDescription.length > 15) {
+    return readmeSummary
+      ? `${repoDescription}. ${readmeSummary}`.slice(0, 600)
+      : repoDescription.slice(0, 600);
   }
 
-  return (repoDescription || `${repoName} project imported from GitHub`).slice(0, 600);
+  if (readmeSummary) return readmeSummary;
+
+  return `${repoName} project imported from GitHub`.slice(0, 600);
 }
 
 function uniqueTech(...values: string[][]) {

@@ -1,4 +1,5 @@
 import { LatexTemplateType } from '@/templates/latex';
+import type { ParsedResumeData } from '@/lib/aiSchemas';
 
 export interface OnboardingState {
   fullName: string;
@@ -6,4 +7,5 @@ export interface OnboardingState {
   phone: string;
   linkedin: string;
   template: LatexTemplateType;
+  parsedResume?: ParsedResumeData;
 }

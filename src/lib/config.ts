@@ -9,6 +9,7 @@ export const config = {
             atsScore: process.env.OPENAI_MODEL_ATS_SCORE || "gpt-4o-mini",
             assembly: process.env.OPENAI_MODEL_ASSEMBLY || "gpt-4o",
             claimValidation: process.env.OPENAI_MODEL_CLAIM_VALIDATION || "gpt-4o-mini",
+            resumeParse: process.env.OPENAI_MODEL_RESUME_PARSE || "gpt-4o-mini",
         },
     },
     app: {

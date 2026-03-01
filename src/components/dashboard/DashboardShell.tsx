@@ -66,6 +66,7 @@ export type DashboardShellProps = {
     githubUrl: string | null;
     technologies: string[];
     source: 'github' | 'manual';
+    embedded: boolean;
     updatedAt: Date;
   }>;
   isAdmin: boolean;

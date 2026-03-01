@@ -16,6 +16,7 @@ enum ResumeVersionSource {
 enum ProjectSource {
     github
     manual
+    pdf_resume
 }
 
 enum KnowledgeType {

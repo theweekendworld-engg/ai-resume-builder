@@ -25,6 +25,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ProjectLibraryPanel } from '@/components/dashboard/ProjectLibraryPanel';
+import { ResumeUploadZone } from '@/components/resume-import/ResumeUploadZone';
+import { ImportPreviewDialog } from '@/components/resume-import/ImportPreviewDialog';
+import type { ParsedResumeData } from '@/lib/aiSchemas';
 import { toast } from 'sonner';
 
 type ProjectItem = {
@@ -35,6 +38,7 @@ type ProjectItem = {
   githubUrl: string | null;
   technologies: string[];
   source: 'github' | 'manual';
+  embedded: boolean;
   updatedAt: Date;
 };
 
@@ -196,9 +200,18 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
     });
   };
 
+  const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+
+  const handleParsed = (data: ParsedResumeData) => {
+    setParsedData(data);
+    setShowImportPreview(true);
+  };
+
   const projectItems: ProjectItem[] = projects.map((p) => ({
     ...p,
     source: p.source as 'github' | 'manual',
+    embedded: p.embedded ?? false,
     technologies: (Array.isArray(p.technologies) ? p.technologies : []) as string[],
   }));
 
@@ -215,6 +228,7 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
           <TabsTrigger value="experience">Experience</TabsTrigger>
           <TabsTrigger value="education">Education</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
+          <TabsTrigger value="import">Import Resume</TabsTrigger>
           <TabsTrigger value="preferences">Preferences</TabsTrigger>
         </TabsList>
 
@@ -252,6 +266,21 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
 
         <TabsContent value="projects" className="mt-4">
           <ProjectLibraryPanel projects={projectItems} />
+        </TabsContent>
+
+        <TabsContent value="import" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Import from resume</CardTitle>
+              <CardDescription>
+                Upload your existing PDF resume to automatically populate your profile, experience,
+                education, projects, and achievements.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResumeUploadZone onParsed={handleParsed} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="preferences" className="mt-4">
@@ -312,6 +341,18 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {parsedData && (
+        <ImportPreviewDialog
+          data={parsedData}
+          open={showImportPreview}
+          onClose={() => setShowImportPreview(false)}
+          onImported={() => {
+            setShowImportPreview(false);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
