@@ -30,6 +30,7 @@ import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { GitHubImportPanel } from '@/components/editor/tools/GitHubImportPanel';
 import { KnowledgePanel } from '@/components/editor/tools/KnowledgePanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
+import { initialResumeData } from '@/types/resume';
 
 interface EditorLayoutProps {
   resumeId: string;
@@ -112,6 +113,11 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         if (resumeResult.data) {
           setResumeData(resumeResult.data);
           const generated = generateLatexFromResume(resumeResult.data, selectedTemplate);
+          setLatexCode(generated);
+        } else {
+          const emptyDraft = structuredClone(initialResumeData);
+          setResumeData(emptyDraft);
+          const generated = generateLatexFromResume(emptyDraft, selectedTemplate);
           setLatexCode(generated);
         }
 

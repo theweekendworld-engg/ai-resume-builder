@@ -59,7 +59,17 @@ export function ResumeCard({ resume }: ResumeCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="line-clamp-1 text-base font-semibold">{resume.title || 'Untitled Resume'}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Updated {new Date(resume.updatedAt).toLocaleString()}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Updated{' '}
+            {new Date(resume.updatedAt).toLocaleString('en-US', {
+              year: 'numeric',
+              month: 'numeric',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            })}
+          </p>
           {(resume.targetRole || resume.targetCompany) && (
             <p className="mt-2 text-sm text-foreground">
               {resume.targetRole ?? 'Role'}{resume.targetCompany ? ` @ ${resume.targetCompany}` : ''}

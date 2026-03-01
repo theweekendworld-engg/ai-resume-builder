@@ -1,14 +1,16 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { generateInitialResume } from '@/actions/generate';
+import { getUserProfile } from '@/actions/profile';
 import { Button } from '@/components/ui/button';
 import { StepBackground } from '@/components/onboarding/StepBackground';
 import { StepTemplate } from '@/components/onboarding/StepTemplate';
 import { StepGenerate } from '@/components/onboarding/StepGenerate';
 import { OnboardingState } from '@/components/onboarding/types';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 
 const steps = ['Background', 'Template', 'Generate'] as const;
 
@@ -26,6 +28,29 @@ export function OnboardingWizard() {
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const result = await getUserProfile();
+      if (!result.success || !result.profile || cancelled) return;
+
+      const preferences = parseUserGenerationPreferences(result.profile.preferences);
+      setState((prev) => ({
+        ...prev,
+        fullName: prev.fullName || result.profile?.fullName || '',
+        email: prev.email || result.profile?.email || '',
+        phone: prev.phone || result.profile?.phone || '',
+        linkedin: prev.linkedin || result.profile?.linkedin || '',
+        template: prev.template === initialState.template ? preferences.defaultTemplate : prev.template,
+      }));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isLastDataStep = step === 1;
 

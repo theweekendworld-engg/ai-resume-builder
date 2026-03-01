@@ -25,7 +25,7 @@ export const ATSScoreSchema = z.object({
  * Zod schema for PersonalInfo
  */
 export const PersonalInfoSchema = z.object({
-    fullName: z.string().min(1),
+    fullName: z.string().default(''),
     title: z.string().default(''),
     email: z.string().email().or(z.string().default('')),
     phone: z.string().default(''),
@@ -41,8 +41,8 @@ export const PersonalInfoSchema = z.object({
  */
 export const ExperienceItemSchema = z.object({
     id: z.string(),
-    company: z.string().min(1),
-    role: z.string().min(1),
+    company: z.string().default(''),
+    role: z.string().default(''),
     startDate: z.string().default(''),
     endDate: z.string().default(''),
     current: z.boolean().default(false),
@@ -55,7 +55,7 @@ export const ExperienceItemSchema = z.object({
  */
 export const ProjectItemSchema = z.object({
     id: z.string(),
-    name: z.string().min(1),
+    name: z.string().default(''),
     description: z.string().default(''),
     url: z.string().default(''),
     technologies: z.array(z.string()).default([]),
@@ -66,7 +66,7 @@ export const ProjectItemSchema = z.object({
  */
 export const EducationItemSchema = z.object({
     id: z.string(),
-    institution: z.string().min(1),
+    institution: z.string().default(''),
     degree: z.string().default(''),
     fieldOfStudy: z.string().default(''),
     startDate: z.string().default(''),

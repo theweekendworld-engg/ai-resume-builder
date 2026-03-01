@@ -76,6 +76,9 @@ export function ProfilePanel({ profile }: ProfilePanelProps) {
           onChange={(e) => setForm((p) => ({ ...p, yearsExperience: e.target.value }))}
         />
       </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        GitHub import is restricted to the handle saved in this profile. Add your own GitHub username or profile URL, then save.
+      </p>
 
       <div className="mt-3">
         <Textarea

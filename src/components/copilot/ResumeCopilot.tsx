@@ -7,7 +7,6 @@ import { proposeResumePatch, scoreReposForJob, CopilotContext } from '@/actions/
 import { fetchGitHubRepos } from '@/actions/github';
 import { searchKnowledgeBase } from '@/actions/kb';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,8 +44,6 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
         resumeData,
         jobDescription,
         setJobDescription,
-        githubUsername,
-        setGithubUsername,
         copilotProposal,
         setCopilotProposal,
         copilotOpen,
@@ -59,7 +56,6 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [workLog, setWorkLog] = useState<WorkLogMessage[]>([]);
     const [localJD, setLocalJD] = useState(jobDescription);
-    const [localGithub, setLocalGithub] = useState(githubUsername);
 
     const addWorkLog = useCallback((type: WorkLogMessage['type'], message: string) => {
         setWorkLog(prev => [...prev, {
@@ -77,7 +73,6 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
         }
 
         setJobDescription(localJD);
-        setGithubUsername(localGithub);
         setIsProcessing(true);
         setWorkLog([]);
         setCopilotProposal(null);
@@ -102,29 +97,28 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                 addWorkLog('info', 'No stored achievements found');
             }
 
-            // Fetch GitHub repos if username provided
+            // Fetch GitHub repos from connected profile if available
             let scoredRepos: Array<{ name: string; description: string | null; html_url: string; language: string | null; stargazers_count: number; topics: string[]; updated_at: string; fork: boolean; id: number; relevanceScore: number }> = [];
-            
-            if (localGithub.trim()) {
-                addWorkLog('info', `Fetching GitHub repos for ${localGithub}...`);
-                try {
-                    const repos = await fetchGitHubRepos({ 
-                        username: localGithub,
-                        perPage: 30,
-                        excludeForks: true,
-                    });
-                    
-                    if (repos.length > 0) {
-                        addWorkLog('info', `Found ${repos.length} repos, scoring relevance...`);
-                        scoredRepos = await scoreReposForJob(repos, localJD);
-                        const topRepos = scoredRepos.slice(0, 5);
-                        addWorkLog('success', `Selected ${topRepos.length} most relevant repos`);
-                    } else {
-                        addWorkLog('info', 'No public repos found (continuing without GitHub data)');
-                    }
-                } catch {
-                    addWorkLog('info', 'GitHub unavailable, continuing without repos');
+
+            addWorkLog('info', 'Fetching projects from your connected GitHub account...');
+            try {
+                const githubResult = await fetchGitHubRepos({
+                    perPage: 30,
+                    excludeForks: true,
+                });
+
+                if (!githubResult.success) {
+                    addWorkLog('info', githubResult.error ?? 'GitHub unavailable, continuing without repos');
+                } else if (githubResult.repos.length > 0) {
+                    addWorkLog('info', `Found ${githubResult.repos.length} repos, scoring relevance...`);
+                    scoredRepos = await scoreReposForJob(githubResult.repos, localJD);
+                    const topRepos = scoredRepos.slice(0, 5);
+                    addWorkLog('success', `Selected ${topRepos.length} most relevant repos`);
+                } else {
+                    addWorkLog('info', 'No repositories found on your connected GitHub account');
                 }
+            } catch {
+                addWorkLog('info', 'GitHub unavailable, continuing without repos');
             }
 
             // Generate proposal
@@ -204,21 +198,14 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                             />
                         </div>
 
-                        {/* GitHub Username Input */}
+                        {/* GitHub Integration Hint */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
                                 <Github className="w-4 h-4" />
-                                GitHub Username
-                                <span className="text-xs text-muted-foreground">(optional)</span>
+                                GitHub Projects
                             </Label>
-                            <Input
-                                value={localGithub}
-                                onChange={(e) => setLocalGithub(e.target.value)}
-                                placeholder="your-github-username"
-                                disabled={isProcessing}
-                            />
                             <p className="text-xs text-muted-foreground">
-                                We&apos;ll find relevant projects to highlight
+                                We use the GitHub handle connected in Dashboard &gt; Profile &gt; GitHub to pull relevant repos.
                             </p>
                         </div>
 

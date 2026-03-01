@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useResumeStore } from '@/store/resumeStore';
-import { fetchGitHubRepos, importGitHubRepoToLibrary } from '@/actions/github';
+import { fetchGitHubRepos, getGitHubIntegrationStatus, importGitHubRepoToLibrary } from '@/actions/github';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +23,7 @@ interface GitHubRepo {
 }
 
 export function ProjectsEditor() {
-    const { resumeData, addProject, updateProject, removeProject, githubUsername, setGithubUsername } = useResumeStore();
+    const { resumeData, addProject, updateProject, removeProject } = useResumeStore();
     const { projects } = resumeData;
     const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
     const [currentRewriteId, setCurrentRewriteId] = useState<string | null>(null);
@@ -33,6 +34,38 @@ export function ProjectsEditor() {
     const [loading, setLoading] = useState(false);
     const [importingId, setImportingId] = useState<number | null>(null);
     const [showGitHub, setShowGitHub] = useState(false);
+    const [linkedHandle, setLinkedHandle] = useState('');
+    const [integrationError, setIntegrationError] = useState<string | null>(null);
+    const [setupPath, setSetupPath] = useState('/dashboard');
+    const [checkingIntegration, setCheckingIntegration] = useState(true);
+
+    useEffect(() => {
+        let mounted = true;
+        const loadIntegration = async () => {
+            setCheckingIntegration(true);
+            const status = await getGitHubIntegrationStatus();
+            if (!mounted) return;
+
+            if (status.setupPath) {
+                setSetupPath(status.setupPath);
+            }
+
+            if (!status.success || !status.linked || !status.linkedHandle) {
+                setLinkedHandle('');
+                setIntegrationError(status.error ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+            } else {
+                setLinkedHandle(status.linkedHandle);
+                setIntegrationError(null);
+            }
+
+            setCheckingIntegration(false);
+        };
+
+        loadIntegration();
+        return () => {
+            mounted = false;
+        };
+    }, []);
 
     const handleOpenRewrite = (id: string, text: string) => {
         setCurrentRewriteId(id);
@@ -48,12 +81,25 @@ export function ProjectsEditor() {
     };
 
     const handleFetchRepos = async () => {
-        if (!githubUsername) return;
+        if (!linkedHandle) {
+            toast.error(integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+            return;
+        }
+
         setLoading(true);
         try {
-            const data = await fetchGitHubRepos({ username: githubUsername });
-            setRepos(data);
-            if (data.length > 0) {
+            const result = await fetchGitHubRepos({});
+            if (!result.success) {
+                toast.error(result.error || 'Failed to fetch repositories');
+                if (result.setupPath) setSetupPath(result.setupPath);
+                if (result.error) setIntegrationError(result.error);
+                setRepos([]);
+                return;
+            }
+
+            const fetchedRepos = Array.isArray(result.repos) ? result.repos : [];
+            setRepos(fetchedRepos);
+            if (fetchedRepos.length > 0) {
                 setShowGitHub(true);
             }
         } catch (error) {
@@ -64,10 +110,14 @@ export function ProjectsEditor() {
     };
 
     const handleImportRepo = async (repo: GitHubRepo) => {
+        if (!linkedHandle) {
+            toast.error(integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+            return;
+        }
+
         setImportingId(repo.id);
         try {
             const result = await importGitHubRepoToLibrary({
-                username: githubUsername,
                 repoName: repo.name,
                 repoUrl: repo.html_url,
                 repoDescription: repo.description || '',
@@ -136,23 +186,37 @@ export function ProjectsEditor() {
                         )}
                     </div>
 
-                    <div className="flex gap-2">
-                        <Input
-                            value={githubUsername}
-                            onChange={(e) => setGithubUsername(e.target.value)}
-                            placeholder="GitHub username"
-                            className="h-9"
-                            onKeyDown={(e) => e.key === 'Enter' && handleFetchRepos()}
-                        />
-                        <Button
-                            onClick={handleFetchRepos}
-                            disabled={loading || !githubUsername}
-                            variant="secondary"
-                            size="sm"
-                            className="h-9"
-                        >
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fetch"}
-                        </Button>
+                    <div className="rounded-md border border-border bg-card/60 p-3">
+                        {checkingIntegration ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Checking GitHub integration...
+                            </div>
+                        ) : linkedHandle ? (
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm text-muted-foreground">
+                                    Connected GitHub account: <span className="font-medium text-foreground">@{linkedHandle}</span>
+                                </p>
+                                <Button
+                                    onClick={handleFetchRepos}
+                                    disabled={loading}
+                                    variant="secondary"
+                                    size="sm"
+                                    className="h-9"
+                                >
+                                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fetch repos"}
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <p className="text-sm text-muted-foreground">
+                                    {integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.'}
+                                </p>
+                                <Button asChild size="sm" variant="secondary">
+                                    <Link href={setupPath}>Open profile settings</Link>
+                                </Button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Repos List */}
@@ -208,9 +272,9 @@ export function ProjectsEditor() {
                         </div>
                     )}
 
-                    {repos.length === 0 && githubUsername && !loading && (
+                    {repos.length === 0 && linkedHandle && !loading && (
                         <p className="text-xs text-muted-foreground text-center py-2">
-                            Enter your GitHub username and click Fetch to import repositories
+                            Click Fetch repos to import repositories from your connected GitHub account
                         </p>
                     )}
                 </div>

@@ -335,13 +335,13 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.experience,
                             {
                                 id: uuidv4(),
-                                company: "New Company",
-                                role: "Role",
+                                company: "",
+                                role: "",
                                 startDate: "",
                                 endDate: "",
                                 current: false,
                                 location: "",
-                                description: "Responsibility 1",
+                                description: "",
                             },
                         ],
                     },
@@ -387,8 +387,8 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.projects,
                             {
                                 id: uuidv4(),
-                                name: data?.name || "New Project",
-                                description: data?.description || "Project description...",
+                                name: data?.name || "",
+                                description: data?.description || "",
                                 url: data?.url || "",
                                 technologies: data?.technologies || [],
                             },
@@ -436,9 +436,9 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.education,
                             {
                                 id: uuidv4(),
-                                institution: "University",
-                                degree: "Degree",
-                                fieldOfStudy: "Field",
+                                institution: "",
+                                degree: "",
+                                fieldOfStudy: "",
                                 startDate: "",
                                 endDate: "",
                                 current: false,
@@ -499,9 +499,7 @@ export const useResumeStore = create<ResumeState>()(
             }),
 
             isUsingSampleData: () => {
-                const { resumeData } = get();
-                return resumeData.personalInfo.fullName === 'Alex Johnson' &&
-                    resumeData.personalInfo.email === 'alex.johnson@email.com';
+                return false;
             },
         }),
         {

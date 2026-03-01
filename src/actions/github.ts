@@ -3,13 +3,19 @@
 import { z } from 'zod';
 import { Octokit } from 'octokit';
 import { auth } from '@clerk/nextjs/server';
-import { GitHubRepo, GitHubRepoDetails, FetchReposOptions } from '@/types/github';
+import {
+  GitHubRepo,
+  GitHubRepoDetails,
+  FetchReposOptions,
+  FetchGitHubReposResult,
+  GitHubIntegrationStatus,
+} from '@/types/github';
 import { checkGitHubRateLimit } from '@/lib/rateLimit';
 import { prisma } from '@/lib/prisma';
 import { createUserProject } from '@/actions/projects';
 
 const FetchReposSchema = z.object({
-  username: z.string().min(1).max(200),
+  username: z.string().min(1).max(200).optional(),
   token: z.string().max(500).optional(),
   page: z.number().int().min(1).max(100).optional(),
   perPage: z.number().int().min(1).max(100).optional(),
@@ -25,7 +31,6 @@ const FetchRepoDetailsSchema = z.object({
 });
 
 const ImportRepoSchema = z.object({
-  username: z.string().min(1).max(200),
   repoName: z.string().min(1).max(200),
   repoUrl: z.string().url().max(1000),
   repoDescription: z.string().max(5000).optional(),
@@ -58,6 +63,69 @@ function extractGithubHandle(input: string): string {
   return value.replace('@', '').trim().toLowerCase();
 }
 
+function parseGitHubRepoUrl(input: string): { owner: string; repo: string; normalizedUrl: string } | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`);
+    if (!url.hostname.toLowerCase().includes('github.com')) return null;
+
+    const [ownerRaw, repoRaw] = url.pathname.split('/').filter(Boolean);
+    if (!ownerRaw || !repoRaw) return null;
+
+    const owner = ownerRaw.trim().toLowerCase();
+    const repo = repoRaw.trim().replace(/\.git$/i, '');
+    if (!owner || !repo) return null;
+
+    return {
+      owner,
+      repo,
+      normalizedUrl: `https://github.com/${owner}/${repo}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getLinkedGitHubHandle(userId: string): Promise<string> {
+  const userProfile = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: { github: true },
+  });
+
+  return extractGithubHandle(userProfile?.github ?? '');
+}
+
+export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationStatus> {
+  const { userId } = await auth();
+  if (!userId) {
+    return {
+      success: false,
+      linked: false,
+      error: 'Please sign in to use GitHub import.',
+      setupPath: '/sign-in',
+    };
+  }
+
+  const linkedHandle = await getLinkedGitHubHandle(userId);
+  if (!linkedHandle) {
+    return {
+      success: true,
+      linked: false,
+      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
+      setupPath: '/dashboard',
+    };
+  }
+
+  return {
+    success: true,
+    linked: true,
+    linkedHandle,
+    setupPath: '/dashboard',
+  };
+}
+
 function deriveDescription(repoName: string, repoDescription?: string, readme?: string) {
   if (readme) {
     const text = readme
@@ -78,7 +146,7 @@ function uniqueTech(...values: string[][]) {
   return Array.from(new Set(values.flat().map((item) => item.trim()).filter(Boolean))).slice(0, 20);
 }
 
-export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitHubRepo[]> {
+export async function fetchGitHubRepos(options: FetchReposOptions): Promise<FetchGitHubReposResult> {
   const parsed = FetchReposSchema.safeParse({
     username: options.username,
     token: options.token,
@@ -88,12 +156,33 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
     language: options.language,
     excludeForks: options.excludeForks,
   });
-  if (!parsed.success) return [];
+  if (!parsed.success) {
+    return { success: false, repos: [], error: parsed.error.issues.map((i) => i.message).join('; ') };
+  }
 
   const { userId } = await auth();
-  if (userId) {
-    const limit = await checkGitHubRateLimit(`gh:${userId}`);
-    if (!limit.allowed) return [];
+  if (!userId) {
+    return {
+      success: false,
+      repos: [],
+      error: 'Please sign in to use GitHub import.',
+      setupPath: '/sign-in',
+    };
+  }
+
+  const linkedHandle = await getLinkedGitHubHandle(userId);
+  if (!linkedHandle) {
+    return {
+      success: false,
+      repos: [],
+      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
+      setupPath: '/dashboard',
+    };
+  }
+
+  const limit = await checkGitHubRateLimit(`gh:${userId}`);
+  if (!limit.allowed) {
+    return { success: false, repos: [], linkedHandle, error: 'GitHub rate limit exceeded. Please try again shortly.' };
   }
 
   const {
@@ -106,11 +195,21 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
     excludeForks = true,
   } = parsed.data;
 
+  if (username && extractGithubHandle(username) !== linkedHandle) {
+    return {
+      success: false,
+      repos: [],
+      linkedHandle,
+      error: `GitHub account mismatch. Your account is linked to ${linkedHandle}.`,
+      setupPath: '/dashboard',
+    };
+  }
+
   try {
     const octokit = getOctokit(token);
 
     const response = await octokit.request('GET /users/{username}/repos', {
-      username,
+      username: linkedHandle,
       sort: 'updated',
       per_page: perPage,
       page,
@@ -140,10 +239,10 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<GitH
       repos = repos.filter((r) => r.language?.toLowerCase() === language.toLowerCase());
     }
 
-    return repos;
+    return { success: true, repos, linkedHandle, setupPath: '/dashboard' };
   } catch (error) {
     console.error('GitHub Fetch Error:', error);
-    return [];
+    return { success: false, repos: [], linkedHandle, error: 'Failed to fetch repositories from GitHub.' };
   }
 }
 
@@ -218,29 +317,35 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
   const { userId } = await auth();
   if (!userId) return { success: false, error: 'Not authenticated' };
 
-  const userProfile = await prisma.userProfile.findUnique({
-    where: { userId },
-    select: { github: true },
-  });
-
-  const linkedHandle = extractGithubHandle(userProfile?.github ?? '');
-  const requestedHandle = extractGithubHandle(parsed.data.username);
+  const linkedHandle = await getLinkedGitHubHandle(userId);
+  const parsedRepoUrl = parseGitHubRepoUrl(parsed.data.repoUrl);
 
   if (!linkedHandle) {
-    return { success: false, error: 'Link your GitHub in Profile before importing repositories.' };
-  }
-
-  if (linkedHandle !== requestedHandle) {
     return {
       success: false,
-      error: `GitHub username mismatch. Profile is linked to ${linkedHandle}, but requested ${requestedHandle}.`,
+      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
     };
+  }
+
+  if (!parsedRepoUrl) {
+    return { success: false, error: 'Invalid GitHub repository URL.' };
+  }
+
+  if (parsedRepoUrl.owner !== linkedHandle) {
+    return {
+      success: false,
+      error: `Repository owner mismatch. Your linked GitHub is ${linkedHandle}.`,
+    };
+  }
+
+  if (parsedRepoUrl.repo.toLowerCase() !== parsed.data.repoName.trim().toLowerCase()) {
+    return { success: false, error: 'Repository name does not match the selected GitHub URL.' };
   }
 
   const existing = await prisma.userProject.findFirst({
     where: {
       userId,
-      githubUrl: parsed.data.repoUrl,
+      githubUrl: parsedRepoUrl.normalizedUrl,
     },
     select: { id: true },
   });
@@ -249,7 +354,7 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
     return { success: true, deduped: true, projectId: existing.id };
   }
 
-  const details = await fetchRepoDetails(parsed.data.username, parsed.data.repoName, parsed.data.token);
+  const details = await fetchRepoDetails(linkedHandle, parsedRepoUrl.repo, parsed.data.token);
   const technologies = uniqueTech(
     details.languages,
     details.topics,
@@ -257,10 +362,10 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
   );
 
   const result = await createUserProject({
-    name: parsed.data.repoName,
-    description: deriveDescription(parsed.data.repoName, parsed.data.repoDescription, details.readme),
-    url: parsed.data.repoUrl,
-    githubUrl: parsed.data.repoUrl,
+    name: parsedRepoUrl.repo,
+    description: deriveDescription(parsedRepoUrl.repo, parsed.data.repoDescription, details.readme),
+    url: parsedRepoUrl.normalizedUrl,
+    githubUrl: parsedRepoUrl.normalizedUrl,
     technologies,
     readme: details.readme,
     source: 'github',

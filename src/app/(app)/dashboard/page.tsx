@@ -48,11 +48,6 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-2">
-        <ProfilePanel profile={profile} />
-        <ProjectLibraryPanel projects={projects} />
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <CreateResumeCard />
         {resumes.map((resume) => (
@@ -76,6 +71,19 @@ export default async function DashboardPage() {
           You don&apos;t have any resumes yet. Start with the create card above.
         </div>
       )}
+
+      <section className="mt-10 space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Resume generation settings</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage your saved profile and reusable project library.
+          </p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <ProfilePanel profile={profile} />
+          <ProjectLibraryPanel projects={projects} />
+        </div>
+      </section>
     </div>
   );
 }

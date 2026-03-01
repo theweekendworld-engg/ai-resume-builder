@@ -93,7 +93,8 @@ export function calculateDeterministicSignals(resumeData: ResumeData, jobDescrip
  * Get unique languages from a list of repos (useful for filter dropdown).
  */
 export function getUniqueLanguages(repos: GitHubRepo[]): string[] {
-  const langs = repos
+  const safeRepos = Array.isArray(repos) ? repos : [];
+  const langs = safeRepos
     .map(r => r.language)
     .filter((l): l is string => l !== null && l.length > 0);
   return [...new Set(langs)].sort();
