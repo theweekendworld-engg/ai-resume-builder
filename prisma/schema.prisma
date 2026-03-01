@@ -106,21 +106,22 @@ model JobTarget {
 }
 
 model UserProfile {
-    id              String   @id @default(cuid())
-    userId          String   @unique
-    fullName        String   @default("")
-    email           String   @default("")
-    phone           String   @default("")
-    location        String   @default("")
-    website         String   @default("")
-    linkedin        String   @default("")
-    github          String   @default("")
-    defaultTitle    String   @default("")
-    defaultSummary  String   @default("")
-    yearsExperience String   @default("")
-    preferences     Json?
-    createdAt       DateTime @default(now())
-    updatedAt       DateTime @updatedAt
+    id                  String   @id @default(cuid())
+    userId              String   @unique
+    fullName            String   @default("")
+    email               String   @default("")
+    phone               String   @default("")
+    location            String   @default("")
+    website             String   @default("")
+    linkedin            String   @default("")
+    github              String   @default("")
+    defaultTitle        String   @default("")
+    defaultSummary      String   @default("")
+    yearsExperience     String   @default("")
+    preferences         Json?
+    onboardingComplete  Boolean  @default(false)
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
 }
 
 model UserProject {

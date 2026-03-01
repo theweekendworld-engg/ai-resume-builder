@@ -25,7 +25,10 @@ function createDraftResume(
     fullName: string;
     email: string;
     phone: string;
+    location: string;
+    website: string;
     linkedin: string;
+    github: string;
     defaultTitle: string;
     defaultSummary: string;
   }
@@ -35,7 +38,10 @@ function createDraftResume(
   base.personalInfo.fullName = input.fullName?.trim() || profile?.fullName || '';
   base.personalInfo.email = input.email?.trim() || profile?.email || '';
   base.personalInfo.phone = input.phone?.trim() || profile?.phone || '';
+  base.personalInfo.location = profile?.location ?? '';
+  base.personalInfo.website = profile?.website ?? '';
   base.personalInfo.linkedin = input.linkedin?.trim() || profile?.linkedin || '';
+  base.personalInfo.github = profile?.github ?? '';
   base.personalInfo.title = input.role?.trim() || profile?.defaultTitle || '';
   base.personalInfo.summary = profile?.defaultSummary || '';
 
@@ -63,7 +69,10 @@ export async function generateInitialResume(input: unknown): Promise<{
       fullName: profile.fullName,
       email: profile.email,
       phone: profile.phone,
+      location: profile.location,
+      website: profile.website,
       linkedin: profile.linkedin,
+      github: profile.github,
       defaultTitle: profile.defaultTitle,
       defaultSummary: profile.defaultSummary,
     } : undefined);

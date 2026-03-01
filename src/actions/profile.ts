@@ -34,6 +34,7 @@ export type UserProfileDTO = {
   defaultSummary: string;
   yearsExperience: string;
   preferences: unknown;
+  onboardingComplete: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -197,6 +198,34 @@ export async function updateUserPreferences(input: unknown): Promise<{
     });
 
     return { success: true, preferences: mergedPreferences };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function completeOnboarding(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    const userId = await getUserId();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    await prisma.userProfile.upsert({
+      where: { userId },
+      create: {
+        userId,
+        onboardingComplete: true,
+      },
+      update: {
+        onboardingComplete: true,
+      },
+    });
+
+    return { success: true };
   } catch (error) {
     return {
       success: false,
