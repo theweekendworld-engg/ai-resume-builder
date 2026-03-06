@@ -35,7 +35,7 @@ const sectionConfig: { key: CopilotSectionKey; label: string; icon: React.ReactN
 ];
 
 export function ProposedChangesCard({ proposal, onApplyAll, onReject }: ProposedChangesCardProps) {
-    const { applyCopilotSection, setCopilotProposal } = useResumeStore();
+    const { applyCopilotSection } = useResumeStore();
     const [appliedSections, setAppliedSections] = useState<Set<CopilotSectionKey>>(new Set());
 
     const handleApplySection = (section: CopilotSectionKey) => {

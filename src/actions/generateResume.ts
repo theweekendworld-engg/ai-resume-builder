@@ -12,22 +12,119 @@ import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { trackedChatCompletion } from '@/lib/usageTracker';
 import { initialResumeData, type ResumeData, type ExperienceItem, type ProjectItem } from '@/types/resume';
+import { preprocessJobDescription as preprocessJobDescriptionService } from '@/services/jdParser';
+import {
+  scoreExperienceRelevance as scoreExperienceRelevanceService,
+  scoreKnowledge as scoreKnowledgeService,
+  scoreProject as scoreProjectService,
+} from '@/services/projectScoring';
+import { paraphraseStaticData as paraphraseStaticDataService } from '@/services/paraphraser';
+import {
+  sanitizeUnsupportedClaims as sanitizeUnsupportedClaimsService,
+  validateClaims as validateClaimsService,
+} from '@/services/claimValidator';
+import {
+  computeAtsEstimate as computeAtsEstimateService,
+  improveResumeForLowAts as improveResumeForLowAtsService,
+} from '@/services/atsScorer';
+import { buildBaseResume as buildBaseResumeService } from '@/services/resumeAssembler';
+
+const SENIORITY_LEVELS = ['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager'] as const;
+
+function coerceStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[,\n;]/g)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeSeniorityLevel(value: unknown): (typeof SENIORITY_LEVELS)[number] {
+  if (typeof value !== 'string') return 'mid';
+  const normalized = value.toLowerCase().trim();
+  if (normalized.includes('junior') || normalized === 'jr') return 'junior';
+  if (normalized.includes('mid') || normalized.includes('intermediate')) return 'mid';
+  if (normalized.includes('senior') || normalized === 'sr') return 'senior';
+  if (normalized.includes('staff')) return 'staff';
+  if (normalized.includes('principal')) return 'principal';
+  if (normalized.includes('lead')) return 'lead';
+  if (normalized.includes('manager') || normalized.includes('head')) return 'manager';
+  return 'mid';
+}
+
+function coerceBoolean(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase().trim();
+    if (['true', 'yes', 'y', '1', 'remote', 'fully remote'].includes(normalized)) return true;
+    if (['false', 'no', 'n', '0', 'onsite', 'on-site', 'hybrid'].includes(normalized)) return false;
+  }
+  return false;
+}
+
+function coerceSkillGroups(value: unknown): Array<{ name: string; skills: string[] }> {
+  if (Array.isArray(value)) {
+    return value.map((entry, index) => {
+      if (typeof entry === 'string') {
+        const [rawName, ...rest] = entry.split(':');
+        const inferredSkills = coerceStringArray(rest.join(':') || entry);
+        return {
+          name: rawName.trim() || `group-${index + 1}`,
+          skills: inferredSkills,
+        };
+      }
+      if (entry && typeof entry === 'object') {
+        const obj = entry as Record<string, unknown>;
+        return {
+          name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : `group-${index + 1}`,
+          skills: coerceStringArray(obj.skills),
+        };
+      }
+      return { name: `group-${index + 1}`, skills: [] };
+    }).filter((group) => group.name || group.skills.length > 0);
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+    return entries.map(([name, skills]) => ({
+      name: name.trim(),
+      skills: coerceStringArray(skills),
+    })).filter((group) => group.name || group.skills.length > 0);
+  }
+
+  return [];
+}
 
 const ParsedJDSchema = z.object({
   role: z.string().default(''),
   company: z.string().default(''),
-  requiredSkills: z.array(z.string()).default([]),
-  preferredSkills: z.array(z.string()).default([]),
+  requiredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+  preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   experienceLevel: z.string().default(''),
-  keyResponsibilities: z.array(z.string()).default([]),
+  keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   industryDomain: z.string().default(''),
-  skillGroups: z.array(z.object({
-    name: z.string().default(''),
-    skills: z.array(z.string()).default([]),
-  })).default([]),
-  seniorityLevel: z.enum(['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager']).default('mid'),
-  isRemote: z.boolean().default(false),
-  softSkills: z.array(z.string()).default([]),
+  skillGroups: z.preprocess(
+    (value) => coerceSkillGroups(value),
+    z.array(z.object({
+      name: z.string().default(''),
+      skills: z.array(z.string()).default([]),
+    }))
+  ).default([]),
+  seniorityLevel: z.preprocess(
+    (value) => normalizeSeniorityLevel(value),
+    z.enum(SENIORITY_LEVELS)
+  ).default('mid'),
+  isRemote: z.preprocess((value) => coerceBoolean(value), z.boolean()).default(false),
+  softSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
 });
 
 const ParaphraseSchema = z.object({
@@ -35,6 +132,14 @@ const ParaphraseSchema = z.object({
   experience: z.array(z.object({ id: z.string(), description: z.string().default('') })).default([]),
   projects: z.array(z.object({ id: z.string(), description: z.string().default('') })).default([]),
   skills: z.array(z.string()).default([]),
+});
+
+const SemanticClaimValidationSchema = z.object({
+  verdicts: z.array(z.object({
+    claim: z.string(),
+    supported: z.boolean(),
+    reason: z.string().default(''),
+  })).default([]),
 });
 
 const SmartGenerateOptionsSchema = z.object({
@@ -674,6 +779,81 @@ function buildBaseResume(params: {
   };
 }
 
+async function semanticValidateTopClaims(params: {
+  resume: ResumeData;
+  sources: Array<{ id: string; text: string }>;
+  userId: string;
+  sessionId?: string;
+}): Promise<{ unsupported: string[] }> {
+  const claims = [
+    ...params.resume.experience.flatMap((exp) => exp.description.split('\n').map((line) => line.trim()).filter(Boolean)),
+    ...params.resume.projects.map((project) => project.description.trim()).filter(Boolean),
+  ];
+
+  if (claims.length === 0) return { unsupported: [] };
+
+  const rankedClaims = [...claims]
+    .sort((a, b) => {
+      const scoreA = (/\d/.test(a) ? 2 : 0) + (a.length > 80 ? 1 : 0);
+      const scoreB = (/\d/.test(b) ? 2 : 0) + (b.length > 80 ? 1 : 0);
+      return scoreB - scoreA;
+    })
+    .slice(0, 10);
+
+  const prompt = `Verify resume claims against source evidence.
+Return ONLY JSON with key "verdicts" where each verdict has { claim, supported, reason }.
+
+Claims:
+${JSON.stringify(rankedClaims)}
+
+Sources:
+${JSON.stringify(params.sources.map((source) => ({ id: source.id, text: source.text.slice(0, 500) })))}
+`;
+
+  try {
+    const response = await trackedChatCompletion({
+      model: config.openai.models.claimValidation,
+      messages: [
+        {
+          role: 'system',
+          content: 'You verify resume claims strictly against source evidence. Mark unsupported if evidence is weak or missing.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      response_format: { type: 'json_object' },
+    }, {
+      userId: params.userId,
+      sessionId: params.sessionId,
+      operation: 'claim_semantic_validation',
+    });
+
+    const content = response.choices[0].message.content ?? '{}';
+    const parsed = await parseWithRetry(content, SemanticClaimValidationSchema);
+    if (!parsed.success) return { unsupported: [] };
+    const unsupported = parsed.data.verdicts
+      .filter((entry) => !entry.supported)
+      .map((entry) => entry.claim.trim())
+      .filter(Boolean);
+    return { unsupported };
+  } catch (error: unknown) {
+    void error;
+    return { unsupported: [] };
+  }
+}
+
+function identifyThinSections(resume: ResumeData): Array<'summary' | 'experience' | 'projects' | 'skills'> {
+  const thin: Array<'summary' | 'experience' | 'projects' | 'skills'> = [];
+  if (!resume.personalInfo.summary || resume.personalInfo.summary.trim().length < 80) thin.push('summary');
+  const hasThinExperience = resume.experience.some((exp) => {
+    const bullets = exp.description.split('\n').map((line) => line.trim()).filter(Boolean);
+    return bullets.length < 2;
+  });
+  if (hasThinExperience) thin.push('experience');
+  if (resume.projects.some((project) => project.description.trim().length < 30)) thin.push('projects');
+  if (resume.skills.length < 8) thin.push('skills');
+  return thin;
+}
+
 export async function generateSmartResumePipeline(
   jobDescription: string,
   options?: {
@@ -688,7 +868,7 @@ export async function generateSmartResumePipeline(
     onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
   }
 ): Promise<SmartResumePipelineResult> {
-  const preprocessed = preprocessJobDescription(jobDescription ?? '');
+  const preprocessed = preprocessJobDescriptionService(jobDescription ?? '');
   const trimmedJobDescription = preprocessed.cleaned;
 
   const onStepStart = options?.onStepStart;
@@ -858,7 +1038,7 @@ export async function generateSmartResumePipeline(
   const rankedProjects = projectsRaw
     .map((project) => ({
       project,
-      score: scoreProject({
+      score: scoreProjectService({
         project,
         semanticScore: projectScores.get(project.id) ?? 0,
         jdSkills,
@@ -870,7 +1050,7 @@ export async function generateSmartResumePipeline(
   const rankedKnowledge = knowledgeRaw
     .map((item) => ({
       item,
-      score: scoreKnowledge({
+      score: scoreKnowledgeService({
         item,
         semanticScore: knowledgeScores.get(item.id) ?? 0,
         jdSkills,
@@ -906,7 +1086,7 @@ export async function generateSmartResumePipeline(
   const rankedExperiences = sourceExperiences
     .map((item) => ({
       item,
-      score: (scoreExperienceRelevance({ item, jdSkills, parsedJD }) * 0.75) + ((experienceSemanticScores.get(item.id) ?? 0) * 0.25),
+      score: (scoreExperienceRelevanceService({ item, jdSkills, parsedJD }) * 0.75) + ((experienceSemanticScores.get(item.id) ?? 0) * 0.25),
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, lengthConstraints.maxExperiences);
@@ -961,7 +1141,7 @@ export async function generateSmartResumePipeline(
   }
 
   await onStepStart?.('paraphrasing');
-  const paraphrased = await paraphraseStaticData({
+  const paraphrased = await paraphraseStaticDataService({
     parsedJD,
     targetContext: `${parsedJD.role || 'Role'} @ ${parsedJD.company || 'Company'} ${parsedJD.industryDomain ? `| ${parsedJD.industryDomain}` : ''}`.trim(),
     baseSummary,
@@ -1015,7 +1195,7 @@ export async function generateSmartResumePipeline(
   }).slice(0, lengthConstraints.maxSkills);
 
   await onStepStart?.('resume_assembly');
-  const assembled = buildBaseResume({
+  const assembled = buildBaseResumeService({
     fallback,
     profile: profile
       ? {
@@ -1041,46 +1221,84 @@ export async function generateSmartResumePipeline(
   await onStepComplete?.('resume_assembly', { draftResume: assembled });
 
   await onStepStart?.('claim_validation');
-  const validationBeforeSanitize = validateClaims(assembled, sourceTextCorpus);
-  const sanitizedResume = sanitizeUnsupportedClaims(assembled, validationBeforeSanitize.unsupportedClaims);
-  let validation = validateClaims(sanitizedResume, sourceTextCorpus);
+  const validationBeforeSanitize = validateClaimsService(assembled, sourceTextCorpus);
+  const sanitizedResume = sanitizeUnsupportedClaimsService(assembled, validationBeforeSanitize.unsupportedClaims);
+  let validatedResume = sanitizedResume;
+  let validation = validateClaimsService(validatedResume, sourceTextCorpus);
+  const semanticValidation = await semanticValidateTopClaims({
+    resume: validatedResume,
+    sources: sourceTextCorpus,
+    userId,
+    sessionId,
+  });
+  if (semanticValidation.unsupported.length > 0) {
+    validatedResume = sanitizeUnsupportedClaimsService(validatedResume, semanticValidation.unsupported);
+    validation = validateClaimsService(validatedResume, sourceTextCorpus);
+  }
 
   if (validation.coverageRate < 0.5) {
     throw new Error('Truth enforcement rejected generation: less than 50% of claims are traceable to source data');
   }
-  await onStepComplete?.('claim_validation', { validationResult: validation, draftResume: sanitizedResume });
+  await onStepComplete?.('claim_validation', { validationResult: validation, draftResume: validatedResume });
 
   await onStepStart?.('ats_scoring');
-  let finalResume = sanitizedResume;
-  let atsEstimate = computeAtsEstimate(sanitizedResume, parsedJD);
+  let finalResume = validatedResume;
+  let atsEstimate = computeAtsEstimateService(validatedResume, parsedJD);
 
   try {
-    const atsPrimary = await calculateATSScore(sanitizedResume, trimmedJobDescription, {
+    const atsPrimary = await calculateATSScore(validatedResume, trimmedJobDescription, {
       userId,
       sessionId,
       operation: 'ats_scoring',
     });
     atsEstimate = atsPrimary.overall;
 
-    if (atsPrimary.overall < 70) {
-      const improved = improveResumeForLowAts({
-        resume: sanitizedResume,
+    let currentResume = finalResume;
+    let currentScore = atsPrimary.overall;
+    for (let iteration = 0; iteration < 2; iteration += 1) {
+      const thinSections = identifyThinSections(currentResume);
+      if (currentScore >= 75 && thinSections.length === 0) break;
+
+      let improved = improveResumeForLowAtsService({
+        resume: currentResume,
         parsedJD,
         missingKeywords: atsPrimary.missingKeywords,
         sourceTextCorpus: sourceTextCorpus.map((entry) => entry.text).join(' '),
       });
 
-      const improvedValidation = validateClaims(improved, sourceTextCorpus);
-      if (improvedValidation.coverageRate >= 0.5) {
-        const deterministicImprovedScore = computeAtsEstimate(improved, parsedJD);
-        if (deterministicImprovedScore >= atsPrimary.overall) {
-          finalResume = improved;
-          validation = improvedValidation;
-          atsEstimate = deterministicImprovedScore;
-        }
+      if (thinSections.includes('summary')) {
+        improved = {
+          ...improved,
+          personalInfo: {
+            ...improved.personalInfo,
+            summary: improved.personalInfo.summary.trim().length >= 80
+              ? improved.personalInfo.summary
+              : `Results-focused ${parsedJD.role || improved.personalInfo.title || 'professional'} with hands-on experience in ${improved.skills.slice(0, 4).join(', ')} and a track record of delivering measurable outcomes.`,
+          },
+        };
       }
+
+      const improvedValidation = validateClaimsService(improved, sourceTextCorpus);
+      if (improvedValidation.coverageRate < 0.5) {
+        break;
+      }
+
+      const deterministicImprovedScore = computeAtsEstimateService(improved, parsedJD);
+      if (deterministicImprovedScore < currentScore && thinSections.length === 0) {
+        break;
+      }
+
+      currentResume = improved;
+      currentScore = deterministicImprovedScore;
+      validation = improvedValidation;
     }
-  } catch {
+
+    if (currentScore >= atsEstimate) {
+      finalResume = currentResume;
+      atsEstimate = currentScore;
+    }
+  } catch (error: unknown) {
+    void error;
     // Fall back to deterministic ATS estimate if AI ATS scoring fails.
   }
   await onStepComplete?.('ats_scoring', {

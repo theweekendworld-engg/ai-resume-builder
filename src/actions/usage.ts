@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { getCurrentBillingPeriod, calculateOpenAiCostUsd } from '@/lib/usageTracker';
 
@@ -28,32 +29,39 @@ export async function getUserUsageStats(): Promise<UserUsageStats> {
     if (!userId) return { success: false, error: 'Not authenticated' };
 
     const period = getCurrentBillingPeriod();
-
-    const [usageAgg, sessionsAgg, pdfCount] = await Promise.all([
-      prisma.apiUsageLog.aggregate({
-        where: {
-          userId,
-          createdAt: { gte: period.start, lt: period.end },
-          status: 'success',
-        },
-        _sum: { totalTokens: true, costUsd: true },
-        _count: { _all: true },
-      }),
-      prisma.generationSession.groupBy({
-        by: ['status'],
-        where: {
-          userId,
-          createdAt: { gte: period.start, lt: period.end },
-        },
-        _count: { _all: true },
-      }),
-      prisma.generatedPdf.count({
-        where: {
-          userId,
-          createdAt: { gte: period.start, lt: period.end },
-        },
-      }),
-    ]);
+    const load = unstable_cache(
+      async () => {
+        const [usageAgg, sessionsAgg, pdfCount] = await Promise.all([
+          prisma.apiUsageLog.aggregate({
+            where: {
+              userId,
+              createdAt: { gte: period.start, lt: period.end },
+              status: 'success',
+            },
+            _sum: { totalTokens: true, costUsd: true },
+            _count: { _all: true },
+          }),
+          prisma.generationSession.groupBy({
+            by: ['status'],
+            where: {
+              userId,
+              createdAt: { gte: period.start, lt: period.end },
+            },
+            _count: { _all: true },
+          }),
+          prisma.generatedPdf.count({
+            where: {
+              userId,
+              createdAt: { gte: period.start, lt: period.end },
+            },
+          }),
+        ]);
+        return { usageAgg, sessionsAgg, pdfCount };
+      },
+      ['usage-stats', userId],
+      { revalidate: 60, tags: [`usage:${userId}`] }
+    );
+    const { usageAgg, sessionsAgg, pdfCount } = await load();
 
     const completed = sessionsAgg.find((r) => r.status === 'completed')?._count._all ?? 0;
     const failed = sessionsAgg.find((r) => r.status === 'failed')?._count._all ?? 0;

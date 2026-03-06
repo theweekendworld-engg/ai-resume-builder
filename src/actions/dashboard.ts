@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { getCurrentBillingPeriod } from '@/lib/usageTracker';
@@ -30,42 +31,63 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     if (!userId) return { success: false, error: 'Not authenticated' };
 
     const period = getCurrentBillingPeriod();
-
-    const [
+    const load = unstable_cache(
+      async () => {
+        const [
+          profileRow,
+          recentResumes,
+          totalResumes,
+          totalPdfs,
+          monthGenerations,
+          projectCount,
+        ] = await Promise.all([
+          prisma.userProfile.findUnique({
+            where: { userId },
+          }),
+          prisma.resume.findMany({
+            where: { userId },
+            orderBy: { updatedAt: 'desc' },
+            take: 3,
+            select: {
+              id: true,
+              title: true,
+              updatedAt: true,
+              targetRole: true,
+              targetCompany: true,
+              atsScore: true,
+            },
+          }),
+          prisma.resume.count({ where: { userId } }),
+          prisma.generatedPdf.count({ where: { userId } }),
+          prisma.generationSession.count({
+            where: {
+              userId,
+              status: 'completed',
+              createdAt: { gte: period.start, lt: period.end },
+            },
+          }),
+          prisma.userProject.count({ where: { userId } }),
+        ]);
+        return {
+          profileRow,
+          recentResumes,
+          totalResumes,
+          totalPdfs,
+          monthGenerations,
+          projectCount,
+        };
+      },
+      ['dashboard-overview', userId],
+      { revalidate: 60, tags: [`dashboard:${userId}`] }
+    );
+    const {
       profileRow,
       recentResumes,
       totalResumes,
       totalPdfs,
       monthGenerations,
       projectCount,
-    ] = await Promise.all([
-      prisma.userProfile.findUnique({
-        where: { userId },
-      }),
-      prisma.resume.findMany({
-        where: { userId },
-        orderBy: { updatedAt: 'desc' },
-        take: 3,
-        select: {
-          id: true,
-          title: true,
-          updatedAt: true,
-          targetRole: true,
-          targetCompany: true,
-          atsScore: true,
-        },
-      }),
-      prisma.resume.count({ where: { userId } }),
-      prisma.generatedPdf.count({ where: { userId } }),
-      prisma.generationSession.count({
-        where: {
-          userId,
-          status: 'completed',
-          createdAt: { gte: period.start, lt: period.end },
-        },
-      }),
-      prisma.userProject.count({ where: { userId } }),
-    ]);
+    } = await load();
 
     const profile: UserProfileDTO | null = profileRow
       ? {

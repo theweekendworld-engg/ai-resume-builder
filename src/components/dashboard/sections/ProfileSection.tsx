@@ -6,13 +6,11 @@ import {
   createUserExperience,
   deleteUserExperience,
   listUserExperiences,
-  updateUserExperience,
 } from '@/actions/experiences';
 import {
   createUserEducation,
   deleteUserEducation,
   listUserEducation,
-  updateUserEducation,
 } from '@/actions/education';
 import { upsertUserProfile, updateUserPreferences, type UserProfileDTO } from '@/actions/profile';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';

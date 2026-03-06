@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useActionState, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { generateInitialResume } from '@/actions/generate';
@@ -32,14 +32,45 @@ const STEP_BACKGROUND = 1;
 const STEP_TEMPLATE = 2;
 const STEP_GENERATE = 3;
 
+type GeneratePayload = {
+  fullName: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  template: 'ats-simple' | 'modern' | 'classic';
+};
+
+type GenerateActionState = {
+  success: boolean;
+  error?: string;
+  resumeId?: string;
+  template?: 'ats-simple' | 'modern' | 'classic';
+};
+
 export function OnboardingWizard() {
   const router = useRouter();
   const [state, setState] = useState<OnboardingState>(initialState);
   const [step, setStep] = useState(STEP_IMPORT);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
   const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [generateState, submitGenerate, isPending] = useActionState<GenerateActionState, GeneratePayload>(
+    async (
+      _prev,
+      payload
+    ) => {
+      const result = await generateInitialResume(payload);
+      if (!result.success || !result.resumeId) {
+        return { success: false, error: result.error ?? 'Failed to generate your resume. Please retry.' };
+      }
+      return {
+        success: true,
+        resumeId: result.resumeId,
+        template: result.template ?? payload.template,
+      };
+    },
+    { success: false, error: undefined, resumeId: undefined, template: undefined }
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +133,6 @@ export function OnboardingWizard() {
     if (step === STEP_BACKGROUND) return <StepBackground state={state} update={(patch) => setState((prev) => ({ ...prev, ...patch }))} />;
     if (step === STEP_TEMPLATE) return <StepTemplate state={state} update={(patch) => setState((prev) => ({ ...prev, ...patch }))} />;
     return <StepGenerate />;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, step]);
 
   const handleNext = () => {
@@ -114,31 +144,43 @@ export function OnboardingWizard() {
     setStep(STEP_GENERATE);
     setError(null);
 
-    startTransition(async () => {
-      const result = await generateInitialResume({
-        fullName: state.fullName,
-        email: state.email,
-        phone: state.phone,
-        linkedin: state.linkedin,
-        template: state.template,
-      });
-
-      if (!result.success || !result.resumeId) {
-        setError(result.error ?? 'Failed to generate your resume. Please retry.');
-        setStep(STEP_TEMPLATE);
-        return;
-      }
-
-      if (state.parsedResume) {
-        importParsedResumeData(state.parsedResume, {
-          mergeProfile: false,
-          sections: { experience: true, education: true, projects: true, achievements: true },
-        }).catch(() => {});
-      }
-
-      router.push(`/editor/${result.resumeId}?template=${result.template ?? state.template}`);
+    submitGenerate({
+      fullName: state.fullName,
+      email: state.email,
+      phone: state.phone,
+      linkedin: state.linkedin,
+      template: state.template,
     });
   };
+
+  useEffect(() => {
+    if (step !== STEP_GENERATE) return;
+    if (!generateState.success) {
+      const errorMessage = generateState.error;
+      if (errorMessage) {
+        const timer = window.setTimeout(() => {
+          setError(errorMessage);
+          setStep(STEP_TEMPLATE);
+        }, 0);
+        return () => {
+          window.clearTimeout(timer);
+        };
+      }
+      return;
+    }
+
+    if (state.parsedResume) {
+      importParsedResumeData(state.parsedResume, {
+        mergeProfile: false,
+        sections: { experience: true, education: true, projects: true, achievements: true },
+      }).catch(() => undefined);
+    }
+
+    if (generateState.resumeId) {
+      router.push(`/editor/${generateState.resumeId}?template=${generateState.template ?? state.template}`);
+    }
+    return;
+  }, [generateState, router, state.parsedResume, state.template, step]);
 
   const handleBack = () => {
     if (step === STEP_IMPORT || isPending || step === STEP_GENERATE) return;

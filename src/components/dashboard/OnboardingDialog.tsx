@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { upsertUserProfile, completeOnboarding } from '@/actions/profile';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,6 @@ const STEP_BACKGROUND = 2;
 export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps) {
   const router = useRouter();
   const [step, setStep] = useState(STEP_UPLOAD);
-  const [isPending, startTransition] = useTransition();
   const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [form, setForm] = useState({
@@ -45,6 +44,45 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
     github: profile?.github ?? '',
     defaultSummary: profile?.defaultSummary ?? '',
   });
+  const [saveState, submitProfile, isPending] = useActionState(
+    async (
+      _previous: { success: boolean; error?: string },
+      payload: typeof form
+    ) => {
+      const result = await upsertUserProfile({
+        fullName: payload.fullName,
+        email: payload.email,
+        phone: payload.phone,
+        defaultTitle: payload.defaultTitle,
+        yearsExperience: payload.yearsExperience,
+        linkedin: payload.linkedin,
+        github: payload.github,
+        defaultSummary: payload.defaultSummary,
+      });
+
+      if (!result.success) {
+        return { success: false, error: result.error ?? 'Failed to save profile' };
+      }
+
+      const done = await completeOnboarding();
+      if (!done.success) {
+        return { success: false, error: done.error ?? 'Failed to complete onboarding' };
+      }
+
+      return { success: true };
+    },
+    { success: false }
+  );
+
+  useEffect(() => {
+    if (!saveState.success) {
+      if (saveState.error) toast.error(saveState.error);
+      return;
+    }
+    toast.success("You're all set!");
+    onComplete();
+    router.refresh();
+  }, [onComplete, router, saveState.error, saveState.success]);
 
   const handleParsed = (data: ParsedResumeData) => {
     setParsedData(data);
@@ -81,33 +119,7 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
       return;
     }
 
-    startTransition(async () => {
-      const result = await upsertUserProfile({
-        fullName: form.fullName,
-        email: form.email,
-        phone: form.phone,
-        defaultTitle: form.defaultTitle,
-        yearsExperience: form.yearsExperience,
-        linkedin: form.linkedin,
-        github: form.github,
-        defaultSummary: form.defaultSummary,
-      });
-
-      if (!result.success) {
-        toast.error(result.error ?? 'Failed to save');
-        return;
-      }
-
-      const done = await completeOnboarding();
-      if (!done.success) {
-        toast.error(done.error ?? 'Failed to complete onboarding');
-        return;
-      }
-
-      toast.success("You're all set!");
-      onComplete();
-      router.refresh();
-    });
+    submitProfile(form);
   };
 
   const stepTitles = ['Got an existing resume?', 'Welcome', 'Professional background'];

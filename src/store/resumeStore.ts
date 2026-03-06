@@ -130,19 +130,6 @@ interface ResumeState {
     isUsingSampleData: () => boolean;
 }
 
-const initialATSScore: ATSScore = {
-    overall: 0,
-    breakdown: {
-        keywordMatch: 0,
-        skillsMatch: 0,
-        experienceRelevance: 0,
-        formattingScore: 0,
-    },
-    matchedKeywords: [],
-    missingKeywords: [],
-    suggestions: [],
-};
-
 export const useResumeStore = create<ResumeState>()(
     persist(
         (set, get) => ({

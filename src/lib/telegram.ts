@@ -55,3 +55,13 @@ export async function sendTelegramMessage(input: SendMessageInput): Promise<void
     throw new Error(`Telegram send failed: ${detail}`);
   }
 }
+
+export async function answerTelegramCallbackQuery(callbackQueryId: string): Promise<void> {
+  await fetch(buildTelegramApiUrl('answerCallbackQuery'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      callback_query_id: callbackQueryId,
+    }),
+  }).catch(() => undefined);
+}
