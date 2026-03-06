@@ -12,7 +12,9 @@ type OpenAiPrice = {
 
 const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
   'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.6 },
+  'gpt-4o': { inputPer1M: 2.5, outputPer1M: 10 },
   'gpt-4.1-mini': { inputPer1M: 0.4, outputPer1M: 1.6 },
+  'gpt-4.1': { inputPer1M: 2.5, outputPer1M: 10 },
   'text-embedding-3-small': { inputPer1M: 0.02, outputPer1M: 0 },
   'text-embedding-3-large': { inputPer1M: 0.13, outputPer1M: 0 },
 };
@@ -152,6 +154,60 @@ export async function enforceUsageLimit(userId: string): Promise<void> {
 
   if (costLimit > 0 && usage.totalCostUsd >= costLimit) {
     throw new Error('Monthly usage cost limit reached for your account');
+  }
+}
+
+type ResponseCreateParamsNonStreaming = Parameters<OpenAI['responses']['create']>[0] & { stream?: false };
+
+export async function trackedResponsesCreate(
+  params: ResponseCreateParamsNonStreaming,
+  tracking: TrackableCall
+): Promise<Awaited<ReturnType<OpenAI['responses']['create']>>> {
+  await enforceUsageLimit(tracking.userId);
+
+  const start = Date.now();
+  try {
+    const result = await openai.responses.create({ ...params, stream: false });
+    const latencyMs = Date.now() - start;
+    const usage = result.usage;
+    const inputTokens = usage?.input_tokens ?? 0;
+    const outputTokens = usage?.output_tokens ?? 0;
+
+    await logUsageEvent({
+      userId: tracking.userId,
+      sessionId: tracking.sessionId,
+      operation: tracking.operation,
+      provider: 'openai',
+      model: String(params.model ?? ''),
+      inputTokens,
+      outputTokens,
+      totalTokens: usage?.total_tokens ?? inputTokens + outputTokens,
+      costUsd: calculateOpenAiCostUsd({
+        model: String(params.model ?? ''),
+        inputTokens,
+        outputTokens,
+      }),
+      latencyMs,
+      status: 'success',
+      metadata: tracking.metadata,
+    });
+
+    return result as Awaited<ReturnType<OpenAI['responses']['create']>>;
+  } catch (error) {
+    await logUsageEvent({
+      userId: tracking.userId,
+      sessionId: tracking.sessionId,
+      operation: tracking.operation,
+      provider: 'openai',
+      model: String(params.model ?? ''),
+      latencyMs: Date.now() - start,
+      status: 'failed',
+      metadata: {
+        ...(tracking.metadata ?? {}),
+        error: error instanceof Error ? error.message : 'Unknown OpenAI error',
+      },
+    });
+    throw error;
   }
 }
 

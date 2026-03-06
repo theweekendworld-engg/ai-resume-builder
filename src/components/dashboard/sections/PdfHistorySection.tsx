@@ -82,7 +82,12 @@ export function PdfHistorySection() {
                       {item.createdAt.toLocaleString()}
                     </p>
                   </div>
-                  <a href={item.blobUrl} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={`/api/pdfs/${item.id}`}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <Button variant="outline" size="sm">
                       <FileDown className="mr-2 h-4 w-4" />
                       Download

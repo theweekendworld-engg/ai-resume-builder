@@ -2,7 +2,7 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentBillingPeriod } from '@/lib/usageTracker';
+import { getCurrentBillingPeriod, calculateOpenAiCostUsd } from '@/lib/usageTracker';
 
 function twoDecimals(value: number): number {
   return Math.round(value * 100) / 100;
@@ -58,13 +58,35 @@ export async function getUserUsageStats(): Promise<UserUsageStats> {
     const completed = sessionsAgg.find((r) => r.status === 'completed')?._count._all ?? 0;
     const failed = sessionsAgg.find((r) => r.status === 'failed')?._count._all ?? 0;
 
+    let totalCostUsd = usageAgg._sum.costUsd ?? 0;
+    if (totalCostUsd === 0 && (usageAgg._sum.totalTokens ?? 0) > 0) {
+      const logs = await prisma.apiUsageLog.findMany({
+        where: {
+          userId,
+          createdAt: { gte: period.start, lt: period.end },
+          status: 'success',
+        },
+        select: { model: true, inputTokens: true, outputTokens: true },
+      });
+      totalCostUsd = logs.reduce(
+        (sum, log) =>
+          sum +
+          calculateOpenAiCostUsd({
+            model: log.model,
+            inputTokens: log.inputTokens,
+            outputTokens: log.outputTokens,
+          }),
+        0
+      );
+    }
+
     return {
       success: true,
       stats: {
         monthStart: period.start,
         monthEnd: period.end,
         totalTokens: usageAgg._sum.totalTokens ?? 0,
-        totalCostUsd: twoDecimals(usageAgg._sum.costUsd ?? 0),
+        totalCostUsd: twoDecimals(totalCostUsd),
         generationsCompleted: completed,
         generationsFailed: failed,
         pdfsGenerated: pdfCount,

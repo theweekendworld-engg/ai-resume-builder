@@ -186,7 +186,7 @@ export const ParsedResumeSchema = z.object({
     skills: z.array(z.string()).default([]),
 });
 
-export const RESUME_PARSE_PROMPT = `You are a resume parser. Extract structured data from the resume text below.
+export const RESUME_PARSE_PROMPT = `You are a resume parser. Extract structured data from the resume pdf file below.
 Return a single JSON object with exactly these keys:
 - personalInfo: { fullName, email, phone, location, linkedin, github, website, summary, title }
 - experiences: array of { company, role, startDate, endDate, current (boolean), location, description, highlights (array of bullet strings) }

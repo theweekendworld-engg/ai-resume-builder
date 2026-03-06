@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { generateLatexFromResume, LatexTemplateType } from '@/templates/latex';
 import { compileLatex, latexToResume } from '@/actions/ai';
-import { loadLatestJobTargetFromCloud, saveJobTargetToCloud } from '@/actions/jobTargets';
+import { loadJobTargetForResume, saveJobTargetToCloud } from '@/actions/jobTargets';
 import { loadResumeFromCloud, saveResumeToCloud } from '@/actions/resume';
 import { useResumeStore } from '@/store/resumeStore';
 import { useEditorStore } from '@/store/editorStore';
@@ -103,7 +103,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
 
-    Promise.all([loadResumeFromCloud(resumeId), loadLatestJobTargetFromCloud()])
+    Promise.all([loadResumeFromCloud(resumeId), loadJobTargetForResume(resumeId)])
       .then(([resumeResult, jobTargetResult]) => {
         if (!resumeResult.success) {
           setLoadError(resumeResult.error ?? 'Unable to load resume.');

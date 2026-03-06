@@ -1,7 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { extractTextFromPdf } from '@/lib/pdfParser';
-import { parseResumeText } from '@/lib/resumeParser';
+import { parseResumeFromPdf } from '@/lib/resumeParser';
 
 const MAX_FILE_SIZE = Number(process.env.RESUME_IMPORT_MAX_FILE_SIZE_KB ?? 5000) * 1024;
 
@@ -43,16 +42,7 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const text = await extractTextFromPdf(buffer);
-
-    if (!text.trim()) {
-      return NextResponse.json(
-        { success: false, error: 'Could not extract text from the PDF. It may be scanned or image-based.' },
-        { status: 422 }
-      );
-    }
-
-    const parsed = await parseResumeText(text, userId);
+    const parsed = await parseResumeFromPdf(buffer, userId);
     return NextResponse.json({ success: true, data: parsed });
   } catch (error) {
     console.error('Resume import error:', error);

@@ -63,3 +63,34 @@ export async function loadLatestJobTargetFromCloud(): Promise<{
         };
     }
 }
+
+export async function loadJobTargetForResume(resumeId: string): Promise<{
+    success: boolean;
+    jobTarget?: { company: string; role: string; description: string };
+    error?: string;
+}> {
+    try {
+        const { userId } = await auth();
+        if (!userId) return { success: false, error: 'Not authenticated' };
+
+        const session = await prisma.generationSession.findFirst({
+            where: { resultResumeId: resumeId, userId },
+            orderBy: { completedAt: 'desc' },
+            select: { jobDescription: true },
+        });
+        if (session?.jobDescription) {
+            return {
+                success: true,
+                jobTarget: { company: '', role: '', description: session.jobDescription },
+            };
+        }
+
+        return loadLatestJobTargetFromCloud();
+    } catch (error) {
+        console.error('Failed to load job target for resume:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+        };
+    }
+}

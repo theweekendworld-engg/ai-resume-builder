@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { config } from '@/lib/config';
@@ -62,4 +62,15 @@ export async function storePdfArtifact(input: StorePdfInput): Promise<StoredPdfA
   }
 
   return storeLocalPdf(input);
+}
+
+export async function readStoredPdf(blobKey: string): Promise<Buffer | null> {
+  if (config.pdfStorage.mode !== 'local') return null;
+  const root = getLocalStorageRoot();
+  const absolutePath = path.join(root, blobKey);
+  try {
+    return await readFile(absolutePath);
+  } catch {
+    return null;
+  }
 }
