@@ -2,11 +2,16 @@
 
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
+import { z } from 'zod';
 import {
   getCurrentBillingPeriod,
   upsertAllUserUsageSummaries,
   upsertUserUsageSummary,
 } from '@/lib/usageTracker';
+
+const AdminUserIdSchema = z.object({
+  userId: z.string().min(1).max(255),
+});
 
 type AggregateUsage = {
   calls: number;
@@ -235,23 +240,28 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
 
 export async function getAdminUserUsage(userId: string): Promise<AdminUserUsageData> {
   await requireAdminUserId();
+  const parsedInput = AdminUserIdSchema.safeParse({ userId });
+  if (!parsedInput.success) {
+    throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+  }
+  const parsedUserId = parsedInput.data.userId;
 
   const now = new Date();
   const month = getCurrentBillingPeriod(now);
-  await upsertUserUsageSummary({ userId, periodStart: month.start, periodEnd: month.end });
+  await upsertUserUsageSummary({ userId: parsedUserId, periodStart: month.start, periodEnd: month.end });
 
   const [summary, logs] = await Promise.all([
     prisma.userUsageSummary.findUnique({
       where: {
         userId_periodStart: {
-          userId,
+          userId: parsedUserId,
           periodStart: month.start,
         },
       },
     }),
     prisma.apiUsageLog.findMany({
       where: {
-        userId,
+        userId: parsedUserId,
         createdAt: {
           gte: new Date(now.getTime() - (30 * 24 * 60 * 60 * 1000)),
           lt: now,
@@ -292,7 +302,7 @@ export async function getAdminUserUsage(userId: string): Promise<AdminUserUsageD
     .map((row) => ({ ...row, costUsd: twoDecimals(row.costUsd) }));
 
   const profile = await prisma.userProfile.findUnique({
-    where: { userId },
+    where: { userId: parsedUserId },
     select: {
       fullName: true,
       email: true,
@@ -302,7 +312,7 @@ export async function getAdminUserUsage(userId: string): Promise<AdminUserUsageD
 
   return {
     user: {
-      userId,
+      userId: parsedUserId,
       fullName: profile?.fullName || '',
       email: profile?.email || '',
     },

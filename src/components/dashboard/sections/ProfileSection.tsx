@@ -96,7 +96,8 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
   }>>([]);
 
   useEffect(() => {
-    if (profile) {
+    if (!profile) return;
+    const timer = window.setTimeout(() => {
       setPersonal({
         fullName: profile.fullName ?? '',
         email: profile.email ?? '',
@@ -118,7 +119,10 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
         tonePreference: p.tonePreference,
         autoGenerate: p.autoGenerate,
       });
-    }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [profile]);
 
   useEffect(() => {

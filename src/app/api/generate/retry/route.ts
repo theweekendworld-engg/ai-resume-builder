@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       pdfUrl: result.pdfUrl,
       reused: result.reused,
     });
-  } catch (error) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         success: false,

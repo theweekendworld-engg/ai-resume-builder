@@ -92,7 +92,7 @@ export function JobTargetEditor() {
             
             setSuccess('Resume tailored successfully!');
             setTimeout(() => setSuccess(null), 3000);
-        } catch (err) {
+        } catch (err: unknown) {
             console.error(err);
             setError('Failed to generate. Please try again.');
         } finally {
@@ -131,7 +131,7 @@ export function JobTargetEditor() {
             setClarificationAnswers({});
             setSuccess('Resume tailored with your clarifications!');
             setTimeout(() => setSuccess(null), 3000);
-        } catch (err) {
+        } catch (err: unknown) {
             console.error(err);
             setError('Failed to apply clarifications. Please try again.');
         } finally {
@@ -151,7 +151,7 @@ export function JobTargetEditor() {
         try {
             const score = await calculateATSScore(resumeData, jobDescription);
             setAtsScore(score);
-        } catch (err) {
+        } catch (err: unknown) {
             console.error(err);
             setError('Failed to calculate score.');
         } finally {

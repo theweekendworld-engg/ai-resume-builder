@@ -41,7 +41,7 @@ export function LatexPreview({ code }: LatexPreviewProps) {
             } else {
                 setError(result.error || 'Compilation failed');
             }
-        } catch (err) {
+        } catch (err: unknown) {
             console.error('Compilation error:', err);
             setError(err instanceof Error ? err.message : 'Unknown compilation error');
         } finally {

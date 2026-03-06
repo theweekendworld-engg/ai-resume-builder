@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
+import { deleteExperienceEmbedding, upsertExperienceEmbedding } from '@/actions/embed';
 
 const ExperienceSchema = z.object({
   company: z.string().min(1).max(300),
@@ -63,8 +64,24 @@ export async function createUserExperience(input: unknown) {
       description: parsed.data.description ?? '',
       highlights: parsed.data.highlights ?? [],
     },
-    select: { id: true },
+    select: {
+      id: true,
+      role: true,
+      company: true,
+      description: true,
+      highlights: true,
+      createdAt: true,
+    },
   });
+
+  try {
+    await upsertExperienceEmbedding({
+      userId,
+      experience,
+    });
+  } catch (error: unknown) {
+    console.error('Failed to embed experience:', error);
+  }
 
   return { success: true, experienceId: experience.id };
 }
@@ -80,13 +97,38 @@ export async function updateUserExperience(input: unknown) {
 
   const { id, ...rest } = parsed.data;
 
-  await prisma.userExperience.updateMany({
+  const existing = await prisma.userExperience.findFirst({
     where: { id, userId },
+    select: { id: true },
+  });
+  if (!existing) return { success: false, error: 'Experience not found' };
+
+  const updated = await prisma.userExperience.update({
+    where: { id },
     data: {
       ...rest,
       highlights: rest.highlights ?? undefined,
     },
+    select: {
+      id: true,
+      role: true,
+      company: true,
+      description: true,
+      highlights: true,
+      createdAt: true,
+    },
   });
+
+  if (updated) {
+    try {
+      await upsertExperienceEmbedding({
+        userId,
+        experience: updated,
+      });
+    } catch (error: unknown) {
+      console.error('Failed to update experience embedding:', error);
+    }
+  }
 
   return { success: true };
 }
@@ -99,5 +141,10 @@ export async function deleteUserExperience(id: string) {
   if (!userId) return { success: false, error: 'Not authenticated' };
 
   await prisma.userExperience.deleteMany({ where: { id: parsedId.data, userId } });
+  try {
+    await deleteExperienceEmbedding(parsedId.data);
+  } catch (error: unknown) {
+    console.error('Failed to delete experience embedding:', error);
+  }
   return { success: true };
 }

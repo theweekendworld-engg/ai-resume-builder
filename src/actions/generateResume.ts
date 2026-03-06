@@ -21,6 +21,13 @@ const ParsedJDSchema = z.object({
   experienceLevel: z.string().default(''),
   keyResponsibilities: z.array(z.string()).default([]),
   industryDomain: z.string().default(''),
+  skillGroups: z.array(z.object({
+    name: z.string().default(''),
+    skills: z.array(z.string()).default([]),
+  })).default([]),
+  seniorityLevel: z.enum(['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager']).default('mid'),
+  isRemote: z.boolean().default(false),
+  softSkills: z.array(z.string()).default([]),
 });
 
 const ParaphraseSchema = z.object({
@@ -368,7 +375,7 @@ async function parseJobDescription(params: {
 
   const prompt = `Parse the job description into structured JSON.
 Return ONLY JSON with keys:
-role, company, requiredSkills, preferredSkills, experienceLevel, keyResponsibilities, industryDomain.
+role, company, requiredSkills, preferredSkills, experienceLevel, keyResponsibilities, industryDomain, skillGroups, seniorityLevel, isRemote, softSkills.
 If missing, use empty strings/arrays.
 
 JOB DESCRIPTION:\n${jobDescription}`;
@@ -733,6 +740,7 @@ export async function generateSmartResumePipeline(
   const projectIds: string[] = [];
   const knowledgeScores = new Map<string, number>();
   const knowledgeIds: string[] = [];
+  const experienceSemanticScores = new Map<string, number>();
 
   if (seeded) {
     for (const item of seeded.matchedProjects) {
@@ -749,38 +757,78 @@ export async function generateSmartResumePipeline(
     }
   } else {
     await onStepStart?.('semantic_search');
-    const semanticQuery = buildFocusedSemanticQuery(parsedJD, parsedOptions.focusAreas ?? []);
-    const queryEmbedding = await generateEmbedding({
-      text: semanticQuery,
-      userId,
-      sessionId,
-      operation: 'embedding_generate',
-      metadata: {
-        reason: 'semantic_search_query',
-        type: 'all',
-      },
-    });
-
-    const [projectSearch, ...knowledgeSearches] = await Promise.all([
-      searchQdrantByVector({ userId, sessionId, vector: queryEmbedding, type: 'project', limit: 10 }),
-      ...knowledgeTypes.map((type) => searchQdrantByVector({ userId, sessionId, vector: queryEmbedding, type, limit: 4 })),
-    ]);
-
-    for (const result of projectSearch) {
-      const payload = (result.payload ?? {}) as Record<string, unknown>;
-      const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
-      if (!sourceId || projectScores.has(sourceId)) continue;
-      projectScores.set(sourceId, Number(result.score ?? 0));
-      projectIds.push(sourceId);
+    const skillGroups = parsedJD.skillGroups.length > 0
+      ? parsedJD.skillGroups
+      : [{ name: 'core', skills: uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills]).slice(0, 8) }];
+    const semanticQueries = skillGroups
+      .slice(0, 3)
+      .map((group) => `${parsedJD.role}. ${group.skills.join(', ')}`.trim())
+      .filter(Boolean);
+    const baseQuery = buildFocusedSemanticQuery(parsedJD, parsedOptions.focusAreas ?? []);
+    if (semanticQueries.length === 0) {
+      semanticQueries.push(baseQuery);
     }
 
-    for (const batch of knowledgeSearches) {
-      for (const result of batch) {
+    const queryEmbeddings = await Promise.all(
+      semanticQueries.map((query) => generateEmbedding({
+        text: query,
+        userId,
+        sessionId,
+        operation: 'embedding_generate',
+        metadata: {
+          reason: 'semantic_search_query',
+          type: 'all',
+        },
+      }))
+    );
+
+    const allSearchResults = await Promise.all(
+      queryEmbeddings.map(async (vector) => {
+        const [projectSearch, experienceSearch, ...knowledgeSearches] = await Promise.all([
+          searchQdrantByVector({ userId, sessionId, vector, type: 'project', limit: 6 }),
+          searchQdrantByVector({ userId, sessionId, vector, type: 'experience', limit: 6 }),
+          ...knowledgeTypes.map((type) => searchQdrantByVector({ userId, sessionId, vector, type, limit: 3 })),
+        ]);
+        return { projectSearch, experienceSearch, knowledgeSearches };
+      })
+    );
+
+    for (const batchResults of allSearchResults) {
+      for (const result of batchResults.projectSearch) {
         const payload = (result.payload ?? {}) as Record<string, unknown>;
         const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
-        if (!sourceId || knowledgeScores.has(sourceId)) continue;
-        knowledgeScores.set(sourceId, Number(result.score ?? 0));
-        knowledgeIds.push(sourceId);
+        if (!sourceId) continue;
+        const score = Number(result.score ?? 0);
+        const previous = projectScores.get(sourceId) ?? 0;
+        if (score > previous) {
+          projectScores.set(sourceId, score);
+          if (!projectIds.includes(sourceId)) projectIds.push(sourceId);
+        }
+      }
+
+      for (const result of batchResults.experienceSearch) {
+        const payload = (result.payload ?? {}) as Record<string, unknown>;
+        const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
+        if (!sourceId) continue;
+        const score = Number(result.score ?? 0);
+        const previous = experienceSemanticScores.get(sourceId) ?? 0;
+        if (score > previous) {
+          experienceSemanticScores.set(sourceId, score);
+        }
+      }
+
+      for (const searchBatch of batchResults.knowledgeSearches) {
+        for (const result of searchBatch) {
+          const payload = (result.payload ?? {}) as Record<string, unknown>;
+          const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
+          if (!sourceId) continue;
+          const score = Number(result.score ?? 0);
+          const previous = knowledgeScores.get(sourceId) ?? 0;
+          if (score > previous) {
+            knowledgeScores.set(sourceId, score);
+            if (!knowledgeIds.includes(sourceId)) knowledgeIds.push(sourceId);
+          }
+        }
       }
     }
   }
@@ -858,7 +906,7 @@ export async function generateSmartResumePipeline(
   const rankedExperiences = sourceExperiences
     .map((item) => ({
       item,
-      score: scoreExperienceRelevance({ item, jdSkills, parsedJD }),
+      score: (scoreExperienceRelevance({ item, jdSkills, parsedJD }) * 0.75) + ((experienceSemanticScores.get(item.id) ?? 0) * 0.25),
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, lengthConstraints.maxExperiences);

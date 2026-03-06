@@ -49,7 +49,7 @@ export async function GET(
     }
 
     return NextResponse.json({ error: 'Download not available' }, { status: 501 });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('PDF download error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Download failed' },

@@ -127,6 +127,25 @@ export const ScoredRepoSchema = z.object({
     relevanceReason: z.string(),
 });
 
+export const ParsedJDSchema = z.object({
+    role: z.string().default(''),
+    company: z.string().default(''),
+    requiredSkills: z.array(z.string()).default([]),
+    preferredSkills: z.array(z.string()).default([]),
+    experienceLevel: z.string().default(''),
+    keyResponsibilities: z.array(z.string()).default([]),
+    industryDomain: z.string().default(''),
+    skillGroups: z.array(
+        z.object({
+            name: z.string().default(''),
+            skills: z.array(z.string()).default([]),
+        })
+    ).default([]),
+    seniorityLevel: z.enum(['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager']).default('mid'),
+    isRemote: z.boolean().default(false),
+    softSkills: z.array(z.string()).default([]),
+});
+
 const ParsedResumeKnowledgeType = z.enum([
     'achievement', 'oss_contribution', 'certification', 'award', 'publication', 'custom',
 ]);
@@ -205,6 +224,7 @@ export type SectionDiffType = z.infer<typeof SectionDiffSchema>;
 export type ProposedResumePatchType = z.infer<typeof ProposedResumePatchSchema>;
 export type ScoredRepoType = z.infer<typeof ScoredRepoSchema>;
 export type ParsedResumeData = z.infer<typeof ParsedResumeSchema>;
+export type ParsedJDType = z.infer<typeof ParsedJDSchema>;
 
 /**
  * Safely parse JSON from AI response with validation.
@@ -230,7 +250,7 @@ export function parseAIResponse<T>(
             const issues = result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ');
             return { success: false, error: `Validation failed: ${issues}` };
         }
-    } catch (error) {
+    } catch (error: unknown) {
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown parse error'

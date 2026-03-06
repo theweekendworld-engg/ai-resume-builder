@@ -32,7 +32,7 @@ export function KnowledgeBase() {
                 tags: Array.isArray(item.tags) ? item.tags as string[] : [],
                 createdAt: new Date().toISOString(),
             })));
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             const localResults = searchItems(query);
             setResults(localResults);
@@ -59,7 +59,7 @@ export function KnowledgeBase() {
             toast.success('Saved!', {
                 description: 'Added to your knowledge base and synced.',
             });
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Save failed', {
                 description: 'Unable to save to knowledge base. Please try again.',

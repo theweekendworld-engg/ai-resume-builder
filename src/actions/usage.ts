@@ -92,7 +92,7 @@ export async function getUserUsageStats(): Promise<UserUsageStats> {
         pdfsGenerated: pdfCount,
       },
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

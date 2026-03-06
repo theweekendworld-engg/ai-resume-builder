@@ -2,8 +2,10 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { GenerationStatus, PipelineStep, Prisma, ResumeVersionSource } from '@prisma/client';
+import { z } from 'zod';
 import { compileLatex } from '@/actions/ai';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
+import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
@@ -19,6 +21,10 @@ type RunGenerationOptions = {
   maxProjects?: number;
   templatePreference?: LatexTemplateType;
 };
+
+const RetryGenerationSessionSchema = z.object({
+  sessionId: z.string().cuid(),
+});
 
 export type GenerationRunResult = {
   sessionId: string;
@@ -317,6 +323,56 @@ async function markFailure(params: {
   });
 }
 
+async function runPrimaryResumePipeline(params: {
+  sessionId: string;
+  userId: string;
+  jobDescription: string;
+  fallbackResumeData?: ResumeData;
+  focusAreas?: string[];
+  maxProjects?: number;
+  artifactSeed?: SmartResumeArtifactSeed;
+  onStepStart?: (step: SmartPipelineStep) => Promise<void> | void;
+  onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
+}) {
+  const agentResult = await runResumeAgent({
+    jobDescription: params.jobDescription,
+    userId: params.userId,
+    sessionId: params.sessionId,
+    fallbackResumeData: params.fallbackResumeData,
+    focusAreas: params.focusAreas,
+    maxProjects: params.maxProjects,
+    onStep: async (step) => {
+      if (step.status === 'started') return;
+      if (step.tool === 'parseJobDescription') {
+        await params.onStepStart?.('jd_parsing');
+        await params.onStepComplete?.('jd_parsing', {
+          parsedJD: (step.data as { data?: { data?: { parsedJD?: unknown } } })?.data?.data?.parsedJD,
+        });
+      }
+      if (step.tool === 'runLegacyPipeline') {
+        const payload = (step.data as { data?: Record<string, unknown> })?.data ?? {};
+        await params.onStepStart?.('ats_scoring');
+        await params.onStepComplete?.('ats_scoring', payload);
+      }
+    },
+  });
+
+  if (agentResult.success) {
+    return agentResult.data;
+  }
+
+  return generateSmartResumePipeline(params.jobDescription, {
+    fallbackResumeData: params.fallbackResumeData,
+    focusAreas: params.focusAreas,
+    maxProjects: params.maxProjects,
+    actorUserId: params.userId,
+    actorSessionId: params.sessionId,
+    artifactSeed: params.artifactSeed,
+    onStepStart: params.onStepStart,
+    onStepComplete: params.onStepComplete,
+  });
+}
+
 export async function runGenerationSession(options: RunGenerationOptions): Promise<GenerationRunResult> {
   const session = await prisma.generationSession.findUnique({
     where: { id: options.sessionId },
@@ -436,13 +492,13 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       activeStep === PipelineStep.claim_validation ||
       activeStep === PipelineStep.ats_scoring
     ) {
-      pipelineResult = await generateSmartResumePipeline(session.jobDescription, {
+      pipelineResult = await runPrimaryResumePipeline({
+        jobDescription: session.jobDescription,
         fallbackResumeData: options.fallbackResumeData,
         focusAreas: options.focusAreas,
         maxProjects: options.maxProjects,
-        templatePreference: options.templatePreference,
-        actorUserId: options.userId,
-        actorSessionId: session.id,
+        userId: options.userId,
+        sessionId: session.id,
         artifactSeed: activeStep === PipelineStep.paraphrasing
           || activeStep === PipelineStep.resume_assembly
           || activeStep === PipelineStep.claim_validation
@@ -580,7 +636,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       pdfUrl: storedPdf.blobUrl,
       reused: false,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to run generation pipeline';
     await markFailure({
       sessionId: session.id,
@@ -597,8 +653,13 @@ export async function retryGenerationSession(sessionId: string): Promise<Generat
     throw new Error('Not authenticated');
   }
 
+  const parsed = RetryGenerationSessionSchema.safeParse({ sessionId });
+  if (!parsed.success) {
+    throw new Error(parsed.error.issues.map((issue) => issue.message).join('; '));
+  }
+
   return runGenerationSession({
-    sessionId,
+    sessionId: parsed.data.sessionId,
     userId,
   });
 }

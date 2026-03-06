@@ -87,7 +87,7 @@ export function GitHubImport() {
             if (fetchedRepos.length === 0) {
                 toast.info('No repositories found');
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Failed to fetch repositories');
         } finally {
@@ -133,7 +133,7 @@ export function GitHubImport() {
             } else {
                 toast.success(`Imported "${repo.name}" to projects and library`);
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Failed to import project');
         } finally {

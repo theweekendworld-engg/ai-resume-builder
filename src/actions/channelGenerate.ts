@@ -5,6 +5,7 @@ import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client'
 import { z } from 'zod';
 import { generateSmartResumePipeline } from '@/actions/generateResume';
 import { runGenerationSession } from '@/actions/generationPipeline';
+import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -161,10 +162,18 @@ async function startNewSession(params: {
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
-  const smart = await generateSmartResumePipeline(params.message, {
+  const agentResult = await runResumeAgent({
+    jobDescription: params.message,
     fallbackResumeData: params.fallbackResumeData,
-    actorUserId: params.userId,
+    userId: params.userId,
   });
+
+  const smart = agentResult.success
+    ? agentResult.data
+    : await generateSmartResumePipeline(params.message, {
+      fallbackResumeData: params.fallbackResumeData,
+      actorUserId: params.userId,
+    });
 
   const gaps = detectGaps({
     requiredSkills: smart.sources.parsedJD.requiredSkills,
@@ -234,7 +243,7 @@ async function startNewSession(params: {
       atsEstimate: result.atsEstimate,
       pdfUrl: result.pdfUrl,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       sessionId: session.id,
@@ -358,7 +367,7 @@ async function continueSession(params: {
       atsEstimate: result.atsEstimate,
       pdfUrl: result.pdfUrl,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       sessionId: session.id,

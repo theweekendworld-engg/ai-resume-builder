@@ -116,7 +116,7 @@ export async function saveResumeToCloud(
             },
         });
         return { success: true, resumeId: resume.id };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to save resume to cloud:', error);
         return {
             success: false,
@@ -163,7 +163,7 @@ export async function loadResumeFromCloud(resumeId?: string): Promise<{
             resumeId: resume.id,
             updatedAt,
         };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to load resume from cloud:', error);
         return {
             success: false,
@@ -187,7 +187,7 @@ export async function deleteResumeFromCloud(resumeId?: string): Promise<{ succes
         await prisma.jobTarget.deleteMany({ where: { userId } });
         await prisma.resume.deleteMany({ where: { userId } });
         return { success: true };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to delete resume from cloud:', error);
         return {
             success: false,
@@ -225,7 +225,7 @@ export async function listResumeVersions(resumeId?: string, limit = 20): Promise
             success: true,
             versions: versions.map((v) => ({ id: v.id, source: v.source, createdAt: v.createdAt })),
         };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to list resume versions:', error);
         return {
             success: false,
@@ -267,7 +267,7 @@ export async function restoreResumeVersion(versionId: string, resumeId?: string)
             success: true,
             data: version.content as unknown as ResumeData,
         };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to restore version:', error);
         return {
             success: false,
@@ -312,7 +312,7 @@ export async function listResumes(): Promise<{
         });
 
         return { success: true, resumes };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to list resumes:', error);
         return {
             success: false,
@@ -360,7 +360,7 @@ export async function createResume(input?: {
         }
 
         return { success: true, resumeId: resume.id };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to create resume:', error);
         return {
             success: false,
@@ -414,7 +414,7 @@ export async function duplicateResume(resumeId: string): Promise<{
         }
 
         return { success: true, resumeId: duplicate.id };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to duplicate resume:', error);
         return {
             success: false,

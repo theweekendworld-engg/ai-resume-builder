@@ -1,10 +1,6 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { getUserPdfHistory } from '@/actions/pdfs';
+import type { PdfHistoryItem } from '@/actions/pdfs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { FileDown } from 'lucide-react';
 
 function formatBytes(bytes: number): string {
@@ -13,30 +9,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PdfHistorySection() {
-  const [result, setResult] = useState<Awaited<ReturnType<typeof getUserPdfHistory>> | null>(null);
+type PdfHistorySectionProps = {
+  result: {
+    success: boolean;
+    items?: PdfHistoryItem[];
+    error?: string;
+  };
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    getUserPdfHistory().then((r) => {
-      if (!cancelled) setResult(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!result) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">PDF History</h1>
-          <p className="text-muted-foreground">Loading PDF history...</p>
-        </div>
-        <Skeleton className="h-48 rounded-xl" />
-      </div>
-    );
-  }
+export function PdfHistorySection({ result }: PdfHistorySectionProps) {
 
   if (!result.success) {
     return (

@@ -69,7 +69,7 @@ export function AIRewriteModal({ open, onOpenChange, originalText, onAccept, typ
 
             const result = await improveText(originalText, type, instruction);
             setRewrittenText(result);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Rewrite Error:', error);
             setRewrittenText('Error generating rewrite. Please try again.');
         } finally {

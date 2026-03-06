@@ -102,7 +102,7 @@ export function ProjectsEditor() {
             if (fetchedRepos.length > 0) {
                 setShowGitHub(true);
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
         } finally {
             setLoading(false);
@@ -145,7 +145,7 @@ export function ProjectsEditor() {
             } else {
                 toast.success(`Imported "${repo.name}" to projects and library`);
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Failed to import project');
         } finally {

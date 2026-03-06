@@ -21,7 +21,7 @@ export function JobTailor() {
         try {
             const extracted = await extractKeywords(jobDescription);
             setKeywords(extracted);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
         } finally {
             setLoading(false);

@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import type { UserProfileDTO } from '@/actions/profile';
 import type { DashboardOverview } from '@/actions/dashboard';
+import type { UserUsageStats } from '@/actions/usage';
+import type { PdfHistoryItem } from '@/actions/pdfs';
 import { OverviewSection } from '@/components/dashboard/sections/OverviewSection';
 import { ResumesSection } from '@/components/dashboard/sections/ResumesSection';
 import { DashboardCopilot } from '@/components/dashboard/sections/DashboardCopilot';
@@ -69,6 +71,8 @@ export type DashboardShellProps = {
     embedded: boolean;
     updatedAt: Date;
   }>;
+  usageStats: UserUsageStats;
+  pdfHistory: { success: boolean; items?: PdfHistoryItem[]; error?: string };
   isAdmin: boolean;
 };
 
@@ -77,6 +81,8 @@ export function DashboardShell({
   resumes,
   profile,
   projects,
+  usageStats,
+  pdfHistory,
   isAdmin,
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
@@ -87,7 +93,12 @@ export function DashboardShell({
     if (typeof window === 'undefined') return;
     if (!overview.success || !overview.profile?.onboardingComplete) return;
     if (window.localStorage.getItem(DASHBOARD_TOUR_STORAGE_KEY)) return;
-    setTourOpen(true);
+    const timer = window.setTimeout(() => {
+      setTourOpen(true);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [overview.success, overview.profile?.onboardingComplete]);
 
   const handleOnboardingComplete = () => {
@@ -173,8 +184,8 @@ export function DashboardShell({
               <ProfileSection profile={profile} projects={projects} />
             )}
             {activeSection === 'telegram' && <TelegramSection />}
-            {activeSection === 'usage' && <UsageSection />}
-            {activeSection === 'pdf' && <PdfHistorySection />}
+            {activeSection === 'usage' && <UsageSection result={usageStats} />}
+            {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
           </div>
         </main>
       </div>

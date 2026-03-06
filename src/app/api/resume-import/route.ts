@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
     const parsed = await parseResumeFromPdf(buffer, userId);
     return NextResponse.json({ success: true, data: parsed });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Resume import error:', error);
     return NextResponse.json(
       {

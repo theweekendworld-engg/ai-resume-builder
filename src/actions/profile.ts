@@ -84,7 +84,7 @@ export async function getUserProfile(): Promise<{
         preferences: parseUserGenerationPreferences(profile.preferences),
       },
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -139,7 +139,7 @@ export async function upsertUserProfile(input: unknown): Promise<{
         preferences: parseUserGenerationPreferences(profile.preferences),
       },
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -198,7 +198,7 @@ export async function updateUserPreferences(input: unknown): Promise<{
     });
 
     return { success: true, preferences: mergedPreferences };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -226,7 +226,7 @@ export async function completeOnboarding(): Promise<{
     });
 
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

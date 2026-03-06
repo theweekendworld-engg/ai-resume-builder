@@ -1,38 +1,11 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { getUserUsageStats } from '@/actions/usage';
+import type { UserUsageStats } from '@/actions/usage';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 
-export function UsageSection() {
-  const [result, setResult] = useState<Awaited<ReturnType<typeof getUserUsageStats>> | null>(null);
+type UsageSectionProps = {
+  result: UserUsageStats;
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    getUserUsageStats().then((r) => {
-      if (!cancelled) setResult(r);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!result) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
-          <p className="text-muted-foreground">Loading usage data...</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+export function UsageSection({ result }: UsageSectionProps) {
 
   if (!result.success) {
     return (

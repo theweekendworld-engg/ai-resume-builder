@@ -28,7 +28,7 @@ export async function saveJobTargetToCloud(company: string, role: string, descri
             },
         });
         return { success: true };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to save job target:', error);
         return {
             success: false,
@@ -55,7 +55,7 @@ export async function loadLatestJobTargetFromCloud(): Promise<{
             success: true,
             jobTarget: { company: latest.company, role: latest.role, description: latest.description },
         };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to load job target:', error);
         return {
             success: false,
@@ -86,7 +86,7 @@ export async function loadJobTargetForResume(resumeId: string): Promise<{
         }
 
         return loadLatestJobTargetFromCloud();
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Failed to load job target for resume:', error);
         return {
             success: false,

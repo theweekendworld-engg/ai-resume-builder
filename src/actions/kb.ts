@@ -118,7 +118,7 @@ export async function saveToKnowledgeBase(content: string, type: string, tags: s
           embedded: true,
         },
       });
-    } catch (embedError) {
+    } catch (embedError: unknown) {
       await prisma.knowledgeItem.update({
         where: { id: item.id },
         data: { embedded: false },
@@ -131,7 +131,7 @@ export async function saveToKnowledgeBase(content: string, type: string, tags: s
     }
 
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('KB Save Error:', error);
     return { success: false, error: 'Failed to save to KB' };
   }
@@ -168,7 +168,7 @@ export async function searchKnowledgeBase(query: string) {
         score: result.score,
       };
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('KB Search Error:', error);
     return [];
   }
@@ -230,7 +230,7 @@ export async function createKnowledgeItem(input: unknown) {
     });
 
     return { success: true, id: item.id };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: true,
       id: item.id,
@@ -297,7 +297,7 @@ export async function updateKnowledgeItem(input: unknown) {
         embedded: true,
       },
     });
-  } catch (embedError) {
+  } catch (embedError: unknown) {
     return {
       success: true,
       warning: embedError instanceof Error ? embedError.message : 'Knowledge item updated but embedding failed',
@@ -322,7 +322,7 @@ export async function deleteKnowledgeItem(id: string) {
   if (existing?.qdrantPointId) {
     try {
       await deleteFromQdrant(existing.qdrantPointId);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to remove knowledge vector:', error);
     }
   }

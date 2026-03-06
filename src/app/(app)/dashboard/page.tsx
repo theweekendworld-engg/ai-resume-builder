@@ -2,16 +2,20 @@ import { auth } from '@clerk/nextjs/server';
 import { getDashboardOverview } from '@/actions/dashboard';
 import { listResumes } from '@/actions/resume';
 import { listUserProjects } from '@/actions/projects';
+import { getUserUsageStats } from '@/actions/usage';
+import { getUserPdfHistory } from '@/actions/pdfs';
 import { isAdminUserId } from '@/lib/adminAuth';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 
 export default async function DashboardPage() {
   const { userId } = await auth();
   const isAdmin = isAdminUserId(userId);
-  const [overviewResult, resumeResult, projectsResult] = await Promise.all([
+  const [overviewResult, resumeResult, projectsResult, usageStats, pdfHistory] = await Promise.all([
     getDashboardOverview(),
     listResumes(),
     listUserProjects(),
+    getUserUsageStats(),
+    getUserPdfHistory(),
   ]);
 
   const overview = overviewResult.success
@@ -39,6 +43,8 @@ export default async function DashboardPage() {
       resumes={resumes}
       profile={profile}
       projects={projectItems}
+      usageStats={usageStats}
+      pdfHistory={pdfHistory}
       isAdmin={!!isAdmin}
     />
   );

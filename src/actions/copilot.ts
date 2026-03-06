@@ -101,7 +101,7 @@ ${jobDescription}`;
         }
         
         return [];
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Keyword extraction error:", error);
         return [];
     }
@@ -229,7 +229,7 @@ Output ONLY valid JSON, no markdown.`;
             console.error("Patch validation error:", parseResult.error);
             throw new Error("Invalid patch format from AI");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Propose patch error:", error);
         throw new Error("Failed to generate resume patch");
     }

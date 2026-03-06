@@ -102,7 +102,7 @@ export async function generateInitialResume(input: unknown): Promise<{
       resumeId: createResult.resumeId,
       template: safeInput.template,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to generate initial resume.',

@@ -2,13 +2,14 @@
 
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { v4 as uuidv4 } from 'uuid';
-import { KnowledgeType, type UserProject, type KnowledgeItem } from '@prisma/client';
+import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
 const COLLECTION_NAME = 'knowledge_base';
 const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
 const EMBEDDING_SIZE = Number(process.env.OPENAI_EMBEDDING_SIZE || 1536);
 const PROJECT_README_EMBED_CHARS = 1200;
+const EXPERIENCE_EMBED_CHARS = 4000;
 
 const qdrantClient = new QdrantClient({
   url: process.env.QDRANT_URL || 'http://localhost:6333',
@@ -95,20 +96,45 @@ export async function upsertToQdrant(params: {
   return pointId;
 }
 
-function buildProjectEmbeddingText(project: Pick<UserProject, 'name' | 'description' | 'technologies' | 'readme'>) {
+function deriveImpactSummary(project: Pick<UserProject, 'name' | 'description' | 'readme'>): string {
+  const source = `${project.description} ${project.readme}`.trim();
+  const sentence = source.split(/[.!?]\s+/).find((line) => line.trim().length > 20) || '';
+  if (!sentence) return '';
+  return `Impact summary: ${sentence.trim().slice(0, 240)}`;
+}
+
+function buildProjectEmbeddingText(project: Pick<UserProject, 'name' | 'description' | 'technologies' | 'readme' | 'githubUrl' | 'source'>) {
   const technologies = Array.isArray(project.technologies)
     ? (project.technologies as string[])
     : [];
+  const primaryLanguage = technologies[0] ?? '';
+  const impactSummary = deriveImpactSummary(project);
+  const githubHints = project.githubUrl ? `GitHub: ${project.githubUrl}` : '';
 
   return [
     project.name,
     project.description,
     technologies.length > 0 ? `Technologies: ${technologies.join(', ')}` : '',
+    primaryLanguage ? `Primary language: ${primaryLanguage}` : '',
+    githubHints,
+    impactSummary,
     project.readme?.slice(0, PROJECT_README_EMBED_CHARS) || '',
   ]
     .filter(Boolean)
     .join('. ')
     .slice(0, 8000);
+}
+
+function buildExperienceEmbeddingText(experience: Pick<UserExperience, 'role' | 'company' | 'description' | 'highlights'>) {
+  const highlights = Array.isArray(experience.highlights) ? (experience.highlights as string[]) : [];
+  return [
+    `${experience.role} at ${experience.company}`,
+    experience.description,
+    highlights.length > 0 ? `Highlights: ${highlights.join(' ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('. ')
+    .slice(0, EXPERIENCE_EMBED_CHARS);
 }
 
 function buildKnowledgeEmbeddingText(item: Pick<KnowledgeItem, 'type' | 'title' | 'content' | 'metadata'>) {
@@ -125,7 +151,7 @@ function buildKnowledgeEmbeddingText(item: Pick<KnowledgeItem, 'type' | 'title' 
 export async function upsertProjectEmbedding(params: {
   userId: string;
   sessionId?: string;
-  project: Pick<UserProject, 'id' | 'name' | 'description' | 'technologies' | 'readme' | 'qdrantPointId' | 'createdAt'>;
+  project: Pick<UserProject, 'id' | 'name' | 'description' | 'technologies' | 'readme' | 'qdrantPointId' | 'createdAt' | 'githubUrl' | 'source'>;
   replacePointId?: string | null;
 }) {
   const content = buildProjectEmbeddingText(params.project);
@@ -154,6 +180,41 @@ export async function upsertProjectEmbedding(params: {
   });
 
   return { pointId, content };
+}
+
+export async function upsertExperienceEmbedding(params: {
+  userId: string;
+  sessionId?: string;
+  experience: Pick<UserExperience, 'id' | 'role' | 'company' | 'description' | 'highlights' | 'createdAt'>;
+}) {
+  const content = buildExperienceEmbeddingText(params.experience);
+  const vector = await generateEmbedding({
+    text: content,
+    userId: params.userId,
+    sessionId: params.sessionId,
+    operation: 'embedding_generate',
+    metadata: { itemType: 'experience', sourceId: params.experience.id },
+  });
+
+  const pointId = await upsertToQdrant({
+    pointId: `experience:${params.experience.id}`,
+    vector,
+    payload: {
+      userId: params.userId,
+      type: 'experience',
+      sourceId: params.experience.id,
+      title: `${params.experience.role} @ ${params.experience.company}`,
+      content,
+      createdAt: params.experience.createdAt.toISOString(),
+    },
+  });
+
+  return { pointId, content };
+}
+
+export async function deleteExperienceEmbedding(experienceId: string) {
+  if (!experienceId) return;
+  await deleteFromQdrant(`experience:${experienceId}`);
 }
 
 export async function upsertKnowledgeItemEmbedding(params: {
@@ -263,7 +324,7 @@ export async function searchQdrantByVector(params: {
     });
 
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     await logUsageEvent({
       userId: params.userId,
       sessionId: params.sessionId,

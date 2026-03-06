@@ -260,7 +260,7 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<Fetc
     }
 
     return { success: true, repos, linkedHandle, setupPath: '/dashboard' };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('GitHub Fetch Error:', error);
     return { success: false, repos: [], linkedHandle, error: 'Failed to fetch repositories from GitHub.' };
   }
@@ -316,7 +316,7 @@ export async function fetchRepoDetails(username: string, repo: string, token?: s
     }
 
     return { readme, languages, topics };
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('GitHub Details Error:', error);
     return { readme: '', languages: [], topics: [] };
   }

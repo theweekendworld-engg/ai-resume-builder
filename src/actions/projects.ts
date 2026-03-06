@@ -69,7 +69,7 @@ export async function listUserProjects(): Promise<{
         technologies: Array.isArray(p.technologies) ? (p.technologies as string[]) : [],
       })),
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -111,6 +111,8 @@ export async function createUserProject(input: unknown): Promise<{
         readme: true,
         qdrantPointId: true,
         createdAt: true,
+        githubUrl: true,
+        source: true,
       },
     });
 
@@ -128,7 +130,7 @@ export async function createUserProject(input: unknown): Promise<{
           embedded: true,
         },
       });
-    } catch (embedError) {
+    } catch (embedError: unknown) {
       await prisma.userProject.update({
         where: { id: project.id },
         data: {
@@ -144,7 +146,7 @@ export async function createUserProject(input: unknown): Promise<{
     }
 
     return { success: true, projectId: project.id };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -195,6 +197,8 @@ export async function updateUserProject(input: unknown): Promise<{
         readme: true,
         qdrantPointId: true,
         createdAt: true,
+        githubUrl: true,
+        source: true,
       },
     });
 
@@ -212,7 +216,7 @@ export async function updateUserProject(input: unknown): Promise<{
           embedded: true,
         },
       });
-    } catch (embedError) {
+    } catch (embedError: unknown) {
       return {
         success: true,
         warning: embedError instanceof Error ? embedError.message : 'Project updated but embedding failed',
@@ -220,7 +224,7 @@ export async function updateUserProject(input: unknown): Promise<{
     }
 
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -247,7 +251,7 @@ export async function deleteUserProject(projectId: string): Promise<{
     if (existing?.qdrantPointId) {
       try {
         await deleteFromQdrant(existing.qdrantPointId);
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Failed to remove project vector:', error);
       }
     }
@@ -257,7 +261,7 @@ export async function deleteUserProject(projectId: string): Promise<{
     });
 
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -286,6 +290,8 @@ export async function reEmbedUserProject(projectId: string): Promise<{
         readme: true,
         qdrantPointId: true,
         createdAt: true,
+        githubUrl: true,
+        source: true,
       },
     });
 
@@ -306,7 +312,7 @@ export async function reEmbedUserProject(projectId: string): Promise<{
     });
 
     return { success: true };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

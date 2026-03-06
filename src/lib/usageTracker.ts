@@ -193,7 +193,7 @@ export async function trackedResponsesCreate(
     });
 
     return result as Awaited<ReturnType<OpenAI['responses']['create']>>;
-  } catch (error) {
+  } catch (error: unknown) {
     await logUsageEvent({
       userId: tracking.userId,
       sessionId: tracking.sessionId,
@@ -244,7 +244,7 @@ export async function trackedChatCompletion(
     });
 
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     await logUsageEvent({
       userId: tracking.userId,
       sessionId: tracking.sessionId,
@@ -293,7 +293,7 @@ export async function trackedEmbeddingCreate(
     });
 
     return result;
-  } catch (error) {
+  } catch (error: unknown) {
     await logUsageEvent({
       userId: tracking.userId,
       sessionId: tracking.sessionId,

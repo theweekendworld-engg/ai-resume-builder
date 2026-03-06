@@ -1,11 +1,31 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
+import { z } from 'zod';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
 import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
 import { logUsageEvent, trackedChatCompletion } from '@/lib/usageTracker';
+
+const ImproveTextInputSchema = z.object({
+    text: z.string().min(1),
+    type: z.enum(['summary', 'bullet', 'project']),
+    customInstruction: z.string().max(2000).optional(),
+});
+
+const ModifyLatexInputSchema = z.object({
+    currentCode: z.string().min(1),
+    instruction: z.string().min(1),
+});
+
+const ResumeToLatexInputSchema = z.object({
+    resumeData: ResumeDataSchema,
+});
+
+const LatexToResumeInputSchema = z.object({
+    latexCode: z.string().min(1),
+});
 
 function resolveTrackingUserId(value?: string): Promise<string> {
     if (value?.trim()) return Promise.resolve(value.trim());
@@ -19,6 +39,10 @@ function resolveTrackingUserId(value?: string): Promise<string> {
 
 export async function improveText(text: string, type: 'summary' | 'bullet' | 'project', customInstruction?: string) {
     if (!text) return "";
+    const parsedInput = ImproveTextInputSchema.safeParse({ text, type, customInstruction });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
 
     let basePrompt: string;
     if (type === 'summary') {
@@ -29,8 +53,8 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
         basePrompt = `Rewrite the following resume bullet point to use strong action verbs, quantify results if possible, and be more professional.`;
     }
 
-    const instruction = customInstruction ? ` ${customInstruction}` : '';
-    const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${text}"`;
+    const instruction = parsedInput.data.customInstruction ? ` ${parsedInput.data.customInstruction}` : '';
+    const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${parsedInput.data.text}"`;
     const userId = await resolveTrackingUserId();
 
     try {
@@ -48,7 +72,7 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
         const content = response.choices[0].message.content?.trim() || text;
         return content.replace(/^(Summarize|Rewrite|Output|Bullet point|Here's|Here is):\s*/i, '').trim();
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("AI Error:", error);
         throw new Error("Failed to generate AI improvement.");
     }
@@ -81,7 +105,7 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
         }
         
         return [];
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("AI Keyword Error:", error);
         return [];
     }
@@ -216,7 +240,7 @@ Be accurate and helpful. Output ONLY valid JSON.`;
             console.error("ATS Score Validation Error:", parseResult.error);
             throw new Error("Invalid ATS score format from AI");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("ATS Score Error:", error);
         throw new Error("Failed to calculate ATS score");
     }
@@ -305,21 +329,24 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
             console.error("Resume Validation Error:", parseResult.error);
             throw new Error("Invalid resume format from AI");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Generate Resume Error:", error);
         throw new Error("Failed to generate tailored resume");
     }
 }
 
 export async function modifyLatex(currentCode: string, instruction: string) {
-    if (!currentCode) return "";
+    const parsedInput = ModifyLatexInputSchema.safeParse({ currentCode, instruction });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
 
     const prompt = `Task: Modify the Latex code based on the instruction.
 Rule: Output ONLY the valid Latex code. Do not output markdown backticks. Do not output conversational text.
-Instruction: ${instruction}
+Instruction: ${parsedInput.data.instruction}
 
 Current Code:
-${currentCode}`;
+${parsedInput.data.currentCode}`;
     const userId = await resolveTrackingUserId();
 
     try {
@@ -336,17 +363,22 @@ ${currentCode}`;
 
         const clean = content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
         return clean;
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("AI Latex Error:", error);
         throw new Error("Failed to modify Latex code.");
     }
 }
 
 export async function resumeToLatex(resumeData: ResumeData): Promise<string> {
+    const parsedInput = ResumeToLatexInputSchema.safeParse({ resumeData });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
+
     const prompt = `Convert this resume data into a professional LaTeX resume document.
 
 RESUME DATA:
-${JSON.stringify(resumeData)}
+${JSON.stringify(parsedInput.data.resumeData)}
 
 Generate a complete, compilable LaTeX document with:
 1. Clean professional formatting
@@ -370,17 +402,22 @@ Output ONLY the raw LaTeX code. No markdown, no explanations.`;
 
         const content = response.choices[0].message.content?.trim() || "";
         return content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Resume to LaTeX Error:", error);
         throw new Error("Failed to convert resume to LaTeX");
     }
 }
 
 export async function latexToResume(latexCode: string): Promise<ResumeData> {
+    const parsedInput = LatexToResumeInputSchema.safeParse({ latexCode });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
+
     const prompt = `Parse the following LaTeX resume document and extract all the information into a structured JSON format.
 
 LATEX CODE:
-${latexCode}
+${parsedInput.data.latexCode}
 
 Extract and return a JSON object with this EXACT structure:
 {
@@ -451,93 +488,12 @@ Output ONLY valid JSON, no markdown, no explanations.`;
         });
 
         const content = response.choices[0].message.content?.trim() || "{}";
-        const parsed = JSON.parse(content) as {
-            personalInfo?: {
-                fullName?: string;
-                title?: string;
-                email?: string;
-                phone?: string;
-                location?: string;
-                website?: string;
-                linkedin?: string;
-                github?: string;
-                summary?: string;
-            };
-            experience?: Array<{
-                id?: string;
-                company?: string;
-                role?: string;
-                startDate?: string;
-                endDate?: string;
-                current?: boolean;
-                location?: string;
-                description?: string;
-            }>;
-            projects?: Array<{
-                id?: string;
-                name?: string;
-                description?: string;
-                url?: string;
-                technologies?: string[];
-            }>;
-            education?: Array<{
-                id?: string;
-                institution?: string;
-                degree?: string;
-                fieldOfStudy?: string;
-                startDate?: string;
-                endDate?: string;
-                current?: boolean;
-            }>;
-            skills?: string[];
-            sectionOrder?: ResumeData['sectionOrder'];
-        };
-        
-        // Validate and ensure all required fields exist
-        const result: ResumeData = {
-            personalInfo: {
-                fullName: parsed.personalInfo?.fullName || "",
-                title: parsed.personalInfo?.title || "",
-                email: parsed.personalInfo?.email || "",
-                phone: parsed.personalInfo?.phone || "",
-                location: parsed.personalInfo?.location || "",
-                website: parsed.personalInfo?.website || "",
-                linkedin: parsed.personalInfo?.linkedin || "",
-                github: parsed.personalInfo?.github || "",
-                summary: parsed.personalInfo?.summary || "",
-            },
-            experience: (parsed.experience || []).map((exp, i: number) => ({
-                id: exp.id || `exp-${i + 1}`,
-                company: exp.company || "",
-                role: exp.role || "",
-                startDate: exp.startDate || "",
-                endDate: exp.endDate || "",
-                current: exp.current || false,
-                location: exp.location || "",
-                description: exp.description || "",
-            })),
-            projects: (parsed.projects || []).map((proj, i: number) => ({
-                id: proj.id || `proj-${i + 1}`,
-                name: proj.name || "",
-                description: proj.description || "",
-                url: proj.url || "",
-                technologies: proj.technologies || [],
-            })),
-            education: (parsed.education || []).map((edu, i: number) => ({
-                id: edu.id || `edu-${i + 1}`,
-                institution: edu.institution || "",
-                degree: edu.degree || "",
-                fieldOfStudy: edu.fieldOfStudy || "",
-                startDate: edu.startDate || "",
-                endDate: edu.endDate || "",
-                current: edu.current || false,
-            })),
-            skills: parsed.skills || [],
-            sectionOrder: parsed.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills'],
-        };
-
-        return result;
-    } catch (error) {
+        const parsed = await parseWithRetry(content, ResumeDataSchema);
+        if (!parsed.success) {
+            throw new Error(parsed.error);
+        }
+        return parsed.data;
+    } catch (error: unknown) {
         console.error("LaTeX to Resume Error:", error);
         throw new Error("Failed to parse LaTeX to resume data");
     }
@@ -584,7 +540,8 @@ export async function compileLatex(
                     ).slice(0, 10);
                     errorMessage = errorLines.join('\n') || errorMessage;
                 }
-            } catch {
+            } catch (error: unknown) {
+                void error;
                 errorMessage = errorText.slice(0, 500);
             }
 
@@ -618,7 +575,7 @@ export async function compileLatex(
         });
 
         return { success: true, pdfBase64 };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('LaTeX compilation error:', error);
         await logUsageEvent({
             userId,
@@ -681,7 +638,7 @@ Output ONLY the improved content. No explanations.`;
         });
 
         return response.choices[0].message.content?.trim() || currentContent;
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Improve Section Error:", error);
         throw new Error("Failed to improve section");
     }

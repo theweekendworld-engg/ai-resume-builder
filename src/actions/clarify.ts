@@ -184,7 +184,7 @@ export async function startClarificationSession(input: unknown): Promise<{
       status: 'awaiting_clarification',
       questions,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to start clarification session',
@@ -303,7 +303,13 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
         actorSessionId: session.id,
         actorUserId: userId,
         artifactSeed: {
-          parsedJD: parsedJDSchemaResult.data,
+          parsedJD: {
+            ...parsedJDSchemaResult.data,
+            skillGroups: [],
+            seniorityLevel: 'mid',
+            isRemote: false,
+            softSkills: [],
+          },
           matchedProjects: matchedProjects.data,
           matchedAchievements: matchedAchievements.data.map((item) => ({
             id: item.id,
@@ -334,7 +340,7 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
       resume: smart.resume,
       atsEstimate: smart.atsEstimate,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     await prisma.generationSession.updateMany({
       where: { id: parsed.data.sessionId, userId },
       data: { status: GenerationStatus.failed },

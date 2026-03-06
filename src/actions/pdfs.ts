@@ -57,7 +57,7 @@ export async function getUserPdfHistory(): Promise<{
     }));
 
     return { success: true, items };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

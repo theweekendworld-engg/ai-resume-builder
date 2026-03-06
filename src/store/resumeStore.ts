@@ -220,7 +220,7 @@ export const useResumeStore = create<ResumeState>()(
                         visualDataVersion: 0,
                         isSyncingLatexToVisual: false,
                     });
-                } catch (error) {
+                } catch (error: unknown) {
                     console.error('Failed to sync LaTeX to visual:', error);
                     set({ isSyncingLatexToVisual: false });
                     throw error;

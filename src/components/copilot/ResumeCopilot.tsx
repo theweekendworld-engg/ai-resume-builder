@@ -138,7 +138,7 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
 
             setCopilotProposal(patch as CopilotProposal);
 
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Copilot error:', error);
             addWorkLog('error', 'Failed to generate improvements. Please try again.');
             toast.error('Failed to generate improvements');

@@ -61,7 +61,7 @@ export async function createTelegramLinkToken(): Promise<{
       expiresAt: expiresAt.toISOString(),
       deepLink: getTelegramDeepLink(token),
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to create link token',
@@ -84,7 +84,7 @@ export async function listChannelIdentities(): Promise<{
     });
 
     return { success: true, identities };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to list identities',
@@ -176,7 +176,7 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
       userId: result.userId,
       identity: result,
     };
-  } catch (error) {
+  } catch (error: unknown) {
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to consume link token',

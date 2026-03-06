@@ -47,7 +47,7 @@ export function ResumeUploadZone({ onParsed, onSkip, className, compact = false 
         }
         setState('idle');
         onParsed(json.data as ParsedResumeData);
-      } catch (err) {
+      } catch (err: unknown) {
         setState('error');
         setError(err instanceof Error ? err.message : 'Upload failed');
       }
