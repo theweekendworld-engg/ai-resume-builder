@@ -3,7 +3,7 @@ import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
 export const metadata = {
-  title: 'ResumePilot',
+  title: 'Patronus',
   description: 'AI-tailored resume builder with ATS scoring and live preview.',
 }
 

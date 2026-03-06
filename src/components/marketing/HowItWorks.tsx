@@ -16,7 +16,7 @@ const steps = [
 export function HowItWorks() {
   return (
     <section id="how-it-works" className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6">
-      <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">How it works</h2>
+      <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">How it works</h2>
       <div className="mt-8 grid gap-4 md:grid-cols-3">
         {steps.map((step, index) => (
           <article key={step.title} className="rounded-xl border border-border bg-card p-5">

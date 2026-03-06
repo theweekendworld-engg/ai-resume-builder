@@ -3,12 +3,13 @@ import { Button } from '@/components/ui/button';
 
 export function Hero() {
   return (
-    <section className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-24">
-      <div className="space-y-6">
+    <section className="relative mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-24">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,hsl(var(--primary)/0.12),transparent)]" aria-hidden />
+      <div className="relative space-y-6">
         <p className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-primary">
-          Built for job hunters
+          Your best self, on paper
         </p>
-        <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
+        <h1 className="font-heading text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
           Land your dream job with an AI-tailored resume
         </h1>
         <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
@@ -24,8 +25,8 @@ export function Hero() {
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-sm">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-primary/10 to-transparent" />
+      <div className="patronus-glow-sm relative overflow-hidden rounded-2xl border border-primary/20 bg-card p-4 shadow-sm">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-primary/15 to-transparent" />
         <div className="relative rounded-xl border border-border/80 bg-background p-4">
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm font-medium">Live editor + preview</p>

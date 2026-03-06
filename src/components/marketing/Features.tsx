@@ -8,7 +8,7 @@ const features = [
 export function Features() {
   return (
     <section id="features" className="mx-auto w-full max-w-6xl px-4 py-4 pb-16 sm:px-6">
-      <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Key features</h2>
+      <h2 className="font-heading text-2xl font-semibold tracking-tight sm:text-3xl">Key features</h2>
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {features.map((feature) => (
           <article key={feature.title} className="rounded-xl border border-border bg-card p-5">

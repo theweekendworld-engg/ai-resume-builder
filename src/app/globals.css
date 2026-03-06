@@ -1,31 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 
+/*
+  Patronus theme — "Your best self, in the light"
+  Deep navy = the space; silvery blue = the patronus glow; soft silver-white = clarity.
+  Use .patronus-glow for CTAs and key cards.
+*/
 :root {
-  --background: 0 0% 4%;
-  --foreground: 0 0% 95%;
-  --card: 0 0% 7%;
-  --card-foreground: 0 0% 95%;
-  --popover: 0 0% 7%;
-  --popover-foreground: 0 0% 95%;
+  --background: 222 42% 6%;
+  --foreground: 210 18% 96%;
+  --card: 222 32% 9%;
+  --card-foreground: 210 18% 96%;
+  --popover: 222 32% 9%;
+  --popover-foreground: 210 18% 96%;
 
-  --primary: 238 76% 67%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 205 85% 72%;
+  --primary-foreground: 222 42% 8%;
 
-  --secondary: 0 0% 12%;
-  --secondary-foreground: 0 0% 95%;
-  --muted: 0 0% 12%;
-  --muted-foreground: 0 0% 55%;
-  --accent: 238 76% 67%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 60%;
+  --secondary: 215 25% 14%;
+  --secondary-foreground: 210 18% 96%;
+  --muted: 215 25% 14%;
+  --muted-foreground: 215 12% 52%;
+  --accent: 205 75% 78%;
+  --accent-foreground: 222 42% 8%;
+  --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 0 0% 14%;
-  --input: 0 0% 12%;
-  --ring: 238 76% 67%;
+  --border: 215 22% 16%;
+  --input: 215 25% 14%;
+  --ring: 205 85% 72%;
   --radius: 0.625rem;
+  --glow: 205 85% 72%;
 }
 
 @theme inline {
@@ -53,6 +60,19 @@
   --radius-sm: calc(var(--radius) - 4px);
 }
 
+.patronus-glow {
+  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+}
+.patronus-glow-sm {
+  box-shadow: 0 0 16px -4px hsl(var(--glow) / 0.25);
+}
+.hover\:patronus-glow:hover {
+  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+}
+.font-heading {
+  font-family: 'Sora', system-ui, sans-serif;
+}
+
 * {
   @apply border-border;
 }
@@ -63,6 +83,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Sora', system-ui, sans-serif;
 }
 
 ::-webkit-scrollbar {

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 const spec = {
   openapi: '3.1.0',
   info: {
-    title: 'AI Resume Builder API',
+    title: 'Patronus API',
     version: '1.0.0',
   },
   servers: [{ url: '/api/v1' }],
