@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { Octokit } from 'octokit';
-import { auth } from '@clerk/nextjs/server';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import {
   GitHubRepo,
   GitHubRepoDetails,
@@ -36,6 +36,11 @@ const ImportRepoSchema = z.object({
   repoDescription: z.string().max(5000).optional(),
   token: z.string().max(500).optional(),
   fallbackLanguage: z.string().max(100).optional(),
+});
+
+const SyncTopGitHubProjectsSchema = z.object({
+  limit: z.number().int().min(1).max(20).default(10),
+  token: z.string().max(500).optional(),
 });
 
 function getOctokit(token?: string) {
@@ -89,12 +94,47 @@ function parseGitHubRepoUrl(input: string): { owner: string; repo: string; norma
 }
 
 async function getLinkedGitHubHandle(userId: string): Promise<string> {
+  const oauthHandle = await getGitHubHandleFromOAuth(userId);
+  if (oauthHandle) return oauthHandle;
+  return '';
+}
+
+async function getProfileGitHubHandle(userId: string): Promise<string> {
   const userProfile = await prisma.userProfile.findUnique({
     where: { userId },
     select: { github: true },
   });
 
   return extractGithubHandle(userProfile?.github ?? '');
+}
+
+async function getGitHubHandleFromOAuth(userId: string): Promise<string> {
+  try {
+    const client = await clerkClient();
+    const user = await client.users.getUser(userId);
+    const accounts = Array.isArray((user as unknown as { externalAccounts?: unknown[] }).externalAccounts)
+      ? (user as unknown as { externalAccounts: Array<Record<string, unknown>> }).externalAccounts
+      : [];
+
+    for (const account of accounts) {
+      const provider = typeof account.provider === 'string' ? account.provider.toLowerCase() : '';
+      const verificationStrategy = typeof account.verificationStrategy === 'string'
+        ? account.verificationStrategy.toLowerCase()
+        : '';
+      if (!provider.includes('github') && !verificationStrategy.includes('github')) {
+        continue;
+      }
+
+      const username = typeof account.username === 'string' ? account.username : '';
+      const emailAddress = typeof account.emailAddress === 'string' ? account.emailAddress : '';
+      const identificationId = typeof account.identificationId === 'string' ? account.identificationId : '';
+      const firstValid = extractGithubHandle(username) || extractGithubHandle(emailAddress) || extractGithubHandle(identificationId);
+      if (firstValid) return firstValid;
+    }
+  } catch {
+    // Ignore and fall back to profile lookup for messaging only.
+  }
+  return '';
 }
 
 export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationStatus> {
@@ -109,12 +149,16 @@ export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationSta
   }
 
   const linkedHandle = await getLinkedGitHubHandle(userId);
+  const profileHandle = await getProfileGitHubHandle(userId);
   if (!linkedHandle) {
+    const hasManualHandle = !!profileHandle;
     return {
       success: true,
       linked: false,
-      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
-      setupPath: '/dashboard',
+      error: hasManualHandle
+        ? 'GitHub username is present in your profile, but repo import requires OAuth verification. Connect GitHub in Account settings.'
+        : 'Connect your GitHub account with OAuth in Account settings to enable verified repo import.',
+      setupPath: '/account',
     };
   }
 
@@ -122,7 +166,7 @@ export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationSta
     success: true,
     linked: true,
     linkedHandle,
-    setupPath: '/dashboard',
+    setupPath: '/account',
   };
 }
 
@@ -192,11 +236,15 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<Fetc
 
   const linkedHandle = await getLinkedGitHubHandle(userId);
   if (!linkedHandle) {
+    const profileHandle = await getProfileGitHubHandle(userId);
+    const hasManualHandle = !!profileHandle;
     return {
       success: false,
       repos: [],
-      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
-      setupPath: '/dashboard',
+      error: hasManualHandle
+        ? 'GitHub username is set, but OAuth verification is required for import. Connect GitHub in Account settings.'
+        : 'Connect GitHub with OAuth in Account settings first.',
+      setupPath: '/account',
     };
   }
 
@@ -341,9 +389,13 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
   const parsedRepoUrl = parseGitHubRepoUrl(parsed.data.repoUrl);
 
   if (!linkedHandle) {
+    const profileHandle = await getProfileGitHubHandle(userId);
+    const hasManualHandle = !!profileHandle;
     return {
       success: false,
-      error: 'Please integrate your GitHub first from Dashboard > Profile > GitHub, then save.',
+      error: hasManualHandle
+        ? 'GitHub username is set, but OAuth verification is required for import. Connect GitHub in Account settings.'
+        : 'Connect GitHub with OAuth in Account settings first.',
     };
   }
 
@@ -396,5 +448,89 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
     projectId: result.projectId,
     warning: result.warning,
     error: result.error,
+  };
+}
+
+export async function syncTopGitHubProjects(input?: unknown): Promise<{
+  success: boolean;
+  imported?: number;
+  deduped?: number;
+  failed?: number;
+  linkedHandle?: string;
+  error?: string;
+}> {
+  const parsed = SyncTopGitHubProjectsSchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  }
+
+  const { userId } = await auth();
+  if (!userId) {
+    return {
+      success: false,
+      error: 'Please sign in to sync GitHub repositories.',
+    };
+  }
+
+  const linkedHandle = await getLinkedGitHubHandle(userId);
+  if (!linkedHandle) {
+    return {
+      success: false,
+      error: 'Connect GitHub with OAuth in Account settings first.',
+    };
+  }
+
+  const repoResult = await fetchGitHubRepos({
+    token: parsed.data.token,
+    perPage: Math.min(60, Math.max(parsed.data.limit * 3, 20)),
+    excludeForks: true,
+  });
+
+  if (!repoResult.success) {
+    return {
+      success: false,
+      linkedHandle,
+      error: repoResult.error ?? 'Failed to fetch repositories for sync.',
+    };
+  }
+
+  const ranked = [...repoResult.repos]
+    .sort((a, b) => {
+      const starsDelta = (b.stargazers_count ?? 0) - (a.stargazers_count ?? 0);
+      if (starsDelta !== 0) return starsDelta;
+      return new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime();
+    })
+    .slice(0, parsed.data.limit);
+
+  let imported = 0;
+  let deduped = 0;
+  let failed = 0;
+
+  for (const repo of ranked) {
+    const result = await importGitHubRepoToLibrary({
+      repoName: repo.name,
+      repoUrl: repo.html_url,
+      repoDescription: repo.description || '',
+      token: parsed.data.token,
+      fallbackLanguage: repo.language || undefined,
+    });
+
+    if (!result.success) {
+      failed += 1;
+      continue;
+    }
+    if (result.deduped) {
+      deduped += 1;
+      continue;
+    }
+    imported += 1;
+  }
+
+  return {
+    success: true,
+    linkedHandle,
+    imported,
+    deduped,
+    failed,
   };
 }

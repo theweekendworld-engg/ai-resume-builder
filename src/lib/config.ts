@@ -26,4 +26,10 @@ export const config = {
         publicBaseUrl: process.env.PDF_STORAGE_PUBLIC_BASE_URL || "",
         enableStoredPdfFetch: process.env.PDF_STORAGE_ENABLE_FETCH !== "false",
     },
+    features: {
+        inlineRewriteV2: process.env.FEATURE_INLINE_REWRITE_V2 !== "false",
+        jdKeywordMatchHints: process.env.FEATURE_JD_KEYWORD_MATCH_HINTS !== "false",
+        telegramSendPdfDocument: process.env.FEATURE_TELEGRAM_SEND_PDF_DOCUMENT !== "false",
+        telegramAsyncProcessing: process.env.FEATURE_TELEGRAM_ASYNC_PROCESSING !== "false",
+    },
 };

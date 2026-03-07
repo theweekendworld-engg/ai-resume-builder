@@ -24,11 +24,8 @@ import { EducationEditor } from '@/components/editor/sections/EducationEditor';
 import { SkillsEditor } from '@/components/editor/sections/SkillsEditor';
 import { SectionOrderEditor } from '@/components/editor/sections/SectionOrderEditor';
 import { JobTargetPanel } from '@/components/editor/tools/JobTargetPanel';
-import { ATSScorePanel } from '@/components/editor/tools/ATSScorePanel';
-import { CopilotPanel } from '@/components/editor/tools/CopilotPanel';
+import { ScoreImprovePanel } from '@/components/editor/tools/ScoreImprovePanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
-import { GitHubImportPanel } from '@/components/editor/tools/GitHubImportPanel';
-import { KnowledgePanel } from '@/components/editor/tools/KnowledgePanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { initialResumeData } from '@/types/resume';
 
@@ -43,11 +40,7 @@ const mobilePanelOptions = [
   { id: 'projects', label: 'Projects' },
   { id: 'education', label: 'Education' },
   { id: 'skills', label: 'Skills' },
-  { id: 'ats', label: 'ATS Score' },
-  { id: 'copilot', label: 'Copilot' },
-  { id: 'latex', label: 'LaTeX' },
-  { id: 'github', label: 'GitHub Import' },
-  { id: 'knowledge', label: 'Knowledge Base' },
+  { id: 'score-improve', label: 'Score & Improve' },
   { id: 'settings', label: 'Settings' },
 ] as const;
 
@@ -271,10 +264,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         return <SkillsEditor />;
       case 'section-order':
         return <SectionOrderEditor />;
-      case 'ats':
-        return <ATSScorePanel />;
-      case 'copilot':
-        return <CopilotPanel />;
+      case 'score-improve':
+        return <ScoreImprovePanel />;
       case 'latex':
         return (
           <LaTeXPanel
@@ -284,16 +275,12 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
             parseError={latexParseError}
           />
         );
-      case 'github':
-        return <GitHubImportPanel />;
-      case 'knowledge':
-        return <KnowledgePanel />;
       case 'settings':
-        return <SettingsPanel resumeId={resumeId} />;
+        return <SettingsPanel resumeId={resumeId} onOpenLatex={() => setActivePanel('latex')} onOpenSectionOrder={() => setActivePanel('section-order')} />;
       default:
         return <JobTargetPanel />;
     }
-  }, [activePanel, handleLatexChange, isParsingLatex, latexCode, latexParseError, resumeId]);
+  }, [activePanel, handleLatexChange, isParsingLatex, latexCode, latexParseError, resumeId, setActivePanel]);
 
   const handleTourFinish = useCallback(() => {
     if (typeof window !== 'undefined') {
@@ -412,9 +399,9 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
           <div className="grid grid-cols-3 border-t border-border p-2 lg:hidden">
             <Button variant="ghost" onClick={() => setActivePanel('job-target')}>Target</Button>
-            <Button variant="ghost" onClick={() => setActivePanel('copilot')}>
+            <Button variant="ghost" onClick={() => setActivePanel('score-improve')}>
               <Sparkles className="h-4 w-4" />
-              Copilot
+              Improve
             </Button>
             <Button variant="ghost" onClick={() => setMobilePreviewOpen(!mobilePreviewOpen)}>
               {mobilePreviewOpen ? 'Editor' : 'Preview'}

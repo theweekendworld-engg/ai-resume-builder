@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
+import { z } from 'zod';
 import { config } from '@/lib/config';
 import { ResumeData, ExperienceItem, ProjectItem } from '@/types/resume';
 import { GitHubRepo } from '@/types/github';
@@ -11,6 +12,7 @@ import {
     parseWithRetry,
 } from '@/lib/aiSchemas';
 import { trackedChatCompletion } from '@/lib/usageTracker';
+import { improveText } from '@/actions/ai';
 
 export interface CopilotContext {
     resumeData: ResumeData;
@@ -35,6 +37,42 @@ export interface ProposedResumePatch {
     rationale: string[];
     proposedAtsScore: number;
 }
+
+const RewriteBulletInputSchema = z.object({
+    bulletText: z.string().min(1).max(5000),
+    jobDescription: z.string().max(30000).optional(),
+    enhancementType: z.enum(['quantify', 'tailor', 'grammar']),
+});
+
+const RewriteBulletResponseSchema = z.object({
+    suggestion: z.string().min(1),
+    enhancementType: z.enum(['quantify', 'tailor', 'grammar']),
+    appliedKeywords: z.array(z.string()).default([]),
+    notes: z.string().optional(),
+});
+
+export type BulletEnhancementType = z.infer<typeof RewriteBulletInputSchema>['enhancementType'];
+export type RewriteBulletResponse = z.infer<typeof RewriteBulletResponseSchema>;
+
+const SectionSkillHintsInputSchema = z.object({
+    jobDescription: z.string().min(1).max(30000),
+    section: z.enum(['experience', 'projects']),
+    entries: z.array(z.object({
+        id: z.string().min(1).max(255),
+        text: z.string().max(10000),
+        technologies: z.array(z.string()).optional(),
+    })).min(1).max(30),
+});
+
+const SectionSkillHintsResponseSchema = z.object({
+    entries: z.array(z.object({
+        id: z.string(),
+        matchedKeywords: z.array(z.string()).default([]),
+        missingKeywords: z.array(z.string()).default([]),
+    })),
+});
+
+export type SectionSkillHints = Record<string, { matchedKeywords: string[]; missingKeywords: string[] }>;
 
 export async function scoreReposForJob(
     repos: GitHubRepo[],
@@ -105,6 +143,142 @@ ${jobDescription}`;
         console.error("Keyword extraction error:", error);
         return [];
     }
+}
+
+export async function rewriteBulletPoint(
+    bulletText: string,
+    jobDescription: string,
+    enhancementType: BulletEnhancementType
+): Promise<RewriteBulletResponse> {
+    const parsed = RewriteBulletInputSchema.safeParse({
+        bulletText,
+        jobDescription,
+        enhancementType,
+    });
+
+    if (!parsed.success) {
+        throw new Error(parsed.error.issues.map((issue) => issue.message).join('; '));
+    }
+
+    const { userId } = await auth();
+    if (!userId) throw new Error('Not authenticated');
+
+    const limit = await checkAiRateLimit(`ai:copilot:inline:${userId}`);
+    if (!limit.allowed) throw new Error(limit.error);
+
+    const jd = parsed.data.jobDescription?.trim() ?? '';
+    const hasJd = jd.length > 0;
+    const keywords = hasJd ? (await extractJobKeywords(jd)).slice(0, 12) : [];
+
+    const actionInstruction = (() => {
+        switch (parsed.data.enhancementType) {
+            case 'quantify':
+                return 'Strengthen impact by surfacing measurable outcomes, scope, and scale where directly supported by the original text. Do not invent numbers.';
+            case 'tailor':
+                return hasJd
+                    ? 'Tailor this bullet to the target role by naturally weaving in relevant job keywords without keyword stuffing.'
+                    : 'Improve this bullet for broad job relevance with stronger phrasing while preserving facts.';
+            case 'grammar':
+                return 'Fix grammar, tense consistency, and clarity while preserving the original meaning and facts.';
+            default:
+                return 'Improve this bullet while preserving factual accuracy.';
+        }
+    })();
+
+    const prompt = `You are improving a single resume bullet.\n\nTASK:\n${actionInstruction}\n\nBULLET:\n${parsed.data.bulletText}\n\n${hasJd ? `TARGET JOB DESCRIPTION:\n${jd}\n\n` : ''}${keywords.length > 0 ? `PRIORITY KEYWORDS (use only when natural):\n${keywords.join(', ')}\n\n` : ''}Return ONLY valid JSON with keys:\n- suggestion: string\n- enhancementType: \"quantify\" | \"tailor\" | \"grammar\"\n- appliedKeywords: string[]\n- notes: optional string\n\nRules:\n- Keep the same factual claims.\n- Do not fabricate technologies, outcomes, or metrics.\n- Keep a single bullet-length output (1-2 lines).\n- Do not include markdown.`;
+
+    try {
+        const response = await trackedChatCompletion({
+            model: config.openai.models.paraphrase,
+            messages: [
+                { role: 'system', content: 'You are a precise resume bullet editor. You preserve truth and improve quality.' },
+                { role: 'user', content: prompt },
+            ],
+        }, {
+            userId,
+            operation: 'inline_bullet_rewrite',
+            metadata: {
+                enhancementType: parsed.data.enhancementType,
+                hasJobDescription: hasJd,
+                keywordCount: keywords.length,
+            },
+        });
+
+        const content = response.choices[0].message.content;
+        if (!content) {
+            throw new Error('No rewrite returned by model');
+        }
+
+        const parsedResponse = await parseWithRetry(content, RewriteBulletResponseSchema);
+        if (parsedResponse.success) {
+            return parsedResponse.data;
+        }
+
+        const fallbackInstruction = parsed.data.enhancementType === 'grammar'
+            ? 'Fix grammar and clarity while preserving factual claims.'
+            : parsed.data.enhancementType === 'tailor'
+                ? `Tailor this bullet for the job requirements.${hasJd ? ` Target job description: ${jd.slice(0, 3000)}` : ''}`
+                : 'Add measurable impact when possible without inventing metrics.';
+
+        const fallbackText = await improveText(parsed.data.bulletText, 'bullet', fallbackInstruction);
+        return {
+            suggestion: fallbackText,
+            enhancementType: parsed.data.enhancementType,
+            appliedKeywords: [],
+            notes: 'Fallback rewrite applied due to JSON parse failure.',
+        };
+    } catch (error: unknown) {
+        throw new Error(error instanceof Error ? error.message : 'Failed to rewrite bullet point');
+    }
+}
+
+export async function suggestSectionSkillHints(input: {
+    jobDescription: string;
+    section: 'experience' | 'projects';
+    entries: Array<{ id: string; text: string; technologies?: string[] }>;
+}): Promise<SectionSkillHints> {
+    const parsed = SectionSkillHintsInputSchema.safeParse(input);
+    if (!parsed.success) {
+        throw new Error(parsed.error.issues.map((issue) => issue.message).join('; '));
+    }
+
+    const { userId } = await auth();
+    if (!userId) throw new Error('Not authenticated');
+
+    const limit = await checkAiRateLimit(`ai:copilot:hints:${userId}`);
+    if (!limit.allowed) throw new Error(limit.error);
+
+    const prompt = `You are an expert resume reviewer.\n\nTASK:\nGiven the job description and a list of ${parsed.data.section} entries, return per-entry matched and missing keywords.\n\nJOB DESCRIPTION:\n${parsed.data.jobDescription}\n\nENTRIES:\n${parsed.data.entries.map((entry) => `- id: ${entry.id}\n  text: ${entry.text}\n  technologies: ${(entry.technologies ?? []).join(', ') || 'none'}`).join('\n\n')}\n\nOutput ONLY valid JSON in this format:\n{\n  \"entries\": [\n    {\n      \"id\": \"entry-id\",\n      \"matchedKeywords\": [\"...\"],\n      \"missingKeywords\": [\"...\"]\n    }\n  ]\n}\n\nRules:\n- Use concise technical keywords.\n- matchedKeywords: max 5.\n- missingKeywords: max 5, and tailored to that specific entry.\n- Do NOT return the same missingKeywords list for every entry unless it is truly unavoidable.\n- Prioritize skills that are realistic to add based on each entry's context.\n- Do not fabricate facts; this is guidance for improvement.`;
+
+    const response = await trackedChatCompletion({
+        model: config.openai.models.jdParse,
+        messages: [
+            { role: 'system', content: 'You map job requirements to resume entries with high precision.' },
+            { role: 'user', content: prompt },
+        ],
+    }, {
+        userId,
+        operation: 'section_skill_hints',
+        metadata: {
+            section: parsed.data.section,
+            entryCount: parsed.data.entries.length,
+        },
+    });
+
+    const content = response.choices[0].message.content;
+    if (!content) return {};
+
+    const parseResult = await parseWithRetry(content, SectionSkillHintsResponseSchema);
+    if (!parseResult.success) return {};
+
+    const hints: SectionSkillHints = {};
+    for (const entry of parseResult.data.entries) {
+        hints[entry.id] = {
+            matchedKeywords: entry.matchedKeywords.slice(0, 5),
+            missingKeywords: entry.missingKeywords.slice(0, 5),
+        };
+    }
+    return hints;
 }
 
 function formatExperienceForDiff(experience: ExperienceItem[]): string {

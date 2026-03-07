@@ -9,14 +9,50 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Plus, Sparkles } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
-import { useState } from 'react';
+import { suggestSectionSkillHints, type SectionSkillHints } from '@/actions/copilot';
+import { useEffect, useState } from 'react';
 
 export function ExperienceEditor() {
-    const { resumeData, addExperience, updateExperience, removeExperience } = useResumeStore();
+    const { resumeData, jobDescription, atsScore, addExperience, updateExperience, removeExperience } = useResumeStore();
     const { experience } = resumeData;
     const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
     const [currentRewriteId, setCurrentRewriteId] = useState<string | null>(null);
     const [currentRewriteText, setCurrentRewriteText] = useState('');
+    const [skillHintsById, setSkillHintsById] = useState<SectionSkillHints>({});
+
+    useEffect(() => {
+        if (!jobDescription.trim() || experience.length === 0) {
+            return;
+        }
+
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            try {
+                const hints = await suggestSectionSkillHints({
+                    section: 'experience',
+                    jobDescription,
+                    entries: experience.map((item) => ({
+                        id: item.id,
+                        text: `${item.role} at ${item.company}. ${item.description}`,
+                    })),
+                });
+                if (!cancelled) {
+                    setSkillHintsById(hints);
+                }
+            } catch {
+                if (!cancelled) {
+                    setSkillHintsById({});
+                }
+            }
+        }, 700);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [jobDescription, experience]);
+
+    const activeSkillHints = jobDescription.trim() ? skillHintsById : {};
 
     const handleOpenRewrite = (id: string, text: string) => {
         setCurrentRewriteId(id);
@@ -105,7 +141,7 @@ export function ExperienceEditor() {
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex justify-between items-center">
                                 <Label className="text-sm font-medium">Job Description</Label>
-<TooltipProvider>
+                                <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
@@ -116,14 +152,14 @@ export function ExperienceEditor() {
                                             className="h-8 text-xs gap-1.5"
                                         >
                                             <Sparkles className="w-3.5 h-3.5" />
-                                            <span className="hidden sm:inline">Enhance</span>
+                                            <span className="hidden sm:inline">Copilot</span>
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>
                                         <p>Improve with action verbs and metrics</p>
                                     </TooltipContent>
                                 </Tooltip>
-                            </TooltipProvider>
+                                </TooltipProvider>
                             </div>
                             <Textarea
                                 value={item.description}
@@ -131,6 +167,22 @@ export function ExperienceEditor() {
                                 placeholder="• Achieved X by doing Y, resulting in Z..."
                                 className="flex-1 min-h-[200px] resize-y"
                             />
+                            {atsScore && (
+                                <div className="space-y-1 pt-1">
+                                    {(activeSkillHints[item.id]?.matchedKeywords ?? []).length > 0 && (
+                                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                            Matched Skills:{' '}
+                                            {(activeSkillHints[item.id]?.matchedKeywords ?? []).join(', ')}
+                                        </p>
+                                    )}
+                                    {(activeSkillHints[item.id]?.missingKeywords ?? []).length > 0 && (
+                                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                                            Missing Skills:{' '}
+                                            {(activeSkillHints[item.id]?.missingKeywords ?? []).join(', ')}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}
@@ -148,6 +200,8 @@ export function ExperienceEditor() {
                 originalText={currentRewriteText}
                 onAccept={handleAcceptRewrite}
                 type="bullet"
+                mode="quick"
+                jobDescription={jobDescription}
             />
         </Card>
     );

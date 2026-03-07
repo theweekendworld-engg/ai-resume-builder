@@ -2,12 +2,36 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, Sparkles } from 'lucide-react';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+
+type PipelineStepId =
+  | 'reuse_check'
+  | 'jd_parsing'
+  | 'semantic_search'
+  | 'static_data_load'
+  | 'paraphrasing'
+  | 'resume_assembly'
+  | 'claim_validation'
+  | 'ats_scoring'
+  | 'pdf_generation'
+  | 'completed';
+
+const PIPELINE_STEPS: Array<{ id: PipelineStepId; label: string }> = [
+  { id: 'reuse_check', label: 'Checking reusable drafts' },
+  { id: 'jd_parsing', label: 'Parsing job requirements' },
+  { id: 'semantic_search', label: 'Finding relevant projects and experience' },
+  { id: 'static_data_load', label: 'Loading your profile context' },
+  { id: 'paraphrasing', label: 'Rewriting bullets for impact' },
+  { id: 'resume_assembly', label: 'Assembling resume draft' },
+  { id: 'claim_validation', label: 'Validating claims' },
+  { id: 'ats_scoring', label: 'Scoring ATS compatibility' },
+  { id: 'pdf_generation', label: 'Generating PDF' },
+];
 
 export function DashboardCopilot() {
   const router = useRouter();
@@ -15,6 +39,9 @@ export function DashboardCopilot() {
   const [isPending, startTransition] = useTransition();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState<PipelineStepId | null>(null);
+  const [atsEstimate, setAtsEstimate] = useState<number | null>(null);
+  const [stepDetails, setStepDetails] = useState<{ requiredSkills?: number; preferredSkills?: number; matchedProjects?: number; matchedAchievements?: number } | null>(null);
   const [clarificationQuestion, setClarificationQuestion] = useState<{
     id: string;
     question: string;
@@ -30,6 +57,9 @@ export function DashboardCopilot() {
     }
     setSessionId(null);
     setStatus(null);
+    setCurrentStep(null);
+    setAtsEstimate(null);
+    setStepDetails(null);
     setClarificationQuestion(null);
     setClarificationAnswer('');
 
@@ -108,10 +138,35 @@ export function DashboardCopilot() {
     const url = `/api/generate/stream?sessionId=${encodeURIComponent(sid)}`;
     const eventSource = new EventSource(url);
 
+    eventSource.addEventListener('progress', (e) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data) as {
+          step?: PipelineStepId;
+          atsScore?: number | null;
+          details?: { requiredSkills?: number; preferredSkills?: number; matchedProjects?: number; matchedAchievements?: number };
+        };
+        if (data.step) {
+          setCurrentStep(data.step);
+        }
+        if (typeof data.atsScore === 'number') {
+          setAtsEstimate(data.atsScore);
+        }
+        if (data.details) {
+          setStepDetails(data.details);
+        }
+      } catch {
+        // Ignore malformed events.
+      }
+    });
+
     eventSource.addEventListener('complete', (e) => {
       eventSource.close();
+      setCurrentStep('completed');
       try {
         const data = JSON.parse((e as MessageEvent).data);
+        if (typeof data.atsScore === 'number') {
+          setAtsEstimate(data.atsScore);
+        }
         if (data.resumeId) {
           router.push(`/editor/${data.resumeId}`);
         }
@@ -192,6 +247,43 @@ export function DashboardCopilot() {
               )}
               {status === 'generating' ? 'Generating…' : 'Generate resume'}
             </Button>
+          )}
+
+          {status === 'generating' && (
+            <div className="space-y-2 rounded-lg border border-border bg-secondary/20 p-3">
+              {PIPELINE_STEPS.map((step, index) => {
+                const currentIndex = currentStep ? PIPELINE_STEPS.findIndex((item) => item.id === currentStep) : -1;
+                const done = currentIndex > index || currentStep === 'completed';
+                const active = currentStep === step.id;
+                return (
+                  <div key={step.id} className="text-sm">
+                    <div className="flex items-center gap-2">
+                      {done ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      ) : active ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className={done ? 'text-foreground' : 'text-muted-foreground'}>{step.label}</span>
+                    </div>
+                    {active && step.id === 'jd_parsing' && stepDetails && (
+                      <p className="pl-6 text-xs text-muted-foreground">
+                        Found {(stepDetails.requiredSkills ?? 0) + (stepDetails.preferredSkills ?? 0)} target skills.
+                      </p>
+                    )}
+                    {active && step.id === 'semantic_search' && stepDetails && (
+                      <p className="pl-6 text-xs text-muted-foreground">
+                        Matched {stepDetails.matchedProjects ?? 0} projects and {stepDetails.matchedAchievements ?? 0} achievements.
+                      </p>
+                    )}
+                    {active && step.id === 'ats_scoring' && typeof atsEstimate === 'number' && (
+                      <p className="pl-6 text-xs text-muted-foreground">Current ATS estimate: {atsEstimate}%</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>

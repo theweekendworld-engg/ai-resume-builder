@@ -40,7 +40,7 @@ export function GitHubImport() {
 
             if (!status.success || !status.linked || !status.linkedHandle) {
                 setLinkedHandle('');
-                setIntegrationError(status.error ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+                setIntegrationError(status.error ?? 'Connect GitHub with OAuth in Account settings first.');
             } else {
                 setLinkedHandle(status.linkedHandle);
                 setIntegrationError(null);
@@ -61,7 +61,7 @@ export function GitHubImport() {
 
     const handleFetch = async () => {
         if (!linkedHandle) {
-            toast.error(integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+            toast.error(integrationError ?? 'Connect GitHub with OAuth in Account settings first.');
             return;
         }
 
@@ -97,7 +97,7 @@ export function GitHubImport() {
 
     const handleImport = async (repo: GitHubRepo) => {
         if (!linkedHandle) {
-            toast.error(integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.');
+            toast.error(integrationError ?? 'Connect GitHub with OAuth in Account settings first.');
             return;
         }
 
@@ -180,10 +180,10 @@ export function GitHubImport() {
                     ) : (
                         <div className="space-y-2">
                             <p className="text-sm text-muted-foreground">
-                                {integrationError ?? 'Please integrate your GitHub first from Dashboard > Profile > GitHub.'}
+                                {integrationError ?? 'Connect GitHub with OAuth in Account settings first.'}
                             </p>
                             <Button asChild size="sm" variant="secondary">
-                                <Link href={setupPath}>Open profile settings</Link>
+                                <Link href={setupPath}>Open account settings</Link>
                             </Button>
                         </div>
                     )}

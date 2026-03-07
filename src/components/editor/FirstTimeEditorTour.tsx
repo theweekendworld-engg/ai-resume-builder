@@ -52,9 +52,9 @@ const majorSections: {
     icon: <Target className="h-4 w-4" />,
   },
   {
-    panel: 'copilot',
-    title: 'Copilot',
-    description: 'Get AI rewrites and section-level suggestions.',
+    panel: 'score-improve',
+    title: 'Score & Improve',
+    description: 'Review ATS score gaps and apply AI suggestions in one place.',
     icon: <Sparkles className="h-4 w-4" />,
   },
 ];
@@ -102,7 +102,7 @@ export function FirstTimeEditorTour({ open, onOpenChange, onJumpToPanel, onFinis
             <Wrench className="h-3.5 w-3.5" />
             Pro tip
           </p>
-          Use <span className="font-medium text-foreground">Section Order</span> to rearrange sections, then export from the top-right.
+          Advanced options like section order and LaTeX live in <span className="font-medium text-foreground">Settings</span>.
         </div>
 
         <DialogFooter>

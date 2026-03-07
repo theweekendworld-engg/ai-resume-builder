@@ -10,9 +10,11 @@ import { toast } from 'sonner';
 
 interface SettingsPanelProps {
   resumeId: string;
+  onOpenLatex?: () => void;
+  onOpenSectionOrder?: () => void;
 }
 
-export function SettingsPanel({ resumeId }: SettingsPanelProps) {
+export function SettingsPanel({ resumeId, onOpenLatex, onOpenSectionOrder }: SettingsPanelProps) {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -35,6 +37,21 @@ export function SettingsPanel({ resumeId }: SettingsPanelProps) {
         <CardTitle>Settings</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="space-y-2 rounded-lg border border-border bg-secondary/30 p-3">
+          <p className="text-sm font-medium">Advanced tools</p>
+          <p className="text-xs text-muted-foreground">
+            Keep the main editor clean. Open these only when needed.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={onOpenSectionOrder}>
+              Section Order
+            </Button>
+            <Button variant="outline" size="sm" onClick={onOpenLatex}>
+              LaTeX Editor
+            </Button>
+          </div>
+        </div>
+
         <p className="text-sm text-muted-foreground">Danger zone actions for this resume.</p>
         <Button variant="destructive" onClick={handleDelete} disabled={isPending}>
           <Trash2 className="h-4 w-4" /> Delete Resume

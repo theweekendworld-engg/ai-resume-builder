@@ -9,12 +9,30 @@ export type EditorPanelId =
   | 'education'
   | 'skills'
   | 'section-order'
-  | 'ats'
-  | 'copilot'
+  | 'score-improve'
   | 'latex'
-  | 'github'
-  | 'knowledge'
   | 'settings';
+
+function normalizeActivePanel(panel: unknown): EditorPanelId {
+  if (typeof panel !== 'string') return 'job-target';
+
+  if (panel === 'ats' || panel === 'copilot') return 'score-improve';
+  if (panel === 'github' || panel === 'knowledge') return 'projects';
+
+  const allowed: EditorPanelId[] = [
+    'job-target',
+    'personal',
+    'experience',
+    'projects',
+    'education',
+    'skills',
+    'section-order',
+    'score-improve',
+    'latex',
+    'settings',
+  ];
+  return allowed.includes(panel as EditorPanelId) ? (panel as EditorPanelId) : 'job-target';
+}
 
 interface EditorStore {
   activePanel: EditorPanelId;
@@ -37,6 +55,21 @@ export const useEditorStore = create<EditorStore>()(
     }),
     {
       name: 'editor-ui-store',
+      version: 2,
+      migrate: (persistedState) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return {
+            activePanel: 'job-target',
+            sidebarCollapsed: false,
+          };
+        }
+        const state = persistedState as { activePanel?: unknown; sidebarCollapsed?: unknown };
+        return {
+          ...state,
+          activePanel: normalizeActivePanel(state.activePanel),
+          sidebarCollapsed: typeof state.sidebarCollapsed === 'boolean' ? state.sidebarCollapsed : false,
+        };
+      },
       partialize: (state) => ({
         activePanel: state.activePanel,
         sidebarCollapsed: state.sidebarCollapsed,

@@ -1,5 +1,5 @@
-import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { redirect } from 'next/navigation';
 
 export default function NewResumePage() {
-  return <OnboardingWizard />;
+  redirect('/build');
 }

@@ -6,19 +6,15 @@ import { EditorPanelId } from '@/store/editorStore';
 import {
   Briefcase,
   Code,
-  FileCode2,
   FolderKanban,
   GraduationCap,
   PanelLeft,
-  Sparkles,
   Target,
   User,
   Wrench,
   Brain,
-  Github,
-  Book,
   Settings,
-  ListOrdered,
+  TrendingUp,
 } from 'lucide-react';
 
 interface EditorSidebarProps {
@@ -28,22 +24,23 @@ interface EditorSidebarProps {
   onToggleCollapsed: () => void;
 }
 
-const sectionItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+const setupItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'job-target', label: 'Job Target', icon: <Target className="h-4 w-4" /> },
+];
+
+const contentItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'personal', label: 'Personal', icon: <User className="h-4 w-4" /> },
   { id: 'experience', label: 'Experience', icon: <Briefcase className="h-4 w-4" /> },
   { id: 'projects', label: 'Projects', icon: <FolderKanban className="h-4 w-4" /> },
   { id: 'education', label: 'Education', icon: <GraduationCap className="h-4 w-4" /> },
   { id: 'skills', label: 'Skills', icon: <Code className="h-4 w-4" /> },
-  { id: 'section-order', label: 'Order', icon: <ListOrdered className="h-4 w-4" /> },
 ];
 
-const toolItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
-  { id: 'ats', label: 'ATS Score', icon: <Target className="h-4 w-4" /> },
-  { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
-  { id: 'latex', label: 'LaTeX', icon: <FileCode2 className="h-4 w-4" /> },
-  { id: 'github', label: 'GitHub Import', icon: <Github className="h-4 w-4" /> },
-  { id: 'knowledge', label: 'Knowledge', icon: <Book className="h-4 w-4" /> },
+const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+  { id: 'score-improve', label: 'Score & Improve', icon: <TrendingUp className="h-4 w-4" /> },
+];
+
+const utilityItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'settings', label: 'Settings', icon: <Settings className="h-4 w-4" /> },
 ];
 
@@ -93,8 +90,10 @@ export function EditorSidebar({ activePanel, onSelect, collapsed, onToggleCollap
       </div>
 
       <div className="space-y-4 overflow-auto pb-2">
-        <NavSection title="Sections" items={sectionItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
-        <NavSection title="Tools" items={toolItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Setup" items={setupItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Content" items={contentItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Optimize" items={optimizeItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Utility" items={utilityItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
       </div>
 
       {!collapsed && (

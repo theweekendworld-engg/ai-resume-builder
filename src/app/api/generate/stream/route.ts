@@ -37,6 +37,9 @@ export async function GET(request: Request) {
             pdfUrl: true,
             resultResumeId: true,
             errorMessage: true,
+            parsedJD: true,
+            matchedProjects: true,
+            matchedAchievements: true,
           },
         });
 
@@ -46,11 +49,29 @@ export async function GET(request: Request) {
           return;
         }
 
+        const parsedJDObject = session.parsedJD && typeof session.parsedJD === 'object' && !Array.isArray(session.parsedJD)
+          ? (session.parsedJD as Record<string, unknown>)
+          : {};
+        const requiredSkills = Array.isArray(parsedJDObject.requiredSkills)
+          ? parsedJDObject.requiredSkills.filter((item) => typeof item === 'string').length
+          : 0;
+        const preferredSkills = Array.isArray(parsedJDObject.preferredSkills)
+          ? parsedJDObject.preferredSkills.filter((item) => typeof item === 'string').length
+          : 0;
+        const matchedProjects = Array.isArray(session.matchedProjects) ? session.matchedProjects.length : 0;
+        const matchedAchievements = Array.isArray(session.matchedAchievements) ? session.matchedAchievements.length : 0;
+
         send('progress', {
           sessionId: session.id,
           status: session.status,
           step: session.currentStep,
           atsScore: session.atsScore,
+          details: {
+            requiredSkills,
+            preferredSkills,
+            matchedProjects,
+            matchedAchievements,
+          },
         });
 
         if (session.status === GenerationStatus.completed) {

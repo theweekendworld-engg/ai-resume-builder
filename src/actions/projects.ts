@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { ProjectSource } from '@prisma/client';
-import { deleteFromQdrant, upsertProjectEmbedding } from '@/actions/embed';
+import { deleteFromQdrant, generateEmbedding, searchQdrantByVector, upsertProjectEmbedding } from '@/actions/embed';
 
 const ProjectInputSchema = z.object({
   name: z.string().min(1).max(300),
@@ -20,9 +20,26 @@ const UpdateProjectSchema = ProjectInputSchema.partial().extend({
   id: z.string().cuid(),
 });
 
+const SuggestProjectsForJobSchema = z.object({
+  jobDescription: z.string().min(20).max(50000),
+  limit: z.number().int().min(1).max(8).default(4),
+  excludeProjectUrls: z.array(z.string().max(2000)).max(200).optional(),
+});
+
 async function getUserId(): Promise<string | null> {
   const { userId } = await auth();
   return userId ?? null;
+}
+
+function normalizeUrl(input: string): string {
+  const raw = input.trim().toLowerCase();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`);
+    return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
 }
 
 export async function listUserProjects(): Promise<{
@@ -316,6 +333,121 @@ export async function reEmbedUserProject(projectId: string): Promise<{
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function suggestProjectsForJob(input: unknown): Promise<{
+  success: boolean;
+  projects?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    url: string;
+    githubUrl: string | null;
+    technologies: string[];
+    source: ProjectSource;
+    relevanceScore: number;
+  }>;
+  error?: string;
+}> {
+  const parsed = SuggestProjectsForJobSchema.safeParse(input ?? {});
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  }
+
+  try {
+    const userId = await getUserId();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const excluded = new Set(
+      (parsed.data.excludeProjectUrls ?? [])
+        .map((value) => normalizeUrl(value))
+        .filter(Boolean)
+    );
+
+    const queryEmbedding = await generateEmbedding({
+      userId,
+      operation: 'embedding_generate',
+      text: parsed.data.jobDescription.slice(0, 12000),
+      metadata: {
+        reason: 'project_recommendation_query',
+        type: 'project',
+      },
+    });
+
+    const semanticResults = await searchQdrantByVector({
+      userId,
+      vector: queryEmbedding,
+      type: 'project',
+      limit: Math.max(parsed.data.limit * 4, 12),
+    });
+
+    const scoreByProjectId = new Map<string, number>();
+    for (const result of semanticResults) {
+      const payload = (result.payload ?? {}) as Record<string, unknown>;
+      const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
+      if (!sourceId) continue;
+      const score = Number(result.score ?? 0);
+      const previous = scoreByProjectId.get(sourceId) ?? -1;
+      if (score > previous) {
+        scoreByProjectId.set(sourceId, score);
+      }
+    }
+
+    const projectIds = [...scoreByProjectId.keys()];
+    if (projectIds.length === 0) {
+      return { success: true, projects: [] };
+    }
+
+    const projects = await prisma.userProject.findMany({
+      where: {
+        userId,
+        id: { in: projectIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        url: true,
+        githubUrl: true,
+        technologies: true,
+        source: true,
+      },
+    });
+
+    const ranked = projects
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        url: project.url,
+        githubUrl: project.githubUrl,
+        technologies: Array.isArray(project.technologies) ? (project.technologies as string[]) : [],
+        source: project.source,
+        relevanceScore: Number((scoreByProjectId.get(project.id) ?? 0).toFixed(4)),
+      }))
+      .filter((project) => {
+        const normalizedPrimary = normalizeUrl(project.githubUrl ?? project.url);
+        if (normalizedPrimary && excluded.has(normalizedPrimary)) return false;
+        if (project.githubUrl) {
+          const normalizedGitHub = normalizeUrl(project.githubUrl);
+          if (normalizedGitHub && excluded.has(normalizedGitHub)) return false;
+        }
+        if (project.url) {
+          const normalizedUrl = normalizeUrl(project.url);
+          if (normalizedUrl && excluded.has(normalizedUrl)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .slice(0, parsed.data.limit);
+
+    return { success: true, projects: ranked };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to suggest projects',
     };
   }
 }
