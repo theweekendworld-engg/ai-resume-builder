@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { createUserProject, deleteUserProject, updateUserProject, listUserProjects } from '@/actions/projects';
+import { createUserProject, deleteUserProject, updateUserProject, listUserProjects, reEmbedAllUserProjects } from '@/actions/projects';
 import { fetchGitHubRepos, getGitHubIntegrationStatus, importGitHubRepoToLibrary } from '@/actions/github';
 import { getUniqueLanguages } from '@/lib/utils';
 import { GitHubRepo } from '@/types/github';
@@ -53,6 +53,7 @@ export function ProjectLibraryPanel({ projects: initialProjects }: ProjectLibrar
   const [projects, setProjects] = useState<ProjectItem[]>(initialProjects);
   const [parsedData, setParsedData] = useState<ParsedResumeData | null>(null);
   const [showImportPreview, setShowImportPreview] = useState(false);
+  const [isReEmbeddingAll, startReEmbedAllTransition] = useTransition();
 
   const refreshProjects = useCallback(async () => {
     const result = await listUserProjects();
@@ -71,13 +72,38 @@ export function ProjectLibraryPanel({ projects: initialProjects }: ProjectLibrar
     setShowImportPreview(true);
   };
 
+  const handleReEmbedAll = () => {
+    startReEmbedAllTransition(async () => {
+      const result = await reEmbedAllUserProjects();
+      if (!result.success) {
+        toast.error(result.error ?? 'Failed to re-embed project library');
+        return;
+      }
+      toast.success(
+        `Re-embedding complete: ${result.embedded ?? 0}/${result.total ?? 0} updated${(result.failed ?? 0) > 0 ? `, ${result.failed} failed` : ''}.`
+      );
+      await refreshProjects();
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">Project Library</h2>
-        <p className="text-sm text-muted-foreground">
-          Reusable project bank for AI resume generation and semantic matching.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Project Library</h2>
+          <p className="text-sm text-muted-foreground">
+            Reusable project bank for AI resume generation and semantic matching.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleReEmbedAll}
+          disabled={isReEmbeddingAll || projects.length === 0}
+        >
+          {isReEmbeddingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Re-embed all
+        </Button>
       </div>
 
       <Tabs defaultValue="projects">
@@ -149,12 +175,20 @@ function ProjectsList({
   projects: ProjectItem[];
   onRefresh: () => Promise<void>;
 }) {
+  const normalizeComparableUrl = (value: string | null | undefined) =>
+    (value ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '');
+
   const [isPending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     description: '',
     url: '',
+    githubUrl: '',
     technologies: '',
   });
 
@@ -164,6 +198,7 @@ function ProjectsList({
       name: project.name,
       description: project.description,
       url: project.url,
+      githubUrl: project.githubUrl ?? '',
       technologies: project.technologies.join(', '),
     });
   };
@@ -177,6 +212,7 @@ function ProjectsList({
         name: editForm.name,
         description: editForm.description,
         url: editForm.url,
+        githubUrl: editForm.githubUrl || undefined,
         technologies: editForm.technologies
           .split(',')
           .map((t) => t.trim())
@@ -236,11 +272,18 @@ function ProjectsList({
                 placeholder="Description"
                 rows={3}
               />
-              <Input
-                value={editForm.url}
-                onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))}
-                placeholder="Project URL"
-              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  value={editForm.url}
+                  onChange={(e) => setEditForm((f) => ({ ...f, url: e.target.value }))}
+                  placeholder="Live URL"
+                />
+                <Input
+                  value={editForm.githubUrl}
+                  onChange={(e) => setEditForm((f) => ({ ...f, githubUrl: e.target.value }))}
+                  placeholder="GitHub URL"
+                />
+              </div>
               <Input
                 value={editForm.technologies}
                 onChange={(e) => setEditForm((f) => ({ ...f, technologies: e.target.value }))}
@@ -306,16 +349,33 @@ function ProjectsList({
                     )}
                   </div>
                 )}
-                {project.url && (
-                  <a
-                    href={project.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    {project.url}
-                  </a>
+                {(project.githubUrl || project.url) && (
+                  <div className="mt-1 space-y-1">
+                    {project.githubUrl && (
+                      <a
+                        href={project.githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        GitHub: {project.githubUrl}
+                      </a>
+                    )}
+                    {project.url &&
+                      normalizeComparableUrl(project.url) !==
+                        normalizeComparableUrl(project.githubUrl) && (
+                        <a
+                          href={project.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Live: {project.url}
+                        </a>
+                      )}
+                  </div>
                 )}
               </div>
               <div className="flex shrink-0 gap-1">
@@ -406,7 +466,7 @@ function AddManuallyForm({ onSuccess }: { onSuccess: () => Promise<void> }) {
             onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
           />
           <Input
-            placeholder="Project URL"
+            placeholder="Live URL (optional)"
             value={form.url}
             onChange={(e) => setForm((p) => ({ ...p, url: e.target.value }))}
           />

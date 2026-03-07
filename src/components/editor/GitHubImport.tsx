@@ -120,12 +120,28 @@ export function GitHubImport() {
                 toast.info(`"${repo.name}" already exists in your project library`);
             }
 
-            // Add to Store
+            const importedProject = result.project;
+            const importedTechnologies = importedProject?.technologies && importedProject.technologies.length > 0
+                ? importedProject.technologies
+                : (repo.language ? [repo.language] : []);
+            const importedRepoUrl = importedProject?.githubUrl
+                || (importedProject?.url?.includes('github.com') ? importedProject.url : '')
+                || repo.html_url;
+            const importedLiveUrl = importedProject?.url && importedProject.url !== importedProject?.githubUrl
+                ? importedProject.url
+                : '';
+            const importedUrl = importedLiveUrl || importedRepoUrl || importedProject?.url || repo.html_url;
+            const importedDescription = importedProject?.description
+                || repo.description
+                || `${repo.name} imported from GitHub.`;
+
             addProject({
-                name: repo.name,
-                description: repo.description || `${repo.name} imported from GitHub.`,
-                url: repo.html_url,
-                technologies: repo.language ? [repo.language] : [],
+                name: importedProject?.name || repo.name,
+                description: importedDescription,
+                url: importedUrl,
+                liveUrl: importedLiveUrl,
+                repoUrl: importedRepoUrl,
+                technologies: importedTechnologies,
             });
 
             if (result.warning) {

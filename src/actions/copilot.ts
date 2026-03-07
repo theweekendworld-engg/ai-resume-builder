@@ -288,9 +288,15 @@ function formatExperienceForDiff(experience: ExperienceItem[]): string {
 }
 
 function formatProjectsForDiff(projects: ProjectItem[]): string {
-    return projects.map(p => 
-        `${p.name}: ${p.description}\nTech: ${p.technologies.join(', ')}`
-    ).join('\n\n');
+    return projects.map(p => {
+        const links = [
+            p.liveUrl ? `Live: ${p.liveUrl}` : '',
+            p.repoUrl ? `Repo: ${p.repoUrl}` : '',
+            !p.liveUrl && !p.repoUrl && p.url ? `URL: ${p.url}` : '',
+        ].filter(Boolean).join(' | ');
+
+        return `${p.name}: ${p.description}\nTech: ${p.technologies.join(', ')}${links ? `\n${links}` : ''}`;
+    }).join('\n\n');
 }
 
 export async function proposeResumePatch(context: CopilotContext): Promise<ProposedResumePatch> {
@@ -325,7 +331,7 @@ Generate a JSON object with:
 1. "sections" - improved content for each section:
    - "summary": improved professional summary string tailored to the job
    - "experience": array of improved experience items (MUST keep same structure: id, company, role, startDate, endDate, current, location, description)
-   - "projects": array of project items - IMPROVE existing projects AND ADD NEW PROJECTS from the GitHub repos above that are relevant to the job. Each project needs: id (generate UUID for new ones), name, description (2-3 sentences with impact), url (use html_url from GitHub), technologies (array of tech used)
+   - "projects": array of project items - IMPROVE existing projects AND ADD NEW PROJECTS from the GitHub repos above that are relevant to the job. Each project needs: id (generate UUID for new ones), name, description (2-3 sentences with impact), liveUrl (if available), repoUrl (for GitHub repo), url (primary fallback URL), technologies (array of tech used)
    - "skills": array of optimized skills strings (prioritize job-relevant skills)
 
 2. "rationale": array of 3-5 strings explaining key changes made

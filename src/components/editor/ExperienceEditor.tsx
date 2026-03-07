@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Plus, Sparkles } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
-import { suggestSectionSkillHints, type SectionSkillHints } from '@/actions/copilot';
+import { suggestSectionSkillHints } from '@/actions/copilot';
 import { useEffect, useState } from 'react';
 
 export function ExperienceEditor() {
@@ -18,7 +18,7 @@ export function ExperienceEditor() {
     const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
     const [currentRewriteId, setCurrentRewriteId] = useState<string | null>(null);
     const [currentRewriteText, setCurrentRewriteText] = useState('');
-    const [skillHintsById, setSkillHintsById] = useState<SectionSkillHints>({});
+    const [sectionSkillHint, setSectionSkillHint] = useState<{ matchedKeywords: string[]; missingKeywords: string[] } | null>(null);
 
     useEffect(() => {
         if (!jobDescription.trim() || experience.length === 0) {
@@ -28,20 +28,23 @@ export function ExperienceEditor() {
         let cancelled = false;
         const timer = setTimeout(async () => {
             try {
+                const sectionId = 'experience-section';
+                const sectionText = experience
+                    .map((item) => `${item.role} at ${item.company}. ${item.description}`.trim())
+                    .filter(Boolean)
+                    .join('\n')
+                    .slice(0, 6000);
                 const hints = await suggestSectionSkillHints({
                     section: 'experience',
                     jobDescription,
-                    entries: experience.map((item) => ({
-                        id: item.id,
-                        text: `${item.role} at ${item.company}. ${item.description}`,
-                    })),
+                    entries: [{ id: sectionId, text: sectionText }],
                 });
                 if (!cancelled) {
-                    setSkillHintsById(hints);
+                    setSectionSkillHint(hints[sectionId] ?? null);
                 }
             } catch {
                 if (!cancelled) {
-                    setSkillHintsById({});
+                    setSectionSkillHint(null);
                 }
             }
         }, 700);
@@ -52,7 +55,7 @@ export function ExperienceEditor() {
         };
     }, [jobDescription, experience]);
 
-    const activeSkillHints = jobDescription.trim() ? skillHintsById : {};
+    const visibleSectionSkillHint = jobDescription.trim() && experience.length > 0 ? sectionSkillHint : null;
 
     const handleOpenRewrite = (id: string, text: string) => {
         setCurrentRewriteId(id);
@@ -76,6 +79,20 @@ export function ExperienceEditor() {
                 </Button>
             </CardHeader>
             <CardContent className="flex flex-col gap-6 flex-1 min-h-0 overflow-y-auto">
+                {atsScore && visibleSectionSkillHint && (
+                    <div className="rounded-md border border-border bg-card/40 p-3">
+                        {(visibleSectionSkillHint.matchedKeywords ?? []).length > 0 && (
+                            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                                Matched Skills (Experience): {visibleSectionSkillHint.matchedKeywords.join(', ')}
+                            </p>
+                        )}
+                        {(visibleSectionSkillHint.missingKeywords ?? []).length > 0 && (
+                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                                Missing Skills (Experience): {visibleSectionSkillHint.missingKeywords.join(', ')}
+                            </p>
+                        )}
+                    </div>
+                )}
                 {experience.map((item) => (
                     <div key={item.id} className="border border-border rounded-lg p-6 flex flex-col gap-4 relative group bg-card/50">
                         <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -167,22 +184,6 @@ export function ExperienceEditor() {
                                 placeholder="• Achieved X by doing Y, resulting in Z..."
                                 className="flex-1 min-h-[200px] resize-y"
                             />
-                            {atsScore && (
-                                <div className="space-y-1 pt-1">
-                                    {(activeSkillHints[item.id]?.matchedKeywords ?? []).length > 0 && (
-                                        <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                                            Matched Skills:{' '}
-                                            {(activeSkillHints[item.id]?.matchedKeywords ?? []).join(', ')}
-                                        </p>
-                                    )}
-                                    {(activeSkillHints[item.id]?.missingKeywords ?? []).length > 0 && (
-                                        <p className="text-xs text-amber-600 dark:text-amber-400">
-                                            Missing Skills:{' '}
-                                            {(activeSkillHints[item.id]?.missingKeywords ?? []).join(', ')}
-                                        </p>
-                                    )}
-                                </div>
-                            )}
                         </div>
                     </div>
                 ))}

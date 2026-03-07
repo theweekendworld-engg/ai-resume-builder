@@ -5,6 +5,7 @@ import { Redis } from "@upstash/redis";
 
 const isPublicRoute = createRouteMatcher([
     '/',
+    '/account(.*)',
     '/sign-in(.*)',
     '/sign-up(.*)',
     '/terms',

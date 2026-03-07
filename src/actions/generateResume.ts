@@ -313,6 +313,10 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
+function isGitHubUrl(value: string): boolean {
+  return /(^|\/\/)(www\.)?github\.com\//i.test(value.trim());
+}
+
 function getProjectText(project: Pick<UserProject, 'name' | 'description' | 'technologies' | 'readme'>): string {
   const technologies = Array.isArray(project.technologies) ? (project.technologies as string[]) : [];
   return [project.name, project.description, technologies.join(' '), project.readme.slice(0, PROJECT_README_CONTEXT_CHARS)].join(' ').trim();
@@ -338,9 +342,15 @@ ${item.description}`;
 function formatProjectContext(projects: ProjectItem[]): string {
   return projects.map((item) => {
     const tech = item.technologies.length > 0 ? item.technologies.join(', ') : 'N/A';
+    const liveUrl = item.liveUrl;
+    const repoUrl = item.repoUrl;
+    const urlLines = [
+      liveUrl ? `Live URL:${liveUrl}` : '',
+      repoUrl ? `Repo URL:${repoUrl}` : '',
+    ].filter(Boolean).join('\n');
     return `[Project:${item.id}] ${item.name}
 Tech:${tech}
-${item.description}`;
+${urlLines ? `${urlLines}\n` : ''}${item.description}`;
   }).join('\n\n');
 }
 
@@ -524,11 +534,21 @@ JOB DESCRIPTION:\n${jobDescription}`;
 }
 
 function toResumeProject(project: UserProject): ProjectItem {
+  const normalizedPrimary = (project.url || '').trim();
+  const normalizedRepo = (project.githubUrl || '').trim();
+  const liveUrl = normalizedPrimary && (!normalizedRepo || normalizedPrimary !== normalizedRepo)
+    ? normalizedPrimary
+    : '';
+  const repoUrl = normalizedRepo || (isGitHubUrl(normalizedPrimary) ? normalizedPrimary : '');
+  const url = liveUrl || repoUrl || normalizedPrimary;
+
   return {
     id: project.id,
     name: project.name,
     description: project.description || project.readme.slice(0, 400),
-    url: project.url || project.githubUrl || '',
+    url,
+    liveUrl,
+    repoUrl,
     technologies: Array.isArray(project.technologies) ? (project.technologies as string[]) : [],
   };
 }

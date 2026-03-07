@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useResumeStore } from '@/store/resumeStore';
 import { suggestProjectsForJob } from '@/actions/projects';
 import { improveText } from '@/actions/ai';
-import { suggestSectionSkillHints, type SectionSkillHints } from '@/actions/copilot';
+import { suggestSectionSkillHints } from '@/actions/copilot';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,10 +20,26 @@ type SuggestedProject = {
   name: string;
   description: string;
   url: string;
+  liveUrl: string;
+  repoUrl: string;
   githubUrl: string | null;
   technologies: string[];
   relevanceScore: number;
+  contextSnippet: string;
 };
+
+function resolveProjectUrls(project: {
+  url?: string;
+  liveUrl?: string;
+  repoUrl?: string;
+}): { url: string; liveUrl: string; repoUrl: string } {
+  const explicitLive = (project.liveUrl || '').trim();
+  const explicitRepo = (project.repoUrl || '').trim();
+  const url = explicitLive || explicitRepo || '';
+  const repoUrl = explicitRepo;
+  const liveUrl = explicitLive;
+  return { url, liveUrl, repoUrl };
+}
 
 export function ProjectsEditor() {
   const { resumeData, jobDescription, atsScore, addProject, updateProject, removeProject } = useResumeStore();
@@ -31,18 +47,43 @@ export function ProjectsEditor() {
   const [rewriteModalOpen, setRewriteModalOpen] = useState(false);
   const [currentRewriteId, setCurrentRewriteId] = useState<string | null>(null);
   const [currentRewriteText, setCurrentRewriteText] = useState('');
-  const [skillHintsById, setSkillHintsById] = useState<SectionSkillHints>({});
+  const [sectionSkillHint, setSectionSkillHint] = useState<{ matchedKeywords: string[]; missingKeywords: string[] } | null>(null);
   const [suggestedProjects, setSuggestedProjects] = useState<SuggestedProject[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [addingSuggestionId, setAddingSuggestionId] = useState<string | null>(null);
 
   const existingUrls = useMemo(
     () => projects
-      .flatMap((project) => [project.url, project.url.replace(/\/+$/, '')])
+      .flatMap((project) => {
+        const urls = resolveProjectUrls(project);
+        return [
+          urls.url,
+          urls.url.replace(/\/+$/, ''),
+          urls.liveUrl,
+          urls.liveUrl.replace(/\/+$/, ''),
+          urls.repoUrl,
+          urls.repoUrl.replace(/\/+$/, ''),
+        ];
+      })
       .map((url) => url.trim())
       .filter(Boolean),
     [projects]
   );
+
+  const updateProjectUrls = (
+    id: string,
+    patch: { liveUrl?: string; repoUrl?: string }
+  ) => {
+    const current = projects.find((project) => project.id === id);
+    if (!current) return;
+    const base = resolveProjectUrls(current);
+    const next = resolveProjectUrls({
+      url: base.url,
+      liveUrl: patch.liveUrl ?? base.liveUrl,
+      repoUrl: patch.repoUrl ?? base.repoUrl,
+    });
+    updateProject(id, next);
+  };
 
   useEffect(() => {
     if (!jobDescription.trim()) {
@@ -82,21 +123,35 @@ export function ProjectsEditor() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
+        const sectionId = 'projects-section';
+        const sectionText = projects
+          .map((item) => {
+            const urls = resolveProjectUrls(item);
+            const tech = item.technologies.length > 0 ? `Tech: ${item.technologies.join(', ')}` : '';
+            const links = [
+              urls.liveUrl ? `Live URL: ${urls.liveUrl}` : '',
+              urls.repoUrl ? `Repo URL: ${urls.repoUrl}` : '',
+            ].filter(Boolean).join(' ');
+            return `${item.name}. ${item.description}. ${tech}. ${links}`.trim();
+          })
+          .filter(Boolean)
+          .join('\n')
+          .slice(0, 6000);
         const hints = await suggestSectionSkillHints({
           section: 'projects',
           jobDescription,
-          entries: projects.map((item) => ({
-            id: item.id,
-            text: `${item.name}. ${item.description}`,
-            technologies: item.technologies,
-          })),
+          entries: [{
+            id: sectionId,
+            text: sectionText,
+            technologies: projects.flatMap((item) => item.technologies).slice(0, 40),
+          }],
         });
         if (!cancelled) {
-          setSkillHintsById(hints);
+          setSectionSkillHint(hints[sectionId] ?? null);
         }
       } catch {
         if (!cancelled) {
-          setSkillHintsById({});
+          setSectionSkillHint(null);
         }
       }
     }, 700);
@@ -107,7 +162,7 @@ export function ProjectsEditor() {
     };
   }, [jobDescription, projects]);
 
-  const activeSkillHints = jobDescription.trim() ? skillHintsById : {};
+  const visibleSectionSkillHint = jobDescription.trim() && projects.length > 0 ? sectionSkillHint : null;
 
   const handleOpenRewrite = (id: string, text: string) => {
     setCurrentRewriteId(id);
@@ -124,17 +179,24 @@ export function ProjectsEditor() {
 
   const handleAddSuggestion = async (project: SuggestedProject) => {
     setAddingSuggestionId(project.id);
+    const resolvedUrls = resolveProjectUrls({
+      url: project.url || '',
+      liveUrl: project.liveUrl || '',
+      repoUrl: project.repoUrl || project.githubUrl || '',
+    });
     try {
       const tailored = await improveText(
         project.description || `${project.name} project.`,
         'project',
-        `Tailor this project description to the target job. Keep facts unchanged and emphasize relevant impact.\n\nJob description:\n${jobDescription.slice(0, 3500)}`
+        `Tailor this project description to the target job. Keep facts unchanged, emphasize measurable outcomes, and preserve concrete technologies.\n\nProject context:\n${project.contextSnippet || `${project.name}. ${project.description}`}\n\nJob description:\n${jobDescription.slice(0, 3500)}`
       );
 
       addProject({
         name: project.name,
         description: tailored,
-        url: project.githubUrl || project.url,
+        url: resolvedUrls.url,
+        liveUrl: resolvedUrls.liveUrl,
+        repoUrl: resolvedUrls.repoUrl,
         technologies: project.technologies,
       });
       setSuggestedProjects((prev) => prev.filter((item) => item.id !== project.id));
@@ -143,7 +205,9 @@ export function ProjectsEditor() {
       addProject({
         name: project.name,
         description: project.description || `${project.name} project.`,
-        url: project.githubUrl || project.url,
+        url: resolvedUrls.url,
+        liveUrl: resolvedUrls.liveUrl,
+        repoUrl: resolvedUrls.repoUrl,
         technologies: project.technologies,
       });
       setSuggestedProjects((prev) => prev.filter((item) => item.id !== project.id));
@@ -162,6 +226,21 @@ export function ProjectsEditor() {
         </Button>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
+        {atsScore && visibleSectionSkillHint && (
+          <div className="rounded-md border border-border bg-card/40 p-3">
+            {(visibleSectionSkillHint.matchedKeywords ?? []).length > 0 && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                Matched Skills (Projects): {visibleSectionSkillHint.matchedKeywords.join(', ')}
+              </p>
+            )}
+            {(visibleSectionSkillHint.missingKeywords ?? []).length > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Missing Skills (Projects): {visibleSectionSkillHint.missingKeywords.join(', ')}
+              </p>
+            )}
+          </div>
+        )}
+
         {jobDescription.trim() && (
           <div className="space-y-3 rounded-lg border border-border bg-card/50 p-4">
             <div className="flex items-center justify-between">
@@ -233,22 +312,32 @@ export function ProjectsEditor() {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label className="text-sm font-medium">Project Name</Label>
+              <Input
+                value={item.name}
+                onChange={(e) => updateProject(item.id, { name: e.target.value })}
+                placeholder="Project Name"
+                className="h-10"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">Project Name</Label>
+                <Label className="text-sm font-medium">Live URL</Label>
                 <Input
-                  value={item.name}
-                  onChange={(e) => updateProject(item.id, { name: e.target.value })}
-                  placeholder="Project Name"
+                  value={resolveProjectUrls(item).liveUrl}
+                  onChange={(e) => updateProjectUrls(item.id, { liveUrl: e.target.value })}
+                  placeholder="https://your-live-app.com"
                   className="h-10"
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label className="text-sm font-medium">Project URL</Label>
+                <Label className="text-sm font-medium">Repo URL</Label>
                 <Input
-                  value={item.url}
-                  onChange={(e) => updateProject(item.id, { url: e.target.value })}
-                  placeholder="https://..."
+                  value={resolveProjectUrls(item).repoUrl}
+                  onChange={(e) => updateProjectUrls(item.id, { repoUrl: e.target.value })}
+                  placeholder="https://github.com/owner/repo"
                   className="h-10"
                 />
               </div>
@@ -274,20 +363,6 @@ export function ProjectsEditor() {
                 placeholder="Describe the project, your role, technologies used, and key achievements..."
                 className="min-h-[150px] flex-1 resize-y"
               />
-              {atsScore && (
-                <div className="space-y-1 pt-1">
-                  {(activeSkillHints[item.id]?.matchedKeywords ?? []).length > 0 && (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                      Matched Skills: {(activeSkillHints[item.id]?.matchedKeywords ?? []).join(', ')}
-                    </p>
-                  )}
-                  {(activeSkillHints[item.id]?.missingKeywords ?? []).length > 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">
-                      Missing Skills: {(activeSkillHints[item.id]?.missingKeywords ?? []).join(', ')}
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="flex flex-col gap-2">
@@ -325,4 +400,3 @@ export function ProjectsEditor() {
     </Card>
   );
 }
-

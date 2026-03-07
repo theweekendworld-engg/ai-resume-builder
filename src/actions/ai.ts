@@ -276,7 +276,7 @@ Output a valid JSON object matching this structure:
 {
   "personalInfo": { fullName, title, email, phone, location, website, linkedin, github, summary },
   "experience": [{ id, company, role, startDate, endDate, current, location, description }],
-  "projects": [{ id, name, description, url, technologies }],
+  "projects": [{ id, name, description, url, liveUrl, repoUrl, technologies }],
   "education": [{ id, institution, degree, fieldOfStudy, startDate, endDate, current }],
   "skills": ["skill1", "skill2", ...],
   "sectionOrder": ["summary", "experience", "projects", "education", "skills"]
@@ -450,6 +450,8 @@ Extract and return a JSON object with this EXACT structure:
       "name": "string",
       "description": "string",
       "url": "string",
+      "liveUrl": "string",
+      "repoUrl": "string",
       "technologies": ["array", "of", "tech"]
     }
   ],

@@ -42,6 +42,67 @@ function normalizeUrl(input: string): string {
   }
 }
 
+function cleanTextForSuggestion(input: string): string {
+  return input
+    .replace(/\r\n/g, '\n')
+    .replace(/```[\s\S]*?```/g, '\n')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\(([^)]+)\)/g, ' ')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/^#+\s*/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function splitSentences(input: string): string[] {
+  return input
+    .replace(/\n+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 24);
+}
+
+function buildProjectSuggestionContext(project: {
+  description: string;
+  readme: string;
+  technologies: string[];
+  githubUrl: string | null;
+  url: string;
+}): string {
+  const description = cleanTextForSuggestion(project.description || '');
+  const readme = cleanTextForSuggestion(project.readme || '');
+
+  const summaryParts: string[] = [];
+  if (description) summaryParts.push(...splitSentences(description).slice(0, 3));
+  if (readme) summaryParts.push(...splitSentences(readme).slice(0, 4));
+
+  const uniqueSentences: string[] = [];
+  const seen = new Set<string>();
+  for (const sentence of summaryParts) {
+    const normalized = sentence.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    uniqueSentences.push(sentence);
+    if (uniqueSentences.length >= 6) break;
+  }
+
+  const links = [
+    project.url ? `Live URL: ${project.url}` : '',
+    project.githubUrl ? `GitHub URL: ${project.githubUrl}` : '',
+  ].filter(Boolean);
+
+  return [
+    uniqueSentences.length > 0 ? `Project context: ${uniqueSentences.join(' ')}` : '',
+    project.technologies.length > 0 ? `Tech stack: ${project.technologies.join(', ')}` : '',
+    links.join(' | '),
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 2200);
+}
+
 export async function listUserProjects(): Promise<{
   success: boolean;
   projects?: Array<{
@@ -337,6 +398,76 @@ export async function reEmbedUserProject(projectId: string): Promise<{
   }
 }
 
+export async function reEmbedAllUserProjects(): Promise<{
+  success: boolean;
+  total?: number;
+  embedded?: number;
+  failed?: number;
+  error?: string;
+}> {
+  try {
+    const userId = await getUserId();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const projects = await prisma.userProject.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        technologies: true,
+        readme: true,
+        qdrantPointId: true,
+        createdAt: true,
+        githubUrl: true,
+        source: true,
+      },
+    });
+
+    let embedded = 0;
+    let failed = 0;
+
+    for (const project of projects) {
+      try {
+        const embedding = await upsertProjectEmbedding({
+          userId,
+          project,
+          replacePointId: project.qdrantPointId,
+        });
+
+        await prisma.userProject.update({
+          where: { id: project.id },
+          data: {
+            qdrantPointId: embedding.pointId,
+            embedded: true,
+          },
+        });
+        embedded += 1;
+      } catch {
+        failed += 1;
+        await prisma.userProject.update({
+          where: { id: project.id },
+          data: {
+            embedded: false,
+          },
+        });
+      }
+    }
+
+    return {
+      success: true,
+      total: projects.length,
+      embedded,
+      failed,
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to re-embed projects',
+    };
+  }
+}
+
 export async function suggestProjectsForJob(input: unknown): Promise<{
   success: boolean;
   projects?: Array<{
@@ -344,10 +475,13 @@ export async function suggestProjectsForJob(input: unknown): Promise<{
     name: string;
     description: string;
     url: string;
+    liveUrl: string;
+    repoUrl: string;
     githubUrl: string | null;
     technologies: string[];
     source: ProjectSource;
     relevanceScore: number;
+    contextSnippet: string;
   }>;
   error?: string;
 }> {
@@ -412,21 +546,41 @@ export async function suggestProjectsForJob(input: unknown): Promise<{
         url: true,
         githubUrl: true,
         technologies: true,
+        readme: true,
         source: true,
       },
     });
 
     const ranked = projects
-      .map((project) => ({
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        url: project.url,
-        githubUrl: project.githubUrl,
-        technologies: Array.isArray(project.technologies) ? (project.technologies as string[]) : [],
-        source: project.source,
-        relevanceScore: Number((scoreByProjectId.get(project.id) ?? 0).toFixed(4)),
-      }))
+      .map((project) => {
+        const technologies = Array.isArray(project.technologies) ? (project.technologies as string[]) : [];
+        const normalizedUrl = normalizeUrl(project.url);
+        const normalizedGitHub = normalizeUrl(project.githubUrl ?? '');
+        const liveUrl = project.url && (!project.githubUrl || normalizedUrl !== normalizedGitHub)
+          ? project.url
+          : '';
+        const repoUrl = project.githubUrl
+          || (project.url && normalizedUrl.includes('github.com') ? project.url : '');
+        return {
+          id: project.id,
+          name: project.name,
+          description: project.description,
+          url: liveUrl || repoUrl || project.url,
+          liveUrl,
+          repoUrl,
+          githubUrl: project.githubUrl,
+          technologies,
+          source: project.source,
+          relevanceScore: Number((scoreByProjectId.get(project.id) ?? 0).toFixed(4)),
+          contextSnippet: buildProjectSuggestionContext({
+            description: project.description,
+            readme: project.readme,
+            technologies,
+            githubUrl: repoUrl || null,
+            url: liveUrl || '',
+          }),
+        };
+      })
       .filter((project) => {
         const normalizedPrimary = normalizeUrl(project.githubUrl ?? project.url);
         if (normalizedPrimary && excluded.has(normalizedPrimary)) return false;

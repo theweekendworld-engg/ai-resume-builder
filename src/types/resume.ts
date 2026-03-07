@@ -36,7 +36,9 @@ export interface ProjectItem {
     id: string;
     name: string;
     description: string;
-    url: string;
+    url: string; // Primary URL derived from liveUrl/repoUrl
+    liveUrl: string;
+    repoUrl: string;
     technologies: string[];
 }
 

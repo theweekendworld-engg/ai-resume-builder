@@ -58,6 +58,8 @@ export const ProjectItemSchema = z.object({
     name: z.string().default(''),
     description: z.string().default(''),
     url: z.string().default(''),
+    liveUrl: z.string().default(''),
+    repoUrl: z.string().default(''),
     technologies: z.array(z.string()).default([]),
 });
 

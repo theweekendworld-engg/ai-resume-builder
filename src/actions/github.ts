@@ -13,6 +13,7 @@ import {
 import { checkGitHubRateLimit } from '@/lib/rateLimit';
 import { prisma } from '@/lib/prisma';
 import { createUserProject } from '@/actions/projects';
+import { ProjectSource } from '@prisma/client';
 
 const FetchReposSchema = z.object({
   username: z.string().min(1).max(200).optional(),
@@ -93,6 +94,20 @@ function parseGitHubRepoUrl(input: string): { owner: string; repo: string; norma
   }
 }
 
+function normalizeExternalUrl(input: string): string {
+  const raw = input.trim();
+  if (!raw) return '';
+
+  try {
+    const normalized = raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`;
+    const url = new URL(normalized);
+    const pathname = url.pathname.replace(/\/+$/, '');
+    return `${url.protocol}//${url.host}${pathname}${url.search}`;
+  } catch {
+    return '';
+  }
+}
+
 async function getLinkedGitHubHandle(userId: string): Promise<string> {
   const oauthHandle = await getGitHubHandleFromOAuth(userId);
   if (oauthHandle) return oauthHandle;
@@ -170,40 +185,111 @@ export async function getGitHubIntegrationStatus(): Promise<GitHubIntegrationSta
   };
 }
 
-function extractReadmeSummary(readme: string): string {
-  const withoutCode = readme
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`\n]+`/g, '');
+function cleanMarkdownLine(input: string): string {
+  return input
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*]\(([^)]+)\)/g, ' ')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/<\/?[^>]+(>|$)/g, ' ')
+    .replace(/\*{1,2}([^*]+)\*{1,2}/g, '$1')
+    .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')
+    .replace(/^#+\s*/, '')
+    .replace(/^\s*[-*+]\s+/, '')
+    .replace(/^\s*\d+\.\s+/, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
 
-  const lines = withoutCode
+function splitIntoSentences(text: string): string[] {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 28);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(value.trim());
+  }
+  return output;
+}
+
+function ensureSentence(input: string): string {
+  const value = input.trim().replace(/[ \t]{2,}/g, ' ');
+  if (!value) return '';
+  return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
+function extractReadmeSummary(readme: string): string {
+  const cleaned = readme
+    .replace(/```[\s\S]*?```/g, '\n')
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => cleanMarkdownLine(line))
     .filter((line) => {
-      if (!line || line.length < 10) return false;
-      if (line.startsWith('#')) return false;
-      if (line.startsWith('[![') || line.startsWith('![') || line.startsWith('[!')) return false;
-      if (line.startsWith('|') || line.startsWith('---') || line.startsWith('===')) return false;
-      if (line.startsWith('<!--') || line.startsWith('-->')) return false;
-      if (line.match(/^\[!\[/)) return false;
-      if (line.match(/^https?:\/\/\S+$/)) return false;
+      if (!line || line.length < 16) return false;
+      if (/^\|.*\|$/.test(line)) return false;
+      if (/^https?:\/\/\S+$/i.test(line)) return false;
+      if (/^(license|contributing|installation|usage)$/i.test(line)) return false;
       return true;
     });
 
-  return lines.slice(0, 6).join(' ').slice(0, 600);
+  const sentences = splitIntoSentences(cleaned.slice(0, 16).join(' '));
+  return uniqueStrings(sentences).slice(0, 4).join(' ').slice(0, 1000);
 }
 
-function deriveDescription(repoName: string, repoDescription?: string, readme?: string) {
-  const readmeSummary = readme ? extractReadmeSummary(readme) : '';
+function extractReadmeHighlights(readme: string): string[] {
+  const lines = readme
+    .replace(/```[\s\S]*?```/g, '\n')
+    .split('\n')
+    .map((line) => cleanMarkdownLine(line))
+    .filter((line) => line.length >= 28 && line.length <= 220);
 
-  if (repoDescription && repoDescription.length > 15) {
-    return readmeSummary
-      ? `${repoDescription}. ${readmeSummary}`.slice(0, 600)
-      : repoDescription.slice(0, 600);
+  const scored = lines
+    .map((line) => {
+      let score = 0;
+      if (/\b(built|developed|implemented|designed|shipped|deployed|automated|optimized|scaled|reduced|improved)\b/i.test(line)) score += 2;
+      if (/\b(\d+%|\d+x|\d+\s*(ms|sec|s|m|h|users|requests|qps|latency|throughput|stars))\b/i.test(line)) score += 2;
+      if (/\b(api|architecture|pipeline|auth|monitoring|database|cache|queue|security|microservice)\b/i.test(line)) score += 1;
+      return { line, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.line);
+
+  return uniqueStrings(scored).slice(0, 4);
+}
+
+function deriveDescription(
+  repoName: string,
+  repoDescription?: string,
+  readme?: string,
+  technologies?: string[]
+) {
+  const cleanedRepoDescription = cleanMarkdownLine(repoDescription ?? '');
+  const readmeSummary = readme ? extractReadmeSummary(readme) : '';
+  const highlights = readme ? extractReadmeHighlights(readme) : [];
+  const techs = Array.isArray(technologies) ? uniqueTech(technologies).slice(0, 10) : [];
+
+  const parts = [
+    cleanedRepoDescription.length > 15 ? ensureSentence(cleanedRepoDescription) : '',
+    readmeSummary,
+    highlights.length > 0 ? ensureSentence(`Key capabilities: ${highlights.join('; ')}`) : '',
+    techs.length > 0 ? ensureSentence(`Tech stack: ${techs.join(', ')}`) : '',
+  ].filter(Boolean);
+
+  if (parts.length === 0) {
+    return `${repoName} project imported from GitHub.`.slice(0, 1800);
   }
 
-  if (readmeSummary) return readmeSummary;
-
-  return `${repoName} project imported from GitHub`.slice(0, 600);
+  return parts.join(' ').replace(/[ \t]{2,}/g, ' ').slice(0, 1800);
 }
 
 function uniqueTech(...values: string[][]) {
@@ -316,12 +402,12 @@ export async function fetchGitHubRepos(options: FetchReposOptions): Promise<Fetc
 
 export async function fetchRepoDetails(username: string, repo: string, token?: string): Promise<GitHubRepoDetails> {
   const parsed = FetchRepoDetailsSchema.safeParse({ username, repo, token });
-  if (!parsed.success) return { readme: '', languages: [], topics: [] };
+  if (!parsed.success) return { readme: '', languages: [], topics: [], homepage: '' };
 
   const { userId } = await auth();
   if (userId) {
     const limit = await checkGitHubRateLimit(`gh:details:${userId}`);
-    if (!limit.allowed) return { readme: '', languages: [], topics: [] };
+    if (!limit.allowed) return { readme: '', languages: [], topics: [], homepage: '' };
   }
 
   const { username: u, repo: r, token: t } = parsed.data;
@@ -363,10 +449,21 @@ export async function fetchRepoDetails(username: string, repo: string, token?: s
       topics = [];
     }
 
-    return { readme, languages, topics };
+    let homepage = '';
+    try {
+      const repoResponse = await octokit.request('GET /repos/{owner}/{repo}', {
+        owner: u,
+        repo: r,
+      });
+      homepage = typeof repoResponse.data.homepage === 'string' ? repoResponse.data.homepage : '';
+    } catch {
+      homepage = '';
+    }
+
+    return { readme, languages, topics, homepage };
   } catch (error: unknown) {
     console.error('GitHub Details Error:', error);
-    return { readme: '', languages: [], topics: [] };
+    return { readme: '', languages: [], topics: [], homepage: '' };
   }
 }
 
@@ -374,6 +471,16 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
   success: boolean;
   deduped?: boolean;
   projectId?: string;
+  project?: {
+    id: string;
+    name: string;
+    description: string;
+    url: string;
+    githubUrl: string | null;
+    technologies: string[];
+    readme: string;
+    source: ProjectSource;
+  };
   warning?: string;
   error?: string;
 }> {
@@ -419,11 +526,28 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
       userId,
       githubUrl: parsedRepoUrl.normalizedUrl,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      url: true,
+      githubUrl: true,
+      technologies: true,
+      readme: true,
+      source: true,
+    },
   });
 
   if (existing) {
-    return { success: true, deduped: true, projectId: existing.id };
+    return {
+      success: true,
+      deduped: true,
+      projectId: existing.id,
+      project: {
+        ...existing,
+        technologies: Array.isArray(existing.technologies) ? (existing.technologies as string[]) : [],
+      },
+    };
   }
 
   const details = await fetchRepoDetails(linkedHandle, parsedRepoUrl.repo, parsed.data.token);
@@ -432,20 +556,60 @@ export async function importGitHubRepoToLibrary(input: unknown): Promise<{
     details.topics,
     parsed.data.fallbackLanguage ? [parsed.data.fallbackLanguage] : []
   );
+  const normalizedHomepage = normalizeExternalUrl(details.homepage ?? '');
+  const projectUrl = normalizedHomepage && !normalizedHomepage.toLowerCase().includes('github.com/')
+    ? normalizedHomepage
+    : parsedRepoUrl.normalizedUrl;
 
   const result = await createUserProject({
     name: parsedRepoUrl.repo,
-    description: deriveDescription(parsedRepoUrl.repo, parsed.data.repoDescription, details.readme),
-    url: parsedRepoUrl.normalizedUrl,
+    description: deriveDescription(parsedRepoUrl.repo, parsed.data.repoDescription, details.readme, technologies),
+    url: projectUrl,
     githubUrl: parsedRepoUrl.normalizedUrl,
     technologies,
     readme: details.readme,
     source: 'github',
   });
 
+  let persistedProject:
+    | {
+      id: string;
+      name: string;
+      description: string;
+      url: string;
+      githubUrl: string | null;
+      technologies: string[];
+      readme: string;
+      source: ProjectSource;
+    }
+    | undefined;
+
+  if (result.success && result.projectId) {
+    const storedProject = await prisma.userProject.findFirst({
+      where: { id: result.projectId, userId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        url: true,
+        githubUrl: true,
+        technologies: true,
+        readme: true,
+        source: true,
+      },
+    });
+    if (storedProject) {
+      persistedProject = {
+        ...storedProject,
+        technologies: Array.isArray(storedProject.technologies) ? (storedProject.technologies as string[]) : [],
+      };
+    }
+  }
+
   return {
     success: result.success,
     projectId: result.projectId,
+    project: persistedProject,
     warning: result.warning,
     error: result.error,
   };

@@ -18,6 +18,7 @@ export interface GitHubRepoDetails {
     readme: string;
     languages: string[];
     topics: string[];
+    homepage?: string;
 }
 
 export interface ProjectExtraction {
