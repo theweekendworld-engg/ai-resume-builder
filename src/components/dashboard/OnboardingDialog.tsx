@@ -73,6 +73,7 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
     },
     { success: false }
   );
+  const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
     if (!saveState.success) {
@@ -107,12 +108,19 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
     setStep(STEP_BASICS);
   };
 
-  const handleClose = async () => {
-    const done = await completeOnboarding();
-    if (done.success) {
-      onComplete();
+  const handleClose = () => {
+    if (isClosing || isPending) return;
+    setIsClosing(true);
+    onComplete();
+
+    startTransition(async () => {
+      const done = await completeOnboarding();
+      if (!done.success) {
+        toast.error(done.error ?? 'Failed to complete onboarding');
+      }
       router.refresh();
-    }
+      setIsClosing(false);
+    });
   };
 
   const handleNext = () => {

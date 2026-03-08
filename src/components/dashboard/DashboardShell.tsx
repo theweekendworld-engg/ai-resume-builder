@@ -88,6 +88,7 @@ export function DashboardShell({
   const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
   const [navOpen, setNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -102,11 +103,12 @@ export function DashboardShell({
   }, [overview.success, overview.profile?.onboardingComplete]);
 
   const handleOnboardingComplete = () => {
+    setOnboardingDismissed(true);
     setTourOpen(true);
   };
 
   const showOnboarding =
-    overview.success && !overview.profile?.onboardingComplete;
+    overview.success && !overview.profile?.onboardingComplete && !onboardingDismissed;
 
   const navContent = (
     <nav className="flex flex-col gap-1">
