@@ -170,14 +170,10 @@ function isLikelyNonProjectUrl(url: string, linkText = ''): boolean {
   }
 }
 
-function normalizeProjectUrls(
-  project: ParsedResumeData['projects'][number],
-  fallbackUrls: { github: string[]; live: string[] }
-) {
+function normalizeProjectUrls(project: ParsedResumeData['projects'][number]) {
   const inlineUrls = extractCandidateUrls(
     [project.githubUrl ?? '', project.liveUrl ?? '', project.description, project.name].join('\n')
   );
-
   let githubUrl = normalizeCandidateUrl(project.githubUrl ?? '') ?? '';
   let liveUrl = normalizeCandidateUrl(project.liveUrl ?? '') ?? '';
 
@@ -208,52 +204,10 @@ function normalizeProjectUrls(
     liveUrl = '';
   }
 
-  if (!githubUrl && fallbackUrls.github.length > 0) {
-    githubUrl = fallbackUrls.github.shift() ?? '';
-  }
-  if (!liveUrl && fallbackUrls.live.length > 0) {
-    liveUrl = fallbackUrls.live.shift() ?? '';
-  }
-
   return {
     githubUrl: githubUrl || undefined,
     liveUrl: liveUrl || undefined,
   };
-}
-
-function getProjectUrlFallbacks(links: ExtractedPdfLink[]): { github: string[]; live: string[] } {
-  const github: string[] = [];
-  const live: string[] = [];
-  const seen = new Set<string>();
-
-  for (const link of links) {
-    const normalized = normalizeCandidateUrl(link.url);
-    if (!normalized) continue;
-    if (isLikelyNonProjectUrl(normalized, link.text)) continue;
-
-    const label = (link.text || '').toLowerCase();
-    const labelSuggestsRepo = /\b(repo|github|source|code)\b/.test(label);
-    const labelSuggestsLive = /\b(live|demo|site|website|app|preview)\b/.test(label);
-    const key = normalized.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const repo = toGithubRepoUrl(normalized);
-    if (repo) {
-      if (labelSuggestsLive) {
-        live.push(normalized);
-      } else {
-        github.push(repo);
-      }
-      continue;
-    }
-    if (labelSuggestsRepo) continue;
-    if (labelSuggestsLive || !label) {
-      live.push(normalized);
-    }
-  }
-
-  return { github, live };
 }
 
 function buildPdfHyperlinkContext(links: ExtractedPdfLink[]): string {
@@ -301,7 +255,6 @@ function normalizeAchievementType(type: string): ParsedResumeData['achievements'
 }
 
 function normalizeParsedResumeData(data: ParsedResumeData, extractedLinks: ExtractedPdfLink[] = []): ParsedResumeData {
-  const fallbackUrls = getProjectUrlFallbacks(extractedLinks);
   return {
     ...data,
     experiences: data.experiences.map((experience) => ({
@@ -313,7 +266,7 @@ function normalizeParsedResumeData(data: ParsedResumeData, extractedLinks: Extra
     projects: data.projects.map((project) => ({
       ...project,
       description: normalizeProjectDescription(project.description),
-      ...normalizeProjectUrls(project, fallbackUrls),
+      ...normalizeProjectUrls(project),
     })),
     achievements: data.achievements.map((achievement) => ({
       ...achievement,

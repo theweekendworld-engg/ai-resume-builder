@@ -4,6 +4,7 @@ import { parseResumeFromPdf } from '@/lib/resumeParser';
 
 const MAX_FILE_SIZE = Number(process.env.RESUME_IMPORT_MAX_FILE_SIZE_KB ?? 5000) * 1024;
 
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {

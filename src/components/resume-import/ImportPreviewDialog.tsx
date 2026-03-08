@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -119,6 +120,7 @@ function buildSummaryMessage(summary: ImportSummary): string {
 }
 
 export function ImportPreviewDialog({ data, open, onClose, onImported, defaultOptions }: Props) {
+  const router = useRouter();
   const [editableData, setEditableData] = useState<ParsedResumeData>(data);
   const [options, setOptions] = useState<ImportOptions>({
     ...defaultImportOptions,
@@ -175,6 +177,7 @@ export function ImportPreviewDialog({ data, open, onClose, onImported, defaultOp
       }
 
       onImported?.(summary);
+      router.refresh();
       onClose();
     });
   };
