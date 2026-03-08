@@ -156,11 +156,6 @@ export function DashboardShell({
               </Button>
             </Link>
           )}
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              Home
-            </Button>
-          </Link>
           <UserButton />
         </div>
       </header>
