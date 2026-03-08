@@ -264,6 +264,10 @@ const BOILERPLATE_SECTIONS = [
 ];
 
 const URL_ONLY_PATTERN = /^https?:\/\/\S+$/i;
+const MAX_EXPERIENCES_PER_RESUME = 4;
+const RICH_EXPERIENCE_MIN_WORDS = 70;
+const RICH_EXPERIENCE_MIN_BULLETS = 3;
+const RICH_EXPERIENCE_MIN_METRICS = 2;
 
 function preprocessJobDescription(raw: string): { cleaned: string; searchText: string } {
   let text = raw
@@ -307,6 +311,56 @@ function tokenize(value: string): string[] {
 function extractMetricTokens(value: string): string[] {
   const matches = value.match(/\b\d+(?:[.,]\d+)?(?:%|\+|x|k|m|b)?\b/gi) ?? [];
   return matches.map((entry) => entry.toLowerCase());
+}
+
+function parseResumeDateToTimestamp(raw: string): number {
+  const value = raw.trim();
+  if (!value) return 0;
+
+  const parsed = Date.parse(value);
+  if (!Number.isNaN(parsed)) return parsed;
+
+  const monthYear = value.match(/^(\d{1,2})[/-](\d{4})$/);
+  if (monthYear) {
+    const month = Number(monthYear[1]);
+    const year = Number(monthYear[2]);
+    if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
+  }
+
+  const yearMonth = value.match(/^(\d{4})[/-](\d{1,2})$/);
+  if (yearMonth) {
+    const year = Number(yearMonth[1]);
+    const month = Number(yearMonth[2]);
+    if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
+  }
+
+  const yearOnly = value.match(/^(\d{4})$/);
+  if (yearOnly) {
+    const year = Number(yearOnly[1]);
+    return Date.UTC(year, 0, 1);
+  }
+
+  return 0;
+}
+
+function experienceRecencyScore(item: ExperienceItem): number {
+  if (item.current) return Number.MAX_SAFE_INTEGER;
+  const end = parseResumeDateToTimestamp(item.endDate);
+  if (end > 0) return end;
+  return parseResumeDateToTimestamp(item.startDate);
+}
+
+function isRichExperienceRecord(item: ExperienceItem): boolean {
+  const lines = item.description
+    .split('\n')
+    .map((line) => line.replace(/^\s*[•\-*]+\s*/, '').trim())
+    .filter(Boolean);
+  const wordCount = item.description.split(/\s+/).filter(Boolean).length;
+  const metricCount = extractMetricTokens(item.description).length;
+
+  return lines.length >= RICH_EXPERIENCE_MIN_BULLETS
+    || wordCount >= RICH_EXPERIENCE_MIN_WORDS
+    || metricCount >= RICH_EXPERIENCE_MIN_METRICS;
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -460,10 +514,10 @@ function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', ye
     : targetLength;
 
   if (resolved === '1-page') {
-    return { maxExperiences: 3, maxProjects: 3, maxSkills: 15 };
+    return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 3, maxSkills: 15 };
   }
 
-  return { maxExperiences: 5, maxProjects: 4, maxSkills: 20 };
+  return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 4, maxSkills: 20 };
 }
 
 async function parseJobDescription(params: {
@@ -1103,26 +1157,16 @@ export async function generateSmartResumePipeline(
       ? buildExperienceDescription(item as { description: string; highlights: unknown })
       : (item.description || '').trim(),
   }));
-  const rankedExperiences = sourceExperiences
-    .map((item) => ({
-      item,
-      score: (scoreExperienceRelevanceService({ item, jdSkills, parsedJD }) * 0.75) + ((experienceSemanticScores.get(item.id) ?? 0) * 0.25),
-    }))
-    .sort((a, b) => b.score - a.score)
+  const experienceScores = new Map(
+    sourceExperiences.map((item) => ([
+      item.id,
+      (scoreExperienceRelevanceService({ item, jdSkills, parsedJD }) * 0.75) + ((experienceSemanticScores.get(item.id) ?? 0) * 0.25),
+    ]))
+  );
+  const selectedExperiences = [...sourceExperiences]
+    .sort((a, b) => experienceRecencyScore(b) - experienceRecencyScore(a))
     .slice(0, lengthConstraints.maxExperiences);
-  const experienceRelevance = new Map(rankedExperiences.map((entry) => [entry.item.id, entry.score]));
-  const scopedExperiences = rankedExperiences.map((entry) => {
-    if (entry.score >= 0.25) return entry.item;
-    const topLines = entry.item.description
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 2);
-    return {
-      ...entry.item,
-      description: topLines.join('\n') || entry.item.description,
-    };
-  });
+  const experienceRelevance = new Map(selectedExperiences.map((item) => [item.id, experienceScores.get(item.id) ?? 0]));
 
   const education = educationRaw.map((item) => ({
     id: item.id,
@@ -1165,7 +1209,7 @@ export async function generateSmartResumePipeline(
     parsedJD,
     targetContext: `${parsedJD.role || 'Role'} @ ${parsedJD.company || 'Company'} ${parsedJD.industryDomain ? `| ${parsedJD.industryDomain}` : ''}`.trim(),
     baseSummary,
-    experiences: scopedExperiences,
+    experiences: selectedExperiences,
     experienceRelevance,
     selectedProjects,
     selectedKnowledge: rankedKnowledge.map(({ item }) => ({ title: item.title, content: item.content })),
@@ -1177,10 +1221,16 @@ export async function generateSmartResumePipeline(
 
   const paraphrasedMap = new Map(paraphrased.experience.map((entry) => [entry.id, entry.description]));
   const paraphrasedProjectsMap = new Map(paraphrased.projects.map((entry) => [entry.id, entry.description]));
-  const finalExperiences = scopedExperiences.map((item) => ({
-    ...item,
-    description: paraphrasedMap.get(item.id)?.trim() || item.description,
-  }));
+  const hasRichKnowledgeContext = rankedKnowledge.length >= 3;
+  const finalExperiences = selectedExperiences.map((item) => {
+    const rewritten = paraphrasedMap.get(item.id)?.trim();
+    const canParaphrase = isRichExperienceRecord(item) || hasRichKnowledgeContext;
+    if (!canParaphrase || !rewritten) return item;
+    return {
+      ...item,
+      description: rewritten,
+    };
+  });
   const finalProjects = selectedProjects.map((item) => ({
     ...item,
     description: paraphrasedProjectsMap.get(item.id)?.trim() || item.description,

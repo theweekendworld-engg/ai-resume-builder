@@ -24,8 +24,69 @@ export const ParaphraseSchema = z.object({
   skills: z.array(z.string()).default([]),
 });
 
+const MAX_SUMMARY_WORDS = 55;
+const MAX_BULLETS_PER_ITEM = 4;
+const MAX_BULLET_WORDS = 26;
+const MAX_SKILLS = 20;
+
 function toCompactJson(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function clampWords(value: string, maxWords: number): string {
+  const words = normalizeWhitespace(value).split(' ').filter(Boolean);
+  if (words.length <= maxWords) return words.join(' ');
+  return words.slice(0, maxWords).join(' ');
+}
+
+function splitBullets(description: string): string[] {
+  return description
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .flatMap((line) => line.split(/[•●]/g))
+    .map((line) => line.replace(/^\s*[-*]+\s*/, '').trim())
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean);
+}
+
+function normalizeBulletedDescription(description: string, fallback: string): string {
+  const source = description.trim() ? description : fallback;
+  const bullets = splitBullets(source);
+  if (bullets.length === 0) return '';
+
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+
+  for (const bullet of bullets) {
+    const key = bullet.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(clampWords(bullet, MAX_BULLET_WORDS));
+    if (deduped.length >= MAX_BULLETS_PER_ITEM) break;
+  }
+
+  return deduped.join('\n');
+}
+
+function normalizeSkills(skills: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+
+  for (const skill of skills) {
+    const trimmed = normalizeWhitespace(skill);
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(trimmed);
+    if (output.length >= MAX_SKILLS) break;
+  }
+
+  return output;
 }
 
 function formatExperienceContext(experiences: ExperienceItem[], relevanceById: Map<string, number>): string {
@@ -61,6 +122,12 @@ export async function paraphraseStaticData(params: {
 Rules:
 - Keep facts and metrics truthful.
 - Never fabricate tools, achievements, or numbers.
+- Use Action + Tech + Impact phrasing for each bullet when source evidence supports it.
+- For each experience/project item, output exactly 3-4 concise bullets.
+- Each bullet must be a single line and at most ${MAX_BULLET_WORDS} words.
+- Include concrete scale/metrics only when present in source evidence.
+- Keep summary to 40-55 words, focused on target role and measurable outcomes.
+- Prioritize engineering signals: distributed systems, infra, automation, AI/LLM pipelines, developer productivity.
 - Output ONLY JSON.
 
 Target context: ${params.targetContext}
@@ -106,20 +173,20 @@ Return JSON with this shape:
   }
 
   const normalized = {
-    summary: parsed.data.summary,
+    summary: clampWords(parsed.data.summary, MAX_SUMMARY_WORDS),
     experience: parsed.data.experience
       .map((entry, index) => ({
         id: entry.id?.trim() || params.experiences[index]?.id || '',
-        description: entry.description,
+        description: normalizeBulletedDescription(entry.description, params.experiences[index]?.description ?? ''),
       }))
       .filter((entry) => entry.id),
     projects: parsed.data.projects
       .map((entry, index) => ({
         id: entry.id?.trim() || params.selectedProjects[index]?.id || '',
-        description: entry.description,
+        description: normalizeBulletedDescription(entry.description, params.selectedProjects[index]?.description ?? ''),
       }))
       .filter((entry) => entry.id),
-    skills: parsed.data.skills,
+    skills: normalizeSkills(parsed.data.skills),
   };
 
   return ParaphraseSchema.parse(normalized);

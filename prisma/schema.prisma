@@ -155,6 +155,7 @@ model UserExperience {
     location    String   @default("")
     description String   @default("")
     highlights  Json     @default("[]")
+    qdrantPointId String?
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
 

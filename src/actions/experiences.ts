@@ -71,14 +71,22 @@ export async function createUserExperience(input: unknown) {
       description: true,
       highlights: true,
       createdAt: true,
+      qdrantPointId: true,
     },
   });
 
   try {
-    await upsertExperienceEmbedding({
+    const embedding = await upsertExperienceEmbedding({
       userId,
       experience,
     });
+
+    if (embedding.pointId !== experience.qdrantPointId) {
+      await prisma.userExperience.update({
+        where: { id: experience.id },
+        data: { qdrantPointId: embedding.pointId },
+      });
+    }
   } catch (error: unknown) {
     console.error('Failed to embed experience:', error);
   }
@@ -99,7 +107,7 @@ export async function updateUserExperience(input: unknown) {
 
   const existing = await prisma.userExperience.findFirst({
     where: { id, userId },
-    select: { id: true },
+    select: { id: true, qdrantPointId: true },
   });
   if (!existing) return { success: false, error: 'Experience not found' };
 
@@ -116,15 +124,26 @@ export async function updateUserExperience(input: unknown) {
       description: true,
       highlights: true,
       createdAt: true,
+      qdrantPointId: true,
     },
   });
 
   if (updated) {
     try {
-      await upsertExperienceEmbedding({
+      const embedding = await upsertExperienceEmbedding({
         userId,
-        experience: updated,
+        experience: {
+          ...updated,
+          qdrantPointId: updated.qdrantPointId ?? existing.qdrantPointId,
+        },
       });
+
+      if (embedding.pointId !== updated.qdrantPointId) {
+        await prisma.userExperience.update({
+          where: { id: updated.id },
+          data: { qdrantPointId: embedding.pointId },
+        });
+      }
     } catch (error: unknown) {
       console.error('Failed to update experience embedding:', error);
     }
@@ -140,9 +159,15 @@ export async function deleteUserExperience(id: string) {
   const userId = await getUserId();
   if (!userId) return { success: false, error: 'Not authenticated' };
 
+  const existing = await prisma.userExperience.findFirst({
+    where: { id: parsedId.data, userId },
+    select: { qdrantPointId: true },
+  });
   await prisma.userExperience.deleteMany({ where: { id: parsedId.data, userId } });
   try {
-    await deleteExperienceEmbedding(parsedId.data);
+    if (existing?.qdrantPointId) {
+      await deleteExperienceEmbedding(existing.qdrantPointId);
+    }
   } catch (error: unknown) {
     console.error('Failed to delete experience embedding:', error);
   }

@@ -35,6 +35,141 @@ function resolveTrackingUserId(value?: string): Promise<string> {
     });
 }
 
+const MAX_SUMMARY_WORDS = 55;
+const MAX_BULLET_WORDS = 26;
+const MAX_BULLETS_PER_EXPERIENCE = 4;
+const MAX_BULLETS_PER_PROJECT = 4;
+const MAX_EXPERIENCE_ITEMS = 4;
+const MAX_SKILLS = 20;
+
+function normalizeWhitespace(value: string): string {
+    return value.replace(/\s+/g, ' ').trim();
+}
+
+function truncateWords(value: string, maxWords: number): string {
+    const words = normalizeWhitespace(value).split(' ').filter(Boolean);
+    if (words.length <= maxWords) return words.join(' ');
+    return words.slice(0, maxWords).join(' ');
+}
+
+function normalizeSummary(summary: string): string {
+    return truncateWords(summary.replace(/\r\n/g, ' '), MAX_SUMMARY_WORDS);
+}
+
+function splitDescriptionIntoBullets(description: string): string[] {
+    return description
+        .replace(/\r\n/g, '\n')
+        .split('\n')
+        .flatMap((line) => line.split(/[•●]/g))
+        .map((line) => line.replace(/^\s*[-*]+\s*/, '').trim())
+        .map((line) => normalizeWhitespace(line))
+        .filter(Boolean);
+}
+
+function normalizeDescription(description: string, maxBullets: number): string {
+    const bullets = splitDescriptionIntoBullets(description);
+    if (bullets.length === 0) return '';
+
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const bullet of bullets) {
+        const key = bullet.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(truncateWords(bullet, MAX_BULLET_WORDS));
+        if (deduped.length >= maxBullets) break;
+    }
+
+    return deduped.join('\n');
+}
+
+function normalizeSkills(skills: string[]): string[] {
+    const normalized: string[] = [];
+    const seen = new Set<string>();
+
+    for (const skill of skills) {
+        const cleaned = normalizeWhitespace(skill);
+        if (!cleaned) continue;
+        const key = cleaned.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        normalized.push(cleaned);
+        if (normalized.length >= MAX_SKILLS) break;
+    }
+
+    return normalized;
+}
+
+function parseResumeDateToTimestamp(raw: string): number {
+    const value = raw.trim();
+    if (!value) return 0;
+
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+
+    const monthYear = value.match(/^(\d{1,2})[/-](\d{4})$/);
+    if (monthYear) {
+        const month = Number(monthYear[1]);
+        const year = Number(monthYear[2]);
+        if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
+    }
+
+    const yearMonth = value.match(/^(\d{4})[/-](\d{1,2})$/);
+    if (yearMonth) {
+        const year = Number(yearMonth[1]);
+        const month = Number(yearMonth[2]);
+        if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
+    }
+
+    const yearOnly = value.match(/^(\d{4})$/);
+    if (yearOnly) {
+        return Date.UTC(Number(yearOnly[1]), 0, 1);
+    }
+
+    return 0;
+}
+
+function experienceRecencyScore(exp: ResumeData['experience'][number]): number {
+    if (exp.current) return Number.MAX_SAFE_INTEGER;
+    const end = parseResumeDateToTimestamp(exp.endDate);
+    if (end > 0) return end;
+    return parseResumeDateToTimestamp(exp.startDate);
+}
+
+function normalizeResumeOutput(resume: ResumeData): ResumeData {
+    const normalizedExperience = resume.experience
+        .map((exp) => ({
+            ...exp,
+            description: normalizeDescription(exp.description, MAX_BULLETS_PER_EXPERIENCE),
+        }))
+        .sort((a, b) => experienceRecencyScore(b) - experienceRecencyScore(a))
+        .slice(0, MAX_EXPERIENCE_ITEMS);
+
+    return {
+        ...resume,
+        personalInfo: {
+            ...resume.personalInfo,
+            summary: normalizeSummary(resume.personalInfo.summary),
+        },
+        experience: normalizedExperience,
+        projects: resume.projects.map((project) => ({
+            ...project,
+            description: normalizeDescription(project.description, MAX_BULLETS_PER_PROJECT),
+        })),
+        skills: normalizeSkills(resume.skills),
+    };
+}
+
+function normalizeImprovedText(content: string, type: 'summary' | 'bullet' | 'project'): string {
+    if (type === 'summary') {
+        return normalizeSummary(content);
+    }
+    if (type === 'project') {
+        return normalizeDescription(content, 2);
+    }
+    return normalizeDescription(content, 1);
+}
+
 
 
 export async function improveText(text: string, type: 'summary' | 'bullet' | 'project', customInstruction?: string) {
@@ -46,11 +181,11 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
     let basePrompt: string;
     if (type === 'summary') {
-        basePrompt = `Rewrite the following professional summary to be more impactful, concise, and professional. Highlight key achievements if possible.`;
+        basePrompt = `Rewrite the following professional summary in 40-55 words (max 2 sentences). Focus on role fit, technical strengths, and measurable outcomes only if explicitly supported by the text.`;
     } else if (type === 'project') {
-        basePrompt = `Summarize the following project README or description into a concise resume bullet point. Include the technologies used and key achievements.`;
+        basePrompt = `Rewrite the following project content into 2 concise resume bullets using Action + Tech + Impact style. Keep each bullet <= ${MAX_BULLET_WORDS} words. No fabricated metrics or tools.`;
     } else {
-        basePrompt = `Rewrite the following resume bullet point to use strong action verbs, quantify results if possible, and be more professional.`;
+        basePrompt = `Rewrite the following resume bullet in Action + Tech + Impact style. Keep one bullet only and <= ${MAX_BULLET_WORDS} words. Add metrics only if they are explicitly present.`;
     }
 
     const instruction = parsedInput.data.customInstruction ? ` ${parsedInput.data.customInstruction}` : '';
@@ -61,7 +196,7 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
         const response = await trackedChatCompletion({
             model: config.openai.models.paraphrase,
             messages: [
-                { role: "system", content: "You are an expert resume writing assistant. Preserve factual accuracy and never invent claims." },
+                { role: "system", content: "You are an expert resume writing assistant. Preserve factual accuracy, avoid fluff, and never invent claims, tools, or metrics." },
                 { role: "user", content: prompt },
             ],
         }, {
@@ -71,7 +206,8 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
         });
 
         const content = response.choices[0].message.content?.trim() || text;
-        return content.replace(/^(Summarize|Rewrite|Output|Bullet point|Here's|Here is):\s*/i, '').trim();
+        const cleaned = content.replace(/^(Summarize|Rewrite|Output|Bullet point|Here's|Here is):\s*/i, '').trim();
+        return normalizeImprovedText(cleaned, type);
     } catch (error: unknown) {
         console.error("AI Error:", error);
         throw new Error("Failed to generate AI improvement.");
@@ -271,6 +407,11 @@ Generate a complete resume JSON that:
 3. Selects and describes relevant projects (use GitHub repos if available)
 4. Optimizes skills list to prioritize job-relevant skills first
 5. Uses strong action verbs and quantifies achievements where possible
+6. For EACH experience and project, output 3-4 bullets separated by "\\n"
+7. Every bullet must follow Action + Tech + Impact, max ${MAX_BULLET_WORDS} words
+8. Never return long paragraph blocks for experience/projects
+9. Include concrete scale/metrics only when present in source data
+10. Keep personal links (GitHub, Portfolio, LinkedIn) when available
 
 Output a valid JSON object matching this structure:
 {
@@ -307,7 +448,7 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
         if (parseResult.success) {
             const validated = parseResult.data;
             // Merge with existing data for fields that might be missing
-            return {
+            const merged: ResumeData = {
                 personalInfo: {
                     fullName: validated.personalInfo.fullName || existingData.personalInfo.fullName,
                     title: validated.personalInfo.title || existingData.personalInfo.title,
@@ -325,6 +466,7 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
                 skills: validated.skills.length > 0 ? validated.skills : existingData.skills,
                 sectionOrder: validated.sectionOrder || existingData.sectionOrder,
             };
+            return normalizeResumeOutput(merged);
         } else {
             console.error("Resume Validation Error:", parseResult.error);
             throw new Error("Invalid resume format from AI");
@@ -608,13 +750,13 @@ export async function improveSection(
     let basePrompt = '';
     switch (sectionType) {
         case 'summary':
-            basePrompt = 'Rewrite this professional summary to be more impactful and tailored to the job.';
+            basePrompt = `Rewrite this professional summary in 40-55 words (max 2 sentences), with clear role alignment and measurable impact only if source-backed.`;
             break;
         case 'experience':
-            basePrompt = 'Enhance these experience bullet points with strong action verbs, quantified results, and job-relevant keywords.';
+            basePrompt = `Enhance these experience bullets using Action + Tech + Impact style. Keep 3-4 bullets, each <= ${MAX_BULLET_WORDS} words, factual only.`;
             break;
         case 'project':
-            basePrompt = 'Improve this project description to highlight technical skills and impact relevant to the job.';
+            basePrompt = `Improve this project description into 3-4 concise bullets with concrete technologies and impact. Max ${MAX_BULLET_WORDS} words per bullet.`;
             break;
         case 'skills':
             basePrompt = 'Optimize and expand this skills list to better match the job requirements.';
@@ -639,7 +781,19 @@ Output ONLY the improved content. No explanations.`;
             metadata: { sectionType },
         });
 
-        return response.choices[0].message.content?.trim() || currentContent;
+        const content = response.choices[0].message.content?.trim() || currentContent;
+        switch (sectionType) {
+            case 'summary':
+                return normalizeSummary(content);
+            case 'experience':
+                return normalizeDescription(content, MAX_BULLETS_PER_EXPERIENCE);
+            case 'project':
+                return normalizeDescription(content, MAX_BULLETS_PER_PROJECT);
+            case 'skills':
+                return normalizeSkills(content.split(/[,\n;]/g)).join(', ');
+            default:
+                return content;
+        }
     } catch (error: unknown) {
         console.error("Improve Section Error:", error);
         throw new Error("Failed to improve section");

@@ -338,7 +338,7 @@ export async function upsertProjectEmbedding(params: {
 export async function upsertExperienceEmbedding(params: {
   userId: string;
   sessionId?: string;
-  experience: Pick<UserExperience, 'id' | 'role' | 'company' | 'description' | 'highlights' | 'createdAt'>;
+  experience: Pick<UserExperience, 'id' | 'role' | 'company' | 'description' | 'highlights' | 'createdAt' | 'qdrantPointId'>;
 }) {
   const content = buildExperienceEmbeddingText(params.experience);
   const vector = await generateEmbedding({
@@ -350,7 +350,7 @@ export async function upsertExperienceEmbedding(params: {
   });
 
   const pointId = await upsertToQdrant({
-    pointId: `experience:${params.experience.id}`,
+    pointId: params.experience.qdrantPointId ?? undefined,
     vector,
     payload: {
       userId: params.userId,
@@ -365,9 +365,9 @@ export async function upsertExperienceEmbedding(params: {
   return { pointId, content };
 }
 
-export async function deleteExperienceEmbedding(experienceId: string) {
-  if (!experienceId) return;
-  await deleteFromQdrant(`experience:${experienceId}`);
+export async function deleteExperienceEmbedding(pointId: string) {
+  if (!pointId) return;
+  await deleteFromQdrant(pointId);
 }
 
 export async function upsertKnowledgeItemEmbedding(params: {

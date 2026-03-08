@@ -116,10 +116,6 @@ export function ProjectLibraryPanel({ projects: initialProjects }: ProjectLibrar
             <Github className="w-3.5 h-3.5" />
             Import from GitHub
           </TabsTrigger>
-          <TabsTrigger value="resume" className="gap-1.5">
-            <FileUp className="w-3.5 h-3.5" />
-            From Resume
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="mt-4">

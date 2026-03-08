@@ -216,7 +216,8 @@ Return a single JSON object with exactly these keys:
 - achievements: array of { title, description, type } where type is one of: achievement, oss_contribution, certification, award, publication, custom
 - skills: array of skill strings
 
-Use empty string or empty array for missing values. Extract URLs from text (e.g. github.com/..., https://...) for githubUrl and liveUrl.`;
+Use empty string or empty array for missing values. Extract URLs from text (e.g. github.com/..., https://...) for githubUrl and liveUrl.
+For each project, scan the same line and nearby lines for links; if a GitHub repository link exists, put it in githubUrl, and if a demo/live/product link exists, put it in liveUrl.`;
 
 // Type exports
 export type ATSScoreType = z.infer<typeof ATSScoreSchema>;

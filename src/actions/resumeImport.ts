@@ -44,6 +44,28 @@ const KNOWLEDGE_TYPE_MAP: Record<string, KnowledgeType> = {
   custom: KnowledgeType.custom,
 };
 
+function normalizeGithubRepoUrl(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const raw = input.trim().replace(/\.git$/i, '');
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw.startsWith('http://') || raw.startsWith('https://') ? raw : `https://${raw}`);
+    const host = url.hostname.toLowerCase();
+    if (host !== 'github.com' && host !== 'www.github.com') return null;
+
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length < 2) return null;
+    const owner = segments[0].toLowerCase();
+    const repo = segments[1].toLowerCase();
+    if (!owner || !repo) return null;
+
+    return `github.com/${owner}/${repo}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function importParsedResumeData(
   data: ParsedResumeData,
   options: ImportOptions
@@ -177,26 +199,39 @@ export async function importParsedResumeData(
       where: { userId },
       select: { name: true, githubUrl: true },
     });
-    const existingNames = new Set(existing.map((p) => p.name.toLowerCase()));
-    const existingGithubUrls = new Set(
-      existing.filter((p) => p.githubUrl).map((p) => p.githubUrl!.toLowerCase())
-    );
+    const existingNamesWithoutRepo = new Set<string>();
+    const existingGithubRepos = new Set<string>();
+
+    for (const project of existing) {
+      const normalizedRepo = normalizeGithubRepoUrl(project.githubUrl);
+      if (normalizedRepo) {
+        existingGithubRepos.add(normalizedRepo);
+      } else {
+        existingNamesWithoutRepo.add(project.name.trim().toLowerCase());
+      }
+    }
 
     for (const proj of data.projects) {
-      if (!proj.name) {
+      const normalizedName = proj.name.trim().toLowerCase();
+      if (!normalizedName) {
         summary.projects.skipped++;
+        summary.warnings.push('Skipped one project because it has no name.');
         continue;
       }
 
-      const normalizedGithubUrl = proj.githubUrl
-        ? proj.githubUrl.replace(/\.git$/, '').toLowerCase()
-        : null;
+      const normalizedGithubRepo = normalizeGithubRepoUrl(proj.githubUrl ?? null);
+      const duplicateByRepo = normalizedGithubRepo
+        ? existingGithubRepos.has(normalizedGithubRepo)
+        : false;
+      const duplicateByNameWithoutRepo = !normalizedGithubRepo
+        ? existingNamesWithoutRepo.has(normalizedName)
+        : false;
 
-      if (
-        existingNames.has(proj.name.toLowerCase()) ||
-        (normalizedGithubUrl && existingGithubUrls.has(normalizedGithubUrl))
-      ) {
+      if (duplicateByRepo || duplicateByNameWithoutRepo) {
         summary.projects.skipped++;
+        summary.warnings.push(
+          `Project "${proj.name}": skipped as duplicate (${duplicateByRepo ? 'same GitHub repo' : 'same name'}).`
+        );
         continue;
       }
 
@@ -206,13 +241,16 @@ export async function importParsedResumeData(
         url: proj.liveUrl || proj.githubUrl || '',
         githubUrl: proj.githubUrl || undefined,
         technologies: proj.technologies,
-        source: proj.githubUrl ? 'github' : 'pdf_resume',
+        source: normalizedGithubRepo ? 'github' : 'pdf_resume',
       });
 
       if (result.success) {
         summary.projects.created++;
-        existingNames.add(proj.name.toLowerCase());
-        if (normalizedGithubUrl) existingGithubUrls.add(normalizedGithubUrl);
+        if (normalizedGithubRepo) {
+          existingGithubRepos.add(normalizedGithubRepo);
+        } else {
+          existingNamesWithoutRepo.add(normalizedName);
+        }
         if (result.warning) summary.warnings.push(`Project "${proj.name}": ${result.warning}`);
       } else {
         summary.projects.failed++;

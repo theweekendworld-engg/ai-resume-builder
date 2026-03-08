@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { startTransition, useActionState, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { upsertUserProfile, completeOnboarding } from '@/actions/profile';
 import { Button } from '@/components/ui/button';
@@ -119,7 +119,9 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
       return;
     }
 
-    submitProfile(form);
+    startTransition(() => {
+      submitProfile(form);
+    });
   };
 
   const stepTitles = ['Got an existing resume?', 'Welcome', 'Professional background'];
