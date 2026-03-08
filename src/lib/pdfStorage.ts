@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { put } from '@vercel/blob';
 import { config } from '@/lib/config';
 
 export type StoredPdfArtifact = {
@@ -52,13 +53,36 @@ async function storeLocalPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
   };
 }
 
-async function storeBlobPdf(): Promise<StoredPdfArtifact> {
-  throw new Error('PDF blob mode is enabled but no blob provider integration is configured yet.');
+async function storeBlobPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) {
+    throw new Error(
+      'PDF_STORAGE_MODE=blob requires BLOB_READ_WRITE_TOKEN. Add a Vercel Blob store in the dashboard or set the token in env.'
+    );
+  }
+  const safeUser = sanitizeSegment(input.userId);
+  const safeResume = sanitizeSegment(input.resumeId);
+  const safeSession = sanitizeSegment(input.sessionId || 'session');
+  const filename = `${Date.now()}-${randomUUID()}.pdf`;
+  const pathname = `pdfs/${safeUser}/${safeResume}/${safeSession}/${filename}`;
+
+  const blob = await put(pathname, input.pdfBuffer, {
+    access: 'public',
+    contentType: 'application/pdf',
+    addRandomSuffix: false,
+    token,
+  });
+
+  return {
+    blobKey: blob.pathname,
+    blobUrl: blob.url,
+    fileSizeBytes: input.pdfBuffer.byteLength,
+  };
 }
 
 export async function storePdfArtifact(input: StorePdfInput): Promise<StoredPdfArtifact> {
   if (config.pdfStorage.mode === 'blob') {
-    return storeBlobPdf();
+    return storeBlobPdf(input);
   }
 
   return storeLocalPdf(input);

@@ -1,5 +1,6 @@
 import { generateText, tool } from 'ai';
 import { z } from 'zod';
+import { config } from '@/lib/config';
 import { aiOpenAI } from '@/lib/aiProvider';
 import { err, ok } from '@/lib/result';
 import type { ResumeData } from '@/types/resume';
@@ -50,7 +51,7 @@ export async function runResumeAgent(params: RunResumeAgentParams): Promise<Resu
     }
 
     await generateText({
-      model: aiOpenAI('gpt-4.1'),
+      model: aiOpenAI(config.openai.models.general),
       system: RESUME_AGENT_SYSTEM,
       prompt: `Build a tailored resume for this job description:\n\n${params.jobDescription}`,
       tools: {

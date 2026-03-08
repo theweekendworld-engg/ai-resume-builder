@@ -1,19 +1,27 @@
 export const config = {
     openai: {
         apiKey: process.env.OPENAI_API_KEY as string,
-        model: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
+        model: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5-mini",
         models: {
-            general: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
-            jdParse: process.env.OPENAI_MODEL_JD_PARSE || "gpt-4.1-mini",
-            paraphrase: process.env.OPENAI_MODEL_PARAPHRASE || "gpt-4.1",
-            atsScore: process.env.OPENAI_MODEL_ATS_SCORE || "gpt-4.1-mini",
-            assembly: process.env.OPENAI_MODEL_ASSEMBLY || "gpt-4.1",
-            claimValidation: process.env.OPENAI_MODEL_CLAIM_VALIDATION || "gpt-4.1-mini",
-            resumeParse: process.env.OPENAI_MODEL_RESUME_PARSE || "gpt-4.1-mini",
+            general: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            jdParse: process.env.OPENAI_MODEL || "gpt-5-mini",
+            paraphrase: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            atsScore: process.env.OPENAI_MODEL || "gpt-5-mini",
+            assembly: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            claimValidation: process.env.OPENAI_MODEL || "gpt-5-mini",
+            resumeParse: process.env.OPENAI_MODEL || "gpt-5-mini",
+        },
+        embedding: {
+            model: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large",
+            size: Number(process.env.OPENAI_EMBEDDING_SIZE || 3072),
         },
     },
     app: {
         url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+    },
+    qdrant: {
+        url: process.env.QDRANT_URL as string,
+        apiKey: process.env.QDRANT_API_KEY || undefined,
     },
     resumeReuse: {
         enabled: process.env.RESUME_REUSE_ENABLED !== "false",

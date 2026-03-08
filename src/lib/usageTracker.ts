@@ -11,6 +11,8 @@ type OpenAiPrice = {
 };
 
 const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
+  'gpt-5-mini': { inputPer1M: 0.25, outputPer1M: 2 },
+  'gpt-5': { inputPer1M: 1.25, outputPer1M: 10 },
   'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.6 },
   'gpt-4o': { inputPer1M: 2.5, outputPer1M: 10 },
   'gpt-4.1-mini': { inputPer1M: 0.4, outputPer1M: 1.6 },

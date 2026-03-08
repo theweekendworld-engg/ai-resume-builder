@@ -3,18 +3,18 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';
+import { config } from '@/lib/config';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
 const COLLECTION_NAME = 'knowledge_base';
-const EMBEDDING_MODEL = process.env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small';
-const EMBEDDING_SIZE = Number(process.env.OPENAI_EMBEDDING_SIZE || 1536);
 const PROJECT_README_EMBED_CHARS = 3500;
 const PROJECT_EMBED_MAX_CHARS = 12000;
 const EXPERIENCE_EMBED_CHARS = 4000;
 const PROJECT_SNIPPET_LIMIT = 10;
 
 const qdrantClient = new QdrantClient({
-  url: process.env.QDRANT_URL || 'http://localhost:6333',
+  url: config.qdrant.url || 'http://localhost:6333',
+  ...(config.qdrant.apiKey && { apiKey: config.qdrant.apiKey }),
 });
 
 let collectionEnsured = false;
@@ -28,7 +28,7 @@ export async function ensureKnowledgeBaseCollection() {
   if (!exists) {
     await qdrantClient.createCollection(COLLECTION_NAME, {
       vectors: {
-        size: EMBEDDING_SIZE,
+        size: config.openai.embedding.size,
         distance: 'Cosine',
       },
     });
@@ -52,7 +52,7 @@ export async function generateEmbedding(params: {
 
   const response = await trackedEmbeddingCreate(
     {
-      model: EMBEDDING_MODEL,
+      model: config.openai.embedding.model,
       input: trimmed,
     },
     {
