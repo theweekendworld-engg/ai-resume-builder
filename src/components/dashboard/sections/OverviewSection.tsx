@@ -2,17 +2,16 @@
 
 import Link from 'next/link';
 import type { DashboardOverview } from '@/actions/dashboard';
-import type { DashboardSectionId } from '@/components/dashboard/DashboardShell';
+import type { UserUsageStats } from '@/actions/usage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles } from 'lucide-react';
 
 type OverviewSectionProps = {
   overview: DashboardOverview;
-  onNavigate: (section: DashboardSectionId) => void;
+  usageStats: UserUsageStats;
 };
 
-export function OverviewSection({ overview, onNavigate }: OverviewSectionProps) {
+export function OverviewSection({ overview, usageStats }: OverviewSectionProps) {
   if (!overview.success) {
     return (
       <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
@@ -62,18 +61,43 @@ export function OverviewSection({ overview, onNavigate }: OverviewSectionProps) 
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick action</CardTitle>
-          <CardDescription>Generate a resume from a job description.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button onClick={() => onNavigate('copilot')}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Generate with Copilot
-          </Button>
-        </CardContent>
-      </Card>
+      {usageStats.success && usageStats.stats && (
+        <>
+          <h2 className="text-lg font-semibold">Usage this period</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Tokens used</CardDescription>
+                <CardTitle className="text-2xl">{usageStats.stats.totalTokens.toLocaleString()}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Cost (USD)</CardDescription>
+                <CardTitle className="text-2xl">${usageStats.stats.totalCostUsd.toFixed(2)}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Generations completed</CardDescription>
+                <CardTitle className="text-2xl">{usageStats.stats.generationsCompleted}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Generations failed</CardDescription>
+                <CardTitle className="text-2xl">{usageStats.stats.generationsFailed}</CardTitle>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>PDFs generated</CardDescription>
+                <CardTitle className="text-2xl">{usageStats.stats.pdfsGenerated}</CardTitle>
+              </CardHeader>
+            </Card>
+          </div>
+        </>
+      )}
 
       {recentResumes.length > 0 && (
         <Card>

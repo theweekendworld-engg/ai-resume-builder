@@ -9,7 +9,6 @@ import {
   Sparkles,
   User,
   Send,
-  BarChart3,
   FileDown,
   Menu,
 } from 'lucide-react';
@@ -24,7 +23,6 @@ import { ResumesSection } from '@/components/dashboard/sections/ResumesSection';
 import { DashboardCopilot } from '@/components/dashboard/sections/DashboardCopilot';
 import { ProfileSection } from '@/components/dashboard/sections/ProfileSection';
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
-import { UsageSection } from '@/components/dashboard/sections/UsageSection';
 import { PdfHistorySection } from '@/components/dashboard/sections/PdfHistorySection';
 import { OnboardingDialog } from '@/components/dashboard/OnboardingDialog';
 import { DashboardTour, DASHBOARD_TOUR_STORAGE_KEY } from '@/components/dashboard/DashboardTour';
@@ -35,7 +33,6 @@ export type DashboardSectionId =
   | 'copilot'
   | 'profile'
   | 'telegram'
-  | 'usage'
   | 'pdf';
 
 const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode }[] = [
@@ -44,7 +41,6 @@ const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode 
   { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
   { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" /> },
-  { id: 'usage', label: 'Usage', icon: <BarChart3 className="h-4 w-4" /> },
   { id: 'pdf', label: 'PDF History', icon: <FileDown className="h-4 w-4" /> },
 ];
 
@@ -168,10 +164,7 @@ export function DashboardShell({
         <main className="flex-1 overflow-auto px-4 py-6 md:px-6">
           <div className="mx-auto max-w-4xl">
             {activeSection === 'overview' && (
-              <OverviewSection
-                overview={overview}
-                onNavigate={setActiveSection}
-              />
+              <OverviewSection overview={overview} usageStats={usageStats} />
             )}
             {activeSection === 'resumes' && (
               <ResumesSection resumes={resumes} listError={!overview.success ? overview.error : undefined} />
@@ -181,7 +174,6 @@ export function DashboardShell({
               <ProfileSection profile={profile} projects={projects} />
             )}
             {activeSection === 'telegram' && <TelegramSection />}
-            {activeSection === 'usage' && <UsageSection result={usageStats} />}
             {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
           </div>
         </main>
