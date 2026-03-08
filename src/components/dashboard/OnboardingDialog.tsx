@@ -107,7 +107,13 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
     setStep(STEP_BASICS);
   };
 
-  const open = true;
+  const handleClose = async () => {
+    const done = await completeOnboarding();
+    if (done.success) {
+      onComplete();
+      router.refresh();
+    }
+  };
 
   const handleNext = () => {
     if (step === STEP_UPLOAD) {
@@ -133,7 +139,7 @@ export function OnboardingDialog({ profile, onComplete }: OnboardingDialogProps)
 
   return (
     <>
-      <Dialog open={open}>
+      <Dialog open onOpenChange={(open) => { if (!open) handleClose(); }}>
         <DialogContent className="max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>{stepTitles[step]}</DialogTitle>
