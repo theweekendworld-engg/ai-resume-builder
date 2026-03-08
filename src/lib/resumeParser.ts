@@ -2,7 +2,12 @@ import { config } from '@/lib/config';
 import { ParsedResumeSchema, RESUME_PARSE_PROMPT, type ParsedResumeData } from '@/lib/aiSchemas';
 import { trackedChatCompletion, trackedResponsesCreate } from '@/lib/usageTracker';
 import { repairJSON } from '@/lib/aiSchemas';
-import { extractHyperlinksFromPdf, extractTextFromPdf, type ExtractedPdfLink } from '@/lib/pdfParser';
+
+type ExtractedPdfLink = {
+  pageNumber: number;
+  text: string;
+  url: string;
+};
 
 const ACHIEVEMENT_TYPES = new Set([
   'achievement',
@@ -318,9 +323,29 @@ function normalizeParsedResumeData(data: ParsedResumeData, extractedLinks: Extra
   };
 }
 
+async function safeExtractHyperlinksFromPdf(buffer: Buffer): Promise<ExtractedPdfLink[]> {
+  try {
+    const { extractHyperlinksFromPdf } = await import('@/lib/pdfParser');
+    return await extractHyperlinksFromPdf(buffer);
+  } catch (error) {
+    console.warn('PDF hyperlink extraction unavailable, continuing without link hints:', error);
+    return [];
+  }
+}
+
+async function safeExtractTextFromPdf(buffer: Buffer): Promise<string> {
+  try {
+    const { extractTextFromPdf } = await import('@/lib/pdfParser');
+    return await extractTextFromPdf(buffer);
+  } catch (error) {
+    console.warn('PDF text extraction unavailable for timeout fallback:', error);
+    return '';
+  }
+}
+
 export async function parseResumeFromPdf(buffer: Buffer, userId: string): Promise<ParsedResumeData> {
   const base64 = buffer.toString('base64');
-  const extractedLinks = await extractHyperlinksFromPdf(buffer).catch(() => [] as ExtractedPdfLink[]);
+  const extractedLinks = await safeExtractHyperlinksFromPdf(buffer);
   const linksContext = buildPdfHyperlinkContext(extractedLinks);
   try {
     const response = await trackedResponsesCreate(
@@ -367,7 +392,7 @@ export async function parseResumeFromPdf(buffer: Buffer, userId: string): Promis
       throw error;
     }
 
-    const extractedText = await extractTextFromPdf(buffer);
+    const extractedText = await safeExtractTextFromPdf(buffer);
     if (!extractedText.trim()) {
       throw error;
     }
