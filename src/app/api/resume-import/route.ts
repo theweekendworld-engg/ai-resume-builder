@@ -4,6 +4,8 @@ import { parseResumeFromPdf } from '@/lib/resumeParser';
 
 const MAX_FILE_SIZE = Number(process.env.RESUME_IMPORT_MAX_FILE_SIZE_KB ?? 5000) * 1024;
 
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
@@ -29,6 +31,13 @@ export async function POST(req: NextRequest) {
     if (file.type !== 'application/pdf') {
       return NextResponse.json(
         { success: false, error: 'Only PDF files are supported' },
+        { status: 400 }
+      );
+    }
+
+    if (file.size === 0) {
+      return NextResponse.json(
+        { success: false, error: 'File is empty. Please upload a valid PDF.' },
         { status: 400 }
       );
     }
