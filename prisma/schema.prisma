@@ -7,11 +7,313 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
+enum ResumeVersionSource {
+    manual
+    ai
+    import
+}
+
+enum ProjectSource {
+    github
+    manual
+    pdf_resume
+}
+
+enum KnowledgeType {
+    achievement
+    oss_contribution
+    certification
+    award
+    publication
+    custom
+}
+
+enum GenerationStatus {
+    pending
+    awaiting_clarification
+    generating
+    completed
+    failed
+}
+
+enum Channel {
+    web
+    telegram
+    whatsapp
+    email
+}
+
+enum PipelineStep {
+    reuse_check
+    jd_parsing
+    semantic_search
+    static_data_load
+    awaiting_clarification
+    paraphrasing
+    resume_assembly
+    claim_validation
+    ats_scoring
+    pdf_generation
+    completed
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
     title     String   @default("My Resume")
-    content   Json // Stores the entire resume JSON structure
+    targetRole    String?
+    targetCompany String?
+    atsScore      Int?
+    atsSummary    String?
+    /// Legacy payload. New writes should go to `ResumeVersion`.
+    content   Json?
+    currentVersionId String? @unique
+    currentVersion   ResumeVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+    versions         ResumeVersion[] @relation("ResumeVersions")
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+}
+
+model ResumeVersion {
+    id            String   @id @default(cuid())
+    userId        String
+    resumeId      String
+    resume        Resume   @relation("ResumeVersions", fields: [resumeId], references: [id], onDelete: Cascade)
+    /// Back-reference for Resume.currentVersion (0..1).
+    currentFor    Resume?  @relation("CurrentVersion")
+
+    schemaVersion Int      @default(1)
+    source        ResumeVersionSource @default(manual)
+    content       Json
+
+    createdAt     DateTime @default(now())
+
+    @@index([userId, createdAt])
+    @@index([resumeId, createdAt])
+}
+
+model JobTarget {
+    id          String   @id @default(cuid())
+    userId      String
+    company     String   @default("")
+    role        String   @default("")
+    description String
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+}
+
+model UserProfile {
+    id                  String   @id @default(cuid())
+    userId              String   @unique
+    fullName            String   @default("")
+    email               String   @default("")
+    phone               String   @default("")
+    location            String   @default("")
+    website             String   @default("")
+    linkedin            String   @default("")
+    github              String   @default("")
+    defaultTitle        String   @default("")
+    defaultSummary      String   @default("")
+    yearsExperience     String   @default("")
+    preferences         Json?
+    onboardingComplete  Boolean  @default(false)
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+}
+
+model UserProject {
+    id            String        @id @default(cuid())
+    userId        String
+    name          String
+    description   String        @default("")
+    url           String        @default("")
+    githubUrl     String?
+    technologies  Json          @default("[]")
+    readme        String        @default("")
+    source        ProjectSource @default(manual)
+    qdrantPointId String?
+    embedded      Boolean       @default(false)
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
+
+    @@unique([userId, githubUrl])
+    @@index([userId, updatedAt])
+}
+
+model UserExperience {
+    id          String   @id @default(cuid())
+    userId      String
+    company     String
+    role        String
+    startDate   String
+    endDate     String   @default("")
+    current     Boolean  @default(false)
+    location    String   @default("")
+    description String   @default("")
+    highlights  Json     @default("[]")
+    qdrantPointId String?
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+}
+
+model UserEducation {
+    id           String   @id @default(cuid())
+    userId       String
+    institution  String
+    degree       String
+    fieldOfStudy String   @default("")
+    startDate    String
+    endDate      String   @default("")
+    current      Boolean  @default(false)
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    @@index([userId])
+}
+
+model KnowledgeItem {
+    id            String        @id @default(cuid())
+    userId        String
+    type          KnowledgeType
+    title         String
+    content       String
+    metadata      Json?
+    qdrantPointId String?
+    embedded      Boolean       @default(false)
+    createdAt     DateTime      @default(now())
+    updatedAt     DateTime      @updatedAt
+
+    @@index([userId, type])
+}
+
+model GenerationSession {
+    id             String           @id @default(cuid())
+    userId         String
+    jobTargetId    String?
+    jobDescription String
+    channel        Channel          @default(web)
+    currentStep    PipelineStep     @default(reuse_check)
+    parsedJD       Json?
+    matchedItems   Json?
+    matchedProjects Json?
+    matchedAchievements Json?
+    staticData     Json?
+    paraphrasedContent Json?
+    draftResume    Json?
+    validationResult Json?
+    atsScore       Int?
+    pdfBlobKey     String?
+    pdfUrl         String?
+    clarifications Json?
+    status         GenerationStatus @default(pending)
+    resultResumeId String?
+    errorMessage   String?
+    errorStep      PipelineStep?
+    startedAt      DateTime         @default(now())
+    completedAt    DateTime?
+    totalLatencyMs Int?
+    totalTokensUsed Int?
+    totalCostUsd   Float?
+    createdAt      DateTime         @default(now())
+    updatedAt      DateTime         @updatedAt
+
+    @@index([userId, updatedAt])
+    @@index([status, updatedAt])
+    @@index([status])
+}
+
+model GeneratedPdf {
+    id            String   @id @default(cuid())
+    userId        String
+    resumeId      String
+    sessionId     String?
+    blobKey       String
+    blobUrl       String
+    fileSizeBytes Int
+    template      String   @default("ats-simple")
+    createdAt     DateTime @default(now())
+    expiresAt     DateTime?
+
+    @@index([userId, createdAt])
+    @@index([resumeId])
+    @@index([sessionId])
+}
+
+model ChannelIdentity {
+    id         String   @id @default(cuid())
+    userId     String
+    channel    Channel
+    externalId String
+    verified   Boolean  @default(false)
+    createdAt  DateTime @default(now())
+
+    @@unique([channel, externalId])
+    @@index([userId])
+}
+
+model ChannelLinkToken {
+    id         String   @id @default(cuid())
+    userId     String
+    channel    Channel
+    token      String   @unique
+    expiresAt  DateTime
+    consumedAt DateTime?
+    createdAt  DateTime @default(now())
+
+    @@index([userId, channel, createdAt])
+    @@index([channel, token])
+}
+
+model ApiUsageLog {
+    id           String   @id @default(cuid())
+    userId       String
+    sessionId    String?
+    operation    String
+    provider     String
+    model        String
+    inputTokens  Int      @default(0)
+    outputTokens Int      @default(0)
+    totalTokens  Int      @default(0)
+    costUsd      Float    @default(0)
+    latencyMs    Int      @default(0)
+    status       String   @default("success")
+    metadata     Json?
+    createdAt    DateTime @default(now())
+
+    @@index([userId, createdAt])
+    @@index([sessionId])
+    @@index([createdAt])
+}
+
+model UserUsageSummary {
+    id               String   @id @default(cuid())
+    userId           String
+    periodStart      DateTime
+    periodEnd        DateTime
+    totalTokens      Int      @default(0)
+    totalCostUsd     Float    @default(0)
+    totalGenerations Int      @default(0)
+    totalPdfs        Int      @default(0)
+    breakdown        Json?
+    createdAt        DateTime @default(now())
+
+    @@unique([userId, periodStart])
+    @@index([userId])
+}
+
+model ParsedJDCache {
+    id        String   @id @default(cuid())
+    jdHash    String   @unique
+    parsedJD  Json
+    createdAt DateTime @default(now())
+    expiresAt DateTime
+
+    @@index([jdHash])
+    @@index([expiresAt])
 }

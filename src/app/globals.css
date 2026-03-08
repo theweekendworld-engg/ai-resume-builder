@@ -1,33 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
+@layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 
+/*
+  Patronus theme — "Your best self, in the light"
+  Deep navy = the space; silvery blue = the patronus glow; soft silver-white = clarity.
+  Use .patronus-glow for CTAs and key cards.
+*/
 :root {
-  /* Modern dark blue/teal gradient theme */
-  --background: 220 30% 6%;
-  --foreground: 210 40% 98%;
-  --card: 220 30% 9%;
-  --card-foreground: 210 40% 98%;
-  --popover: 220 30% 11%;
-  --popover-foreground: 210 40% 98%;
-  
-  /* Pink to purple gradient primary */
-  --primary: 330 80% 60%;
-  --primary-foreground: 210 40% 98%;
-  
-  --secondary: 220 25% 12%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 220 25% 12%;
-  --muted-foreground: 215 20% 55%;
-  --accent: 200 70% 50%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 63% 50%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 220 20% 16%;
-  --input: 220 25% 10%;
-  --ring: 330 80% 60%;
+  --background: 222 42% 6%;
+  --foreground: 210 18% 96%;
+  --card: 222 32% 9%;
+  --card-foreground: 210 18% 96%;
+  --popover: 222 32% 9%;
+  --popover-foreground: 210 18% 96%;
+
+  --primary: 205 85% 72%;
+  --primary-foreground: 222 42% 8%;
+
+  --secondary: 215 25% 14%;
+  --secondary-foreground: 210 18% 96%;
+  --muted: 215 25% 14%;
+  --muted-foreground: 215 12% 52%;
+  --accent: 205 75% 78%;
+  --accent-foreground: 222 42% 8%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 215 22% 16%;
+  --input: 215 25% 14%;
+  --ring: 205 85% 72%;
   --radius: 0.625rem;
+  --glow: 205 85% 72%;
 }
 
 @theme inline {
@@ -55,6 +61,19 @@
   --radius-sm: calc(var(--radius) - 4px);
 }
 
+.patronus-glow {
+  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+}
+.patronus-glow-sm {
+  box-shadow: 0 0 16px -4px hsl(var(--glow) / 0.25);
+}
+.hover\:patronus-glow:hover {
+  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+}
+.font-heading {
+  font-family: 'Sora', system-ui, sans-serif;
+}
+
 * {
   @apply border-border;
 }
@@ -64,58 +83,41 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: 
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(14, 116, 144, 0.1) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 20% 80%, rgba(168, 85, 247, 0.08) 0%, transparent 50%),
-    linear-gradient(180deg, hsl(220, 30%, 6%) 0%, hsl(220, 28%, 8%) 50%, hsl(220, 30%, 6%) 100%);
   min-height: 100vh;
-  position: relative;
-  overflow-x: hidden;
 }
 
-/* Gradient text utility - pink to blue */
-.gradient-text {
-  background: linear-gradient(135deg, #ec4899 0%, #a855f7 50%, #3b82f6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Sora', system-ui, sans-serif;
 }
 
-/* Gradient button - pink to purple to blue */
-.gradient-btn {
-  background: linear-gradient(135deg, #ec4899 0%, #a855f7 50%, #3b82f6 100%);
-  transition: all 0.3s ease;
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.gradient-btn:hover {
-  background: linear-gradient(135deg, #f472b6 0%, #c084fc 50%, #60a5fa 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 30px -10px rgba(168, 85, 247, 0.4);
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Gradient border */
-.gradient-border {
-  position: relative;
-  background: hsl(var(--card));
-  border-radius: var(--radius);
+.animation-delay-100 {
+  animation-delay: 0.1s;
+}
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+.animation-delay-300 {
+  animation-delay: 0.3s;
+}
+.animation-delay-400 {
+  animation-delay: 0.4s;
 }
 
-.gradient-border::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  padding: 1px;
-  border-radius: var(--radius);
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(168, 85, 247, 0.2), rgba(59, 130, 246, 0.2));
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -123,139 +125,38 @@ body {
 
 ::-webkit-scrollbar-track {
   background: hsl(var(--muted));
-  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, hsl(330, 60%, 40%), hsl(260, 60%, 40%));
-  border-radius: 4px;
+  background: hsl(var(--border));
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, hsl(330, 70%, 50%), hsl(260, 70%, 50%));
+  background: hsl(var(--muted-foreground));
 }
 
-/* Glow effect on focus */
-input:focus, textarea:focus, select:focus {
-  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(330, 80%, 60%, 0.3);
+/* Clerk: keep Connected Accounts readable in dark mode, including disabled providers. */
+.cl-profileSection__connectedAccounts .cl-profileSectionItem {
+  background: hsl(var(--card) / 0.85) !important;
+  border: 1px solid hsl(var(--border) / 0.8) !important;
+  color: hsl(var(--foreground)) !important;
+  opacity: 1 !important;
 }
 
-/* Card hover glow */
-.card-hover:hover {
-  box-shadow: 0 0 30px -5px rgba(168, 85, 247, 0.15);
+.cl-profileSection__connectedAccounts .cl-userPreviewMainIdentifier,
+.cl-profileSection__connectedAccounts .cl-userPreviewMainIdentifierText {
+  color: hsl(var(--foreground)) !important;
 }
 
-/* Smart Feature Highlight Styles - subtle and professional */
-.smart-feature {
-  position: relative;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  transition: all 0.3s ease;
+.cl-profileSection__connectedAccounts .cl-userPreviewSecondaryIdentifier {
+  color: hsl(var(--muted-foreground)) !important;
 }
 
-.smart-feature:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.3);
+.cl-profileSection__connectedAccounts .cl-profileSectionItem[data-global-disabled='true'] {
+  opacity: 0.72 !important;
 }
 
-.smart-feature svg {
-  color: #6366f1;
-}
-
-/* Feature badge - subtle */
-.feature-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
-  color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-}
-
-/* Smart highlight animation - subtle */
-.smart-glow {
-  animation: smart-pulse 3s ease-in-out infinite;
-}
-
-@keyframes smart-pulse {
-  0%, 100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.2); }
-  50% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.3), 0 0 25px rgba(168, 85, 247, 0.1); }
-}
-
-/* Glass morphism effect */
-.glass {
-  background: rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Feature card styling */
-.feature-card {
-  background: linear-gradient(135deg, hsl(220, 30%, 9%) 0%, hsl(220, 28%, 11%) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  transition: all 0.3s ease;
-}
-
-.feature-card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-}
-
-/* Input with glow border */
-.input-glow {
-  background: hsl(var(--input));
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  transition: all 0.3s ease;
-}
-
-.input-glow:focus {
-  border-color: rgba(168, 85, 247, 0.5);
-  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
-}
-
-/* Legacy ai-feature class for backwards compatibility */
-.ai-feature {
-  position: relative;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(168, 85, 247, 0.08) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  transition: all 0.3s ease;
-}
-
-.ai-feature:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.3);
-}
-
-.ai-feature svg {
-  color: #6366f1;
-}
-
-/* Legacy ai-badge class for backwards compatibility */
-.ai-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%);
-  color: #818cf8;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-}
-
-/* Legacy ai-glow class for backwards compatibility */
-.ai-glow {
-  animation: smart-pulse 3s ease-in-out infinite;
+.cl-profileSection__connectedAccounts .cl-profileSectionPrimaryButton {
+  color: hsl(var(--primary)) !important;
 }

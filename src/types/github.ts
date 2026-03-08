@@ -18,6 +18,7 @@ export interface GitHubRepoDetails {
     readme: string;
     languages: string[];
     topics: string[];
+    homepage?: string;
 }
 
 export interface ProjectExtraction {
@@ -27,11 +28,27 @@ export interface ProjectExtraction {
 }
 
 export interface FetchReposOptions {
-    username: string;
+    username?: string;
     token?: string;
     page?: number;
     perPage?: number;
     minStars?: number;
     language?: string;
     excludeForks?: boolean;
+}
+
+export interface FetchGitHubReposResult {
+    success: boolean;
+    repos: GitHubRepo[];
+    linkedHandle?: string;
+    error?: string;
+    setupPath?: string;
+}
+
+export interface GitHubIntegrationStatus {
+    success: boolean;
+    linked: boolean;
+    linkedHandle?: string;
+    error?: string;
+    setupPath?: string;
 }

@@ -127,7 +127,7 @@ export function PersonalInfoEditor() {
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <Button
-                                        variant="ai"
+                                        variant="secondary"
                                         size="sm"
                                         onClick={() => setRewriteModalOpen(true)}
                                         disabled={!personalInfo.summary}
@@ -135,7 +135,7 @@ export function PersonalInfoEditor() {
                                     >
                                         <Sparkles className="w-3.5 h-3.5" />
                                         <span className="hidden sm:inline">AI Rewrite</span>
-                                        <span className="ai-badge sm:hidden">AI</span>
+                                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide sm:hidden">AI</span>
                                     </Button>
                                 </TooltipTrigger>
                                 <TooltipContent>

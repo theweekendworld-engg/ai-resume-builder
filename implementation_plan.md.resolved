@@ -1,0 +1,76 @@
+# Implementation Plan — UX & Interactivity (Fixing the "Black Box")
+
+## Overview
+As noted in [implementation_todo.md](file:///Users/jai/Desktop/startups_ideas/ai-resume-builder/implementation_todo.md), the backend AI capabilities and Telegram hooks are already largely in place. However, the current user experience feels "haphazard, overwhelming, and like a black box." 
+
+This plan focuses exclusively on structural UX changes to make the platform clean, clear, and trustworthy.
+
+---
+
+## Phase 1: Guided "Wizard" Onboarding & Async Ingestion
+**The Problem:** Landing on the editor blank is overwhelming. GitHub import expects a manually typed username, which is unverified and synchronous, causing friction.
+**The Solution:** An upfront onboarding flow that securely connects apps and ingests data asynchronously.
+
+### 1.1 Secure GitHub OAuth & Async Ingestion (Skippable)
+- **Execution:** 
+  - Add an "Integrations" or "Connect" step during the first-time onboarding flow. **Crucially, allow the user to click "Skip for now".**
+  - If they connect, use Clerk's GitHub OAuth to officially verify the user's GitHub identity.
+  - Once connected, trigger a background job (or async `fetch`) that pulls their **top 10 most recent/starred repos**, parses the descriptions and READMEs, generates Qdrant vector embeddings, and saves them to `UserProject`.
+  - If they skipped, they can still manually add projects in the Editor or Knowledge base. However, if they want to use the "Pull from GitHub" feature later in the Editor, they will be forced to complete the OAuth flow then.
+
+### 1.2 The `/build` Wizard Route
+Create a simple 2-step wizard UI before entering the Editor:
+1. **Step 1: The Target:** "Paste the Job Description you want to apply for."
+2. **Step 2: The Magic Baseline:** The app automatically matches their newly ingested GitHub repos/LinkedIn data against the JD to create a powerful baseline resume, jumping them straight into the Editor.
+
+---
+
+## Phase 2: Anti-Black-Box Generation (Building Trust)
+**The Problem:** When a user clicks "Tailor Resume", a spinner appears. They don't know *what* the AI is doing.
+**The Solution:** Expose the AI's "thought process."
+
+### 2.1 Visual Pipeline Streaming
+- **Execution:** When the generation pipeline runs ([generateResume.ts](file:///Users/jai/Desktop/startups_ideas/ai-resume-builder/src/actions/generateResume.ts)), use Server-Sent Events (SSE) or React Server Actions with `useActionState` to stream progress to the UI.
+- **The UI:** Instead of a spinner, show a checklist that checks off in real-time:
+  - [x] Parsing job requirements (Found 12 skills)...
+  - [x] Finding relevant projects (Matched: E-commerce Backend)...
+  - [ ] Rewriting experience bullets for impact (In progress)...
+  - [ ] Scoring against ATS...
+
+### 2.2 The "Missing Skills" Action Loop
+- **The Problem:** The `ATSScorePanel` gives a score (e.g., 70%) but doesn't make it easy to fix.
+- **The Solution:** List the exact *Missing Keywords* from the JD in red. 
+- **The Interaction:** Make the missing keywords clickable. Clicking "Docker" opens a modal: *"You are missing Docker. Did you use it? Type a quick sentence about how you used it, and we'll weave it into your Experience."*
+
+---
+
+## Phase 3: Decluttering the Editor & Feature Removal
+**The Problem:** The [EditorSidebar](file:///Users/jai/Desktop/startups_ideas/ai-resume-builder/src/components/editor/EditorSidebar.tsx#85-112) currently has 13 items. Many of these overlap in utility or belong in the onboarding flow, not the editor.
+**The Solution:** Ruthlessly cut or relocate features to lower cognitive load.
+
+### 3.1 What We Will Remove/Relocate
+1. **Remove GitHub Import from Editor:** Move this *strictly* to the Step 2 Onboarding Wizard. Users shouldn't be repeatedly importing entire repos while in the fine-tuning stage.
+2. **Hide LaTeX by Default:** 95% of users don't want to see LaTeX code. Remove the tab and move it to an "Advanced" toggle inside Settings or the Export button menu.
+3. **Merge Copilot & ATS Score:** Both are "Optimization" tools. They should live in the same panel ("Score & Improve") to keep the UI clean.
+4. **Remove Knowledge Base from Editor:** This is a library feature, not a per-resume feature. It should live on the overarching Dashboard, not inside the specific resume editor.
+
+### 3.2 Simplified Sidebar Architecture
+The new [EditorSidebar.tsx](file:///Users/jai/Desktop/startups_ideas/ai-resume-builder/src/components/editor/EditorSidebar.tsx) will be drastically simpler:
+- **Setup:** Job Target
+- **Content:** Personal, Experience, Projects, Education, Skills
+- **Optimize:** Score & Improve (combines ATS + Copilot)
+
+### 3.2 Smart Project Recommendations (The "Aha!" Moment)
+- **The Flow:** When a user is in the "Projects" tab of the editor, they shouldn't have to manually search for repositories.
+- **Execution:** Since we asynchronously ingested and embedded their GitHub repos during Onboarding (Phase 1.1), we can perform a quick Qdrant semantic search against the active Job Description.
+- **The UI:** Above the current projects list, show a "Suggested Projects for this Job" section. It displays the top 3-4 unadded repos side-by-side. 
+- **Action:** Clicking "Add" instantly writes an AI-tailored bullet point for that project matching the JD and drops it into the resume.
+
+### 3.3 Action-Oriented Empty States
+- If a user navigates to "Score & Improve" *without* having pasted a Job Description first, don't show an empty box. 
+- Show a clean illustration with a clear Call to Action: *"To unlock the AI Copilot and Match Score, we need to know what job you're applying for. [Add Job Description]"*
+
+---
+
+## Execution Priority
+If you approve this direction, I suggest we tackle **Phase 2 (Anti-Black-Box Generation)** first, as making the AI's work visible builds the most trust immediately, followed by the **Phase 1 Wizard**.

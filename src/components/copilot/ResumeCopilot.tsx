@@ -1,24 +1,16 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useResumeStore, CopilotProposal } from '@/store/resumeStore';
 import { useKnowledgeBaseStore } from '@/store/knowledgeBaseStore';
 import { proposeResumePatch, scoreReposForJob, CopilotContext } from '@/actions/copilot';
 import { fetchGitHubRepos } from '@/actions/github';
 import { searchKnowledgeBase } from '@/actions/kb';
-import { useUser } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetDescription,
-    SheetTrigger,
-} from '@/components/ui/sheet';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProposedChangesCard } from '@/components/copilot';
 import { 
@@ -43,15 +35,15 @@ interface WorkLogMessage {
     timestamp: Date;
 }
 
-export function ResumeCopilot() {
-    const { user } = useUser();
+interface ResumeCopilotProps {
+    embedded?: boolean;
+}
+
+export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
     const {
         resumeData,
         jobDescription,
         setJobDescription,
-        githubUsername,
-        setGithubUsername,
-        cloudSyncEnabled,
         copilotProposal,
         setCopilotProposal,
         copilotOpen,
@@ -64,7 +56,6 @@ export function ResumeCopilot() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [workLog, setWorkLog] = useState<WorkLogMessage[]>([]);
     const [localJD, setLocalJD] = useState(jobDescription);
-    const [localGithub, setLocalGithub] = useState(githubUsername);
 
     const addWorkLog = useCallback((type: WorkLogMessage['type'], message: string) => {
         setWorkLog(prev => [...prev, {
@@ -82,7 +73,6 @@ export function ResumeCopilot() {
         }
 
         setJobDescription(localJD);
-        setGithubUsername(localGithub);
         setIsProcessing(true);
         setWorkLog([]);
         setCopilotProposal(null);
@@ -93,13 +83,12 @@ export function ResumeCopilot() {
             // Gather KB bullets
             addWorkLog('info', 'Searching knowledge base for relevant achievements...');
             let kbBullets: string[] = [];
-            
-            if (cloudSyncEnabled && user) {
-                const cloudResults = await searchKnowledgeBase(user.id, localJD);
-                kbBullets = cloudResults.map(r => String(r.content)).filter(Boolean);
-            } else {
+            try {
+                const cloudResults = await searchKnowledgeBase(localJD);
+                kbBullets = cloudResults.map((r) => String(r.content)).filter(Boolean);
+            } catch {
                 const localResults = searchItems(localJD);
-                kbBullets = localResults.map(r => r.content);
+                kbBullets = localResults.map((r) => r.content);
             }
             
             if (kbBullets.length > 0) {
@@ -108,29 +97,28 @@ export function ResumeCopilot() {
                 addWorkLog('info', 'No stored achievements found');
             }
 
-            // Fetch GitHub repos if username provided
+            // Fetch GitHub repos from connected profile if available
             let scoredRepos: Array<{ name: string; description: string | null; html_url: string; language: string | null; stargazers_count: number; topics: string[]; updated_at: string; fork: boolean; id: number; relevanceScore: number }> = [];
-            
-            if (localGithub.trim()) {
-                addWorkLog('info', `Fetching GitHub repos for ${localGithub}...`);
-                try {
-                    const repos = await fetchGitHubRepos({ 
-                        username: localGithub,
-                        perPage: 30,
-                        excludeForks: true,
-                    });
-                    
-                    if (repos.length > 0) {
-                        addWorkLog('info', `Found ${repos.length} repos, scoring relevance...`);
-                        scoredRepos = await scoreReposForJob(repos, localJD);
-                        const topRepos = scoredRepos.slice(0, 5);
-                        addWorkLog('success', `Selected ${topRepos.length} most relevant repos`);
-                    } else {
-                        addWorkLog('info', 'No public repos found (continuing without GitHub data)');
-                    }
-                } catch {
-                    addWorkLog('info', 'GitHub unavailable, continuing without repos');
+
+            addWorkLog('info', 'Fetching projects from your connected GitHub account...');
+            try {
+                const githubResult = await fetchGitHubRepos({
+                    perPage: 30,
+                    excludeForks: true,
+                });
+
+                if (!githubResult.success) {
+                    addWorkLog('info', githubResult.error ?? 'GitHub unavailable, continuing without repos');
+                } else if (githubResult.repos.length > 0) {
+                    addWorkLog('info', `Found ${githubResult.repos.length} repos, scoring relevance...`);
+                    scoredRepos = await scoreReposForJob(githubResult.repos, localJD);
+                    const topRepos = scoredRepos.slice(0, 5);
+                    addWorkLog('success', `Selected ${topRepos.length} most relevant repos`);
+                } else {
+                    addWorkLog('info', 'No repositories found on your connected GitHub account');
                 }
+            } catch {
+                addWorkLog('info', 'GitHub unavailable, continuing without repos');
             }
 
             // Generate proposal
@@ -150,7 +138,7 @@ export function ResumeCopilot() {
 
             setCopilotProposal(patch as CopilotProposal);
 
-        } catch (error) {
+        } catch (error: unknown) {
             console.error('Copilot error:', error);
             addWorkLog('error', 'Failed to generate improvements. Please try again.');
             toast.error('Failed to generate improvements');
@@ -190,31 +178,8 @@ export function ResumeCopilot() {
 
     const needsJobDescription = !localJD.trim();
 
-    return (
-        <Sheet open={copilotOpen} onOpenChange={setCopilotOpen}>
-            <SheetTrigger asChild>
-                <Button
-                    variant="ai"
-                    size="sm"
-                    className="gap-2"
-                >
-                    <Bot className="w-4 h-4" />
-                    <span className="hidden sm:inline">AI Copilot</span>
-                </Button>
-            </SheetTrigger>
-            <SheetContent className="w-full sm:w-[540px] sm:max-w-[540px] p-0 flex flex-col">
-                <SheetHeader className="p-6 pb-4 border-b border-border">
-                    <SheetTitle className="flex items-center gap-2">
-                        <Bot className="w-5 h-5 text-primary" />
-                        Resume Copilot
-                    </SheetTitle>
-                    <SheetDescription>
-                        Tailor your resume for the job with AI assistance
-                    </SheetDescription>
-                </SheetHeader>
-
-                <ScrollArea className="flex-1">
-                    <div className="p-6 space-y-6">
+    const content = (
+        <div className="space-y-6">
                         {/* Job Description Input */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
@@ -233,21 +198,14 @@ export function ResumeCopilot() {
                             />
                         </div>
 
-                        {/* GitHub Username Input */}
+                        {/* GitHub Integration Hint */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
                                 <Github className="w-4 h-4" />
-                                GitHub Username
-                                <span className="text-xs text-muted-foreground">(optional)</span>
+                                GitHub Projects
                             </Label>
-                            <Input
-                                value={localGithub}
-                                onChange={(e) => setLocalGithub(e.target.value)}
-                                placeholder="your-github-username"
-                                disabled={isProcessing}
-                            />
                             <p className="text-xs text-muted-foreground">
-                                We&apos;ll find relevant projects to highlight
+                                We use the GitHub handle connected in Dashboard &gt; Profile &gt; GitHub to pull relevant repos.
                             </p>
                         </div>
 
@@ -323,6 +281,45 @@ export function ResumeCopilot() {
                             </div>
                         )}
                     </div>
+    );
+
+    if (embedded) {
+        return (
+            <Card className="h-full">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-primary" />
+                        Resume Copilot
+                    </CardTitle>
+                    <CardDescription>Tailor your resume for a target role with AI assistance.</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[calc(100%-5rem)] overflow-auto">
+                    {content}
+                </CardContent>
+            </Card>
+        );
+    }
+
+    return (
+        <Sheet open={copilotOpen} onOpenChange={setCopilotOpen}>
+            <SheetTrigger asChild>
+                <Button variant="secondary" size="sm" className="gap-2">
+                    <Bot className="w-4 h-4" />
+                    <span className="hidden sm:inline">AI Copilot</span>
+                </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full sm:w-[540px] sm:max-w-[540px] p-0 flex flex-col">
+                <SheetHeader className="p-6 pb-4 border-b border-border">
+                    <SheetTitle className="flex items-center gap-2">
+                        <Bot className="w-5 h-5 text-primary" />
+                        Resume Copilot
+                    </SheetTitle>
+                    <SheetDescription>
+                        Tailor your resume for the job with AI assistance
+                    </SheetDescription>
+                </SheetHeader>
+                <ScrollArea className="flex-1">
+                    <div className="p-6">{content}</div>
                 </ScrollArea>
             </SheetContent>
         </Sheet>

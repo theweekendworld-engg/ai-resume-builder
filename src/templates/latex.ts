@@ -15,11 +15,30 @@ function escapeLatex(text: string): string {
         .replace(/\^/g, '\\textasciicircum{}');
 }
 
+function normalizeRichText(text: string): string {
+    if (!text) return '';
+    return text
+        .replace(/\r\n/g, '\n')
+        .replace(/!\[[^\]]*]\(([^)]+)\)/g, '')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+        .replace(/`{1,3}([^`]+)`{1,3}/g, '$1')
+        .replace(/\*{3,}/g, ' ')
+        .replace(/_{3,}/g, ' ')
+        .replace(/\s-\s+(?=[A-Za-z0-9])/g, '\n- ')
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+}
+
 function markdownToLatex(text: string): string {
     if (!text) return '';
-    let result = escapeLatex(text);
-    result = result.replace(/\*\*([^*]+)\*\*/g, '\\textbf{$1}');
-    result = result.replace(/\*([^*]+)\*/g, '\\textit{$1}');
+    const normalized = normalizeRichText(text);
+    let result = escapeLatex(normalized);
+
+    // Only treat clear markdown emphasis markers as formatting; malformed marker runs are ignored.
+    result = result.replace(/\*\*([A-Za-z0-9][^*\n]{0,220}?[A-Za-z0-9])\*\*/g, '\\textbf{$1}');
+    result = result.replace(/\*([A-Za-z0-9][^*\n]{0,220}?[A-Za-z0-9])\*/g, '\\textit{$1}');
+    result = result.replace(/(^|[\s:])\*+(?=[\s:.,;!?)]|$)/g, '$1');
+
     return result;
 }
 
@@ -46,24 +65,57 @@ function formatDateLatex(dateStr: string): string {
 
 function parseDescription(description: string): string[] {
     if (!description) return [];
-    const lines = description
+    const lines = normalizeRichText(description)
         .replace(/<ul>/gi, '')
         .replace(/<\/ul>/gi, '')
         .replace(/<li>/gi, '\n')
         .replace(/<\/li>/gi, '')
         .replace(/<br\s*\/?>/gi, '\n')
         .split('\n')
-        .map(line => line.replace(/^[•\-\*]\s*/, '').trim())
+        .flatMap(line => line.split(/\s*[•●]\s+/g))
+        .map(line => line.replace(/^[•\-\*]+\s*/, '').replace(/[ \t]{2,}/g, ' ').trim())
         .filter(line => line.length > 0);
     return lines;
 }
 
-export type LatexTemplateType = 'ats-simple' | 'modern-professional';
+function normalizeHref(url: string): string {
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed.replace(/^\/+/, '')}`;
+}
 
-export function generateLatexFromResume(data: ResumeData, template: LatexTemplateType = 'ats-simple'): string {
-    switch (template) {
-        case 'modern-professional':
+function resolveProjectUrls(project: { url?: string; liveUrl?: string; repoUrl?: string }) {
+    const explicitLive = (project.liveUrl || '').trim();
+    const explicitRepo = (project.repoUrl || '').trim();
+    const repoUrl = explicitRepo;
+    const liveUrl = explicitLive;
+
+    return {
+        liveUrl,
+        repoUrl,
+    };
+}
+
+export type LatexTemplateType = 'ats-simple' | 'modern' | 'classic';
+type LegacyLatexTemplateType = LatexTemplateType | 'modern-professional';
+
+function normalizeTemplate(template: LegacyLatexTemplateType): LatexTemplateType {
+    if (template === 'modern-professional') {
+        return 'modern';
+    }
+
+    return template;
+}
+
+export function generateLatexFromResume(data: ResumeData, template: LegacyLatexTemplateType = 'ats-simple'): string {
+    const normalizedTemplate = normalizeTemplate(template);
+
+    switch (normalizedTemplate) {
+        case 'modern':
             return generateModernProfessionalTemplate(data);
+        case 'classic':
+            return generateATSSimpleTemplate(data);
         case 'ats-simple':
         default:
             return generateATSSimpleTemplate(data);
@@ -153,7 +205,14 @@ ${bullets.map(bullet => `  \\item ${markdownToLatex(bullet)}`).join('\n')}
             return `\\section*{PROJECTS}
 ${projects.map(proj => {
     const descLines = parseDescription(proj.description);
-    const urlPart = proj.url ? `\\hfill \\href{${proj.url}}{\\textcolor{mainblue}{[${proj.url.includes('github') ? 'Repo' : 'Live'}]}}` : '';
+    const urls = resolveProjectUrls(proj);
+    const liveHref = normalizeHref(urls.liveUrl);
+    const repoHref = normalizeHref(urls.repoUrl);
+    const linkParts = [
+        liveHref ? `\\href{${liveHref}}{\\textcolor{mainblue}{[Live]}}` : '',
+        repoHref ? `\\href{${repoHref}}{\\textcolor{mainblue}{[Repo]}}` : '',
+    ].filter(Boolean).join(' \\; ');
+    const urlPart = linkParts ? `\\hfill ${linkParts}` : '';
     return `\\noindent
 \\textbf{${escapeLatex(proj.name)}}${urlPart} \\\\
 \\vspace{-0.5em}
@@ -282,7 +341,14 @@ ${bullets.map(bullet => `  \\item {\\color{darktext}${markdownToLatex(bullet)}}`
             return `\\section*{Projects}
 ${projects.map(proj => {
     const descLines = parseDescription(proj.description);
-    const urlPart = proj.url ? `\\hfill \\href{${proj.url}}{\\textcolor{accent}{\\faExternalLink*}}` : '';
+    const urls = resolveProjectUrls(proj);
+    const liveHref = normalizeHref(urls.liveUrl);
+    const repoHref = normalizeHref(urls.repoUrl);
+    const linkParts = [
+        liveHref ? `\\href{${liveHref}}{\\textcolor{accent}{\\small Live}}` : '',
+        repoHref ? `\\href{${repoHref}}{\\textcolor{accent}{\\small Repo}}` : '',
+    ].filter(Boolean).join(' \\; ');
+    const urlPart = linkParts ? `\\hfill ${linkParts}` : '';
     return `{\\color{darktext}\\textbf{${escapeLatex(proj.name)}}}${urlPart}
 ${descLines.length > 0 ? `\\begin{itemize}
 ${descLines.map(line => `  \\item {\\color{darktext}${markdownToLatex(line)}}`).join('\n')}
@@ -319,9 +385,14 @@ export const TEMPLATE_OPTIONS: { value: LatexTemplateType; label: string; descri
         description: 'Clean, ATS-friendly format with traditional layout' 
     },
     { 
-        value: 'modern-professional', 
-        label: 'Modern Professional', 
+        value: 'modern',
+        label: 'Modern Professional',
         description: 'Contemporary design with icons and accent colors' 
+    },
+    {
+        value: 'classic',
+        label: 'Classic',
+        description: 'Traditional single-column resume style focused on readability'
     }
 ];
 

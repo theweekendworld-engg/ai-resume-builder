@@ -1,43 +1,116 @@
 'use server';
 
-import OpenAI from 'openai';
+import { z } from 'zod';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
 import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
+import { logUsageEvent, trackedChatCompletion } from '@/lib/usageTracker';
+import { requireAuth } from '@/lib/auth';
+import { experienceRecencyScore } from '@/lib/dateUtils';
+import { calculateDeterministicSignals } from '@/lib/utils';
+import {
+    normalizeDescription,
+    normalizeSummary,
+    normalizeSkills,
+    MAX_BULLETS_PER_EXPERIENCE,
+    MAX_BULLETS_PER_PROJECT,
+    MAX_EXPERIENCE_ITEMS,
+    MAX_BULLET_WORDS,
+} from '@/lib/resumeNormalizer';
 
-const openai = new OpenAI({
-    apiKey: config.openai.apiKey,
+const ImproveTextInputSchema = z.object({
+    text: z.string().min(1),
+    type: z.enum(['summary', 'bullet', 'project']),
+    customInstruction: z.string().max(2000).optional(),
 });
+
+const ModifyLatexInputSchema = z.object({
+    currentCode: z.string().min(1),
+    instruction: z.string().min(1),
+});
+
+const ResumeToLatexInputSchema = z.object({
+    resumeData: ResumeDataSchema,
+});
+
+const LatexToResumeInputSchema = z.object({
+    latexCode: z.string().min(1),
+});
+
+function normalizeResumeOutput(resume: ResumeData): ResumeData {
+    const normalizedExperience = resume.experience
+        .map((exp) => ({
+            ...exp,
+            description: normalizeDescription(exp.description, MAX_BULLETS_PER_EXPERIENCE),
+        }))
+        .sort((a, b) => experienceRecencyScore(b) - experienceRecencyScore(a))
+        .slice(0, MAX_EXPERIENCE_ITEMS);
+
+    return {
+        ...resume,
+        personalInfo: {
+            ...resume.personalInfo,
+            summary: normalizeSummary(resume.personalInfo.summary),
+        },
+        experience: normalizedExperience,
+        projects: resume.projects.map((project) => ({
+            ...project,
+            description: normalizeDescription(project.description, MAX_BULLETS_PER_PROJECT),
+        })),
+        skills: normalizeSkills(resume.skills),
+    };
+}
+
+function normalizeImprovedText(content: string, type: 'summary' | 'bullet' | 'project'): string {
+    if (type === 'summary') {
+        return normalizeSummary(content);
+    }
+    if (type === 'project') {
+        return normalizeDescription(content, 2);
+    }
+    return normalizeDescription(content, 1);
+}
 
 
 
 export async function improveText(text: string, type: 'summary' | 'bullet' | 'project', customInstruction?: string) {
     if (!text) return "";
+    const parsedInput = ImproveTextInputSchema.safeParse({ text, type, customInstruction });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
 
     let basePrompt: string;
     if (type === 'summary') {
-        basePrompt = `Rewrite the following professional summary to be more impactful, concise, and professional. Highlight key achievements if possible.`;
+        basePrompt = `Rewrite the following professional summary in 40-55 words (max 2 sentences). Focus on role fit, technical strengths, and measurable outcomes only if explicitly supported by the text.`;
     } else if (type === 'project') {
-        basePrompt = `Summarize the following project README or description into a concise resume bullet point. Include the technologies used and key achievements.`;
+        basePrompt = `Rewrite the following project content into 2 concise resume bullets using Action + Tech + Impact style. Keep each bullet <= ${MAX_BULLET_WORDS} words. No fabricated metrics or tools.`;
     } else {
-        basePrompt = `Rewrite the following resume bullet point to use strong action verbs, quantify results if possible, and be more professional.`;
+        basePrompt = `Rewrite the following resume bullet in Action + Tech + Impact style. Keep one bullet only and <= ${MAX_BULLET_WORDS} words. Add metrics only if they are explicitly present.`;
     }
 
-    const instruction = customInstruction ? ` ${customInstruction}` : '';
-    const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${text}"`;
+    const instruction = parsedInput.data.customInstruction ? ` ${parsedInput.data.customInstruction}` : '';
+    const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${parsedInput.data.text}"`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
+        const response = await trackedChatCompletion({
+            model: config.openai.models.paraphrase,
             messages: [
-                { role: "user", content: prompt }
+                { role: "system", content: "You are an expert resume writing assistant. Preserve factual accuracy, avoid fluff, and never invent claims, tools, or metrics." },
+                { role: "user", content: prompt },
             ],
+        }, {
+            userId,
+            operation: 'improve_text',
+            metadata: { type },
         });
 
         const content = response.choices[0].message.content?.trim() || text;
-        return content.replace(/^(Summarize|Rewrite|Output|Bullet point|Here's|Here is):\s*/i, '').trim();
-    } catch (error) {
+        const cleaned = content.replace(/^(Summarize|Rewrite|Output|Bullet point|Here's|Here is):\s*/i, '').trim();
+        return normalizeImprovedText(cleaned, type);
+    } catch (error: unknown) {
         console.error("AI Error:", error);
         throw new Error("Failed to generate AI improvement.");
     }
@@ -47,13 +120,18 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
     if (!jobDescription) return [];
 
     const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
+        const response = await trackedChatCompletion({
+            model: config.openai.models.jdParse,
             messages: [
-                { role: "user", content: prompt }
+                { role: "system", content: "You extract structured hiring keywords from job descriptions with high precision." },
+                { role: "user", content: prompt },
             ],
+        }, {
+            userId,
+            operation: 'extract_keywords',
         });
 
         const content = response.choices[0].message.content;
@@ -63,51 +141,21 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
         if (parseResult.success) {
             return parseResult.data.keywords;
         }
-        
+
         return [];
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("AI Keyword Error:", error);
         return [];
     }
 }
 
-function calculateDeterministicScore(resumeData: ResumeData, jobDescription: string) {
-    const jdLower = jobDescription.toLowerCase();
-    const resumeText = JSON.stringify(resumeData).toLowerCase();
-    
-    const jdWords = jdLower.split(/\W+/).filter(w => w.length > 3);
-    const uniqueJdWords = [...new Set(jdWords)];
-    
-    const matchedWords = uniqueJdWords.filter(w => resumeText.includes(w));
-    const keywordOverlap = uniqueJdWords.length > 0 
-        ? (matchedWords.length / uniqueJdWords.length) * 100 
-        : 0;
-    
-    const skillsLower = resumeData.skills.map(s => s.toLowerCase());
-    const skillMatches = uniqueJdWords.filter(w => 
-        skillsLower.some(s => s.includes(w) || w.includes(s))
-    );
-    const targetSkillCount = Math.min(15, uniqueJdWords.length);
-    const skillsMatch = targetSkillCount > 0 
-        ? (skillMatches.length / targetSkillCount) * 100 
-        : 0;
-    
-    const hasExperience = resumeData.experience.length > 0;
-    const hasProjects = resumeData.projects.length > 0;
-    const hasSummary = resumeData.personalInfo.summary.length > 50;
-    const hasSkills = resumeData.skills.length >= 5;
-    const completeness = [hasExperience, hasProjects, hasSummary, hasSkills]
-        .filter(Boolean).length * 25;
-    
-    return {
-        keywordOverlap: Math.round(Math.min(100, keywordOverlap)),
-        skillsMatch: Math.round(Math.min(100, skillsMatch)),
-        completeness: Math.round(completeness),
-        matchedWords: matchedWords.slice(0, 20),
-    };
-}
 
-export async function calculateATSScore(resumeData: ResumeData, jobDescription: string): Promise<ATSScore> {
+
+export async function calculateATSScore(
+    resumeData: ResumeData,
+    jobDescription: string,
+    tracking?: { userId?: string; sessionId?: string; operation?: string }
+): Promise<ATSScore> {
     if (!jobDescription || !resumeData) {
         return {
             overall: 0,
@@ -118,7 +166,7 @@ export async function calculateATSScore(resumeData: ResumeData, jobDescription: 
         };
     }
 
-    const deterministicScores = calculateDeterministicScore(resumeData, jobDescription);
+    const deterministicScores = calculateDeterministicSignals(resumeData, jobDescription);
     const resumeText = JSON.stringify(resumeData);
 
     const prompt = `Analyze this resume against the job description and provide an ATS compatibility score.
@@ -142,13 +190,19 @@ Analyze and return a JSON object with:
 5. "suggestions": Array of 3-5 specific actionable suggestions to improve match
 
 Be accurate and helpful. Output ONLY valid JSON.`;
+    const userId = await requireAuth(tracking?.userId);
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
+        const response = await trackedChatCompletion({
+            model: config.openai.models.atsScore,
             messages: [
-                { role: "user", content: prompt }
+                { role: "system", content: "You are an ATS simulator. Score resume relevance objectively and provide precise keyword gaps." },
+                { role: "user", content: prompt },
             ],
+        }, {
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: tracking?.operation ?? 'ats_scoring',
         });
 
         const content = response.choices[0].message.content;
@@ -159,21 +213,21 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 
         if (parseResult.success) {
             const validated = parseResult.data;
-            
+
             const blendedKeywordMatch = Math.round(
-                (deterministicScores.keywordOverlap * 0.3) + (validated.breakdown.keywordMatch * 0.7)
+                (deterministicScores.keywordScore * 0.3) + (validated.breakdown.keywordMatch * 0.7)
             );
             const blendedSkillsMatch = Math.round(
-                (deterministicScores.skillsMatch * 0.3) + (validated.breakdown.skillsMatch * 0.7)
+                (deterministicScores.skillScore * 0.3) + (validated.breakdown.skillsMatch * 0.7)
             );
-            
+
             const blendedOverall = Math.round(
-                (blendedKeywordMatch * 0.3) + 
-                (blendedSkillsMatch * 0.25) + 
-                (validated.breakdown.experienceRelevance * 0.35) + 
+                (blendedKeywordMatch * 0.3) +
+                (blendedSkillsMatch * 0.25) +
+                (validated.breakdown.experienceRelevance * 0.35) +
                 (validated.breakdown.formattingScore * 0.1)
             );
-            
+
             return {
                 overall: Math.min(100, Math.max(0, blendedOverall)),
                 breakdown: {
@@ -182,7 +236,7 @@ Be accurate and helpful. Output ONLY valid JSON.`;
                     experienceRelevance: validated.breakdown.experienceRelevance,
                     formattingScore: validated.breakdown.formattingScore,
                 },
-                matchedKeywords: [...new Set([...deterministicScores.matchedWords, ...validated.matchedKeywords])].slice(0, 15),
+                matchedKeywords: [...new Set([...deterministicScores.matchedKeywords, ...validated.matchedKeywords])].slice(0, 15),
                 missingKeywords: validated.missingKeywords,
                 suggestions: validated.suggestions,
             };
@@ -190,7 +244,7 @@ Be accurate and helpful. Output ONLY valid JSON.`;
             console.error("ATS Score Validation Error:", parseResult.error);
             throw new Error("Invalid ATS score format from AI");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("ATS Score Error:", error);
         throw new Error("Failed to calculate ATS score");
     }
@@ -200,7 +254,8 @@ export async function generateTailoredResume(
     jobDescription: string,
     existingData: ResumeData,
     githubRepos?: { name: string; description: string; language: string; url: string }[],
-    knowledgeBullets?: string[]
+    knowledgeBullets?: string[],
+    tracking?: { userId?: string; sessionId?: string }
 ): Promise<ResumeData> {
     const prompt = `Generate a tailored resume for this job description. Use the existing personal info and enhance/tailor the content.
 
@@ -208,9 +263,9 @@ JOB DESCRIPTION:
 ${jobDescription}
 
 EXISTING RESUME DATA:
-${JSON.stringify(existingData, null, 2)}
+${JSON.stringify(existingData)}
 
-${githubRepos?.length ? `GITHUB PROJECTS TO CONSIDER:\n${JSON.stringify(githubRepos, null, 2)}` : ''}
+${githubRepos?.length ? `GITHUB PROJECTS TO CONSIDER:\n${JSON.stringify(githubRepos)}` : ''}
 
 ${knowledgeBullets?.length ? `CANDIDATE'S ACHIEVEMENTS/BULLETS:\n${knowledgeBullets.join('\n')}` : ''}
 
@@ -220,25 +275,36 @@ Generate a complete resume JSON that:
 3. Selects and describes relevant projects (use GitHub repos if available)
 4. Optimizes skills list to prioritize job-relevant skills first
 5. Uses strong action verbs and quantifies achievements where possible
+6. For EACH experience and project, output 3-4 bullets separated by "\\n"
+7. Every bullet must follow Action + Tech + Impact, max ${MAX_BULLET_WORDS} words
+8. Never return long paragraph blocks for experience/projects
+9. Include concrete scale/metrics only when present in source data
+10. Keep personal links (GitHub, Portfolio, LinkedIn) when available
 
 Output a valid JSON object matching this structure:
 {
   "personalInfo": { fullName, title, email, phone, location, website, linkedin, github, summary },
   "experience": [{ id, company, role, startDate, endDate, current, location, description }],
-  "projects": [{ id, name, description, url, technologies }],
+  "projects": [{ id, name, description, url, liveUrl, repoUrl, technologies }],
   "education": [{ id, institution, degree, fieldOfStudy, startDate, endDate, current }],
   "skills": ["skill1", "skill2", ...],
   "sectionOrder": ["summary", "experience", "projects", "education", "skills"]
 }
 
 IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY valid JSON.`;
+    const userId = await requireAuth(tracking?.userId);
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
+        const response = await trackedChatCompletion({
+            model: config.openai.models.assembly,
             messages: [
-                { role: "user", content: prompt }
+                { role: "system", content: "You assemble ATS-friendly resumes using only provided factual data. Never fabricate achievements or metrics." },
+                { role: "user", content: prompt },
             ],
+        }, {
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: 'resume_assembly',
         });
 
         const content = response.choices[0].message.content;
@@ -250,7 +316,7 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
         if (parseResult.success) {
             const validated = parseResult.data;
             // Merge with existing data for fields that might be missing
-            return {
+            const merged: ResumeData = {
                 personalInfo: {
                     fullName: validated.personalInfo.fullName || existingData.personalInfo.fullName,
                     title: validated.personalInfo.title || existingData.personalInfo.title,
@@ -268,50 +334,61 @@ IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY 
                 skills: validated.skills.length > 0 ? validated.skills : existingData.skills,
                 sectionOrder: validated.sectionOrder || existingData.sectionOrder,
             };
+            return normalizeResumeOutput(merged);
         } else {
             console.error("Resume Validation Error:", parseResult.error);
             throw new Error("Invalid resume format from AI");
         }
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Generate Resume Error:", error);
         throw new Error("Failed to generate tailored resume");
     }
 }
 
 export async function modifyLatex(currentCode: string, instruction: string) {
-    if (!currentCode) return "";
+    const parsedInput = ModifyLatexInputSchema.safeParse({ currentCode, instruction });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
 
     const prompt = `Task: Modify the Latex code based on the instruction.
 Rule: Output ONLY the valid Latex code. Do not output markdown backticks. Do not output conversational text.
-Instruction: ${instruction}
+Instruction: ${parsedInput.data.instruction}
 
 Current Code:
-${currentCode}`;
+${parsedInput.data.currentCode}`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+        const response = await trackedChatCompletion({
+            model: config.openai.models.general,
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'latex_modify',
         });
 
         const content = response.choices[0].message.content?.trim() || "";
         if (!content) return currentCode;
 
-        let clean = content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
+        const clean = content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
         return clean;
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("AI Latex Error:", error);
         throw new Error("Failed to modify Latex code.");
     }
 }
 
 export async function resumeToLatex(resumeData: ResumeData): Promise<string> {
+    const parsedInput = ResumeToLatexInputSchema.safeParse({ resumeData });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
+
     const prompt = `Convert this resume data into a professional LaTeX resume document.
 
 RESUME DATA:
-${JSON.stringify(resumeData, null, 2)}
+${JSON.stringify(parsedInput.data.resumeData)}
 
 Generate a complete, compilable LaTeX document with:
 1. Clean professional formatting
@@ -322,28 +399,35 @@ Generate a complete, compilable LaTeX document with:
 6. Use proper itemize environments for bullet points
 
 Output ONLY the raw LaTeX code. No markdown, no explanations.`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+        const response = await trackedChatCompletion({
+            model: config.openai.models.general,
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'resume_to_latex',
         });
 
         const content = response.choices[0].message.content?.trim() || "";
         return content.replace(/^```latex\n/, '').replace(/^```\n/, '').replace(/```$/, '').trim();
-    } catch (error) {
+    } catch (error: unknown) {
         console.error("Resume to LaTeX Error:", error);
         throw new Error("Failed to convert resume to LaTeX");
     }
 }
 
 export async function latexToResume(latexCode: string): Promise<ResumeData> {
+    const parsedInput = LatexToResumeInputSchema.safeParse({ latexCode });
+    if (!parsedInput.success) {
+        throw new Error(parsedInput.error.issues.map((issue) => issue.message).join('; '));
+    }
+
     const prompt = `Parse the following LaTeX resume document and extract all the information into a structured JSON format.
 
 LATEX CODE:
-${latexCode}
+${parsedInput.data.latexCode}
 
 Extract and return a JSON object with this EXACT structure:
 {
@@ -376,6 +460,8 @@ Extract and return a JSON object with this EXACT structure:
       "name": "string",
       "description": "string",
       "url": "string",
+      "liveUrl": "string",
+      "repoUrl": "string",
       "technologies": ["array", "of", "tech"]
     }
   ],
@@ -401,74 +487,40 @@ Important:
 - Determine sectionOrder based on the order sections appear in the LaTeX
 
 Output ONLY valid JSON, no markdown, no explanations.`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+        const response = await trackedChatCompletion({
+            model: config.openai.models.general,
+            messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
+        }, {
+            userId,
+            operation: 'latex_to_resume',
         });
 
         const content = response.choices[0].message.content?.trim() || "{}";
-        const parsed = JSON.parse(content);
-        
-        // Validate and ensure all required fields exist
-        const result: ResumeData = {
-            personalInfo: {
-                fullName: parsed.personalInfo?.fullName || "",
-                title: parsed.personalInfo?.title || "",
-                email: parsed.personalInfo?.email || "",
-                phone: parsed.personalInfo?.phone || "",
-                location: parsed.personalInfo?.location || "",
-                website: parsed.personalInfo?.website || "",
-                linkedin: parsed.personalInfo?.linkedin || "",
-                github: parsed.personalInfo?.github || "",
-                summary: parsed.personalInfo?.summary || "",
-            },
-            experience: (parsed.experience || []).map((exp: any, i: number) => ({
-                id: exp.id || `exp-${i + 1}`,
-                company: exp.company || "",
-                role: exp.role || "",
-                startDate: exp.startDate || "",
-                endDate: exp.endDate || "",
-                current: exp.current || false,
-                location: exp.location || "",
-                description: exp.description || "",
-            })),
-            projects: (parsed.projects || []).map((proj: any, i: number) => ({
-                id: proj.id || `proj-${i + 1}`,
-                name: proj.name || "",
-                description: proj.description || "",
-                url: proj.url || "",
-                technologies: proj.technologies || [],
-            })),
-            education: (parsed.education || []).map((edu: any, i: number) => ({
-                id: edu.id || `edu-${i + 1}`,
-                institution: edu.institution || "",
-                degree: edu.degree || "",
-                fieldOfStudy: edu.fieldOfStudy || "",
-                startDate: edu.startDate || "",
-                endDate: edu.endDate || "",
-                current: edu.current || false,
-            })),
-            skills: parsed.skills || [],
-            sectionOrder: parsed.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills'],
-        };
-
-        return result;
-    } catch (error) {
+        const parsed = await parseWithRetry(content, ResumeDataSchema);
+        if (!parsed.success) {
+            throw new Error(parsed.error);
+        }
+        return parsed.data;
+    } catch (error: unknown) {
         console.error("LaTeX to Resume Error:", error);
         throw new Error("Failed to parse LaTeX to resume data");
     }
 }
 
-export async function compileLatex(latexCode: string): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
+export async function compileLatex(
+    latexCode: string,
+    tracking?: { userId?: string; sessionId?: string }
+): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
     if (!latexCode) {
         return { success: false, error: "No LaTeX code provided" };
     }
 
+    const userId = await requireAuth(tracking?.userId);
+    const start = Date.now();
     try {
         const response = await fetch('https://latex.ytotech.com/builds/sync', {
             method: 'POST',
@@ -500,19 +552,53 @@ export async function compileLatex(latexCode: string): Promise<{ success: boolea
                     ).slice(0, 10);
                     errorMessage = errorLines.join('\n') || errorMessage;
                 }
-            } catch {
+            } catch (error: unknown) {
+                void error;
                 errorMessage = errorText.slice(0, 500);
             }
 
+            await logUsageEvent({
+                userId,
+                sessionId: tracking?.sessionId,
+                operation: 'latex_compile',
+                provider: 'latex_api',
+                model: 'pdflatex',
+                latencyMs: Date.now() - start,
+                status: 'failed',
+                metadata: { error: errorMessage, statusCode: response.status },
+            });
             return { success: false, error: errorMessage };
         }
 
         const pdfBuffer = await response.arrayBuffer();
         const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
 
+        await logUsageEvent({
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: 'latex_compile',
+            provider: 'latex_api',
+            model: 'pdflatex',
+            latencyMs: Date.now() - start,
+            status: 'success',
+            metadata: {
+                fileSizeBytes: pdfBuffer.byteLength,
+            },
+        });
+
         return { success: true, pdfBase64 };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('LaTeX compilation error:', error);
+        await logUsageEvent({
+            userId,
+            sessionId: tracking?.sessionId,
+            operation: 'latex_compile',
+            provider: 'latex_api',
+            model: 'pdflatex',
+            latencyMs: Date.now() - start,
+            status: 'failed',
+            metadata: { error: error instanceof Error ? error.message : 'Unknown compilation error' },
+        });
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown compilation error'
@@ -532,13 +618,13 @@ export async function improveSection(
     let basePrompt = '';
     switch (sectionType) {
         case 'summary':
-            basePrompt = 'Rewrite this professional summary to be more impactful and tailored to the job.';
+            basePrompt = `Rewrite this professional summary in 40-55 words (max 2 sentences), with clear role alignment and measurable impact only if source-backed.`;
             break;
         case 'experience':
-            basePrompt = 'Enhance these experience bullet points with strong action verbs, quantified results, and job-relevant keywords.';
+            basePrompt = `Enhance these experience bullets using Action + Tech + Impact style. Keep 3-4 bullets, each <= ${MAX_BULLET_WORDS} words, factual only.`;
             break;
         case 'project':
-            basePrompt = 'Improve this project description to highlight technical skills and impact relevant to the job.';
+            basePrompt = `Improve this project description into 3-4 concise bullets with concrete technologies and impact. Max ${MAX_BULLET_WORDS} words per bullet.`;
             break;
         case 'skills':
             basePrompt = 'Optimize and expand this skills list to better match the job requirements.';
@@ -551,17 +637,32 @@ CURRENT CONTENT:
 ${currentContent}
 
 Output ONLY the improved content. No explanations.`;
+    const userId = await requireAuth();
 
     try {
-        const response = await openai.chat.completions.create({
-            model: config.openai.model,
-            messages: [
-                { role: "user", content: prompt }
-            ],
+        const response = await trackedChatCompletion({
+            model: config.openai.models.general,
+            messages: [{ role: "user", content: prompt }],
+        }, {
+            userId,
+            operation: 'improve_section',
+            metadata: { sectionType },
         });
 
-        return response.choices[0].message.content?.trim() || currentContent;
-    } catch (error) {
+        const content = response.choices[0].message.content?.trim() || currentContent;
+        switch (sectionType) {
+            case 'summary':
+                return normalizeSummary(content);
+            case 'experience':
+                return normalizeDescription(content, MAX_BULLETS_PER_EXPERIENCE);
+            case 'project':
+                return normalizeDescription(content, MAX_BULLETS_PER_PROJECT);
+            case 'skills':
+                return normalizeSkills(content.split(/[,\n;]/g)).join(', ');
+            default:
+                return content;
+        }
+    } catch (error: unknown) {
         console.error("Improve Section Error:", error);
         throw new Error("Failed to improve section");
     }

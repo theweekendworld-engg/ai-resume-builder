@@ -60,8 +60,6 @@ interface ResumeState {
     visualDataVersion: number;
     latexVersion: number;
 
-    // Cloud sync state
-    cloudSyncEnabled: boolean;
     syncStatus: SyncStatus;
     lastSyncedAt: Date | null;
 
@@ -89,8 +87,6 @@ interface ResumeState {
     isSyncingLatexToVisual: boolean;
     setSyncingLatexToVisual: (syncing: boolean) => void;
 
-    // Cloud sync setters
-    setCloudSyncEnabled: (enabled: boolean) => void;
     setSyncStatus: (status: SyncStatus) => void;
     setLastSyncedAt: (date: Date | null) => void;
 
@@ -134,18 +130,15 @@ interface ResumeState {
     isUsingSampleData: () => boolean;
 }
 
-const initialATSScore: ATSScore = {
-    overall: 0,
-    breakdown: {
-        keywordMatch: 0,
-        skillsMatch: 0,
-        experienceRelevance: 0,
-        formattingScore: 0,
-    },
-    matchedKeywords: [],
-    missingKeywords: [],
-    suggestions: [],
-};
+function inferProjectUrls(data: Partial<ProjectItem>): { url: string; liveUrl: string; repoUrl: string } {
+    const explicitLive = (data.liveUrl || '').trim();
+    const explicitRepo = (data.repoUrl || '').trim();
+    const repoUrl = explicitRepo;
+    const liveUrl = explicitLive;
+    const url = liveUrl || repoUrl || '';
+
+    return { url, liveUrl, repoUrl };
+}
 
 export const useResumeStore = create<ResumeState>()(
     persist(
@@ -165,8 +158,7 @@ export const useResumeStore = create<ResumeState>()(
             latexVersion: 0,
             isSyncingLatexToVisual: false,
 
-            // Cloud sync state (default OFF for privacy-first)
-            cloudSyncEnabled: false,
+            // Cloud sync state (always on for authenticated flows)
             syncStatus: 'idle' as SyncStatus,
             lastSyncedAt: null,
 
@@ -176,9 +168,14 @@ export const useResumeStore = create<ResumeState>()(
 
             setResumeData: (data) => {
                 const { visualDataVersion } = get();
+                const normalizedProjects = (data.projects || []).map((project) => {
+                    const urls = inferProjectUrls(project);
+                    return { ...project, ...urls };
+                });
                 set({
                     resumeData: {
                         ...data,
+                        projects: normalizedProjects,
                         sectionOrder: data.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills']
                     },
                     visualDataVersion: visualDataVersion + 1,
@@ -218,23 +215,32 @@ export const useResumeStore = create<ResumeState>()(
                 set({ isSyncingLatexToVisual: true });
                 try {
                     const resumeData = await latexToResume(latexCode);
+                    const normalizedProjects = (resumeData.projects || []).map((project) => {
+                        const urls = inferProjectUrls(project);
+                        return { ...project, ...urls };
+                    });
                     set({ 
-                        resumeData, 
+                        resumeData: { ...resumeData, projects: normalizedProjects },
                         lastSyncedLatex: latexCode, 
                         latexVersion: 0, 
                         visualDataVersion: 0,
                         isSyncingLatexToVisual: false,
                     });
-                } catch (error) {
+                } catch (error: unknown) {
                     console.error('Failed to sync LaTeX to visual:', error);
                     set({ isSyncingLatexToVisual: false });
                     throw error;
                 }
             },
             setResumeAndLatexInSync: (resumeData, latexCode) => {
+                const normalizedProjects = (resumeData.projects || []).map((project) => {
+                    const urls = inferProjectUrls(project);
+                    return { ...project, ...urls };
+                });
                 set({
                     resumeData: {
                         ...resumeData,
+                        projects: normalizedProjects,
                         sectionOrder: resumeData.sectionOrder || ['summary', 'experience', 'projects', 'education', 'skills']
                     },
                     latexCode,
@@ -245,8 +251,6 @@ export const useResumeStore = create<ResumeState>()(
             },
             setSyncingLatexToVisual: (syncing) => set({ isSyncingLatexToVisual: syncing }),
 
-            // Cloud sync setters
-            setCloudSyncEnabled: (enabled) => set({ cloudSyncEnabled: enabled }),
             setSyncStatus: (status) => set({ syncStatus: status }),
             setLastSyncedAt: (date) => set({ lastSyncedAt: date }),
 
@@ -258,7 +262,7 @@ export const useResumeStore = create<ResumeState>()(
                 const { copilotProposal, resumeData, visualDataVersion } = get();
                 if (!copilotProposal) return;
 
-                let newResumeData = { ...resumeData };
+                const newResumeData = { ...resumeData };
 
                 switch (section) {
                     case 'summary':
@@ -276,7 +280,10 @@ export const useResumeStore = create<ResumeState>()(
                         break;
                     case 'projects':
                         if (copilotProposal.sections.projects) {
-                            newResumeData.projects = copilotProposal.sections.projects;
+                            newResumeData.projects = copilotProposal.sections.projects.map((project) => {
+                                const urls = inferProjectUrls(project);
+                                return { ...project, ...urls };
+                            });
                         }
                         break;
                     case 'skills':
@@ -304,8 +311,13 @@ export const useResumeStore = create<ResumeState>()(
                     skills: copilotProposal.sections.skills || resumeData.skills,
                 };
 
-                set({ 
-                    resumeData: newResumeData,
+                const normalizedProjects = (newResumeData.projects || []).map((project) => {
+                    const urls = inferProjectUrls(project);
+                    return { ...project, ...urls };
+                });
+
+                set({
+                    resumeData: { ...newResumeData, projects: normalizedProjects },
                     copilotProposal: null,
                     visualDataVersion: visualDataVersion + 1,
                 });
@@ -342,13 +354,13 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.experience,
                             {
                                 id: uuidv4(),
-                                company: "New Company",
-                                role: "Role",
+                                company: "",
+                                role: "",
                                 startDate: "",
                                 endDate: "",
                                 current: false,
                                 location: "",
-                                description: "Responsibility 1",
+                                description: "",
                             },
                         ],
                     },
@@ -387,6 +399,7 @@ export const useResumeStore = create<ResumeState>()(
 
             addProject: (data) => {
                 const { resumeData, visualDataVersion } = get();
+                const urls = inferProjectUrls(data || {});
                 set({
                     resumeData: {
                         ...resumeData,
@@ -394,9 +407,11 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.projects,
                             {
                                 id: uuidv4(),
-                                name: data?.name || "New Project",
-                                description: data?.description || "Project description...",
-                                url: data?.url || "",
+                                name: data?.name || "",
+                                description: data?.description || "",
+                                url: urls.url,
+                                liveUrl: urls.liveUrl,
+                                repoUrl: urls.repoUrl,
                                 technologies: data?.technologies || [],
                             },
                         ],
@@ -443,9 +458,9 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.education,
                             {
                                 id: uuidv4(),
-                                institution: "University",
-                                degree: "Degree",
-                                fieldOfStudy: "Field",
+                                institution: "",
+                                degree: "",
+                                fieldOfStudy: "",
                                 startDate: "",
                                 endDate: "",
                                 current: false,
@@ -506,41 +521,49 @@ export const useResumeStore = create<ResumeState>()(
             }),
 
             isUsingSampleData: () => {
-                const { resumeData } = get();
-                return resumeData.personalInfo.fullName === 'Alex Johnson' &&
-                    resumeData.personalInfo.email === 'alex.johnson@email.com';
+                return false;
             },
         }),
         {
             name: 'resume-storage',
-            merge: (persistedState: any, currentState) => {
-                if (persistedState?.resumeData) {
-                    if (!persistedState.resumeData.sectionOrder) {
-                        persistedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
+            merge: (persistedState: unknown, currentState) => {
+                const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;
+                if (hydratedState.resumeData) {
+                    hydratedState.resumeData.projects = (hydratedState.resumeData.projects || []).map((project) => {
+                        const urls = inferProjectUrls(project);
+                        return {
+                            ...project,
+                            url: urls.url,
+                            liveUrl: urls.liveUrl,
+                            repoUrl: urls.repoUrl,
+                        };
+                    });
+                    if (!hydratedState.resumeData.sectionOrder) {
+                        hydratedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
                     }
-                    if (!persistedState.selectedTemplate) {
-                        persistedState.selectedTemplate = 'ats-simple';
+                    if (!hydratedState.selectedTemplate) {
+                        hydratedState.selectedTemplate = 'ats-simple';
                     }
                     // Generate latex if empty
-                    if (!persistedState.latexCode) {
-                        persistedState.latexCode = generateLatexFromResume(
-                            persistedState.resumeData,
-                            persistedState.selectedTemplate || 'ats-simple'
+                    if (!hydratedState.latexCode) {
+                        hydratedState.latexCode = generateLatexFromResume(
+                            hydratedState.resumeData,
+                            hydratedState.selectedTemplate || 'ats-simple'
                         );
                     }
                     // Initialize sync tracking
-                    if (!persistedState.lastSyncedLatex) {
-                        persistedState.lastSyncedLatex = persistedState.latexCode;
+                    if (!hydratedState.lastSyncedLatex) {
+                        hydratedState.lastSyncedLatex = hydratedState.latexCode;
                     }
-                    if (persistedState.visualDataVersion === undefined) {
-                        persistedState.visualDataVersion = 0;
+                    if (hydratedState.visualDataVersion === undefined) {
+                        hydratedState.visualDataVersion = 0;
                     }
-                    if (persistedState.latexVersion === undefined) {
-                        persistedState.latexVersion = 0;
+                    if (hydratedState.latexVersion === undefined) {
+                        hydratedState.latexVersion = 0;
                     }
                     return {
                         ...currentState,
-                        ...persistedState,
+                        ...hydratedState,
                     };
                 }
                 return currentState;

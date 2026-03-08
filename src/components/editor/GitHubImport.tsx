@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { fetchGitHubRepos, fetchRepoDetails } from '@/actions/github';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { fetchGitHubRepos, getGitHubIntegrationStatus, importGitHubRepoToLibrary } from '@/actions/github';
 import { getUniqueLanguages } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,53 +10,84 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Github, Loader2, Download, Star, Key, Filter } from 'lucide-react';
 import { useResumeStore } from '@/store/resumeStore';
-import { improveText } from '@/actions/ai';
 import { GitHubRepo } from '@/types/github';
 import { toast } from 'sonner';
 
 export function GitHubImport() {
-    const [username, setUsername] = useState('');
     const [token, setToken] = useState('');
     const [showToken, setShowToken] = useState(false);
     const [repos, setRepos] = useState<GitHubRepo[]>([]);
     const [loading, setLoading] = useState(false);
     const [importingId, setImportingId] = useState<number | null>(null);
     const [languageFilter, setLanguageFilter] = useState<string>('all');
-    const [minStars, setMinStars] = useState<number>(0);
+    const [linkedHandle, setLinkedHandle] = useState('');
+    const [integrationError, setIntegrationError] = useState<string | null>(null);
+    const [setupPath, setSetupPath] = useState('/dashboard');
+    const [checkingIntegration, setCheckingIntegration] = useState(true);
+    const minStars = 0;
     const { addProject } = useResumeStore();
 
-    // Load saved token from localStorage
     useEffect(() => {
-        const savedToken = localStorage.getItem('github-pat');
-        if (savedToken) setToken(savedToken);
+        let mounted = true;
+        const loadIntegration = async () => {
+            setCheckingIntegration(true);
+            const status = await getGitHubIntegrationStatus();
+            if (!mounted) return;
+
+            if (status.setupPath) {
+                setSetupPath(status.setupPath);
+            }
+
+            if (!status.success || !status.linked || !status.linkedHandle) {
+                setLinkedHandle('');
+                setIntegrationError(status.error ?? 'Connect GitHub with OAuth in Account settings first.');
+            } else {
+                setLinkedHandle(status.linkedHandle);
+                setIntegrationError(null);
+            }
+
+            setCheckingIntegration(false);
+        };
+
+        loadIntegration();
+        return () => {
+            mounted = false;
+        };
     }, []);
 
-    // Save token to localStorage when changed
     const handleTokenChange = (value: string) => {
         setToken(value);
-        if (value) {
-            localStorage.setItem('github-pat', value);
-        } else {
-            localStorage.removeItem('github-pat');
-        }
     };
 
     const handleFetch = async () => {
-        if (!username) return;
+        if (!linkedHandle) {
+            toast.error(integrationError ?? 'Connect GitHub with OAuth in Account settings first.');
+            return;
+        }
+
         setLoading(true);
         try {
-            const data = await fetchGitHubRepos({
-                username,
+            const result = await fetchGitHubRepos({
                 token: token || undefined,
                 perPage: 30,
                 minStars,
                 excludeForks: true,
             });
-            setRepos(data);
-            if (data.length === 0) {
+
+            if (!result.success) {
+                toast.error(result.error || 'Failed to fetch repositories');
+                setRepos([]);
+                if (result.error) setIntegrationError(result.error);
+                if (result.setupPath) setSetupPath(result.setupPath);
+                return;
+            }
+
+            const fetchedRepos = Array.isArray(result.repos) ? result.repos : [];
+            setRepos(fetchedRepos);
+            if (fetchedRepos.length === 0) {
                 toast.info('No repositories found');
             }
-        } catch (error) {
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Failed to fetch repositories');
         } finally {
@@ -64,36 +96,60 @@ export function GitHubImport() {
     };
 
     const handleImport = async (repo: GitHubRepo) => {
+        if (!linkedHandle) {
+            toast.error(integrationError ?? 'Connect GitHub with OAuth in Account settings first.');
+            return;
+        }
+
         setImportingId(repo.id);
         try {
-            // Fetch detailed repo info
-            const details = await fetchRepoDetails(username, repo.name, token || undefined);
-
-            // AI Summarize README or description
-            let description = repo.description || "";
-            if (details.readme) {
-                const context = details.readme.substring(0, 2000);
-                description = await improveText(context, 'project');
-            } else if (description) {
-                description = await improveText(description, 'project');
-            }
-
-            // Combine languages from API with detected topics
-            const technologies = [
-                ...details.languages,
-                ...details.topics.filter(t => !details.languages.includes(t))
-            ].slice(0, 8);
-
-            // Add to Store
-            addProject({
-                name: repo.name,
-                description: description,
-                url: repo.html_url,
-                technologies: technologies.length > 0 ? technologies : (repo.language ? [repo.language] : []),
+            const result = await importGitHubRepoToLibrary({
+                repoName: repo.name,
+                repoUrl: repo.html_url,
+                repoDescription: repo.description || '',
+                token: token || undefined,
+                fallbackLanguage: repo.language || undefined,
             });
 
-            toast.success(`Imported "${repo.name}" to projects`);
-        } catch (error) {
+            if (!result.success) {
+                toast.error(result.error || 'Failed to import repository');
+                return;
+            }
+
+            if (result.deduped) {
+                toast.info(`"${repo.name}" already exists in your project library`);
+            }
+
+            const importedProject = result.project;
+            const importedTechnologies = importedProject?.technologies && importedProject.technologies.length > 0
+                ? importedProject.technologies
+                : (repo.language ? [repo.language] : []);
+            const importedRepoUrl = importedProject?.githubUrl
+                || (importedProject?.url?.includes('github.com') ? importedProject.url : '')
+                || repo.html_url;
+            const importedLiveUrl = importedProject?.url && importedProject.url !== importedProject?.githubUrl
+                ? importedProject.url
+                : '';
+            const importedUrl = importedLiveUrl || importedRepoUrl || importedProject?.url || repo.html_url;
+            const importedDescription = importedProject?.description
+                || repo.description
+                || `${repo.name} imported from GitHub.`;
+
+            addProject({
+                name: importedProject?.name || repo.name,
+                description: importedDescription,
+                url: importedUrl,
+                liveUrl: importedLiveUrl,
+                repoUrl: importedRepoUrl,
+                technologies: importedTechnologies,
+            });
+
+            if (result.warning) {
+                toast.warning(result.warning);
+            } else {
+                toast.success(`Imported "${repo.name}" to projects and library`);
+            }
+        } catch (error: unknown) {
             console.error(error);
             toast.error('Failed to import project');
         } finally {
@@ -102,12 +158,13 @@ export function GitHubImport() {
     };
 
     // Get unique languages for filter dropdown
-    const availableLanguages = getUniqueLanguages(repos);
+    const safeRepos = Array.isArray(repos) ? repos : [];
+    const availableLanguages = getUniqueLanguages(safeRepos);
 
     // Apply client-side language filter
     const filteredRepos = languageFilter === 'all'
-        ? repos
-        : repos.filter(r => r.language?.toLowerCase() === languageFilter.toLowerCase());
+        ? safeRepos
+        : safeRepos.filter(r => r.language?.toLowerCase() === languageFilter.toLowerCase());
 
     return (
         <Card>
@@ -116,21 +173,36 @@ export function GitHubImport() {
                     <Github className="w-5 h-5" /> Import from GitHub
                 </CardTitle>
                 <CardDescription>
-                    Fetch your repositories and import them as projects
+                    Fetch repositories and import into your project library. Imported summaries primarily come from README content.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
                 {/* Username input */}
-                <div className="flex gap-2">
-                    <Input
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="GitHub Username"
-                        onKeyDown={(e) => e.key === 'Enter' && handleFetch()}
-                    />
-                    <Button onClick={handleFetch} disabled={loading || !username}>
-                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fetch"}
-                    </Button>
+                <div className="rounded-md border border-border bg-card/60 p-3">
+                    {checkingIntegration ? (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Checking GitHub integration...
+                        </div>
+                    ) : linkedHandle ? (
+                        <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm text-muted-foreground">
+                                Connected GitHub account: <span className="font-medium text-foreground">@{linkedHandle}</span>
+                            </p>
+                            <Button onClick={handleFetch} disabled={loading} size="sm">
+                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Fetch repos"}
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <p className="text-sm text-muted-foreground">
+                                {integrationError ?? 'Connect GitHub with OAuth in Account settings first.'}
+                            </p>
+                            <Button asChild size="sm" variant="secondary">
+                                <Link href={setupPath}>Open account settings</Link>
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Optional Token Input */}
@@ -151,10 +223,15 @@ export function GitHubImport() {
                             className="text-sm"
                         />
                     )}
+                    {showToken && (
+                        <p className="text-xs text-muted-foreground">
+                            Token is used only for this session and is not stored in your browser.
+                        </p>
+                    )}
                 </div>
 
                 {/* Filters */}
-                {repos.length > 0 && (
+                {safeRepos.length > 0 && (
                     <div className="flex gap-2 items-center text-sm">
                         <Filter className="w-4 h-4 text-muted-foreground" />
                         <Select value={languageFilter} onValueChange={setLanguageFilter}>
@@ -210,9 +287,9 @@ export function GitHubImport() {
                         </div>
                     ))}
 
-                    {repos.length === 0 && !loading && (
+                    {safeRepos.length === 0 && !loading && linkedHandle && (
                         <p className="text-center text-muted-foreground text-sm py-4">
-                            Enter a GitHub username to fetch repositories
+                            Click Fetch repos to load repositories from your connected GitHub account
                         </p>
                     )}
                 </div>

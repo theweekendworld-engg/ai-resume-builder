@@ -41,4 +41,3 @@ volumes:
     driver: local
   qdrant_storage:
     driver: local
-
