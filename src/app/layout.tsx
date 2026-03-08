@@ -1,5 +1,6 @@
 import { ClerkProvider } from '@clerk/nextjs'
 import { Toaster } from '@/components/ui/sonner'
+import { clerkGlobalAppearance } from '@/lib/clerkAppearance'
 import './globals.css'
 
 export const metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider appearance={{ ...clerkGlobalAppearance, cssLayerName: 'clerk' }}>
       <html lang="en" suppressHydrationWarning>
         <body className="relative z-10 min-h-screen bg-background text-foreground antialiased">
           {children}

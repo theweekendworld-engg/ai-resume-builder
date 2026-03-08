@@ -1,19 +1,7 @@
 import type { KnowledgeItem, UserProject } from '@prisma/client';
 import type { ExperienceItem } from '@/types/resume';
 import type { ParsedJDType } from '@/lib/aiSchemas';
-
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function getProjectText(project: Pick<UserProject, 'name' | 'description' | 'technologies' | 'readme'>): string {
-  const technologies = Array.isArray(project.technologies) ? (project.technologies as string[]) : [];
-  return [project.name, project.description, technologies.join(' '), project.readme.slice(0, 1200)].join(' ').trim();
-}
-
-function getKnowledgeText(item: Pick<KnowledgeItem, 'title' | 'content'>): string {
-  return `${item.title} ${item.content}`.trim();
-}
+import { normalizeText, getProjectText, getKnowledgeText } from '@/lib/textUtils';
 
 export function scoreProject(params: {
   project: UserProject;

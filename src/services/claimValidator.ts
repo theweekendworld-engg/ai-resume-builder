@@ -1,4 +1,5 @@
 import type { ResumeData } from '@/types/resume';
+import { normalizeText, tokenize, extractMetricTokens } from '@/lib/textUtils';
 
 export type ClaimValidation = {
   valid: boolean;
@@ -7,22 +8,6 @@ export type ClaimValidation = {
   mappings: Record<string, string>;
   unsupportedMetricClaims: string[];
 };
-
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function tokenize(value: string): string[] {
-  return normalizeText(value)
-    .split(' ')
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 3);
-}
-
-export function extractMetricTokens(value: string): string[] {
-  const matches = value.match(/\b\d+(?:[.,]\d+)?(?:%|\+|x|k|m|b)?\b/gi) ?? [];
-  return matches.map((entry) => entry.toLowerCase());
-}
 
 export function validateClaims(
   resume: ResumeData,

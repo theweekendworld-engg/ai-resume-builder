@@ -137,7 +137,7 @@ export function DashboardShell({
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-4">
+            <SheetContent id="dashboard-mobile-nav-sheet" side="left" className="w-64 p-4">
               <div className="mb-4 font-semibold">Dashboard</div>
               {navContent}
             </SheetContent>

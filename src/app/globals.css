@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
+@layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
@@ -89,6 +90,34 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Sora', system-ui, sans-serif;
 }
 
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animation-delay-100 {
+  animation-delay: 0.1s;
+}
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+.animation-delay-300 {
+  animation-delay: 0.3s;
+}
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -105,4 +134,29 @@ h1, h2, h3, h4, h5, h6 {
 
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
+}
+
+/* Clerk: keep Connected Accounts readable in dark mode, including disabled providers. */
+.cl-profileSection__connectedAccounts .cl-profileSectionItem {
+  background: hsl(var(--card) / 0.85) !important;
+  border: 1px solid hsl(var(--border) / 0.8) !important;
+  color: hsl(var(--foreground)) !important;
+  opacity: 1 !important;
+}
+
+.cl-profileSection__connectedAccounts .cl-userPreviewMainIdentifier,
+.cl-profileSection__connectedAccounts .cl-userPreviewMainIdentifierText {
+  color: hsl(var(--foreground)) !important;
+}
+
+.cl-profileSection__connectedAccounts .cl-userPreviewSecondaryIdentifier {
+  color: hsl(var(--muted-foreground)) !important;
+}
+
+.cl-profileSection__connectedAccounts .cl-profileSectionItem[data-global-disabled='true'] {
+  opacity: 0.72 !important;
+}
+
+.cl-profileSection__connectedAccounts .cl-profileSectionPrimaryButton {
+  color: hsl(var(--primary)) !important;
 }

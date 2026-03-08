@@ -1,59 +1,62 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { ArrowRight } from 'lucide-react';
 
 export function Hero() {
   return (
-    <section className="relative mx-auto grid w-full max-w-6xl gap-10 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:items-center lg:py-24">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,hsl(var(--primary)/0.12),transparent)]" aria-hidden />
-      <div className="relative space-y-6">
-        <p className="inline-flex rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-primary">
-          Your best self, on paper
+    <section className="relative isolate overflow-hidden">
+      {/* Background gradient orbs */}
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 -z-10 h-[600px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.15),transparent_70%)] blur-2xl"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute top-60 -right-40 -z-10 h-[400px] w-[400px] rounded-full bg-[radial-gradient(circle,hsl(var(--primary)/0.08),transparent_70%)] blur-3xl"
+        aria-hidden
+      />
+
+      <div className="mx-auto max-w-3xl px-4 pb-20 pt-24 text-center sm:px-6 sm:pt-32 sm:pb-28">
+        <div className="animate-fade-in-up flex justify-center mb-8">
+          <div className="relative">
+            <div className="absolute inset-0 blur-3xl scale-150 rounded-full bg-primary/40" />
+            <img src="/logo.png" alt="Patronus Logo" className="relative h-24 w-auto object-contain drop-shadow-[0_0_24px_rgba(143,201,255,0.8)]" />
+          </div>
+        </div>
+
+        <p className="animate-fade-in-up animation-delay-100 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3.5 py-1 text-xs font-medium tracking-wide text-primary/90">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/60" />
+          AI-powered resume builder
         </p>
-        <h1 className="font-heading text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
-          Land your dream job with an AI-tailored resume
+
+        <h1 className="animate-fade-in-up animation-delay-100 mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl md:text-6xl">
+          Resumes that get you{' '}
+          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            interviews
+          </span>
         </h1>
-        <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-          Paste a job description, refine with AI suggestions, and export a polished, ATS-friendly PDF in minutes.
+
+        <p className="animate-fade-in-up animation-delay-200 mx-auto mt-5 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+          Paste a job description, let AI tailor every bullet, and export a
+          polished, ATS-optimized PDF — in minutes, not hours.
         </p>
-        <div className="flex flex-wrap gap-3">
+
+        <div className="animate-fade-in-up animation-delay-300 mt-8 flex flex-wrap items-center justify-center gap-3">
           <Link href="/sign-up">
-            <Button size="lg">Get Started Free</Button>
+            <Button size="lg" className="group gap-2 px-6">
+              Start for free
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Button>
           </Link>
           <a href="#how-it-works">
-            <Button size="lg" variant="outline">See How It Works</Button>
+            <Button size="lg" variant="ghost" className="text-muted-foreground">
+              See how it works
+            </Button>
           </a>
         </div>
-      </div>
 
-      <div className="patronus-glow-sm relative overflow-hidden rounded-2xl border border-primary/20 bg-card p-4 shadow-sm">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-linear-to-b from-primary/15 to-transparent" />
-        <div className="relative rounded-xl border border-border/80 bg-background p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm font-medium">Live editor + preview</p>
-            <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-              Autosaved
-            </span>
-          </div>
-          <div className="grid gap-3">
-            <div className="rounded-md border border-border bg-card p-3 text-xs text-muted-foreground">
-              <p className="mb-1 text-foreground">Target role</p>
-              <p>Senior Frontend Engineer @ Stripe</p>
-              <p className="mt-2 mb-1 text-foreground">Summary</p>
-              <p>Built product experiences used by 1M+ users and improved conversion by 18%.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-md border border-border bg-card p-3 text-xs text-muted-foreground">
-                <p className="mb-1 text-foreground">ATS score</p>
-                <p className="text-lg font-semibold text-foreground">87%</p>
-                <p className="mt-2">Missing: accessibility, observability.</p>
-              </div>
-              <div className="rounded-md border border-border bg-card p-3 text-xs text-muted-foreground">
-                <p className="mb-1 text-foreground">Copilot Suggestion</p>
-                <p>Replace “worked on” with quantified impact bullets.</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <p className="animate-fade-in-up animation-delay-400 mt-5 text-xs text-muted-foreground/60">
+          No credit card required · Free forever plan
+        </p>
       </div>
     </section>
   );

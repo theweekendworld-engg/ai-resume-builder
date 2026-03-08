@@ -1,13 +1,6 @@
 import type { ResumeData } from '@/types/resume';
 import type { ParsedJDType } from '@/lib/aiSchemas';
-
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-function uniqueStrings(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
-}
+import { normalizeText, uniqueStrings } from '@/lib/textUtils';
 
 export function computeAtsEstimate(resume: ResumeData, parsedJD: ParsedJDType): number {
   const jdTerms = uniqueStrings([...parsedJD.requiredSkills, ...parsedJD.preferredSkills]).map(normalizeText);

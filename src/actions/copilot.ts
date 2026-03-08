@@ -1,6 +1,5 @@
 'use server';
 
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { config } from '@/lib/config';
 import { ResumeData, ExperienceItem, ProjectItem } from '@/types/resume';
@@ -8,11 +7,11 @@ import { GitHubRepo } from '@/types/github';
 import { checkAiRateLimit } from '@/lib/rateLimit';
 import {
     ProposedResumePatchSchema,
-    KeywordsResponseSchema,
     parseWithRetry,
 } from '@/lib/aiSchemas';
 import { trackedChatCompletion } from '@/lib/usageTracker';
-import { improveText } from '@/actions/ai';
+import { improveText, extractKeywords } from '@/actions/ai';
+import { requireAuth } from '@/lib/auth';
 
 export interface CopilotContext {
     resumeData: ResumeData;
@@ -79,70 +78,35 @@ export async function scoreReposForJob(
     jobDescription: string
 ): Promise<Array<GitHubRepo & { relevanceScore: number }>> {
     const jdLower = jobDescription.toLowerCase();
-    
+
     return repos.map(repo => {
         let score = 0;
-        
+
         if (repo.language && jdLower.includes(repo.language.toLowerCase())) {
             score += 30;
         }
-        
+
         for (const topic of repo.topics) {
             if (jdLower.includes(topic.toLowerCase())) {
                 score += 15;
             }
         }
-        
+
         if (repo.description) {
             const descWords = repo.description.toLowerCase().split(/\W+/);
             const matches = descWords.filter(w => w.length > 3 && jdLower.includes(w)).length;
             score += Math.min(25, matches * 5);
         }
-        
+
         score += Math.min(10, repo.stargazers_count);
-        
+
         return { ...repo, relevanceScore: score };
     })
-    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+        .sort((a, b) => b.relevanceScore - a.relevanceScore);
 }
 
 export async function extractJobKeywords(jobDescription: string): Promise<string[]> {
-    if (!jobDescription) return [];
-
-    const prompt = `Extract the top 15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.
-
-Job Description:
-${jobDescription}`;
-
-    try {
-        const { userId } = await auth();
-        if (!userId) throw new Error('Not authenticated');
-
-        const response = await trackedChatCompletion({
-            model: config.openai.models.jdParse,
-            messages: [
-                { role: "system", content: "You extract high-signal hiring keywords from job descriptions with precision." },
-                { role: "user", content: prompt },
-            ],
-        }, {
-            userId,
-            operation: 'extract_keywords',
-            metadata: { source: 'copilot' },
-        });
-
-        const content = response.choices[0].message.content;
-        if (!content) return [];
-
-        const parseResult = await parseWithRetry(content, KeywordsResponseSchema);
-        if (parseResult.success) {
-            return parseResult.data.keywords;
-        }
-        
-        return [];
-    } catch (error: unknown) {
-        console.error("Keyword extraction error:", error);
-        return [];
-    }
+    return extractKeywords(jobDescription);
 }
 
 export async function rewriteBulletPoint(
@@ -160,8 +124,7 @@ export async function rewriteBulletPoint(
         throw new Error(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
-    const { userId } = await auth();
-    if (!userId) throw new Error('Not authenticated');
+    const userId = await requireAuth();
 
     const limit = await checkAiRateLimit(`ai:copilot:inline:${userId}`);
     if (!limit.allowed) throw new Error(limit.error);
@@ -242,8 +205,7 @@ export async function suggestSectionSkillHints(input: {
         throw new Error(parsed.error.issues.map((issue) => issue.message).join('; '));
     }
 
-    const { userId } = await auth();
-    if (!userId) throw new Error('Not authenticated');
+    const userId = await requireAuth();
 
     const limit = await checkAiRateLimit(`ai:copilot:hints:${userId}`);
     if (!limit.allowed) throw new Error(limit.error);
@@ -282,7 +244,7 @@ export async function suggestSectionSkillHints(input: {
 }
 
 function formatExperienceForDiff(experience: ExperienceItem[]): string {
-    return experience.map(e => 
+    return experience.map(e =>
         `${e.role} at ${e.company}\n${e.description}`
     ).join('\n\n');
 }
@@ -300,12 +262,9 @@ function formatProjectsForDiff(projects: ProjectItem[]): string {
 }
 
 export async function proposeResumePatch(context: CopilotContext): Promise<ProposedResumePatch> {
-    const { userId } = await auth();
-    if (userId) {
-        const limit = await checkAiRateLimit(`ai:copilot:${userId}`);
-        if (!limit.allowed) throw new Error(limit.error);
-    }
-    if (!userId) throw new Error('Not authenticated');
+    const userId = await requireAuth();
+    const limit = await checkAiRateLimit(`ai:copilot:${userId}`);
+    if (!limit.allowed) throw new Error(limit.error);
 
     const { resumeData, jobDescription, kbBullets, githubRepos } = context;
 
@@ -364,15 +323,15 @@ Output ONLY valid JSON, no markdown.`;
         if (!content) throw new Error("No response from AI");
 
         const parseResult = await parseWithRetry(content, ProposedResumePatchSchema);
-        
+
         if (parseResult.success) {
             const patch = parseResult.data;
-            
+
             const newSummary = patch.sections.summary || resumeData.personalInfo.summary;
             const newExperience = patch.sections.experience || resumeData.experience;
             const newProjects = patch.sections.projects || resumeData.projects;
             const newSkills = patch.sections.skills || resumeData.skills;
-            
+
             return {
                 sections: {
                     summary: newSummary,

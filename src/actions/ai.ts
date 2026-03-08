@@ -1,12 +1,23 @@
 'use server';
 
-import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
 import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
 import { logUsageEvent, trackedChatCompletion } from '@/lib/usageTracker';
+import { requireAuth } from '@/lib/auth';
+import { experienceRecencyScore } from '@/lib/dateUtils';
+import { calculateDeterministicSignals } from '@/lib/utils';
+import {
+    normalizeDescription,
+    normalizeSummary,
+    normalizeSkills,
+    MAX_BULLETS_PER_EXPERIENCE,
+    MAX_BULLETS_PER_PROJECT,
+    MAX_EXPERIENCE_ITEMS,
+    MAX_BULLET_WORDS,
+} from '@/lib/resumeNormalizer';
 
 const ImproveTextInputSchema = z.object({
     text: z.string().min(1),
@@ -26,115 +37,6 @@ const ResumeToLatexInputSchema = z.object({
 const LatexToResumeInputSchema = z.object({
     latexCode: z.string().min(1),
 });
-
-function resolveTrackingUserId(value?: string): Promise<string> {
-    if (value?.trim()) return Promise.resolve(value.trim());
-    return auth().then(({ userId }) => {
-        if (!userId) throw new Error('Not authenticated');
-        return userId;
-    });
-}
-
-const MAX_SUMMARY_WORDS = 55;
-const MAX_BULLET_WORDS = 26;
-const MAX_BULLETS_PER_EXPERIENCE = 4;
-const MAX_BULLETS_PER_PROJECT = 4;
-const MAX_EXPERIENCE_ITEMS = 4;
-const MAX_SKILLS = 20;
-
-function normalizeWhitespace(value: string): string {
-    return value.replace(/\s+/g, ' ').trim();
-}
-
-function truncateWords(value: string, maxWords: number): string {
-    const words = normalizeWhitespace(value).split(' ').filter(Boolean);
-    if (words.length <= maxWords) return words.join(' ');
-    return words.slice(0, maxWords).join(' ');
-}
-
-function normalizeSummary(summary: string): string {
-    return truncateWords(summary.replace(/\r\n/g, ' '), MAX_SUMMARY_WORDS);
-}
-
-function splitDescriptionIntoBullets(description: string): string[] {
-    return description
-        .replace(/\r\n/g, '\n')
-        .split('\n')
-        .flatMap((line) => line.split(/[•●]/g))
-        .map((line) => line.replace(/^\s*[-*]+\s*/, '').trim())
-        .map((line) => normalizeWhitespace(line))
-        .filter(Boolean);
-}
-
-function normalizeDescription(description: string, maxBullets: number): string {
-    const bullets = splitDescriptionIntoBullets(description);
-    if (bullets.length === 0) return '';
-
-    const deduped: string[] = [];
-    const seen = new Set<string>();
-    for (const bullet of bullets) {
-        const key = bullet.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        deduped.push(truncateWords(bullet, MAX_BULLET_WORDS));
-        if (deduped.length >= maxBullets) break;
-    }
-
-    return deduped.join('\n');
-}
-
-function normalizeSkills(skills: string[]): string[] {
-    const normalized: string[] = [];
-    const seen = new Set<string>();
-
-    for (const skill of skills) {
-        const cleaned = normalizeWhitespace(skill);
-        if (!cleaned) continue;
-        const key = cleaned.toLowerCase();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        normalized.push(cleaned);
-        if (normalized.length >= MAX_SKILLS) break;
-    }
-
-    return normalized;
-}
-
-function parseResumeDateToTimestamp(raw: string): number {
-    const value = raw.trim();
-    if (!value) return 0;
-
-    const parsed = Date.parse(value);
-    if (!Number.isNaN(parsed)) return parsed;
-
-    const monthYear = value.match(/^(\d{1,2})[/-](\d{4})$/);
-    if (monthYear) {
-        const month = Number(monthYear[1]);
-        const year = Number(monthYear[2]);
-        if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
-    }
-
-    const yearMonth = value.match(/^(\d{4})[/-](\d{1,2})$/);
-    if (yearMonth) {
-        const year = Number(yearMonth[1]);
-        const month = Number(yearMonth[2]);
-        if (month >= 1 && month <= 12) return Date.UTC(year, month - 1, 1);
-    }
-
-    const yearOnly = value.match(/^(\d{4})$/);
-    if (yearOnly) {
-        return Date.UTC(Number(yearOnly[1]), 0, 1);
-    }
-
-    return 0;
-}
-
-function experienceRecencyScore(exp: ResumeData['experience'][number]): number {
-    if (exp.current) return Number.MAX_SAFE_INTEGER;
-    const end = parseResumeDateToTimestamp(exp.endDate);
-    if (end > 0) return end;
-    return parseResumeDateToTimestamp(exp.startDate);
-}
 
 function normalizeResumeOutput(resume: ResumeData): ResumeData {
     const normalizedExperience = resume.experience
@@ -190,7 +92,7 @@ export async function improveText(text: string, type: 'summary' | 'bullet' | 'pr
 
     const instruction = parsedInput.data.customInstruction ? ` ${parsedInput.data.customInstruction}` : '';
     const prompt = `${basePrompt}${instruction}\n\nOutput ONLY the rewritten text, nothing else.\n\nText: "${parsedInput.data.text}"`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
@@ -218,7 +120,7 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
     if (!jobDescription) return [];
 
     const prompt = `Extract the top 10-15 most important technical skills and keywords from the following job description. Output them as a JSON object with key "keywords" containing an array of strings. Output ONLY valid JSON.\n\nJob Description:\n${jobDescription}`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
@@ -239,7 +141,7 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
         if (parseResult.success) {
             return parseResult.data.keywords;
         }
-        
+
         return [];
     } catch (error: unknown) {
         console.error("AI Keyword Error:", error);
@@ -247,41 +149,7 @@ export async function extractKeywords(jobDescription: string): Promise<string[]>
     }
 }
 
-function calculateDeterministicScore(resumeData: ResumeData, jobDescription: string) {
-    const jdLower = jobDescription.toLowerCase();
-    const resumeText = JSON.stringify(resumeData).toLowerCase();
-    
-    const jdWords = jdLower.split(/\W+/).filter(w => w.length > 3);
-    const uniqueJdWords = [...new Set(jdWords)];
-    
-    const matchedWords = uniqueJdWords.filter(w => resumeText.includes(w));
-    const keywordOverlap = uniqueJdWords.length > 0 
-        ? (matchedWords.length / uniqueJdWords.length) * 100 
-        : 0;
-    
-    const skillsLower = resumeData.skills.map(s => s.toLowerCase());
-    const skillMatches = uniqueJdWords.filter(w => 
-        skillsLower.some(s => s.includes(w) || w.includes(s))
-    );
-    const targetSkillCount = Math.min(15, uniqueJdWords.length);
-    const skillsMatch = targetSkillCount > 0 
-        ? (skillMatches.length / targetSkillCount) * 100 
-        : 0;
-    
-    const hasExperience = resumeData.experience.length > 0;
-    const hasProjects = resumeData.projects.length > 0;
-    const hasSummary = resumeData.personalInfo.summary.length > 50;
-    const hasSkills = resumeData.skills.length >= 5;
-    const completeness = [hasExperience, hasProjects, hasSummary, hasSkills]
-        .filter(Boolean).length * 25;
-    
-    return {
-        keywordOverlap: Math.round(Math.min(100, keywordOverlap)),
-        skillsMatch: Math.round(Math.min(100, skillsMatch)),
-        completeness: Math.round(completeness),
-        matchedWords: matchedWords.slice(0, 20),
-    };
-}
+
 
 export async function calculateATSScore(
     resumeData: ResumeData,
@@ -298,7 +166,7 @@ export async function calculateATSScore(
         };
     }
 
-    const deterministicScores = calculateDeterministicScore(resumeData, jobDescription);
+    const deterministicScores = calculateDeterministicSignals(resumeData, jobDescription);
     const resumeText = JSON.stringify(resumeData);
 
     const prompt = `Analyze this resume against the job description and provide an ATS compatibility score.
@@ -322,7 +190,7 @@ Analyze and return a JSON object with:
 5. "suggestions": Array of 3-5 specific actionable suggestions to improve match
 
 Be accurate and helpful. Output ONLY valid JSON.`;
-    const userId = await resolveTrackingUserId(tracking?.userId);
+    const userId = await requireAuth(tracking?.userId);
 
     try {
         const response = await trackedChatCompletion({
@@ -345,21 +213,21 @@ Be accurate and helpful. Output ONLY valid JSON.`;
 
         if (parseResult.success) {
             const validated = parseResult.data;
-            
+
             const blendedKeywordMatch = Math.round(
-                (deterministicScores.keywordOverlap * 0.3) + (validated.breakdown.keywordMatch * 0.7)
+                (deterministicScores.keywordScore * 0.3) + (validated.breakdown.keywordMatch * 0.7)
             );
             const blendedSkillsMatch = Math.round(
-                (deterministicScores.skillsMatch * 0.3) + (validated.breakdown.skillsMatch * 0.7)
+                (deterministicScores.skillScore * 0.3) + (validated.breakdown.skillsMatch * 0.7)
             );
-            
+
             const blendedOverall = Math.round(
-                (blendedKeywordMatch * 0.3) + 
-                (blendedSkillsMatch * 0.25) + 
-                (validated.breakdown.experienceRelevance * 0.35) + 
+                (blendedKeywordMatch * 0.3) +
+                (blendedSkillsMatch * 0.25) +
+                (validated.breakdown.experienceRelevance * 0.35) +
                 (validated.breakdown.formattingScore * 0.1)
             );
-            
+
             return {
                 overall: Math.min(100, Math.max(0, blendedOverall)),
                 breakdown: {
@@ -368,7 +236,7 @@ Be accurate and helpful. Output ONLY valid JSON.`;
                     experienceRelevance: validated.breakdown.experienceRelevance,
                     formattingScore: validated.breakdown.formattingScore,
                 },
-                matchedKeywords: [...new Set([...deterministicScores.matchedWords, ...validated.matchedKeywords])].slice(0, 15),
+                matchedKeywords: [...new Set([...deterministicScores.matchedKeywords, ...validated.matchedKeywords])].slice(0, 15),
                 missingKeywords: validated.missingKeywords,
                 suggestions: validated.suggestions,
             };
@@ -424,7 +292,7 @@ Output a valid JSON object matching this structure:
 }
 
 IMPORTANT: Keep education data as-is. Generate UUIDs for new items. Output ONLY valid JSON.`;
-    const userId = await resolveTrackingUserId(tracking?.userId);
+    const userId = await requireAuth(tracking?.userId);
 
     try {
         const response = await trackedChatCompletion({
@@ -489,7 +357,7 @@ Instruction: ${parsedInput.data.instruction}
 
 Current Code:
 ${parsedInput.data.currentCode}`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
@@ -531,7 +399,7 @@ Generate a complete, compilable LaTeX document with:
 6. Use proper itemize environments for bullet points
 
 Output ONLY the raw LaTeX code. No markdown, no explanations.`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
@@ -619,7 +487,7 @@ Important:
 - Determine sectionOrder based on the order sections appear in the LaTeX
 
 Output ONLY valid JSON, no markdown, no explanations.`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
@@ -651,7 +519,7 @@ export async function compileLatex(
         return { success: false, error: "No LaTeX code provided" };
     }
 
-    const userId = await resolveTrackingUserId(tracking?.userId);
+    const userId = await requireAuth(tracking?.userId);
     const start = Date.now();
     try {
         const response = await fetch('https://latex.ytotech.com/builds/sync', {
@@ -769,7 +637,7 @@ CURRENT CONTENT:
 ${currentContent}
 
 Output ONLY the improved content. No explanations.`;
-    const userId = await resolveTrackingUserId();
+    const userId = await requireAuth();
 
     try {
         const response = await trackedChatCompletion({
