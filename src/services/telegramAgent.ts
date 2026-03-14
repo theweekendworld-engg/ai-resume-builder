@@ -77,7 +77,7 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
   if (!latest) {
     await sendTelegramMessage({
       chatId,
-      text: 'No generation sessions found yet. Use /generate and paste a job description.',
+      text: 'No generation sessions found yet. Use /generate <job description> to start.',
     });
     return;
   }
@@ -154,13 +154,8 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
 
   const chatId = String(message.chat.id);
   const text = message.text.trim();
-  if (text === '/generate') {
-    await sendTelegramMessage({
-      chatId,
-      text: 'Paste the full job description and I will generate a tailored resume. I may ask clarifying questions one-by-one.',
-    });
-    return;
-  }
+  const isGenerateCommand = text.startsWith('/generate');
+  const generatePayload = isGenerateCommand ? text.replace(/^\/generate\b/, '').trim() : null;
 
   if (text === '/status') {
     await sendTelegramStatus(chatId);
@@ -192,7 +187,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     const notSet = 'Not set';
     await sendTelegramMessage({
       chatId,
-      text: `Your profile details:\n\nFull name: ${escapeMarkdown(profile?.fullName?.trim() || notSet)}\nEmail: ${escapeMarkdown(profile?.email?.trim() || notSet)}\nPhone: ${escapeMarkdown(profile?.phone?.trim() || notSet)}\nLocation: ${escapeMarkdown(profile?.location?.trim() || notSet)}\nTarget title: ${escapeMarkdown(profile?.defaultTitle?.trim() || notSet)}\nYears experience: ${escapeMarkdown(profile?.yearsExperience?.trim() || notSet)}\n\nTo update profile, use the dashboard profile section\\.`,
+      text: `Your profile details:\n\nFull name: ${escapeMarkdown(profile?.fullName?.trim() || notSet)}\nEmail: ${escapeMarkdown(profile?.email?.trim() || notSet)}\nPhone: ${escapeMarkdown(profile?.phone?.trim() || notSet)}\nLocation: ${escapeMarkdown(profile?.location?.trim() || notSet)}\nTarget title: ${escapeMarkdown(profile?.defaultTitle?.trim() || notSet)}\nYears experience: ${escapeMarkdown(profile?.yearsExperience?.trim() || notSet)}\n\nTo update profile, use the dashboard profile section.`,
     });
     return;
   }
@@ -200,7 +195,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   if (text.startsWith('/') && !/^\/(start|generate|status|profile)\b/.test(text)) {
     await sendTelegramMessage({
       chatId,
-      text: 'Unknown command\\. Available commands:\n/start \\- Link account or see welcome info\n/generate \\- Start a new resume\n/status \\- Check generation progress\n/profile \\- View your profile details',
+      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details',
     });
     return;
   }
@@ -217,13 +212,13 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       if (existingIdentity?.verified) {
         await sendTelegramMessage({
           chatId,
-          text: 'Welcome back\\! Your account is linked\\.\n\nPaste a job description to generate a tailored resume, or use:\n/generate \\- start a new resume\n/status \\- check progress\n/profile \\- view your profile details',
+          text: 'Welcome back! Your account is linked.\n\nUse:\n/generate <job description> - start a new resume\n/status - check progress\n/profile - view your profile details',
         });
       } else {
         const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
         await sendTelegramMessage({
           chatId,
-          text: `Welcome to Patronus\\!\n\nTo get started, link your account from the dashboard first:\n[Open Dashboard](${dashboardUrl})\n\nOnce linked, paste any job description here and I will generate a tailored resume for you\\.`,
+          text: `Welcome to Patronus!\n\nTo get started, link your account from the dashboard first:\n[Open Dashboard](${dashboardUrl})\n\nOnce linked, use /generate <job description> to create a tailored resume.`,
         });
       }
       return;
@@ -247,7 +242,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
         if (alreadyLinked?.verified) {
           await sendTelegramMessage({
             chatId,
-            text: 'Your account is already linked\\. Send a job description to get started\\!',
+            text: 'Your account is already linked. Use /generate <job description> to get started!',
           });
           return;
         }
@@ -261,7 +256,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
 
       await sendTelegramMessage({
         chatId,
-        text: 'Telegram linked successfully. Now send the job description text and I will generate your tailored resume.',
+        text: 'Telegram linked successfully. Use /generate <job description> to start your tailored resume.',
       });
 
       return;
@@ -285,7 +280,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
     await sendTelegramMessage({
       chatId,
-      text: `Your Telegram is not linked yet\\.\n\n[Link your account from the dashboard](${dashboardUrl})\n\nOnce linked, paste any job description here\\.`,
+      text: `Your Telegram is not linked yet.\n\n[Link your account from the dashboard](${dashboardUrl})\n\nOnce linked, use /generate <job description> to start.`,
     });
     return;
   }
@@ -300,7 +295,15 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     select: { id: true },
   });
 
-  if (pendingSession) {
+  if (isGenerateCommand && !generatePayload) {
+    await sendTelegramMessage({
+      chatId,
+      text: 'Invalid usage. Send:\n/generate <full job description>',
+    });
+    return;
+  }
+
+  if (pendingSession && !isGenerateCommand) {
     const result = await processChannelGenerate({
       channel: Channel.telegram,
       externalId: chatId,
@@ -329,20 +332,29 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
 
     await sendTelegramMessage({
       chatId,
-      text: 'All clarifications received\\. Generation started\\. Use /status for progress\\.',
+      text: 'All clarifications received. Generation started. Use /status for progress.',
     });
     return;
   }
 
+  if (!isGenerateCommand) {
+    await sendTelegramMessage({
+      chatId,
+      text: 'Unsupported input. Use one of:\n/generate <job description>\n/status\n/profile',
+    });
+    return;
+  }
+
+  const jobDescription = generatePayload ?? '';
   await sendTelegramMessage({
     chatId,
-    text: 'Processing your request\\. Creating a generation session now\\.',
+    text: 'Processing your request. Creating a generation session now.',
   });
 
   const result = await processChannelGenerate({
     channel: Channel.telegram,
     externalId: chatId,
-    message: text,
+    message: jobDescription,
   });
 
   if (!result.success) {
@@ -359,13 +371,13 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       chatId,
       text: question
         ? `I need one clarification before finalizing:\n\n${escapeMarkdown(question)}`
-        : 'I need clarification\\. Please answer the next question to continue\\.',
+        : 'I need clarification. Please answer the next question to continue.',
     });
     return;
   }
 
   await sendTelegramMessage({
     chatId,
-    text: 'Generation started\\. Use /status for live progress\\.',
+    text: 'Generation started. Use /status for live progress.',
   });
 }

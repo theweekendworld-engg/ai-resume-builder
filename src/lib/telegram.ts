@@ -167,7 +167,7 @@ export async function deleteTelegramWebhook(): Promise<{ ok: boolean; error?: st
 
 const BOT_COMMANDS = [
   { command: 'start', description: 'Start the bot or link your account with a token from the dashboard' },
-  { command: 'generate', description: 'Paste a job description to get a tailored resume' },
+  { command: 'generate', description: 'Start with: /generate <job description>' },
   { command: 'status', description: 'Show your latest resume generation status (linked account required)' },
   { command: 'profile', description: 'View your linked profile details' },
 ] as const;
