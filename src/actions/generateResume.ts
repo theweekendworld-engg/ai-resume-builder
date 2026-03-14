@@ -121,11 +121,11 @@ function coerceSkillGroups(value: unknown): Array<{ name: string; skills: string
 }
 
 const ParsedJDSchema = z.object({
-  role: z.string().default(''),
-  company: z.string().default(''),
+  role: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+  company: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
   requiredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
-  experienceLevel: z.string().default(''),
+  experienceLevel: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
   keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   industryDomain: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
   skillGroups: z.preprocess(

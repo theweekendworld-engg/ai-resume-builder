@@ -1,5 +1,34 @@
 import { z } from 'zod';
 
+function coerceStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value
+            .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }
+    if (typeof value === 'string') {
+        return value
+            .split(/[,\n;]/g)
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }
+    return [];
+}
+
+function coerceSingleString(value: unknown): string {
+    if (typeof value === 'string') return value.trim();
+    if (Array.isArray(value)) {
+        return value
+            .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+            .join(', ');
+    }
+    if (value == null) return '';
+    return String(value).trim();
+}
+
 /**
  * Zod schema for ATS Score breakdown
  */
@@ -130,24 +159,13 @@ export const ScoredRepoSchema = z.object({
 });
 
 export const ParsedJDSchema = z.object({
-    role: z.string().default(''),
-    company: z.string().default(''),
-    requiredSkills: z.array(z.string()).default([]),
-    preferredSkills: z.array(z.string()).default([]),
-    experienceLevel: z.string().default(''),
-    keyResponsibilities: z.array(z.string()).default([]),
-    industryDomain: z.preprocess((value) => {
-        if (typeof value === 'string') return value.trim();
-        if (Array.isArray(value)) {
-            return value
-                .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
-                .map((entry) => entry.trim())
-                .filter(Boolean)
-                .join(', ');
-        }
-        if (value == null) return '';
-        return String(value).trim();
-    }, z.string()).default(''),
+    role: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+    company: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+    requiredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+    preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+    experienceLevel: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+    keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+    industryDomain: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
     skillGroups: z.array(
         z.object({
             name: z.string().default(''),
@@ -156,7 +174,7 @@ export const ParsedJDSchema = z.object({
     ).default([]),
     seniorityLevel: z.enum(['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager']).default('mid'),
     isRemote: z.boolean().default(false),
-    softSkills: z.array(z.string()).default([]),
+    softSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
 });
 
 const ParsedResumeKnowledgeType = z.enum([

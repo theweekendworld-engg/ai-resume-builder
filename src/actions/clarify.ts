@@ -245,25 +245,41 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
     const clarificationContext = buildClarificationContext(mergedPayload);
     const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;
 
+    const coerceStringArray = (value: unknown): string[] => {
+      if (Array.isArray(value)) {
+        return value
+          .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+      }
+      if (typeof value === 'string') {
+        return value
+          .split(/[,\n;]/g)
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+      }
+      return [];
+    };
+    const coerceSingleString = (value: unknown): string => {
+      if (typeof value === 'string') return value.trim();
+      if (Array.isArray(value)) {
+        return value
+          .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .join(', ');
+      }
+      if (value == null) return '';
+      return String(value).trim();
+    };
     const parsedJDSchemaResult = z.object({
-      role: z.string().default(''),
-      company: z.string().default(''),
-      requiredSkills: z.array(z.string()).default([]),
-      preferredSkills: z.array(z.string()).default([]),
-      experienceLevel: z.string().default(''),
-      keyResponsibilities: z.array(z.string()).default([]),
-      industryDomain: z.preprocess((value) => {
-        if (typeof value === 'string') return value.trim();
-        if (Array.isArray(value)) {
-          return value
-            .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
-            .map((entry) => entry.trim())
-            .filter(Boolean)
-            .join(', ');
-        }
-        if (value == null) return '';
-        return String(value).trim();
-      }, z.string()).default(''),
+      role: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+      company: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+      requiredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+      preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+      experienceLevel: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
+      keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
+      industryDomain: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
     }).safeParse(session.parsedJD ?? {});
     const matchedProjects = z.array(z.object({ id: z.string(), score: z.number().default(0) }))
       .safeParse(session.matchedProjects ?? []);
