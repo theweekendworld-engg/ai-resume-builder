@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { put } from '@vercel/blob';
+import { get, put } from '@vercel/blob';
 import { config } from '@/lib/config';
 
 export type StoredPdfArtifact = {
@@ -22,6 +22,8 @@ const globalForPdfStorage = globalThis as typeof globalThis & {
   pdfMemoryStore?: Map<string, Buffer>;
 };
 
+type BlobAccess = 'public' | 'private';
+
 function getMemoryStore(): Map<string, Buffer> {
   if (!globalForPdfStorage.pdfMemoryStore) {
     globalForPdfStorage.pdfMemoryStore = new Map<string, Buffer>();
@@ -37,6 +39,18 @@ function getLocalStorageRoot(): string {
   const configured = config.pdfStorage.localDir.trim();
   if (path.isAbsolute(configured)) return configured;
   return path.join(process.cwd(), configured);
+}
+
+function getBlobAccessCandidates(): BlobAccess[] {
+  return config.pdfStorage.access === 'private'
+    ? ['private', 'public']
+    : ['public', 'private'];
+}
+
+function isBlobAccessMismatchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const message = error.message.toLowerCase();
+  return message.includes('private store') || message.includes('public store');
 }
 
 async function storeMemoryPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
@@ -93,12 +107,27 @@ async function storeBlobPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
   const filename = `${Date.now()}-${randomUUID()}.pdf`;
   const pathname = `pdfs/${safeUser}/${safeResume}/${safeSession}/${filename}`;
 
-  const blob = await put(pathname, input.pdfBuffer, {
-    access: 'public',
-    contentType: 'application/pdf',
-    addRandomSuffix: false,
-    token,
-  });
+  let lastError: unknown = null;
+  let blob: Awaited<ReturnType<typeof put>> | null = null;
+
+  for (const access of getBlobAccessCandidates()) {
+    try {
+      blob = await put(pathname, input.pdfBuffer, {
+        access,
+        contentType: 'application/pdf',
+        addRandomSuffix: false,
+        token,
+      });
+      break;
+    } catch (error: unknown) {
+      lastError = error;
+      if (!isBlobAccessMismatchError(error)) break;
+    }
+  }
+
+  if (!blob) {
+    throw (lastError instanceof Error ? lastError : new Error('Failed to store PDF in Vercel Blob'));
+  }
 
   return {
     blobKey: blob.pathname,
@@ -124,7 +153,32 @@ export async function readStoredPdf(blobKey: string): Promise<Buffer | null> {
     return getMemoryStore().get(blobKey) ?? null;
   }
 
-  if (config.pdfStorage.mode !== 'local') return null;
+  if (config.pdfStorage.mode === 'blob') {
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) return null;
+
+    let lastError: unknown = null;
+    for (const access of getBlobAccessCandidates()) {
+      try {
+        const result = await get(blobKey, {
+          access,
+          token,
+          ...(access === 'private' ? { useCache: false } : {}),
+        });
+        if (!result || !result.stream) return null;
+        return Buffer.from(await new Response(result.stream).arrayBuffer());
+      } catch (error: unknown) {
+        lastError = error;
+        if (!isBlobAccessMismatchError(error)) break;
+      }
+    }
+
+    if (lastError) {
+      console.error('Failed to read stored PDF from Blob:', lastError);
+    }
+    return null;
+  }
+
   const root = getLocalStorageRoot();
   const absolutePath = path.join(root, blobKey);
   try {

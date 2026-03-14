@@ -9,6 +9,7 @@ import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
+import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import {
   buildResumeTitle,
   extractParsedJDTarget,
@@ -39,6 +40,7 @@ export type GenerationRunResult = {
   resume?: ResumeData;
   resumeId?: string;
   atsEstimate?: number;
+  pdfId?: string;
   pdfUrl?: string;
   reused: boolean;
 };
@@ -211,6 +213,7 @@ async function maybeReuseExistingResume(params: {
   resumeId?: string;
   resume?: ResumeData;
   atsEstimate?: number;
+  pdfId?: string;
   pdfUrl?: string;
   pdfBlobKey?: string;
 }> {
@@ -254,12 +257,11 @@ async function maybeReuseExistingResume(params: {
 
   if (!best) return { reused: false };
 
-  let latestPdf: { blobKey: string; blobUrl: string } | null = null;
+  let latestPdf: { id: string; blobKey: string } | null = null;
   if (config.pdfStorage.enableStoredPdfFetch) {
-    latestPdf = await prisma.generatedPdf.findFirst({
-      where: { userId: params.userId, resumeId: best.id },
-      orderBy: { createdAt: 'desc' },
-      select: { blobKey: true, blobUrl: true },
+    latestPdf = await findLatestGeneratedPdf({
+      userId: params.userId,
+      resumeId: best.id,
     });
   }
 
@@ -268,7 +270,8 @@ async function maybeReuseExistingResume(params: {
     resumeId: best.id,
     resume: best.content ?? undefined,
     atsEstimate: best.ats,
-    pdfUrl: latestPdf?.blobUrl,
+    pdfId: latestPdf?.id,
+    pdfUrl: latestPdf ? buildPdfDownloadUrl(latestPdf.id) : undefined,
     pdfBlobKey: latestPdf?.blobKey,
   };
 }
@@ -279,7 +282,7 @@ async function persistStoredPdf(params: {
   resumeId: string;
   template: LatexTemplateType;
   pdfBase64: string;
-}): Promise<{ blobKey: string; blobUrl: string; fileSizeBytes: number }> {
+}): Promise<{ pdfId: string; blobKey: string; pdfUrl: string; fileSizeBytes: number }> {
   const pdfBuffer = Buffer.from(params.pdfBase64, 'base64');
   const stored = await storePdfArtifact({
     userId: params.userId,
@@ -289,7 +292,7 @@ async function persistStoredPdf(params: {
     pdfBuffer,
   });
 
-  await prisma.generatedPdf.create({
+  const pdfRow = await prisma.generatedPdf.create({
     data: {
       userId: params.userId,
       resumeId: params.resumeId,
@@ -299,6 +302,7 @@ async function persistStoredPdf(params: {
       fileSizeBytes: stored.fileSizeBytes,
       template: params.template,
     },
+    select: { id: true },
   });
 
   const staleRows = await prisma.generatedPdf.findMany({
@@ -333,7 +337,12 @@ async function persistStoredPdf(params: {
     },
   });
 
-  return stored;
+  return {
+    pdfId: pdfRow.id,
+    blobKey: stored.blobKey,
+    pdfUrl: buildPdfDownloadUrl(pdfRow.id),
+    fileSizeBytes: stored.fileSizeBytes,
+  };
 }
 
 async function markFailure(params: {
@@ -421,7 +430,6 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       draftResume: true,
       resultResumeId: true,
       sourceResumeId: true,
-      pdfUrl: true,
       atsScore: true,
       startedAt: true,
     },
@@ -433,13 +441,19 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
 
   if (session.status === GenerationStatus.completed) {
     const finalResume = session.draftResume as ResumeData | null;
+    const latestPdf = await findLatestGeneratedPdf({
+      userId: options.userId,
+      sessionId: session.id,
+      resumeId: session.resultResumeId,
+    });
     return {
       sessionId: session.id,
       status: 'completed',
       resume: finalResume ?? undefined,
       resumeId: session.resultResumeId ?? undefined,
       atsEstimate: session.atsScore ?? undefined,
-      pdfUrl: session.pdfUrl ?? undefined,
+      pdfId: latestPdf?.id,
+      pdfUrl: latestPdf ? buildPdfDownloadUrl(latestPdf.id) : undefined,
       reused: false,
     };
   }
@@ -496,6 +510,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
             resume: reuse.resume,
             resumeId: reuse.resumeId,
             atsEstimate: reuse.atsEstimate,
+            pdfId: reuse.pdfId,
             pdfUrl: reuse.pdfUrl,
             reused: true,
           };
@@ -665,7 +680,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         atsScore: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? null,
         validationResult: pipelineResult?.validation as unknown as Prisma.InputJsonValue,
         pdfBlobKey: storedPdf.blobKey,
-        pdfUrl: storedPdf.blobUrl,
+        pdfUrl: storedPdf.pdfUrl,
         stepStartedAt: new Date(),
         completedAt: new Date(),
         totalLatencyMs: Date.now() - session.startedAt.getTime(),
@@ -680,7 +695,8 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       resume: finalResume,
       resumeId,
       atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
-      pdfUrl: storedPdf.blobUrl,
+      pdfId: storedPdf.pdfId,
+      pdfUrl: storedPdf.pdfUrl,
       reused: false,
     };
   } catch (error: unknown) {

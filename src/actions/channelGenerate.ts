@@ -5,6 +5,7 @@ import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client'
 import { z } from 'zod';
 import { parseJobDescription } from '@/actions/generateResume';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
+import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -41,6 +42,7 @@ export type ChannelGenerateResponse = {
   resume?: ResumeData;
   resumeId?: string;
   atsEstimate?: number;
+  pdfId?: string;
   pdfUrl?: string;
   error?: string;
 };
@@ -324,7 +326,6 @@ async function continueSession(params: {
       resultResumeId: true,
       draftResume: true,
       atsScore: true,
-      pdfUrl: true,
     },
   });
 
@@ -333,6 +334,11 @@ async function continueSession(params: {
   }
 
   if (session.status === GenerationStatus.completed) {
+    const latestPdf = await findLatestGeneratedPdf({
+      userId: params.userId,
+      sessionId: session.id,
+      resumeId: session.resultResumeId,
+    });
     return {
       success: true,
       sessionId: session.id,
@@ -340,7 +346,8 @@ async function continueSession(params: {
       resumeId: session.resultResumeId ?? undefined,
       resume: (session.draftResume as ResumeData | null) ?? undefined,
       atsEstimate: session.atsScore ?? undefined,
-      pdfUrl: session.pdfUrl ?? undefined,
+      pdfId: latestPdf?.id,
+      pdfUrl: latestPdf ? buildPdfDownloadUrl(latestPdf.id) : undefined,
     };
   }
 

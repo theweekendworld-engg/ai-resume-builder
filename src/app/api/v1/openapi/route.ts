@@ -27,6 +27,9 @@ const spec = {
     '/generate/{sessionId}/result': {
       get: { summary: 'Get completed generation result' },
     },
+    '/pdfs/{id}': {
+      get: { summary: 'Download a generated PDF' },
+    },
     '/profile': {
       post: { summary: 'Create or update user profile' },
     },

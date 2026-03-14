@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { buildApiPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
 
@@ -36,7 +37,6 @@ export async function GET(
       draftResume: true,
       resultResumeId: true,
       atsScore: true,
-      pdfUrl: true,
       validationResult: true,
       completedAt: true,
     },
@@ -52,6 +52,12 @@ export async function GET(
     );
   }
 
+  const latestPdf = await findLatestGeneratedPdf({
+    userId: parsedQuery.data.userId,
+    sessionId: session.id,
+    resumeId: session.resultResumeId,
+  });
+
   return NextResponse.json({
     success: true,
     result: {
@@ -59,7 +65,8 @@ export async function GET(
       resumeId: session.resultResumeId,
       resume: session.draftResume,
       atsScore: session.atsScore,
-      pdfUrl: session.pdfUrl,
+      pdfId: latestPdf?.id,
+      pdfUrl: latestPdf ? buildApiPdfDownloadUrl(latestPdf.id, parsedQuery.data.userId) : undefined,
       validation: session.validationResult,
       completedAt: session.completedAt,
     },

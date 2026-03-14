@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
+import { buildApiPdfDownloadUrl } from '@/lib/pdfLinks';
 
 const GenerateInputSchema = z.object({
   userId: z.string().min(1).max(255),
@@ -36,6 +37,10 @@ export async function POST(req: NextRequest) {
       maxQuestions: parsed.data.maxQuestions,
       fallbackResumeData: parsed.data.fallbackResumeData,
     });
+
+    if (result.success && result.pdfId) {
+      result.pdfUrl = buildApiPdfDownloadUrl(result.pdfId, parsed.data.userId);
+    }
 
     const status = result.success ? 200 : 400;
     return NextResponse.json(result, { status });

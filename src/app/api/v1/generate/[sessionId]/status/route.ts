@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
+import { buildApiPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
 
@@ -38,7 +39,6 @@ export async function GET(
       atsScore: true,
       errorMessage: true,
       resultResumeId: true,
-      pdfUrl: true,
       stepStartedAt: true,
       startedAt: true,
       updatedAt: true,
@@ -49,10 +49,18 @@ export async function GET(
     return NextResponse.json({ success: false, error: 'Session not found' }, { status: 404 });
   }
 
+  const latestPdf = await findLatestGeneratedPdf({
+    userId: parsedQuery.data.userId,
+    sessionId: session.id,
+    resumeId: session.resultResumeId,
+  });
+
   return NextResponse.json({
     success: true,
     session: {
       ...session,
+      pdfId: latestPdf?.id,
+      pdfUrl: latestPdf ? buildApiPdfDownloadUrl(latestPdf.id, parsedQuery.data.userId) : undefined,
       stageLabel: getGenerationStageLabel(session.currentStep),
       progressPercent: getGenerationProgressPercent(session.currentStep),
       elapsedMs: Date.now() - session.startedAt.getTime(),

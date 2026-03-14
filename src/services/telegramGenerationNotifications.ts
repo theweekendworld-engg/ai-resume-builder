@@ -39,23 +39,12 @@ async function trySendCompletionPdf(params: {
       ...(params.resumeId ? { resumeId: params.resumeId } : {}),
     },
     orderBy: { createdAt: 'desc' },
-    select: { blobKey: true, blobUrl: true },
+    select: { blobKey: true },
   });
 
   if (!pdfRow) return;
 
-  let buffer: Buffer | null = null;
-  if (config.pdfStorage.mode !== 'blob') {
-    buffer = await readStoredPdf(pdfRow.blobKey);
-  }
-
-  if (!buffer && (pdfRow.blobUrl.startsWith('http://') || pdfRow.blobUrl.startsWith('https://'))) {
-    const response = await fetch(pdfRow.blobUrl, { cache: 'no-store' });
-    if (response.ok) {
-      buffer = Buffer.from(await response.arrayBuffer());
-    }
-  }
-
+  const buffer = await readStoredPdf(pdfRow.blobKey);
   if (!buffer) return;
 
   const caption = typeof params.atsEstimate === 'number'
@@ -112,6 +101,17 @@ export async function notifyTelegramGenerationSession(sessionId: string): Promis
 
   if (session.status === GenerationStatus.completed) {
     const resumeUrl = session.resultResumeId ? `${config.app.url}/editor/${session.resultResumeId}` : null;
+    const publicPdfUrl = !config.features.telegramSendPdfDocument && config.pdfStorage.access !== 'private'
+      ? await prisma.generatedPdf.findFirst({
+        where: {
+          userId: session.userId,
+          sessionId: session.id,
+          ...(session.resultResumeId ? { resumeId: session.resultResumeId } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { blobUrl: true },
+      }).then((row) => row?.blobUrl ?? null)
+      : null;
     await trySendCompletionPdf({
       chatId,
       userId: session.userId,
@@ -122,7 +122,11 @@ export async function notifyTelegramGenerationSession(sessionId: string): Promis
     await sendTelegramMessage({
       chatId,
       text: `${typeof session.atsScore === 'number' ? `ATS estimate: *${session.atsScore}%*\n` : ''}${resumeUrl ? `[Open resume](${resumeUrl})` : 'Resume generated.'}`,
-      replyMarkup: buildCompletionReplyMarkup(session.id, resumeUrl, session.pdfUrl ?? null),
+      replyMarkup: buildCompletionReplyMarkup(
+        session.id,
+        resumeUrl,
+        publicPdfUrl
+      ),
     });
   } else {
     await sendTelegramMessage({

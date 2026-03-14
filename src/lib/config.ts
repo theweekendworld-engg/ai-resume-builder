@@ -33,6 +33,7 @@ export const config = {
             process.env.PDF_STORAGE_MODE ||
             (process.env.NODE_ENV === "production" ? "blob" : "memory")
         ) as "memory" | "local" | "blob",
+        access: (process.env.PDF_STORAGE_ACCESS || "public") as "public" | "private",
         localDir: process.env.PDF_STORAGE_LOCAL_DIR || ".storage/generated-pdfs",
         publicBaseUrl: process.env.PDF_STORAGE_PUBLIC_BASE_URL || "",
         enableStoredPdfFetch: process.env.PDF_STORAGE_ENABLE_FETCH !== "false",

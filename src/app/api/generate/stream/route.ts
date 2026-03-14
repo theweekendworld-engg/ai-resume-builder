@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { GenerationStatus } from '@prisma/client';
 import { getGenerationDetailLines, getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
+import { buildPdfDownloadPath, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
@@ -60,7 +61,6 @@ export async function GET(request: Request) {
               status: true,
               currentStep: true,
               atsScore: true,
-              pdfUrl: true,
               resultResumeId: true,
               errorMessage: true,
               stepStartedAt: true,
@@ -116,10 +116,16 @@ export async function GET(request: Request) {
           if (!sent) return;
 
           if (session.status === GenerationStatus.completed) {
+            const latestPdf = await findLatestGeneratedPdf({
+              userId,
+              sessionId: session.id,
+              resumeId: session.resultResumeId,
+            });
             send('complete', {
               sessionId: session.id,
               resumeId: session.resultResumeId,
-              pdfUrl: session.pdfUrl,
+              pdfId: latestPdf?.id,
+              pdfUrl: latestPdf ? buildPdfDownloadPath(latestPdf.id) : undefined,
               atsScore: session.atsScore,
             });
             close();
