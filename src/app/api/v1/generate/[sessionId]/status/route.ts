@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
 
@@ -38,6 +39,8 @@ export async function GET(
       errorMessage: true,
       resultResumeId: true,
       pdfUrl: true,
+      stepStartedAt: true,
+      startedAt: true,
       updatedAt: true,
     },
   });
@@ -48,6 +51,12 @@ export async function GET(
 
   return NextResponse.json({
     success: true,
-    session,
+    session: {
+      ...session,
+      stageLabel: getGenerationStageLabel(session.currentStep),
+      progressPercent: getGenerationProgressPercent(session.currentStep),
+      elapsedMs: Date.now() - session.startedAt.getTime(),
+      stepStartedAt: session.stepStartedAt?.toISOString() ?? null,
+    },
   });
 }

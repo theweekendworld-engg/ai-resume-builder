@@ -1,6 +1,8 @@
 import { auth } from '@clerk/nextjs/server';
+import { GenerationStatus } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { runGenerationSession } from '@/actions/generationPipeline';
+import { enqueueGenerationSession } from '@/lib/generationQueue';
+import { prisma } from '@/lib/prisma';
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,20 +17,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'sessionId is required' }, { status: 400 });
     }
 
-    const result = await runGenerationSession({
-      sessionId,
-      userId,
+    const session = await prisma.generationSession.findFirst({
+      where: { id: sessionId, userId },
+      select: { id: true },
     });
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Generation session not found' }, { status: 404 });
+    }
+
+    await prisma.generationSession.update({
+      where: { id: session.id },
+      data: {
+        status: GenerationStatus.generating,
+        errorMessage: null,
+        errorStep: null,
+        workflowRunId: null,
+      },
+    });
+    await enqueueGenerationSession(session.id, { force: true });
 
     return NextResponse.json({
       success: true,
-      sessionId: result.sessionId,
-      status: result.status,
-      resume: result.resume,
-      resumeId: result.resumeId,
-      atsEstimate: result.atsEstimate,
-      pdfUrl: result.pdfUrl,
-      reused: result.reused,
+      sessionId: session.id,
+      status: 'generating',
     });
   } catch (error: unknown) {
     return NextResponse.json(

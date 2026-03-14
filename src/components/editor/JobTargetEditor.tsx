@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
 import {
   Tooltip,
   TooltipContent,
@@ -83,6 +84,9 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
     matchedAchievements?: number;
   } | null>(null);
   const [streamAts, setStreamAts] = useState<number | null>(null);
+  const trackGenerationSession = useGenerationMonitorStore((state) => state.trackSession);
+  const markGenerationCompleted = useGenerationMonitorStore((state) => state.markCompleted);
+  const markGenerationFailed = useGenerationMonitorStore((state) => state.markFailed);
 
   useEffect(() => {
     return () => {
@@ -210,6 +214,9 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to generate. Please try again.');
+        if (clarificationSessionId) {
+          markGenerationFailed(result.error ?? 'Failed to generate. Please try again.');
+        }
         return;
       }
 
@@ -218,17 +225,31 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
         setClarificationSessionId(result.sessionId);
         setClarificationQuestion(result.nextQuestion);
         setSuccess('We found a few gaps. Answer this question to improve accuracy.');
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: `/editor/${resumeId}`,
+        });
         return;
       }
 
       if (result.status === 'generating' && result.sessionId) {
         setClarificationSessionId(result.sessionId);
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'generating',
+          sourcePath: `/editor/${resumeId}`,
+        });
         startStreaming(result.sessionId);
         return;
       }
 
       if (result.status === 'completed') {
         setIsGenerating(false);
+        markGenerationCompleted({
+          resumeId: result.resumeId ?? resumeId,
+          atsScore: result.atsEstimate,
+        });
         try {
           await applyGeneratedResult(result.resumeId, result.resume);
         } catch (applyError: unknown) {
@@ -263,6 +284,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to apply clarification.');
+        markGenerationFailed(result.error ?? 'Failed to apply clarification.');
         return;
       }
 
@@ -270,10 +292,20 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
         setIsGenerating(false);
         setClarificationQuestion(result.nextQuestion);
         setClarificationAnswer('');
+        trackGenerationSession({
+          sessionId: clarificationSessionId,
+          status: 'awaiting_clarification',
+          sourcePath: `/editor/${resumeId}`,
+        });
         return;
       }
 
       if (result.status === 'generating') {
+        trackGenerationSession({
+          sessionId: clarificationSessionId,
+          status: 'generating',
+          sourcePath: `/editor/${resumeId}`,
+        });
         startStreaming(clarificationSessionId);
         return;
       }
@@ -283,6 +315,10 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
         setClarificationQuestion(null);
         setClarificationAnswer('');
         setClarificationSessionId(null);
+        markGenerationCompleted({
+          resumeId: result.resumeId ?? resumeId,
+          atsScore: result.atsEstimate,
+        });
         try {
           await applyGeneratedResult(result.resumeId, result.resume);
         } catch (applyError: unknown) {

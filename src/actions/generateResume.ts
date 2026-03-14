@@ -74,6 +74,19 @@ function coerceBoolean(value: unknown): boolean {
   return false;
 }
 
+function coerceSingleString(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (value == null) return '';
+  return String(value).trim();
+}
+
 function coerceSkillGroups(value: unknown): Array<{ name: string; skills: string[] }> {
   if (Array.isArray(value)) {
     return value.map((entry, index) => {
@@ -114,7 +127,7 @@ const ParsedJDSchema = z.object({
   preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   experienceLevel: z.string().default(''),
   keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
-  industryDomain: z.string().default(''),
+  industryDomain: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
   skillGroups: z.preprocess(
     (value) => coerceSkillGroups(value),
     z.array(z.object({
@@ -318,7 +331,7 @@ function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', ye
   return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 4, maxSkills: 20 };
 }
 
-async function parseJobDescription(params: {
+export async function parseJobDescription(params: {
   jobDescription: string;
   userId: string;
   sessionId?: string;

@@ -169,7 +169,7 @@ const BOT_COMMANDS = [
   { command: 'start', description: 'Start the bot or link your account with a token from the dashboard' },
   { command: 'generate', description: 'Paste a job description to get a tailored resume' },
   { command: 'status', description: 'Show your latest resume generation status (linked account required)' },
-  { command: 'profile', description: 'Update profile: Full Name | Target Title | Years (linked account required)' },
+  { command: 'profile', description: 'View your linked profile details' },
 ] as const;
 
 export async function setTelegramBotCommands(): Promise<{ ok: boolean; error?: string }> {

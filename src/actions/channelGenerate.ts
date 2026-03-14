@@ -3,9 +3,8 @@
 import { auth } from '@clerk/nextjs/server';
 import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { generateSmartResumePipeline } from '@/actions/generateResume';
-import { runGenerationSession } from '@/actions/generationPipeline';
-import { runResumeAgent } from '@/agents/resumeAgent';
+import { parseJobDescription } from '@/actions/generateResume';
+import { enqueueGenerationSession } from '@/lib/generationQueue';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -52,14 +51,14 @@ function normalizeText(value: string): string {
 
 function detectGaps(params: {
   requiredSkills: string[];
-  resume: ResumeData;
+  contextText: string;
 }): string[] {
-  const resumeText = normalizeText(JSON.stringify(params.resume));
+  const contextText = normalizeText(params.contextText);
 
   const missingSkills = params.requiredSkills
     .map((skill) => skill.trim())
     .filter(Boolean)
-    .filter((skill) => !resumeText.includes(normalizeText(skill)));
+    .filter((skill) => !contextText.includes(normalizeText(skill)));
 
   return [...new Set(missingSkills)].slice(0, 5);
 }
@@ -126,6 +125,78 @@ function getNextUnansweredQuestion(payload: ClarificationPayload): Clarification
   return payload.questions.find((question) => !payload.answers[question.id]?.trim());
 }
 
+async function buildGenerationContextText(params: {
+  userId: string;
+  fallbackResumeData?: ResumeData;
+}): Promise<{ contextText: string; autoGenerate: boolean }> {
+  const [profile, experiences, projects, knowledge] = await Promise.all([
+    prisma.userProfile.findUnique({
+      where: { userId: params.userId },
+      select: {
+        preferences: true,
+        fullName: true,
+        email: true,
+        defaultTitle: true,
+        defaultSummary: true,
+      },
+    }),
+    prisma.userExperience.findMany({
+      where: { userId: params.userId },
+      select: {
+        company: true,
+        role: true,
+        description: true,
+        highlights: true,
+      },
+      take: 12,
+      orderBy: { updatedAt: 'desc' },
+    }),
+    prisma.userProject.findMany({
+      where: { userId: params.userId },
+      select: {
+        name: true,
+        description: true,
+        technologies: true,
+        readme: true,
+      },
+      take: 12,
+      orderBy: { updatedAt: 'desc' },
+    }),
+    prisma.knowledgeItem.findMany({
+      where: { userId: params.userId },
+      select: {
+        title: true,
+        content: true,
+      },
+      take: 8,
+      orderBy: { updatedAt: 'desc' },
+    }),
+  ]);
+
+  const preferences = parseUserGenerationPreferences(profile?.preferences);
+  const fallbackText = params.fallbackResumeData ? JSON.stringify(params.fallbackResumeData) : '';
+  const experienceText = experiences
+    .map((experience) => JSON.stringify(experience))
+    .join('\n');
+  const projectText = projects
+    .map((project) => JSON.stringify(project))
+    .join('\n');
+  const knowledgeText = knowledge
+    .map((item) => `${item.title}\n${item.content}`)
+    .join('\n');
+  const profileText = JSON.stringify({
+    fullName: profile?.fullName ?? '',
+    email: profile?.email ?? '',
+    defaultTitle: profile?.defaultTitle ?? '',
+    defaultSummary: profile?.defaultSummary ?? '',
+  });
+
+  return {
+    contextText: [fallbackText, profileText, experienceText, projectText, knowledgeText].join('\n'),
+    autoGenerate: preferences.autoGenerate,
+  };
+}
+
 async function resolveUserId(params: {
   userId?: string;
   channel: Channel;
@@ -164,31 +235,23 @@ async function startNewSession(params: {
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
-  const agentResult = await runResumeAgent({
-    jobDescription: params.message,
-    fallbackResumeData: params.fallbackResumeData,
-    userId: params.userId,
-  });
-
-  const smart = agentResult.success
-    ? agentResult.data
-    : await generateSmartResumePipeline(params.message, {
+  const [parsedJD, context] = await Promise.all([
+    parseJobDescription({
+      jobDescription: params.message,
+      userId: params.userId,
+    }),
+    buildGenerationContextText({
+      userId: params.userId,
       fallbackResumeData: params.fallbackResumeData,
-      actorUserId: params.userId,
-    });
+    }),
+  ]);
 
   const gaps = detectGaps({
-    requiredSkills: smart.sources.parsedJD.requiredSkills,
-    resume: smart.resume,
+    requiredSkills: parsedJD.requiredSkills,
+    contextText: context.contextText,
   });
 
-  const profile = await prisma.userProfile.findUnique({
-    where: { userId: params.userId },
-    select: { preferences: true },
-  });
-  const preferences = parseUserGenerationPreferences(profile?.preferences);
-
-  const questions = preferences.autoGenerate
+  const questions = context.autoGenerate
     ? []
     : buildQuestions(gaps, params.maxQuestions);
 
@@ -198,23 +261,17 @@ async function startNewSession(params: {
       sourceResumeId: params.sourceResumeId,
       channel: params.channel,
       jobDescription: params.message,
-      parsedJD: smart.sources.parsedJD as Prisma.InputJsonValue,
-      matchedProjects: smart.artifacts.matchedProjects as Prisma.InputJsonValue,
-      matchedAchievements: smart.artifacts.matchedAchievements as Prisma.InputJsonValue,
-      staticData: smart.artifacts.staticData as unknown as Prisma.InputJsonValue,
-      matchedItems: {
-        projects: smart.sources.projects,
-        knowledgeItems: smart.sources.knowledgeItems,
-      } as Prisma.InputJsonValue,
+      parsedJD: parsedJD as Prisma.InputJsonValue,
+      fallbackResume: params.fallbackResumeData
+        ? params.fallbackResumeData as unknown as Prisma.InputJsonValue
+        : undefined,
       clarifications: {
         questions,
         answers: {},
         gaps,
       } as Prisma.InputJsonValue,
-      draftResume: questions.length === 0 ? (smart.resume as unknown as Prisma.InputJsonValue) : undefined,
-      validationResult: questions.length === 0 ? (smart.validation as unknown as Prisma.InputJsonValue) : undefined,
-      atsScore: questions.length === 0 ? smart.atsEstimate : undefined,
-      currentStep: questions.length === 0 ? PipelineStep.pdf_generation : PipelineStep.reuse_check,
+      currentStep: PipelineStep.reuse_check,
+      stepStartedAt: new Date(),
       status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.generating,
     },
     select: { id: true },
@@ -231,21 +288,11 @@ async function startNewSession(params: {
   }
 
   try {
-    const result = await runGenerationSession({
-      sessionId: session.id,
-      userId: params.userId,
-      fallbackResumeData: params.fallbackResumeData,
-      sourceResumeId: params.sourceResumeId,
-    });
-
+    await enqueueGenerationSession(session.id);
     return {
       success: true,
       sessionId: session.id,
-      status: result.status,
-      resume: result.resume,
-      resumeId: result.resumeId,
-      atsEstimate: result.atsEstimate,
-      pdfUrl: result.pdfUrl,
+      status: 'generating',
     };
   } catch (error: unknown) {
     return {
@@ -346,30 +393,25 @@ async function continueSession(params: {
     where: { id: session.id },
     data: {
       status: GenerationStatus.generating,
-      currentStep: PipelineStep.paraphrasing,
+      currentStep: PipelineStep.reuse_check,
+      stepStartedAt: new Date(),
+      workflowRunId: null,
       errorMessage: null,
       errorStep: null,
       jobDescription: enrichedJobDescription,
+      fallbackResume: params.fallbackResumeData
+        ? params.fallbackResumeData as unknown as Prisma.InputJsonValue
+        : undefined,
       clarifications: mergedPayload as unknown as Prisma.InputJsonValue,
     },
   });
 
   try {
-    const result = await runGenerationSession({
-      sessionId: session.id,
-      userId: params.userId,
-      fallbackResumeData: params.fallbackResumeData,
-      focusAreas: mergedPayload.gaps,
-    });
-
+    await enqueueGenerationSession(session.id, { force: true });
     return {
       success: true,
       sessionId: session.id,
-      status: result.status,
-      resume: result.resume,
-      resumeId: result.resumeId,
-      atsEstimate: result.atsEstimate,
-      pdfUrl: result.pdfUrl,
+      status: 'generating',
     };
   } catch (error: unknown) {
     return {

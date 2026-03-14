@@ -7,6 +7,7 @@ import { createResume } from '@/actions/resume';
 import { saveJobTargetToCloud } from '@/actions/jobTargets';
 import { getUserProfile } from '@/actions/profile';
 import { ParsedResumeSchema } from '@/lib/aiSchemas';
+import { buildResumeTitle, getFallbackResumeTitle } from '@/lib/resumeIdentity';
 
 const GenerateInputSchema = z.object({
   company: z.string().max(300).optional(),
@@ -132,7 +133,11 @@ export async function generateInitialResume(input: unknown): Promise<{
       resumeData = await generateTailoredResume(safeInput.jobDescription, resumeData);
     }
 
-    const title = safeInput.fullName?.trim() ? `${safeInput.fullName.trim()} Resume` : 'Untitled Resume';
+    const title = buildResumeTitle({
+      targetRole: safeInput.role ?? resumeData.personalInfo.title,
+      targetCompany: safeInput.company,
+      fallbackTitle: getFallbackResumeTitle(safeInput.fullName ?? resumeData.personalInfo.fullName, 'Untitled Resume'),
+    });
 
     const createResult = await createResume({
       title,

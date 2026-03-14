@@ -9,6 +9,12 @@ import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
+import {
+  buildResumeTitle,
+  extractParsedJDTarget,
+  getFallbackResumeTitle,
+  resolveResumeTarget,
+} from '@/lib/resumeIdentity';
 import { generateLatexFromResume, type LatexTemplateType } from '@/templates/latex';
 import { logUsageEvent } from '@/lib/usageTracker';
 import type { ResumeData } from '@/types/resume';
@@ -99,16 +105,30 @@ function overlapScore(a: string, b: string): number {
   return base > 0 ? overlap / base : 0;
 }
 
-function deriveResumeMetadata(resumeData: ResumeData, atsScore?: number) {
-  const targetRole = resumeData.personalInfo.title?.trim() || resumeData.experience[0]?.role?.trim() || null;
-  const targetCompany = resumeData.experience[0]?.company?.trim() || null;
+function deriveResumeMetadata(
+  resumeData: ResumeData,
+  options?: {
+    atsScore?: number;
+    targetRole?: string | null;
+    targetCompany?: string | null;
+    fallbackTargetRole?: string | null;
+    fallbackTargetCompany?: string | null;
+  }
+) {
+  const { targetRole, targetCompany } = resolveResumeTarget({
+    targetRole: options?.targetRole,
+    targetCompany: options?.targetCompany,
+    fallbackTargetRole: options?.fallbackTargetRole,
+    fallbackTargetCompany: options?.fallbackTargetCompany,
+    resumeRole: resumeData.personalInfo.title?.trim() || resumeData.experience[0]?.role?.trim() || null,
+  });
   const summaryRaw = resumeData.personalInfo.summary?.trim() || '';
   const atsSummary = summaryRaw ? summaryRaw.slice(0, 180) : null;
 
   return {
     targetRole,
     targetCompany,
-    atsScore: typeof atsScore === 'number' ? atsScore : null,
+    atsScore: typeof options?.atsScore === 'number' ? options.atsScore : null,
     atsSummary,
   };
 }
@@ -118,19 +138,29 @@ async function saveGeneratedResumeForUser(params: {
   resume: ResumeData;
   atsEstimate?: number;
   resumeId?: string;
+  targetRole?: string | null;
+  targetCompany?: string | null;
 }): Promise<string> {
-  const title = params.resume.personalInfo.fullName?.trim()
-    ? `${params.resume.personalInfo.fullName.trim()} Resume`
-    : 'Generated Resume';
-
+  const fallbackTitle = getFallbackResumeTitle(params.resume.personalInfo.fullName, 'Generated Resume');
   const payload = params.resume as unknown as object;
-  const metadata = deriveResumeMetadata(params.resume, params.atsEstimate);
   const existingResume = params.resumeId
     ? await prisma.resume.findFirst({
       where: { id: params.resumeId, userId: params.userId },
-      select: { id: true, title: true },
+      select: { id: true, title: true, targetRole: true, targetCompany: true },
     })
     : null;
+  const metadata = deriveResumeMetadata(params.resume, {
+    atsScore: params.atsEstimate,
+    targetRole: params.targetRole,
+    targetCompany: params.targetCompany,
+    fallbackTargetRole: existingResume?.targetRole,
+    fallbackTargetCompany: existingResume?.targetCompany,
+  });
+  const title = buildResumeTitle({
+    targetRole: metadata.targetRole,
+    targetCompany: metadata.targetCompany,
+    fallbackTitle,
+  });
 
   return prisma.$transaction(async (tx) => {
     const resume = existingResume ?? await tx.resume.create({
@@ -145,7 +175,7 @@ async function saveGeneratedResumeForUser(params: {
       where: { id: resume.id },
       data: {
         content: payload,
-        title: existingResume ? resume.title : title,
+        title,
         targetRole: metadata.targetRole,
         targetCompany: metadata.targetCompany,
         atsScore: metadata.atsScore,
@@ -318,6 +348,7 @@ async function markFailure(params: {
       errorStep: params.step,
       errorMessage: params.message.slice(0, 5000),
       currentStep: params.step,
+      stepStartedAt: new Date(),
       completedAt: null,
     },
   });
@@ -386,6 +417,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       matchedProjects: true,
       matchedAchievements: true,
       staticData: true,
+      fallbackResume: true,
       draftResume: true,
       resultResumeId: true,
       sourceResumeId: true,
@@ -414,6 +446,9 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
 
   let activeStep = session.currentStep ?? PipelineStep.reuse_check;
   const template = options.templatePreference ?? 'ats-simple';
+  const effectiveFallbackResume = options.fallbackResumeData
+    ?? (session.fallbackResume as ResumeData | null)
+    ?? undefined;
 
   try {
     await prisma.generationSession.update({
@@ -423,6 +458,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         errorMessage: null,
         errorStep: null,
         currentStep: activeStep,
+        stepStartedAt: new Date(),
       },
     });
 
@@ -441,6 +477,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
             data: {
               status: GenerationStatus.completed,
               currentStep: PipelineStep.completed,
+              stepStartedAt: new Date(),
               resultResumeId: reuse.resumeId,
               draftResume: reuse.resume as unknown as Prisma.InputJsonValue,
               atsScore: reuse.atsEstimate ?? null,
@@ -470,6 +507,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         where: { id: session.id },
         data: {
           currentStep: activeStep,
+          stepStartedAt: new Date(),
         },
       });
     }
@@ -497,7 +535,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
     ) {
       pipelineResult = await runPrimaryResumePipeline({
         jobDescription: session.jobDescription,
-        fallbackResumeData: options.fallbackResumeData,
+        fallbackResumeData: effectiveFallbackResume,
         focusAreas: options.focusAreas,
         maxProjects: options.maxProjects,
         userId: options.userId,
@@ -515,6 +553,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
             data: {
               currentStep: activeStep,
               status: GenerationStatus.generating,
+              stepStartedAt: new Date(),
             },
           });
         },
@@ -554,6 +593,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
                 }
                 : {}),
               currentStep: nextStep,
+              stepStartedAt: new Date(),
             },
           });
           activeStep = nextStep;
@@ -583,6 +623,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         resume: finalResume,
         atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
         resumeId: session.sourceResumeId ?? options.sourceResumeId,
+        ...extractParsedJDTarget(pipelineResult?.artifacts.parsedJD ?? session.parsedJD),
       });
 
     activeStep = PipelineStep.pdf_generation;
@@ -591,6 +632,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       data: {
         currentStep: PipelineStep.pdf_generation,
         resultResumeId: resumeId,
+        stepStartedAt: new Date(),
       },
     });
 
@@ -624,6 +666,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         validationResult: pipelineResult?.validation as unknown as Prisma.InputJsonValue,
         pdfBlobKey: storedPdf.blobKey,
         pdfUrl: storedPdf.blobUrl,
+        stepStartedAt: new Date(),
         completedAt: new Date(),
         totalLatencyMs: Date.now() - session.startedAt.getTime(),
         totalTokensUsed: totals.totalTokensUsed,

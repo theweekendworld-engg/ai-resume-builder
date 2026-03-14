@@ -1,6 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
+import { ResumeImportStatus, ResumeImportStep } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { parseResumeFromPdf } from '@/lib/resumeParser';
+import { enqueueResumeImportSession } from '@/lib/resumeImportQueue';
+import { prisma } from '@/lib/prisma';
+import { storeResumeImportArtifact } from '@/lib/resumeImportStorage';
 
 const MAX_FILE_SIZE = Number(process.env.RESUME_IMPORT_MAX_FILE_SIZE_KB ?? 5000) * 1024;
 
@@ -52,8 +55,27 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    const parsed = await parseResumeFromPdf(buffer, userId);
-    return NextResponse.json({ success: true, data: parsed });
+    const stored = await storeResumeImportArtifact({
+      userId,
+      fileName: file.name || 'resume.pdf',
+      buffer,
+    });
+
+    const session = await prisma.resumeImportSession.create({
+      data: {
+        userId,
+        status: ResumeImportStatus.pending,
+        currentStep: ResumeImportStep.upload_received,
+        blobKey: stored.blobKey,
+        blobUrl: stored.blobUrl,
+        fileName: file.name || 'resume.pdf',
+        stepStartedAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    await enqueueResumeImportSession(session.id);
+    return NextResponse.json({ success: true, sessionId: session.id, status: 'pending' });
   } catch (error: unknown) {
     console.error('Resume import error:', error);
     return NextResponse.json(

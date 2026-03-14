@@ -5,6 +5,12 @@ import { prisma } from '@/lib/prisma';
 import { ResumeData } from '@/types/resume';
 import { auth } from '@clerk/nextjs/server';
 import { ResumeDataSchema } from '@/lib/aiSchemas';
+import {
+    deriveResumeIdentity,
+    extractParsedJDTarget,
+    getFallbackResumeTitle,
+    resolveResumeTarget,
+} from '@/lib/resumeIdentity';
 
 const SaveResumeSchema = z.object({
     resumeData: ResumeDataSchema,
@@ -21,16 +27,30 @@ const CreateResumeSchema = z.object({
     atsScore: z.number().int().min(0).max(100).optional(),
 });
 
-function deriveResumeMetadata(resumeData: ResumeData, atsScore?: number) {
-    const targetRole = resumeData.personalInfo.title?.trim() || resumeData.experience[0]?.role?.trim() || null;
-    const targetCompany = resumeData.experience[0]?.company?.trim() || null;
+function deriveResumeMetadata(
+    resumeData: ResumeData,
+    options?: {
+        atsScore?: number;
+        targetRole?: string | null;
+        targetCompany?: string | null;
+        fallbackTargetRole?: string | null;
+        fallbackTargetCompany?: string | null;
+    }
+) {
+    const { targetRole, targetCompany } = resolveResumeTarget({
+        targetRole: options?.targetRole,
+        targetCompany: options?.targetCompany,
+        fallbackTargetRole: options?.fallbackTargetRole,
+        fallbackTargetCompany: options?.fallbackTargetCompany,
+        resumeRole: resumeData.personalInfo.title?.trim() || resumeData.experience[0]?.role?.trim() || null,
+    });
     const summaryRaw = resumeData.personalInfo.summary?.trim() || '';
     const atsSummary = summaryRaw ? summaryRaw.slice(0, 180) : null;
 
     return {
         targetRole,
         targetCompany,
-        atsScore: typeof atsScore === 'number' ? atsScore : null,
+        atsScore: typeof options?.atsScore === 'number' ? options.atsScore : null,
         atsSummary,
     };
 }
@@ -63,10 +83,20 @@ export async function saveResumeToCloud(
         const resume = safeResumeId
             ? await prisma.resume.findFirst({
                 where: { id: safeResumeId, userId },
+                select: {
+                    id: true,
+                    title: true,
+                    targetRole: true,
+                    targetCompany: true,
+                },
             })
             : null;
 
-        const metadata = deriveResumeMetadata(data as ResumeData, safeAtsScore);
+        const metadata = deriveResumeMetadata(data as ResumeData, {
+            atsScore: safeAtsScore,
+            fallbackTargetRole: resume?.targetRole,
+            fallbackTargetCompany: resume?.targetCompany,
+        });
         const savedResumeId = await prisma.$transaction(async (tx) => {
             const targetResume = resume ?? await tx.resume.create({
                 data: { userId, title: safeTitle ?? 'My Resume' },
@@ -123,11 +153,24 @@ export async function loadResumeFromCloud(resumeId?: string): Promise<{
 
         const content = (resume.content ?? null) as ResumeData | null;
         const updatedAt = resume.updatedAt;
+        const latestSession = await prisma.generationSession.findFirst({
+            where: { userId, resultResumeId: resume.id },
+            orderBy: [{ completedAt: 'desc' }, { updatedAt: 'desc' }],
+            select: { parsedJD: true },
+        });
+        const identity = deriveResumeIdentity({
+            storedTitle: resume.title,
+            storedTargetRole: resume.targetRole,
+            storedTargetCompany: resume.targetCompany,
+            parsedTarget: extractParsedJDTarget(latestSession?.parsedJD),
+            resumeData: content,
+            fallbackTitle: getFallbackResumeTitle(content?.personalInfo.fullName, 'Untitled Resume'),
+        });
 
         return {
             success: true,
             data: content ?? undefined,
-            title: resume.title,
+            title: identity.title,
             resumeId: resume.id,
             updatedAt,
         };
@@ -198,8 +241,43 @@ export async function listResumes(): Promise<{
                 atsSummary: true,
             },
         });
+        const sessions = resumes.length > 0
+            ? await prisma.generationSession.findMany({
+                where: {
+                    userId,
+                    resultResumeId: { in: resumes.map((resume) => resume.id) },
+                },
+                orderBy: [{ completedAt: 'desc' }, { updatedAt: 'desc' }],
+                select: {
+                    resultResumeId: true,
+                    parsedJD: true,
+                },
+            })
+            : [];
+        const parsedTargetByResumeId = new Map<string, ReturnType<typeof extractParsedJDTarget>>();
+        for (const session of sessions) {
+            if (!session.resultResumeId || parsedTargetByResumeId.has(session.resultResumeId)) continue;
+            parsedTargetByResumeId.set(session.resultResumeId, extractParsedJDTarget(session.parsedJD));
+        }
 
-        return { success: true, resumes };
+        return {
+            success: true,
+            resumes: resumes.map((resume) => {
+                const identity = deriveResumeIdentity({
+                    storedTitle: resume.title,
+                    storedTargetRole: resume.targetRole,
+                    storedTargetCompany: resume.targetCompany,
+                    parsedTarget: parsedTargetByResumeId.get(resume.id),
+                    fallbackTitle: resume.title,
+                });
+                return {
+                    ...resume,
+                    title: identity.title,
+                    targetRole: identity.targetRole,
+                    targetCompany: identity.targetCompany,
+                };
+            }),
+        };
     } catch (error: unknown) {
         console.error('Failed to list resumes:', error);
         return {
@@ -282,17 +360,14 @@ export async function duplicateResume(resumeId: string): Promise<{
             data: {
                 userId,
                 title: `${original.title} (Copy)`,
+                targetRole: original.targetRole,
+                targetCompany: original.targetCompany,
+                atsScore: original.atsScore,
+                atsSummary: original.atsSummary,
+                ...(original.content !== null ? { content: original.content } : {}),
             },
             select: { id: true },
         });
-
-        const content = original.content;
-        if (content) {
-            await prisma.resume.update({
-                where: { id: duplicate.id },
-                data: { content: content as object, updatedAt: new Date() },
-            });
-        }
 
         return { success: true, resumeId: duplicate.id };
     } catch (error: unknown) {

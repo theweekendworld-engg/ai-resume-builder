@@ -131,11 +131,7 @@ export function ExperienceEditor() {
                 )}
                 {experience.map((item) => (
                     <div key={item.id} className="border border-border rounded-lg bg-card/50">
-                        <button
-                            type="button"
-                            onClick={() => setExpandedId((current) => current === item.id ? null : item.id)}
-                            className="flex w-full items-start justify-between gap-4 px-5 py-4 text-left"
-                        >
+                        <div className="flex items-start justify-between gap-4 px-5 py-4">
                             <div className="min-w-0">
                                 <p className="truncate text-base font-medium">
                                     {item.role || 'Untitled role'}{item.company ? ` at ${item.company}` : ''}
@@ -155,9 +151,17 @@ export function ExperienceEditor() {
                                 >
                                     <Trash2 className="w-4 h-4 text-destructive" />
                                 </Button>
-                                {activeExpandedId === item.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => setExpandedId((current) => current === item.id ? null : item.id)}
+                                    className="h-8 w-8"
+                                >
+                                    {activeExpandedId === item.id ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                                </Button>
                             </div>
-                        </button>
+                        </div>
 
                         {activeExpandedId === item.id && (
                             <div className="border-t border-border px-5 py-5">

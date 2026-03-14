@@ -1,13 +1,12 @@
-import { Channel } from '@prisma/client';
+import { Channel, GenerationStatus } from '@prisma/client';
 import { z } from 'zod';
 import { consumeChannelLinkToken } from '@/actions/channelIdentity';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { config } from '@/lib/config';
-import { readStoredPdf } from '@/lib/pdfStorage';
+import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
 import {
   answerTelegramCallbackQuery,
-  sendTelegramDocument,
   sendTelegramMessage,
 } from '@/lib/telegram';
 
@@ -44,21 +43,6 @@ function parseStartPayload(text: string): string | null {
   return parts.length > 1 ? parts[1] : '';
 }
 
-function buildCompletionReplyMarkup(sessionId: string, resumeUrl: string | null, pdfUrl: string | null) {
-  const inline_keyboard: Array<Array<Record<string, string>>> = [];
-  if (resumeUrl) {
-    inline_keyboard.push([{ text: 'Open Resume', url: resumeUrl }]);
-  }
-  if (pdfUrl) {
-    inline_keyboard.push([{ text: 'Download PDF', url: pdfUrl }]);
-  }
-  inline_keyboard.push([
-    { text: 'Regenerate', callback_data: `regen:${sessionId}` },
-    { text: 'Status', callback_data: `status:${sessionId}` },
-  ]);
-  return { inline_keyboard };
-}
-
 async function sendTelegramStatus(chatId: string, sessionId?: string) {
   const identity = await prisma.channelIdentity.findUnique({
     where: {
@@ -82,6 +66,8 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
       id: true,
       status: true,
       currentStep: true,
+      stepStartedAt: true,
+      startedAt: true,
       atsScore: true,
       resultResumeId: true,
       pdfUrl: true,
@@ -100,95 +86,34 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
   const resumeUrl = latest.resultResumeId ? `${config.app.url}/editor/${latest.resultResumeId}` : null;
   const linkText = resumeUrl ? `\nResume: ${resumeUrl}` : '';
   const errorText = latest.errorMessage ? `\nError: ${latest.errorMessage}` : '';
+  const progress = latest.status === 'completed'
+    ? ''
+    : `\nProgress: ${getGenerationProgressPercent(latest.currentStep)}%`;
   await sendTelegramMessage({
     chatId,
-    text: `Session ${latest.id}\nStatus: ${latest.status}\nStep: ${latest.currentStep}${atsText}${linkText}${errorText}`,
-  });
-}
-
-async function trySendCompletionPdf(params: {
-  chatId: string;
-  userId?: string;
-  sessionId?: string;
-  resumeId?: string;
-  atsEstimate?: number;
-}): Promise<boolean> {
-  if (!config.features.telegramSendPdfDocument) return false;
-  if (!params.userId) return false;
-
-  try {
-    const pdfRow = await prisma.generatedPdf.findFirst({
-      where: {
-        userId: params.userId,
-        ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-        ...(params.resumeId ? { resumeId: params.resumeId } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { blobKey: true, blobUrl: true },
-    });
-
-    if (!pdfRow) return false;
-
-    let buffer: Buffer | null = null;
-    if (config.pdfStorage.mode !== 'blob') {
-      buffer = await readStoredPdf(pdfRow.blobKey);
-    }
-
-    if (!buffer && (pdfRow.blobUrl.startsWith('http://') || pdfRow.blobUrl.startsWith('https://'))) {
-      const response = await fetch(pdfRow.blobUrl);
-      if (response.ok) {
-        buffer = Buffer.from(await response.arrayBuffer());
-      }
-    }
-
-    if (!buffer) return false;
-
-    const caption = typeof params.atsEstimate === 'number'
-      ? `Tailored resume ready. ATS estimate: ${params.atsEstimate}%`
-      : 'Tailored resume ready.';
-
-    await sendTelegramDocument({
-      chatId: params.chatId,
-      fileName: 'tailored-resume.pdf',
-      document: buffer,
-      caption,
-    });
-
-    return true;
-  } catch (error: unknown) {
-    console.error('Telegram PDF push failed:', error);
-    return false;
-  }
-}
-
-async function handleCompletedResult(params: {
-  chatId: string;
-  sessionId: string;
-  resumeId?: string;
-  atsEstimate?: number;
-  pdfUrl?: string | null;
-  userId?: string;
-}) {
-  const resumeUrl = params.resumeId ? `${config.app.url}/editor/${params.resumeId}` : null;
-  const ats = typeof params.atsEstimate === 'number' ? `ATS estimate: *${params.atsEstimate}%*\n` : '';
-  const linkLine = resumeUrl ? `[Open resume](${resumeUrl})` : 'Resume generated.';
-
-  await trySendCompletionPdf({
-    chatId: params.chatId,
-    userId: params.userId,
-    sessionId: params.sessionId,
-    resumeId: params.resumeId,
-    atsEstimate: params.atsEstimate,
-  });
-
-  await sendTelegramMessage({
-    chatId: params.chatId,
-    text: `${ats}${linkLine}`,
-    replyMarkup: buildCompletionReplyMarkup(params.sessionId, resumeUrl, params.pdfUrl ?? null),
+    text: `Session ${latest.id}\nStatus: ${latest.status}\nStep: ${getGenerationStageLabel(latest.currentStep)}${progress}${atsText}${linkText}${errorText}`,
   });
 }
 
 export async function processTelegramUpdate(update: TelegramUpdatePayload): Promise<void> {
+  if (typeof update.update_id === 'number') {
+    const receipt = await prisma.telegramUpdateReceipt.findUnique({
+      where: { updateId: String(update.update_id) },
+      select: { id: true },
+    });
+    if (receipt) {
+      return;
+    }
+    const created = await prisma.telegramUpdateReceipt.create({
+      data: {
+        updateId: String(update.update_id),
+      },
+    }).then(() => true).catch(() => false);
+    if (!created) {
+      return;
+    }
+  }
+
   const callback = update.callback_query;
   if (callback?.data) {
     const chatId = String(callback.message?.chat.id ?? '');
@@ -212,19 +137,6 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
           });
           if (!regenerated.success) {
             await sendTelegramMessage({ chatId, text: `Regeneration failed: ${regenerated.error ?? 'Unknown error'}` });
-          } else if (regenerated.status === 'completed') {
-            const identity = await prisma.channelIdentity.findUnique({
-              where: { channel_externalId: { channel: Channel.telegram, externalId: chatId } },
-              select: { userId: true },
-            });
-            await handleCompletedResult({
-              chatId,
-              sessionId: regenerated.sessionId ?? sessionId,
-              resumeId: regenerated.resumeId,
-              atsEstimate: regenerated.atsEstimate,
-              pdfUrl: regenerated.pdfUrl ?? null,
-              userId: identity?.userId,
-            });
           } else {
             await sendTelegramMessage({ chatId, text: 'Regeneration started. Use /status to track progress.' });
           }
@@ -256,14 +168,6 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   }
 
   if (text.startsWith('/profile')) {
-    const profileParts = text.replace('/profile', '').trim();
-    if (!profileParts) {
-      await sendTelegramMessage({
-        chatId,
-        text: 'To update quickly, use:\n/profile Full Name | Target Title | Years Experience\nOr update full profile in dashboard.',
-      });
-      return;
-    }
     const identity = await prisma.channelIdentity.findUnique({
       where: {
         channel_externalId: { channel: Channel.telegram, externalId: chatId },
@@ -274,25 +178,54 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       await sendTelegramMessage({ chatId, text: 'Link your account first, then use /profile.' });
       return;
     }
-    const [fullName = '', defaultTitle = '', yearsExperience = ''] = profileParts.split('|').map((part) => part.trim());
-    await prisma.userProfile.upsert({
+    const profile = await prisma.userProfile.findUnique({
       where: { userId: identity.userId },
-      create: { userId: identity.userId, fullName, defaultTitle, yearsExperience },
-      update: {
-        ...(fullName ? { fullName } : {}),
-        ...(defaultTitle ? { defaultTitle } : {}),
-        ...(yearsExperience ? { yearsExperience } : {}),
+      select: {
+        fullName: true,
+        email: true,
+        phone: true,
+        location: true,
+        defaultTitle: true,
+        yearsExperience: true,
       },
     });
-    await sendTelegramMessage({ chatId, text: 'Profile updated successfully.' });
+    const notSet = 'Not set';
+    await sendTelegramMessage({
+      chatId,
+      text: `Your profile details:\n\nFull name: ${escapeMarkdown(profile?.fullName?.trim() || notSet)}\nEmail: ${escapeMarkdown(profile?.email?.trim() || notSet)}\nPhone: ${escapeMarkdown(profile?.phone?.trim() || notSet)}\nLocation: ${escapeMarkdown(profile?.location?.trim() || notSet)}\nTarget title: ${escapeMarkdown(profile?.defaultTitle?.trim() || notSet)}\nYears experience: ${escapeMarkdown(profile?.yearsExperience?.trim() || notSet)}\n\nTo update profile, use the dashboard profile section\\.`,
+    });
+    return;
+  }
+
+  if (text.startsWith('/') && !/^\/(start|generate|status|profile)\b/.test(text)) {
+    await sendTelegramMessage({
+      chatId,
+      text: 'Unknown command\\. Available commands:\n/start \\- Link account or see welcome info\n/generate \\- Start a new resume\n/status \\- Check generation progress\n/profile \\- View your profile details',
+    });
     return;
   }
 
   const startPayload = parseStartPayload(text);
   if (startPayload !== null) {
     if (!startPayload) {
-      const welcomeText = 'Send a full job description to start resume generation. Use your dashboard to generate a Telegram linking code first.';
-      await sendTelegramMessage({ chatId, text: welcomeText });
+      const existingIdentity = await prisma.channelIdentity.findUnique({
+        where: {
+          channel_externalId: { channel: Channel.telegram, externalId: chatId },
+        },
+        select: { verified: true },
+      });
+      if (existingIdentity?.verified) {
+        await sendTelegramMessage({
+          chatId,
+          text: 'Welcome back\\! Your account is linked\\.\n\nPaste a job description to generate a tailored resume, or use:\n/generate \\- start a new resume\n/status \\- check progress\n/profile \\- view your profile details',
+        });
+      } else {
+        const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
+        await sendTelegramMessage({
+          chatId,
+          text: `Welcome to Patronus\\!\n\nTo get started, link your account from the dashboard first:\n[Open Dashboard](${dashboardUrl})\n\nOnce linked, paste any job description here and I will generate a tailored resume for you\\.`,
+        });
+      }
       return;
     }
 
@@ -305,9 +238,23 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       });
 
       if (!linkResult.success) {
+        const alreadyLinked = await prisma.channelIdentity.findUnique({
+          where: {
+            channel_externalId: { channel: Channel.telegram, externalId: chatId },
+          },
+          select: { verified: true },
+        });
+        if (alreadyLinked?.verified) {
+          await sendTelegramMessage({
+            chatId,
+            text: 'Your account is already linked\\. Send a job description to get started\\!',
+          });
+          return;
+        }
+        const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
         await sendTelegramMessage({
           chatId,
-          text: `Link failed: ${escapeMarkdown(linkResult.error ?? 'Unknown error')}`,
+          text: `Link failed: ${escapeMarkdown(linkResult.error ?? 'Unknown error')}\n\n[Generate a new link from the dashboard](${dashboardUrl})`,
         });
         return;
       }
@@ -327,9 +274,69 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     return;
   }
 
+  const identity = await prisma.channelIdentity.findUnique({
+    where: {
+      channel_externalId: { channel: Channel.telegram, externalId: chatId },
+    },
+    select: { userId: true, verified: true },
+  });
+
+  if (!identity?.verified) {
+    const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
+    await sendTelegramMessage({
+      chatId,
+      text: `Your Telegram is not linked yet\\.\n\n[Link your account from the dashboard](${dashboardUrl})\n\nOnce linked, paste any job description here\\.`,
+    });
+    return;
+  }
+
+  const pendingSession = await prisma.generationSession.findFirst({
+    where: {
+      userId: identity.userId,
+      channel: Channel.telegram,
+      status: GenerationStatus.awaiting_clarification,
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true },
+  });
+
+  if (pendingSession) {
+    const result = await processChannelGenerate({
+      channel: Channel.telegram,
+      externalId: chatId,
+      sessionId: pendingSession.id,
+      message: text,
+    });
+
+    if (!result.success) {
+      await sendTelegramMessage({
+        chatId,
+        text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}`,
+      });
+      return;
+    }
+
+    if (result.status === 'awaiting_clarification') {
+      const question = result.nextQuestion?.question ?? result.questions?.[0]?.question;
+      await sendTelegramMessage({
+        chatId,
+        text: question
+          ? escapeMarkdown(question)
+          : 'Please answer the next question to continue.',
+      });
+      return;
+    }
+
+    await sendTelegramMessage({
+      chatId,
+      text: 'All clarifications received\\. Generation started\\. Use /status for progress\\.',
+    });
+    return;
+  }
+
   await sendTelegramMessage({
     chatId,
-    text: 'Processing your request... Step 1/4: understanding the job description.',
+    text: 'Processing your request\\. Creating a generation session now\\.',
   });
 
   const result = await processChannelGenerate({
@@ -352,30 +359,13 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       chatId,
       text: question
         ? `I need one clarification before finalizing:\n\n${escapeMarkdown(question)}`
-        : 'I need clarification. Please answer the next question to continue.',
-    });
-    return;
-  }
-
-  if (result.status === 'completed') {
-    const identity = await prisma.channelIdentity.findUnique({
-      where: { channel_externalId: { channel: Channel.telegram, externalId: chatId } },
-      select: { userId: true },
-    });
-
-    await handleCompletedResult({
-      chatId,
-      sessionId: result.sessionId ?? 'latest',
-      resumeId: result.resumeId,
-      atsEstimate: result.atsEstimate,
-      pdfUrl: result.pdfUrl ?? null,
-      userId: identity?.userId,
+        : 'I need clarification\\. Please answer the next question to continue\\.',
     });
     return;
   }
 
   await sendTelegramMessage({
     chatId,
-    text: 'Generation is in progress. Step 2/4 complete. Use /status for live progress.',
+    text: 'Generation started\\. Use /status for live progress\\.',
   });
 }

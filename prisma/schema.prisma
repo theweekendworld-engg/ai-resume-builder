@@ -31,6 +31,14 @@ enum GenerationStatus {
     failed
 }
 
+enum ResumeImportStatus {
+    pending
+    processing
+    ready
+    completed
+    failed
+}
+
 enum Channel {
     web
     telegram
@@ -50,6 +58,15 @@ enum PipelineStep {
     ats_scoring
     pdf_generation
     completed
+}
+
+enum ResumeImportStep {
+    upload_received
+    pdf_text_extract
+    pdf_link_extract
+    ai_parse
+    ready
+    failed
 }
 
 model Resume {
@@ -181,6 +198,7 @@ model GenerationSession {
     matchedProjects Json?
     matchedAchievements Json?
     staticData     Json?
+    fallbackResume Json?
     paraphrasedContent Json?
     draftResume    Json?
     validationResult Json?
@@ -192,6 +210,10 @@ model GenerationSession {
     resultResumeId String?
     errorMessage   String?
     errorStep      PipelineStep?
+    workflowRunId  String?
+    stepStartedAt  DateTime?
+    lastNotifiedState String?
+    retryCount     Int              @default(0)
     startedAt      DateTime         @default(now())
     completedAt    DateTime?
     totalLatencyMs Int?
@@ -203,6 +225,33 @@ model GenerationSession {
     @@index([userId, updatedAt])
     @@index([status, updatedAt])
     @@index([status])
+}
+
+model ResumeImportSession {
+    id             String             @id @default(cuid())
+    userId         String
+    status         ResumeImportStatus @default(pending)
+    currentStep    ResumeImportStep   @default(upload_received)
+    workflowRunId  String?
+    blobKey        String
+    blobUrl        String
+    fileName       String
+    parsedData     Json?
+    errorMessage   String?
+    stepStartedAt  DateTime?
+    startedAt      DateTime           @default(now())
+    completedAt    DateTime?
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
+
+    @@index([userId, updatedAt])
+    @@index([status, updatedAt])
+}
+
+model TelegramUpdateReceipt {
+    id         String   @id @default(cuid())
+    updateId    String   @unique
+    createdAt   DateTime @default(now())
 }
 
 model GeneratedPdf {

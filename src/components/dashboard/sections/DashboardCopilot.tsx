@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
 
 type PipelineStepId =
   | 'reuse_check'
@@ -48,6 +49,9 @@ export function DashboardCopilot() {
     gap: string;
   } | null>(null);
   const [clarificationAnswer, setClarificationAnswer] = useState('');
+  const trackGenerationSession = useGenerationMonitorStore((state) => state.trackSession);
+  const markGenerationCompleted = useGenerationMonitorStore((state) => state.markCompleted);
+  const markGenerationFailed = useGenerationMonitorStore((state) => state.markFailed);
 
   const handleStartGeneration = () => {
     const trimmed = jd.trim();
@@ -71,6 +75,9 @@ export function DashboardCopilot() {
 
       if (!result.success) {
         toast.error(result.error ?? 'Failed to start generation');
+        if (sessionId) {
+          markGenerationFailed(result.error ?? 'Failed to start generation');
+        }
         return;
       }
 
@@ -78,17 +85,31 @@ export function DashboardCopilot() {
         setSessionId(result.sessionId);
         setStatus('awaiting_clarification');
         setClarificationQuestion(result.nextQuestion);
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: '/dashboard',
+        });
         return;
       }
 
       if (result.status === 'generating' && result.sessionId) {
         setSessionId(result.sessionId);
         setStatus('generating');
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'generating',
+          sourcePath: '/dashboard',
+        });
         startStreaming(result.sessionId);
         return;
       }
 
       if (result.status === 'completed' && result.resumeId) {
+        markGenerationCompleted({
+          resumeId: result.resumeId,
+          atsScore: result.atsEstimate,
+        });
         toast.success('Resume ready');
         router.push(`/editor/${result.resumeId}`);
         return;
@@ -110,12 +131,18 @@ export function DashboardCopilot() {
 
       if (!result.success) {
         toast.error(result.error ?? 'Failed to submit');
+        markGenerationFailed(result.error ?? 'Failed to submit');
         return;
       }
 
       if (result.status === 'awaiting_clarification' && result.nextQuestion) {
         setClarificationQuestion(result.nextQuestion);
         setClarificationAnswer('');
+        trackGenerationSession({
+          sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: '/dashboard',
+        });
         return;
       }
 
@@ -123,11 +150,20 @@ export function DashboardCopilot() {
         setClarificationQuestion(null);
         setClarificationAnswer('');
         setStatus('generating');
+        trackGenerationSession({
+          sessionId,
+          status: 'generating',
+          sourcePath: '/dashboard',
+        });
         startStreaming(sessionId);
         return;
       }
 
       if (result.status === 'completed' && result.resumeId) {
+        markGenerationCompleted({
+          resumeId: result.resumeId,
+          atsScore: result.atsEstimate,
+        });
         toast.success('Resume ready');
         router.push(`/editor/${result.resumeId}`);
       }
