@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { updateTag } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
@@ -46,7 +46,7 @@ async function getUserId(): Promise<string | null> {
 }
 
 function revalidateProfileCaches(userId: string) {
-  revalidateTag(`dashboard:${userId}`);
+  updateTag(`dashboard:${userId}`);
 }
 
 function normalizePreferenceInput(value: unknown): unknown {

@@ -352,8 +352,22 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
           open={showImportPreview}
           onClose={() => setShowImportPreview(false)}
           onImported={() => {
+            const pi = parsedData.personalInfo;
+            setPersonal((prev) => ({
+              ...prev,
+              fullName: pi.fullName || prev.fullName,
+              email: pi.email || prev.email,
+              phone: pi.phone || prev.phone,
+              location: pi.location || prev.location,
+              website: pi.website || prev.website,
+              linkedin: pi.linkedin || prev.linkedin,
+              github: pi.github || prev.github,
+              defaultTitle: pi.title || prev.defaultTitle,
+              defaultSummary: pi.summary || prev.defaultSummary,
+            }));
+            refreshExperiences();
+            refreshEducation();
             setShowImportPreview(false);
-            router.refresh();
           }}
         />
       )}
