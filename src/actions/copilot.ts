@@ -291,7 +291,7 @@ Generate a JSON object with:
    - "summary": improved professional summary string tailored to the job
    - "experience": array of improved experience items (MUST keep same structure: id, company, role, startDate, endDate, current, location, description)
    - "projects": array of project items - IMPROVE existing projects AND ADD NEW PROJECTS from the GitHub repos above that are relevant to the job. Each project needs: id (generate UUID for new ones), name, description (2-3 sentences with impact), liveUrl (if available), repoUrl (for GitHub repo), url (primary fallback URL), technologies (array of tech used)
-   - "skills": array of optimized skills strings (prioritize job-relevant skills)
+   - "skills": array of optimized skills strings (prioritize job-relevant technical skills only)
 
 2. "rationale": array of 3-5 strings explaining key changes made
 
@@ -303,6 +303,8 @@ IMPORTANT RULES:
 - ADD new projects from GitHub repos that match the job requirements
 - Use strong action verbs and quantify achievements
 - Prioritize job-relevant keywords
+- Skills must contain only specific technical terms such as languages, frameworks, libraries, databases, cloud platforms, infra tools, developer tools, AI systems, search/vector systems, or domain technologies
+- Do NOT include soft skills, generic engineering traits, or practices like debugging, problem solving, source control, branching, merging, rebasing, communication, leadership, collaboration, ownership, or trade-offs
 
 Output ONLY valid JSON, no markdown.`;
 

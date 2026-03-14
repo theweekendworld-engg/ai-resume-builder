@@ -19,7 +19,10 @@ Quality rules:
 - Keep each bullet short (target <= 26 words) and avoid paragraph-style blocks.
 - Prioritize role-relevant achievements.
 - Keep keywords natural and distributed across sections.
-- Preserve top links when available (GitHub, Portfolio, LinkedIn).`;
+- Preserve top links when available (GitHub, Portfolio, LinkedIn).
+- In the skills section, include only concrete technical terms such as languages, frameworks, databases, infra tools, cloud platforms, developer tools, AI systems, search/vector systems, and domain technologies.
+- Never include soft skills or generic engineering traits in the skills section.
+- Exclude items like debugging, problem solving, source control, branching, merging, rebasing, communication, leadership, collaboration, ownership, and trade-offs.`;
 
 export const JD_PARSER_PROMPT = `Parse the job description into structured hiring requirements.
 Return concise fields for role, company, required/preferred skills, responsibilities, seniority, and soft skills.

@@ -101,7 +101,7 @@ interface ResumeState {
     updatePersonalInfo: (info: Partial<ResumeData['personalInfo']>) => void;
 
     // Experience
-    addExperience: () => void;
+    addExperience: (data?: Partial<ExperienceItem>) => void;
     updateExperience: (id: string, item: Partial<ExperienceItem>) => void;
     removeExperience: (id: string) => void;
     reorderExperience: (items: ExperienceItem[]) => void;
@@ -345,7 +345,7 @@ export const useResumeStore = create<ResumeState>()(
                 });
             },
 
-            addExperience: () => {
+            addExperience: (data) => {
                 const { resumeData, visualDataVersion } = get();
                 set({
                     resumeData: {
@@ -354,13 +354,13 @@ export const useResumeStore = create<ResumeState>()(
                             ...resumeData.experience,
                             {
                                 id: uuidv4(),
-                                company: "",
-                                role: "",
-                                startDate: "",
-                                endDate: "",
-                                current: false,
-                                location: "",
-                                description: "",
+                                company: data?.company || "",
+                                role: data?.role || "",
+                                startDate: data?.startDate || "",
+                                endDate: data?.endDate || "",
+                                current: data?.current || false,
+                                location: data?.location || "",
+                                description: data?.description || "",
                             },
                         ],
                     },
@@ -526,6 +526,17 @@ export const useResumeStore = create<ResumeState>()(
         }),
         {
             name: 'resume-storage',
+            partialize: (state) => ({
+                resumeData: state.resumeData,
+                githubUsername: state.githubUsername,
+                latexCode: state.latexCode,
+                editorMode: state.editorMode,
+                selectedTemplate: state.selectedTemplate,
+                isGenerating: state.isGenerating,
+                lastSyncedLatex: state.lastSyncedLatex,
+                visualDataVersion: state.visualDataVersion,
+                latexVersion: state.latexVersion,
+            }),
             merge: (persistedState: unknown, currentState) => {
                 const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;
                 if (hydratedState.resumeData) {

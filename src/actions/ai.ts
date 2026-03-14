@@ -627,7 +627,14 @@ export async function improveSection(
             basePrompt = `Improve this project description into 3-4 concise bullets with concrete technologies and impact. Max ${MAX_BULLET_WORDS} words per bullet.`;
             break;
         case 'skills':
-            basePrompt = 'Optimize and expand this skills list to better match the job requirements.';
+            basePrompt = `Optimize this skills list to better match the job requirements.
+
+Rules:
+- Include only concrete technical skills such as programming languages, frameworks, libraries, databases, cloud platforms, infrastructure tools, developer tools, AI systems, search systems, vector databases, protocols, or domain-specific technologies.
+- Do NOT include soft skills, personality traits, work style, or generic engineering practices.
+- Exclude entries like debugging, problem solving, source control, branching, merging, rebasing, communication, leadership, collaboration, ownership, or trade-offs.
+- Prefer specific technologies over broad labels.
+- Output only a concise comma-separated technical skills list.`;
             break;
     }
 

@@ -10,6 +10,7 @@ import {
   searchQdrantByUser,
   upsertKnowledgeItemEmbedding,
 } from '@/actions/embed';
+import { extractKeywords } from '@/actions/ai';
 
 const MAX_CONTENT_LENGTH = 5000;
 const MAX_QUERY_LENGTH = 1000;
@@ -147,10 +148,19 @@ export async function searchKnowledgeBase(query: string) {
   const limit = await checkKbRateLimit(`kb:search:${userId}`);
   if (!limit.allowed) return [];
 
+  let optimizedQuery = parsed.data;
+  if (optimizedQuery.length > 100) {
+    const keywords = await extractKeywords(optimizedQuery);
+    if (keywords.length > 0) {
+      optimizedQuery = keywords.join(' ');
+      console.log('Optimized KB search query:', optimizedQuery);
+    }
+  }
+
   try {
     const searchResult = await searchQdrantByUser({
       userId,
-      query: parsed.data,
+      query: optimizedQuery,
       limit: 5,
     });
 

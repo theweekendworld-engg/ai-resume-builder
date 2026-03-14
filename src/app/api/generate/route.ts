@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     const result = await processChannelGenerate({
       sessionId: body?.sessionId,
       userId: authUserId,
+      sourceResumeId: body?.sourceResumeId,
       channel,
       externalId: body?.externalId,
       message: body?.message,

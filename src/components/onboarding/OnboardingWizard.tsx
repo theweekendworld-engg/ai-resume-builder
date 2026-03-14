@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { generateInitialResume } from '@/actions/generate';
 import { getUserProfile } from '@/actions/profile';
-import { importParsedResumeData } from '@/actions/resumeImport';
 import { Button } from '@/components/ui/button';
 import { StepBackground } from '@/components/onboarding/StepBackground';
 import { StepTemplate } from '@/components/onboarding/StepTemplate';
@@ -37,6 +36,7 @@ type GeneratePayload = {
   email: string;
   phone: string;
   linkedin: string;
+  parsedResume?: ParsedResumeData;
   template: 'ats-simple' | 'modern' | 'classic';
 };
 
@@ -149,6 +149,7 @@ export function OnboardingWizard() {
       email: state.email,
       phone: state.phone,
       linkedin: state.linkedin,
+      parsedResume: state.parsedResume,
       template: state.template,
     });
   };
@@ -167,13 +168,6 @@ export function OnboardingWizard() {
         };
       }
       return;
-    }
-
-    if (state.parsedResume) {
-      importParsedResumeData(state.parsedResume, {
-        mergeProfile: false,
-        sections: { experience: true, education: true, projects: true, achievements: true },
-      }).catch(() => undefined);
     }
 
     if (generateState.resumeId) {

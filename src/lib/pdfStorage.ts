@@ -18,6 +18,17 @@ type StorePdfInput = {
   pdfBuffer: Buffer;
 };
 
+const globalForPdfStorage = globalThis as typeof globalThis & {
+  pdfMemoryStore?: Map<string, Buffer>;
+};
+
+function getMemoryStore(): Map<string, Buffer> {
+  if (!globalForPdfStorage.pdfMemoryStore) {
+    globalForPdfStorage.pdfMemoryStore = new Map<string, Buffer>();
+  }
+  return globalForPdfStorage.pdfMemoryStore;
+}
+
 function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
@@ -26,6 +37,22 @@ function getLocalStorageRoot(): string {
   const configured = config.pdfStorage.localDir.trim();
   if (path.isAbsolute(configured)) return configured;
   return path.join(process.cwd(), configured);
+}
+
+async function storeMemoryPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
+  const safeUser = sanitizeSegment(input.userId);
+  const safeResume = sanitizeSegment(input.resumeId);
+  const safeSession = sanitizeSegment(input.sessionId || 'session');
+  const filename = `${Date.now()}-${randomUUID()}.pdf`;
+  const blobKey = `pdfs/${safeUser}/${safeResume}/${safeSession}/${filename}`;
+
+  getMemoryStore().set(blobKey, Buffer.from(input.pdfBuffer));
+
+  return {
+    blobKey,
+    blobUrl: `memory://${blobKey}`,
+    fileSizeBytes: input.pdfBuffer.byteLength,
+  };
 }
 
 async function storeLocalPdf(input: StorePdfInput): Promise<StoredPdfArtifact> {
@@ -85,10 +112,18 @@ export async function storePdfArtifact(input: StorePdfInput): Promise<StoredPdfA
     return storeBlobPdf(input);
   }
 
+  if (config.pdfStorage.mode === 'memory') {
+    return storeMemoryPdf(input);
+  }
+
   return storeLocalPdf(input);
 }
 
 export async function readStoredPdf(blobKey: string): Promise<Buffer | null> {
+  if (config.pdfStorage.mode === 'memory') {
+    return getMemoryStore().get(blobKey) ?? null;
+  }
+
   if (config.pdfStorage.mode !== 'local') return null;
   const root = getLocalStorageRoot();
   const absolutePath = path.join(root, blobKey);

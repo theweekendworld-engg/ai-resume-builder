@@ -8,12 +8,6 @@ datasource db {
     directUrl = env("DIRECT_URL")
 }
 
-enum ResumeVersionSource {
-    manual
-    ai
-    import
-}
-
 enum ProjectSource {
     github
     manual
@@ -33,6 +27,14 @@ enum GenerationStatus {
     pending
     awaiting_clarification
     generating
+    completed
+    failed
+}
+
+enum ResumeImportStatus {
+    pending
+    processing
+    ready
     completed
     failed
 }
@@ -58,6 +60,15 @@ enum PipelineStep {
     completed
 }
 
+enum ResumeImportStep {
+    upload_received
+    pdf_text_extract
+    pdf_link_extract
+    ai_parse
+    ready
+    failed
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
@@ -66,44 +77,24 @@ model Resume {
     targetCompany String?
     atsScore      Int?
     atsSummary    String?
-    /// Legacy payload. New writes should go to `ResumeVersion`.
     content   Json?
-    currentVersionId String? @unique
-    currentVersion   ResumeVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
-    versions         ResumeVersion[] @relation("ResumeVersions")
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
     @@index([userId, updatedAt])
 }
 
-model ResumeVersion {
-    id            String   @id @default(cuid())
-    userId        String
-    resumeId      String
-    resume        Resume   @relation("ResumeVersions", fields: [resumeId], references: [id], onDelete: Cascade)
-    /// Back-reference for Resume.currentVersion (0..1).
-    currentFor    Resume?  @relation("CurrentVersion")
-
-    schemaVersion Int      @default(1)
-    source        ResumeVersionSource @default(manual)
-    content       Json
-
-    createdAt     DateTime @default(now())
-
-    @@index([userId, createdAt])
-    @@index([resumeId, createdAt])
-}
-
 model JobTarget {
     id          String   @id @default(cuid())
     userId      String
+    resumeId    String?
     company     String   @default("")
     role        String   @default("")
     description String
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
 
+    @@index([userId, resumeId, updatedAt])
     @@index([userId, updatedAt])
 }
 
@@ -157,6 +148,7 @@ model UserExperience {
     description String   @default("")
     highlights  Json     @default("[]")
     qdrantPointId String?
+    embedded    Boolean  @default(false)
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
 
@@ -196,6 +188,7 @@ model KnowledgeItem {
 model GenerationSession {
     id             String           @id @default(cuid())
     userId         String
+    sourceResumeId String?
     jobTargetId    String?
     jobDescription String
     channel        Channel          @default(web)
@@ -205,6 +198,7 @@ model GenerationSession {
     matchedProjects Json?
     matchedAchievements Json?
     staticData     Json?
+    fallbackResume Json?
     paraphrasedContent Json?
     draftResume    Json?
     validationResult Json?
@@ -216,6 +210,10 @@ model GenerationSession {
     resultResumeId String?
     errorMessage   String?
     errorStep      PipelineStep?
+    workflowRunId  String?
+    stepStartedAt  DateTime?
+    lastNotifiedState String?
+    retryCount     Int              @default(0)
     startedAt      DateTime         @default(now())
     completedAt    DateTime?
     totalLatencyMs Int?
@@ -227,6 +225,33 @@ model GenerationSession {
     @@index([userId, updatedAt])
     @@index([status, updatedAt])
     @@index([status])
+}
+
+model ResumeImportSession {
+    id             String             @id @default(cuid())
+    userId         String
+    status         ResumeImportStatus @default(pending)
+    currentStep    ResumeImportStep   @default(upload_received)
+    workflowRunId  String?
+    blobKey        String
+    blobUrl        String
+    fileName       String
+    parsedData     Json?
+    errorMessage   String?
+    stepStartedAt  DateTime?
+    startedAt      DateTime           @default(now())
+    completedAt    DateTime?
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
+
+    @@index([userId, updatedAt])
+    @@index([status, updatedAt])
+}
+
+model TelegramUpdateReceipt {
+    id         String   @id @default(cuid())
+    updateId    String   @unique
+    createdAt   DateTime @default(now())
 }
 
 model GeneratedPdf {

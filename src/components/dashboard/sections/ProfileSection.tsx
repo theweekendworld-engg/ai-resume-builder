@@ -6,6 +6,7 @@ import {
   createUserExperience,
   deleteUserExperience,
   listUserExperiences,
+  updateUserExperience,
 } from '@/actions/experiences';
 import {
   createUserEducation,
@@ -27,6 +28,7 @@ import { ResumeUploadZone } from '@/components/resume-import/ResumeUploadZone';
 import { ImportPreviewDialog } from '@/components/resume-import/ImportPreviewDialog';
 import type { ParsedResumeData } from '@/lib/aiSchemas';
 import { toast } from 'sonner';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 type ProjectItem = {
   id: string;
@@ -367,8 +369,16 @@ function ExperienceTab({
   onRefresh: () => void;
 }) {
   const [form, setForm] = useState({ company: '', role: '', startDate: '', endDate: '', current: false, location: '', description: '' });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{ company: string; role: string; startDate: string; endDate: string; current: boolean; location: string; description: string } | null>(null);
+  const [addingNew, setAddingNew] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  const activeExpandedId = experiences.some((item) => item.id === expandedId)
+    ? expandedId
+    : experiences[0]?.id ?? null;
 
   const add = () => {
     startTransition(async () => {
@@ -379,6 +389,38 @@ function ExperienceTab({
       }
       toast.success('Experience added');
       setForm({ company: '', role: '', startDate: '', endDate: '', current: false, location: '', description: '' });
+      setAddingNew(false);
+      onRefresh();
+      router.refresh();
+    });
+  };
+
+  const startEdit = (entry: { id: string; company: string; role: string; startDate: string; endDate: string; current: boolean; location: string; description: string }) => {
+    setExpandedId(entry.id);
+    setEditingId(entry.id);
+    setEditForm({
+      company: entry.company,
+      role: entry.role,
+      startDate: entry.startDate,
+      endDate: entry.endDate,
+      current: entry.current,
+      location: entry.location,
+      description: entry.description,
+    });
+  };
+
+  const saveEdit = () => {
+    if (!editingId || !editForm) return;
+
+    startTransition(async () => {
+      const r = await updateUserExperience({ id: editingId, ...editForm });
+      if (!r.success) {
+        toast.error(r.error ?? 'Failed to update');
+        return;
+      }
+      toast.success('Experience updated');
+      setEditingId(null);
+      setEditForm(null);
       onRefresh();
       router.refresh();
     });
@@ -397,42 +439,114 @@ function ExperienceTab({
     });
   };
 
+  const draftCanSave = form.company && form.role && form.startDate;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Work experience</CardTitle>
-        <CardDescription>Reusable experience entries for generation.</CardDescription>
+        <CardDescription>Keep entries easy to scan. Expand a role only when you need to edit details.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input placeholder="Company" value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))} />
-          <Input placeholder="Role" value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))} />
-          <Input placeholder="Start date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-          <Input placeholder="End date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-          <Input placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={form.current} onChange={(e) => setForm((p) => ({ ...p, current: e.target.checked }))} />
-            <Label>Current</Label>
-          </div>
-          <div className="sm:col-span-2">
-            <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={2} />
-          </div>
-          <Button onClick={add} disabled={pending || !form.company || !form.role || !form.startDate}>Add experience</Button>
-        </div>
-        <ul className="space-y-3">
-          {experiences.map((e) => (
-            <li key={e.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
-              <div>
-                <p className="font-medium">{e.role} at {e.company}</p>
-                <p className="text-xs text-muted-foreground">{e.startDate} – {e.current ? 'Present' : e.endDate}</p>
+        <div className="space-y-3">
+          {experiences.map((e) => {
+            const isExpanded = activeExpandedId === e.id;
+            const isEditing = editingId === e.id && editForm;
+
+            return (
+              <div key={e.id} className="rounded-lg border">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId((current) => current === e.id ? null : e.id)}
+                  className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="font-medium">{e.role} at {e.company}</p>
+                    <p className="text-xs text-muted-foreground">{e.startDate} – {e.current ? 'Present' : e.endDate || 'End date not set'}</p>
+                  </div>
+                  {isExpanded ? <ChevronUp className="mt-1 h-4 w-4 text-muted-foreground" /> : <ChevronDown className="mt-1 h-4 w-4 text-muted-foreground" />}
+                </button>
+
+                {isExpanded && (
+                  <div className="space-y-4 border-t px-4 py-4">
+                    {isEditing ? (
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <Input placeholder="Company" value={editForm.company} onChange={(event) => setEditForm((current) => current ? ({ ...current, company: event.target.value }) : current)} />
+                          <Input placeholder="Role" value={editForm.role} onChange={(event) => setEditForm((current) => current ? ({ ...current, role: event.target.value }) : current)} />
+                          <Input placeholder="Start date" value={editForm.startDate} onChange={(event) => setEditForm((current) => current ? ({ ...current, startDate: event.target.value }) : current)} />
+                          <Input placeholder="End date" value={editForm.endDate} disabled={editForm.current} onChange={(event) => setEditForm((current) => current ? ({ ...current, endDate: event.target.value }) : current)} />
+                          <Input placeholder="Location" value={editForm.location} onChange={(event) => setEditForm((current) => current ? ({ ...current, location: event.target.value }) : current)} />
+                          <div className="flex items-center gap-2">
+                            <input type="checkbox" checked={editForm.current} onChange={(event) => setEditForm((current) => current ? ({ ...current, current: event.target.checked }) : current)} />
+                            <Label>Current</Label>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <Textarea placeholder="Description" value={editForm.description} onChange={(event) => setEditForm((current) => current ? ({ ...current, description: event.target.value }) : current)} rows={4} />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button onClick={saveEdit} disabled={pending || !editForm.company || !editForm.role || !editForm.startDate}>Save changes</Button>
+                          <Button variant="outline" onClick={() => { setEditingId(null); setEditForm(null); }}>Cancel</Button>
+                          <Button variant="outline" onClick={() => remove(e.id)} disabled={pending}>Delete</Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          {e.location && <p className="text-sm text-muted-foreground">{e.location}</p>}
+                          {e.description ? (
+                            <p className="whitespace-pre-wrap text-sm text-muted-foreground">{e.description}</p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">No description added yet.</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => startEdit(e)}>Edit</Button>
+                          <Button variant="outline" size="sm" onClick={() => remove(e.id)} disabled={pending}>Delete</Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
-              <Button variant="outline" size="sm" onClick={() => remove(e.id)} disabled={pending}>Delete</Button>
-            </li>
-          ))}
-        </ul>
+            );
+          })}
+        </div>
         {experiences.length === 0 && (
           <p className="text-sm text-muted-foreground">No experience entries yet.</p>
         )}
+
+        <div className="rounded-lg border border-dashed p-4">
+          {!addingNew ? (
+            <Button variant="outline" onClick={() => setAddingNew(true)} className="w-full">Add experience</Button>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">New experience</p>
+                <p className="text-xs text-muted-foreground">Add the basics first, then come back to refine details.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input placeholder="Company" value={form.company} onChange={(e) => setForm((p) => ({ ...p, company: e.target.value }))} />
+                <Input placeholder="Role" value={form.role} onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))} />
+                <Input placeholder="Start date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
+                <Input placeholder="End date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
+                <Input placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" checked={form.current} onChange={(e) => setForm((p) => ({ ...p, current: e.target.checked }))} />
+                  <Label>Current</Label>
+                </div>
+                <div className="sm:col-span-2">
+                  <Textarea placeholder="Description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} rows={3} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={add} disabled={pending || !draftCanSave}>Save experience</Button>
+                <Button variant="outline" onClick={() => setAddingNew(false)}>Cancel</Button>
+              </div>
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

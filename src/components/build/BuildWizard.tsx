@@ -8,8 +8,10 @@ import { processChannelGenerate } from '@/actions/channelGenerate';
 import { getGitHubIntegrationStatus, syncTopGitHubProjects } from '@/actions/github';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
 import { toast } from 'sonner';
 
 type StreamDetails = {
@@ -76,6 +78,10 @@ export function BuildWizard() {
   const [currentStep, setCurrentStep] = useState<PipelineStepId | null>(null);
   const [stepDetails, setStepDetails] = useState<StreamDetails | null>(null);
   const [atsEstimate, setAtsEstimate] = useState<number | null>(null);
+  const [stageLabel, setStageLabel] = useState<string>('Preparing your session');
+  const [progressPercent, setProgressPercent] = useState<number>(5);
+  const [elapsedMs, setElapsedMs] = useState<number>(0);
+  const [detailLines, setDetailLines] = useState<string[]>([]);
   const [clarificationQuestion, setClarificationQuestion] = useState<{ id: string; question: string; gap: string } | null>(null);
   const [clarificationAnswer, setClarificationAnswer] = useState('');
   const [syncGitHub, setSyncGitHub] = useState(true);
@@ -95,6 +101,9 @@ export function BuildWizard() {
     message: null,
   });
   const [isPending, startTransition] = useTransition();
+  const trackGenerationSession = useGenerationMonitorStore((state) => state.trackSession);
+  const markGenerationCompleted = useGenerationMonitorStore((state) => state.markCompleted);
+  const markGenerationFailed = useGenerationMonitorStore((state) => state.markFailed);
 
   useEffect(() => {
     let mounted = true;
@@ -160,15 +169,31 @@ export function BuildWizard() {
           step?: PipelineStepId;
           atsScore?: number | null;
           details?: StreamDetails;
+          stageLabel?: string;
+          progressPercent?: number;
+          elapsedMs?: number;
+          detailLines?: string[];
         };
         if (payload.step) {
           setCurrentStep(payload.step);
+        }
+        if (payload.stageLabel) {
+          setStageLabel(payload.stageLabel);
+        }
+        if (typeof payload.progressPercent === 'number') {
+          setProgressPercent(payload.progressPercent);
+        }
+        if (typeof payload.elapsedMs === 'number') {
+          setElapsedMs(payload.elapsedMs);
         }
         if (typeof payload.atsScore === 'number') {
           setAtsEstimate(payload.atsScore);
         }
         if (payload.details && typeof payload.details === 'object') {
           setStepDetails(payload.details);
+        }
+        if (Array.isArray(payload.detailLines)) {
+          setDetailLines(payload.detailLines.filter((line): line is string => typeof line === 'string'));
         }
       } catch {
         // Ignore malformed event payloads.
@@ -242,11 +267,15 @@ export function BuildWizard() {
     setCurrentStep(null);
     setStepDetails(null);
     setAtsEstimate(null);
+    setStageLabel('Preparing your session');
+    setProgressPercent(5);
+    setElapsedMs(0);
+    setDetailLines([]);
     setClarificationQuestion(null);
     setClarificationAnswer('');
 
     startTransition(async () => {
-      void startGitHubSyncIfNeeded();
+      await startGitHubSyncIfNeeded();
 
       const result = await processChannelGenerate({
         channel: 'web' as const,
@@ -256,6 +285,9 @@ export function BuildWizard() {
       if (!result.success) {
         setStatus('failed');
         setError(result.error ?? 'Failed to start generation.');
+        if (sessionId) {
+          markGenerationFailed(result.error ?? 'Failed to start generation.');
+        }
         return;
       }
 
@@ -263,12 +295,22 @@ export function BuildWizard() {
         setStatus('awaiting_clarification');
         setSessionId(result.sessionId);
         setClarificationQuestion(result.nextQuestion);
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: '/build',
+        });
         return;
       }
 
       if (result.status === 'generating' && result.sessionId) {
         setStatus('generating');
         setSessionId(result.sessionId);
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'generating',
+          sourcePath: '/build',
+        });
         startStreaming(result.sessionId);
         return;
       }
@@ -281,6 +323,10 @@ export function BuildWizard() {
         if (typeof result.atsEstimate === 'number') {
           setAtsEstimate(result.atsEstimate);
         }
+        markGenerationCompleted({
+          resumeId: result.resumeId,
+          atsScore: result.atsEstimate,
+        });
         return;
       }
 
@@ -302,6 +348,7 @@ export function BuildWizard() {
       if (!result.success) {
         setStatus('failed');
         setError(result.error ?? 'Failed to submit clarification.');
+        markGenerationFailed(result.error ?? 'Failed to submit clarification.');
         return;
       }
 
@@ -309,6 +356,11 @@ export function BuildWizard() {
         setStatus('awaiting_clarification');
         setClarificationQuestion(result.nextQuestion);
         setClarificationAnswer('');
+        trackGenerationSession({
+          sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: '/build',
+        });
         return;
       }
 
@@ -316,6 +368,11 @@ export function BuildWizard() {
         setStatus('generating');
         setClarificationQuestion(null);
         setClarificationAnswer('');
+        trackGenerationSession({
+          sessionId,
+          status: 'generating',
+          sourcePath: '/build',
+        });
         startStreaming(sessionId);
         return;
       }
@@ -329,6 +386,10 @@ export function BuildWizard() {
         if (typeof result.atsEstimate === 'number') {
           setAtsEstimate(result.atsEstimate);
         }
+        markGenerationCompleted({
+          resumeId: result.resumeId,
+          atsScore: result.atsEstimate,
+        });
       }
     });
   };
@@ -343,6 +404,10 @@ export function BuildWizard() {
     setCurrentStep(null);
     setStepDetails(null);
     setAtsEstimate(null);
+    setStageLabel('Preparing your session');
+    setProgressPercent(5);
+    setElapsedMs(0);
+    setDetailLines([]);
     setClarificationQuestion(null);
     setClarificationAnswer('');
   };
@@ -463,7 +528,30 @@ export function BuildWizard() {
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-border bg-secondary/30 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">{stageLabel}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Elapsed: {Math.max(0, Math.round(elapsedMs / 1000))}s
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium text-muted-foreground">{progressPercent}%</span>
+                    </div>
+                    <Progress value={progressPercent} className="mt-3" />
+                    {detailLines.length > 0 && (
+                      <div className="mt-3 space-y-1">
+                        {detailLines.map((line) => (
+                          <p key={line} className="text-xs text-muted-foreground">
+                            {line}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
                   {PIPELINE_STEPS.map((step, index) => {
                     const done = status === 'completed' || (currentStepIndex >= 0 && index < currentStepIndex);
                     const active = status === 'generating' && currentStep === step.id;
@@ -486,6 +574,7 @@ export function BuildWizard() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               )}
 

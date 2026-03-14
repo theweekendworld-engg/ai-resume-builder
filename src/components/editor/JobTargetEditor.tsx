@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
 import {
   Tooltip,
   TooltipContent,
@@ -51,7 +52,11 @@ const PIPELINE_STEPS: Array<{ id: PipelineStepId; label: string }> = [
   { id: 'pdf_generation', label: 'Preparing PDF output' },
 ];
 
-export function JobTargetEditor() {
+interface JobTargetEditorProps {
+  resumeId: string;
+}
+
+export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
   const {
     resumeData,
     jobDescription,
@@ -79,6 +84,9 @@ export function JobTargetEditor() {
     matchedAchievements?: number;
   } | null>(null);
   const [streamAts, setStreamAts] = useState<number | null>(null);
+  const trackGenerationSession = useGenerationMonitorStore((state) => state.trackSession);
+  const markGenerationCompleted = useGenerationMonitorStore((state) => state.markCompleted);
+  const markGenerationFailed = useGenerationMonitorStore((state) => state.markFailed);
 
   useEffect(() => {
     return () => {
@@ -199,12 +207,16 @@ export function JobTargetEditor() {
       const result = await processChannelGenerate({
         channel: 'web' as const,
         message: jobDescription,
+        sourceResumeId: resumeId,
         fallbackResumeData: resumeData,
       });
 
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to generate. Please try again.');
+        if (clarificationSessionId) {
+          markGenerationFailed(result.error ?? 'Failed to generate. Please try again.');
+        }
         return;
       }
 
@@ -213,17 +225,31 @@ export function JobTargetEditor() {
         setClarificationSessionId(result.sessionId);
         setClarificationQuestion(result.nextQuestion);
         setSuccess('We found a few gaps. Answer this question to improve accuracy.');
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'awaiting_clarification',
+          sourcePath: `/editor/${resumeId}`,
+        });
         return;
       }
 
       if (result.status === 'generating' && result.sessionId) {
         setClarificationSessionId(result.sessionId);
+        trackGenerationSession({
+          sessionId: result.sessionId,
+          status: 'generating',
+          sourcePath: `/editor/${resumeId}`,
+        });
         startStreaming(result.sessionId);
         return;
       }
 
       if (result.status === 'completed') {
         setIsGenerating(false);
+        markGenerationCompleted({
+          resumeId: result.resumeId ?? resumeId,
+          atsScore: result.atsEstimate,
+        });
         try {
           await applyGeneratedResult(result.resumeId, result.resume);
         } catch (applyError: unknown) {
@@ -258,6 +284,7 @@ export function JobTargetEditor() {
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to apply clarification.');
+        markGenerationFailed(result.error ?? 'Failed to apply clarification.');
         return;
       }
 
@@ -265,10 +292,20 @@ export function JobTargetEditor() {
         setIsGenerating(false);
         setClarificationQuestion(result.nextQuestion);
         setClarificationAnswer('');
+        trackGenerationSession({
+          sessionId: clarificationSessionId,
+          status: 'awaiting_clarification',
+          sourcePath: `/editor/${resumeId}`,
+        });
         return;
       }
 
       if (result.status === 'generating') {
+        trackGenerationSession({
+          sessionId: clarificationSessionId,
+          status: 'generating',
+          sourcePath: `/editor/${resumeId}`,
+        });
         startStreaming(clarificationSessionId);
         return;
       }
@@ -278,6 +315,10 @@ export function JobTargetEditor() {
         setClarificationQuestion(null);
         setClarificationAnswer('');
         setClarificationSessionId(null);
+        markGenerationCompleted({
+          resumeId: result.resumeId ?? resumeId,
+          atsScore: result.atsEstimate,
+        });
         try {
           await applyGeneratedResult(result.resumeId, result.resume);
         } catch (applyError: unknown) {
@@ -326,7 +367,7 @@ export function JobTargetEditor() {
                 <Info className="ml-auto h-4 w-4 cursor-help text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
-                <p>Paste a job posting to get a match score and tailor your resume for the specific role</p>
+                <p>Paste a job posting to review fit, refresh ATS score, and refine this resume for the role.</p>
               </TooltipContent>
             </Tooltip>
           </CardTitle>
@@ -344,9 +385,23 @@ export function JobTargetEditor() {
               className="min-h-[200px] resize-y text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              Paste a job description to tailor your resume and see your match score.
+              Use this page to check fit against a role and refine your current resume, not to start a brand-new one.
             </p>
           </div>
+
+          {atsScore && (
+            <div className="rounded-lg border border-border bg-card/40 p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Current resume match</p>
+                  <p className="text-xs text-muted-foreground">Based on the current editor draft and exported PDF content.</p>
+                </div>
+                <div className={`text-2xl font-bold ${getScoreColor(atsScore.overall)}`}>
+                  {atsScore.overall}%
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             <Tooltip>
@@ -359,18 +414,18 @@ export function JobTargetEditor() {
                   {isBusy ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Tailoring...
+                      Refining...
                     </>
                   ) : (
                     <>
                       <Sparkles className="mr-2 h-4 w-4" />
-                      Tailor Resume
+                      Refine for This Job
                     </>
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Automatically adjust your resume to match this job</p>
+                <p>Refine your current resume draft to better match this job.</p>
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -385,13 +440,13 @@ export function JobTargetEditor() {
                   ) : (
                     <>
                       <Target className="mr-2 h-4 w-4" />
-                      Score
+                      Refresh ATS Score
                     </>
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Calculate how well your resume matches this job</p>
+                <p>Recalculate match score for the current draft at any time.</p>
               </TooltipContent>
             </Tooltip>
           </div>
@@ -483,13 +538,13 @@ export function JobTargetEditor() {
             <div className="space-y-4 rounded-lg border border-border bg-card/50 p-4">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-sm font-medium">
-                  Match Score
+                  Current ATS Score
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
-                      <p>How well your resume matches the job requirements. 80%+ is excellent.</p>
+                      <p>How well the current draft matches the job requirements. 80%+ is strong.</p>
                     </TooltipContent>
                   </Tooltip>
                 </span>
@@ -524,7 +579,7 @@ export function JobTargetEditor() {
 
               {atsScore.suggestions.length > 0 && (
                 <div className="border-t border-border pt-3">
-                  <p className="mb-2 text-xs font-medium">Suggestions:</p>
+                  <p className="mb-2 text-xs font-medium">Next improvements:</p>
                   <ul className="space-y-1 text-xs text-muted-foreground">
                     {atsScore.suggestions.slice(0, 3).map((suggestion, i) => (
                       <li key={i} className="flex items-start gap-1">
@@ -542,4 +597,3 @@ export function JobTargetEditor() {
     </TooltipProvider>
   );
 }
-

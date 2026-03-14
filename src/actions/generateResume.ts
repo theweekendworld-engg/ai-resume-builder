@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { KnowledgeType, type KnowledgeItem, type UserProject, type Prisma } from '@prisma/client';
+import { KnowledgeType, type UserProject, type Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { calculateATSScore } from '@/actions/ai';
@@ -74,6 +74,19 @@ function coerceBoolean(value: unknown): boolean {
   return false;
 }
 
+function coerceSingleString(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (value == null) return '';
+  return String(value).trim();
+}
+
 function coerceSkillGroups(value: unknown): Array<{ name: string; skills: string[] }> {
   if (Array.isArray(value)) {
     return value.map((entry, index) => {
@@ -114,7 +127,7 @@ const ParsedJDSchema = z.object({
   preferredSkills: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
   experienceLevel: z.string().default(''),
   keyResponsibilities: z.preprocess((value) => coerceStringArray(value), z.array(z.string())).default([]),
-  industryDomain: z.string().default(''),
+  industryDomain: z.preprocess((value) => coerceSingleString(value), z.string()).default(''),
   skillGroups: z.preprocess(
     (value) => coerceSkillGroups(value),
     z.array(z.object({
@@ -190,7 +203,6 @@ const SmartGenerateOptionsSchema = z.object({
 
 const jdCache = new Map<string, z.infer<typeof ParsedJDSchema>>();
 const JD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PROJECT_README_CONTEXT_CHARS = 1200;
 const RICH_EXPERIENCE_MIN_WORDS = 70;
 const RICH_EXPERIENCE_MIN_BULLETS = 3;
 const RICH_EXPERIENCE_MIN_METRICS = 2;
@@ -319,7 +331,7 @@ function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', ye
   return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 4, maxSkills: 20 };
 }
 
-async function parseJobDescription(params: {
+export async function parseJobDescription(params: {
   jobDescription: string;
   userId: string;
   sessionId?: string;
@@ -717,7 +729,11 @@ export async function generateSmartResumePipeline(
     ]))
   );
   const selectedExperiences = [...sourceExperiences]
-    .sort((a, b) => experienceRecencyScore(b) - experienceRecencyScore(a))
+    .sort((a, b) => {
+      const scoreDelta = (experienceScores.get(b.id) ?? 0) - (experienceScores.get(a.id) ?? 0);
+      if (Math.abs(scoreDelta) > 0.01) return scoreDelta;
+      return experienceRecencyScore(b) - experienceRecencyScore(a);
+    })
     .slice(0, lengthConstraints.maxExperiences);
   const experienceRelevance = new Map(selectedExperiences.map((item) => [item.id, experienceScores.get(item.id) ?? 0]));
 

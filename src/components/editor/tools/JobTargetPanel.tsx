@@ -1,5 +1,9 @@
 import { JobTargetEditor } from '@/components/editor/JobTargetEditor';
 
-export function JobTargetPanel() {
-  return <JobTargetEditor />;
+interface JobTargetPanelProps {
+  resumeId: string;
+}
+
+export function JobTargetPanel({ resumeId }: JobTargetPanelProps) {
+  return <JobTargetEditor resumeId={resumeId} />;
 }

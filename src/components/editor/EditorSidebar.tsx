@@ -37,7 +37,7 @@ const contentItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[
 ];
 
 const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
-  { id: 'score-improve', label: 'Score & Improve', icon: <TrendingUp className="h-4 w-4" /> },
+  { id: 'score-improve', label: 'Review & Improve', icon: <TrendingUp className="h-4 w-4" /> },
 ];
 
 const utilityItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
@@ -100,9 +100,9 @@ export function EditorSidebar({ activePanel, onSelect, collapsed, onToggleCollap
         <div className="mt-auto rounded-md border border-border bg-secondary/40 p-2 text-xs text-muted-foreground">
           <div className="mb-1 flex items-center gap-1 text-foreground">
             <Brain className="h-3 w-3" />
-            Invisible Sync
+            Editor Notes
           </div>
-          Visual edits and LaTeX stay aligned automatically.
+          Visual edits autosave. LaTeX is an advanced manual mode for preview and export.
         </div>
       )}
     </aside>

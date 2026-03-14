@@ -252,7 +252,18 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
       preferredSkills: z.array(z.string()).default([]),
       experienceLevel: z.string().default(''),
       keyResponsibilities: z.array(z.string()).default([]),
-      industryDomain: z.string().default(''),
+      industryDomain: z.preprocess((value) => {
+        if (typeof value === 'string') return value.trim();
+        if (Array.isArray(value)) {
+          return value
+            .flatMap((entry) => (typeof entry === 'string' ? entry.split(/[,\n;]/g) : [String(entry ?? '')]))
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+            .join(', ');
+        }
+        if (value == null) return '';
+        return String(value).trim();
+      }, z.string()).default(''),
     }).safeParse(session.parsedJD ?? {});
     const matchedProjects = z.array(z.object({ id: z.string(), score: z.number().default(0) }))
       .safeParse(session.matchedProjects ?? []);

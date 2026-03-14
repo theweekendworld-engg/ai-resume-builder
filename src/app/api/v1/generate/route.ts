@@ -8,6 +8,7 @@ const GenerateInputSchema = z.object({
   userId: z.string().min(1).max(255),
   message: z.string().min(20).max(50000),
   sessionId: z.string().cuid().optional(),
+  sourceResumeId: z.string().cuid().optional(),
   maxQuestions: z.number().int().min(1).max(5).optional(),
   fallbackResumeData: z.unknown().optional(),
 });
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
       channel: Channel.web,
       message: parsed.data.message,
       sessionId: parsed.data.sessionId,
+      sourceResumeId: parsed.data.sourceResumeId,
       maxQuestions: parsed.data.maxQuestions,
       fallbackResumeData: parsed.data.fallbackResumeData,
     });
