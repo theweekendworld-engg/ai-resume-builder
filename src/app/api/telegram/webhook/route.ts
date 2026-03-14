@@ -35,12 +35,13 @@ async function dispatchToInternalProcessor(update: unknown): Promise<boolean> {
 
 export async function POST(req: NextRequest) {
   try {
+    const body = await req.json().catch(() => ({}));
     const secret = req.headers.get('x-telegram-bot-api-secret-token');
     if (!verifyTelegramWebhookSecret(secret)) {
       return NextResponse.json({ ok: false }, { status: 401 });
     }
 
-    const payload = TelegramUpdateSchema.safeParse(await req.json().catch(() => ({})));
+    const payload = TelegramUpdateSchema.safeParse(body);
     if (!payload.success) {
       return NextResponse.json({ ok: true });
     }

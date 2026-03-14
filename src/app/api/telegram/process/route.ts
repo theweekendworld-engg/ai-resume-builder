@@ -26,9 +26,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, skipped: true });
     }
 
-    void processTelegramUpdate(parsed.data).catch((error: unknown) => {
-      console.error('Async Telegram processing failed:', error);
-    });
+    await processTelegramUpdate(parsed.data);
 
     return NextResponse.json({ ok: true, accepted: true });
   } catch (error: unknown) {

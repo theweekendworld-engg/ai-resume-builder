@@ -25,6 +25,7 @@ type ClarificationPayload = {
 const ChannelGenerateSchema = z.object({
   sessionId: z.string().cuid().optional(),
   userId: z.string().min(1).max(255).optional(),
+  sourceResumeId: z.string().cuid().optional(),
   channel: z.nativeEnum(Channel),
   externalId: z.string().min(1).max(255).optional(),
   message: z.string().min(1).max(50000),
@@ -159,6 +160,7 @@ async function startNewSession(params: {
   userId: string;
   channel: Channel;
   message: string;
+  sourceResumeId?: string;
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
@@ -193,6 +195,7 @@ async function startNewSession(params: {
   const session = await prisma.generationSession.create({
     data: {
       userId: params.userId,
+      sourceResumeId: params.sourceResumeId,
       channel: params.channel,
       jobDescription: params.message,
       parsedJD: smart.sources.parsedJD as Prisma.InputJsonValue,
@@ -232,6 +235,7 @@ async function startNewSession(params: {
       sessionId: session.id,
       userId: params.userId,
       fallbackResumeData: params.fallbackResumeData,
+      sourceResumeId: params.sourceResumeId,
     });
 
     return {
@@ -411,6 +415,7 @@ export async function processChannelGenerate(input: unknown): Promise<ChannelGen
     userId,
     channel: parsed.data.channel,
     message: parsed.data.message,
+    sourceResumeId: parsed.data.sourceResumeId,
     fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
     maxQuestions: parsed.data.maxQuestions,
   });

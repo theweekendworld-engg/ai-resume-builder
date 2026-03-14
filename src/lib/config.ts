@@ -29,7 +29,10 @@ export const config = {
         similarityThreshold: Number(process.env.RESUME_REUSE_SIMILARITY_THRESHOLD ?? 0.65),
     },
     pdfStorage: {
-        mode: (process.env.PDF_STORAGE_MODE || "local") as "local" | "blob",
+        mode: (
+            process.env.PDF_STORAGE_MODE ||
+            (process.env.NODE_ENV === "production" ? "blob" : "memory")
+        ) as "memory" | "local" | "blob",
         localDir: process.env.PDF_STORAGE_LOCAL_DIR || ".storage/generated-pdfs",
         publicBaseUrl: process.env.PDF_STORAGE_PUBLIC_BASE_URL || "",
         enableStoredPdfFetch: process.env.PDF_STORAGE_ENABLE_FETCH !== "false",

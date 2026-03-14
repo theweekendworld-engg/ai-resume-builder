@@ -5,7 +5,7 @@ import { Menu, PanelRight, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { generateLatexFromResume, LatexTemplateType } from '@/templates/latex';
-import { compileLatex, latexToResume } from '@/actions/ai';
+import { compileLatex } from '@/actions/ai';
 import { loadJobTargetForResume, saveJobTargetToCloud } from '@/actions/jobTargets';
 import { loadResumeFromCloud, saveResumeToCloud } from '@/actions/resume';
 import { useResumeStore } from '@/store/resumeStore';
@@ -76,14 +76,9 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [navSheetOpen, setNavSheetOpen] = useState(false);
-  const [latexParseError, setLatexParseError] = useState<string | null>(null);
-  const [isParsingLatex, setIsParsingLatex] = useState(false);
-  const [latexEditTick, setLatexEditTick] = useState(0);
   const [tourOpen, setTourOpen] = useState(false);
 
   const initialLoadDone = useRef(false);
-  const suppressVisualSyncRef = useRef(false);
-  const editingLatexRef = useRef(false);
 
   useEffect(() => {
     const template = searchParams.get('template');
@@ -122,8 +117,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
           setLastSyncedAt(resumeResult.updatedAt);
         }
 
-        if (jobTargetResult.success && jobTargetResult.jobTarget?.description) {
-          setJobDescription(jobTargetResult.jobTarget.description);
+        if (jobTargetResult.success) {
+          setJobDescription(jobTargetResult.jobTarget?.description ?? '');
         }
       })
       .catch((error: unknown) => {
@@ -136,7 +131,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   }, [resumeId, selectedTemplate, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData]);
 
   useEffect(() => {
-    if (initialLoading || suppressVisualSyncRef.current || activePanel === 'latex' || editingLatexRef.current) return;
+    if (initialLoading || activePanel === 'latex') return;
 
     const timeout = setTimeout(() => {
       const generated = generateLatexFromResume(resumeData, selectedTemplate);
@@ -149,40 +144,11 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   }, [activePanel, initialLoading, latexCode, resumeData, selectedTemplate, setLatexCode]);
 
   useEffect(() => {
-    if (activePanel !== 'latex') {
-      editingLatexRef.current = false;
-    }
-  }, [activePanel]);
-
-  useEffect(() => {
     if (initialLoading) return;
     if (typeof window === 'undefined') return;
     if (window.localStorage.getItem(EDITOR_TOUR_STORAGE_KEY) === 'true') return;
     setTourOpen(true);
   }, [initialLoading]);
-
-  useEffect(() => {
-    if (!latexEditTick || initialLoading) return;
-
-    const timeout = setTimeout(async () => {
-      setIsParsingLatex(true);
-      setLatexParseError(null);
-      try {
-        const parsed = await latexToResume(latexCode);
-        suppressVisualSyncRef.current = true;
-        setResumeData(parsed);
-        setTimeout(() => {
-          suppressVisualSyncRef.current = false;
-        }, 0);
-      } catch {
-        setLatexParseError('Could not parse your LaTeX edits yet. Keep editing and we will retry automatically.');
-      } finally {
-        setIsParsingLatex(false);
-      }
-    }, 1200);
-
-    return () => clearTimeout(timeout);
-  }, [initialLoading, latexCode, latexEditTick, setResumeData]);
 
   useEffect(() => {
     if (initialLoading) return;
@@ -204,7 +170,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         }
 
         if (jobDescription.trim()) {
-          await saveJobTargetToCloud('', resumeData.personalInfo.title ?? '', jobDescription);
+          await saveJobTargetToCloud('', resumeData.personalInfo.title ?? '', jobDescription, resumeId);
         }
 
         setSyncStatus('synced');
@@ -219,9 +185,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
   const handleLatexChange = useCallback(
     (newCode: string) => {
-      editingLatexRef.current = true;
       setLatexCode(newCode);
-      setLatexEditTick(Date.now());
     },
     [setLatexCode]
   );
@@ -251,7 +215,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   const renderedPanel = useMemo(() => {
     switch (activePanel) {
       case 'job-target':
-        return <JobTargetPanel />;
+        return <JobTargetPanel resumeId={resumeId} />;
       case 'personal':
         return <PersonalInfoEditor />;
       case 'experience':
@@ -271,16 +235,14 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
           <LaTeXPanel
             latexCode={latexCode}
             onLatexChange={handleLatexChange}
-            isParsing={isParsingLatex}
-            parseError={latexParseError}
           />
         );
       case 'settings':
         return <SettingsPanel resumeId={resumeId} onOpenLatex={() => setActivePanel('latex')} onOpenSectionOrder={() => setActivePanel('section-order')} />;
       default:
-        return <JobTargetPanel />;
+        return <JobTargetPanel resumeId={resumeId} />;
     }
-  }, [activePanel, handleLatexChange, isParsingLatex, latexCode, latexParseError, resumeId, setActivePanel]);
+  }, [activePanel, handleLatexChange, latexCode, resumeId, setActivePanel]);
 
   const handleTourFinish = useCallback(() => {
     if (typeof window !== 'undefined') {

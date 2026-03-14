@@ -11,6 +11,7 @@ const isPublicRoute = createRouteMatcher([
     '/terms',
     '/privacy',
     '/api/telegram/webhook',
+    '/api/telegram/process',
 ]);
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -54,7 +55,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

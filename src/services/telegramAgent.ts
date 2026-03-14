@@ -130,7 +130,7 @@ async function trySendCompletionPdf(params: {
     if (!pdfRow) return false;
 
     let buffer: Buffer | null = null;
-    if (config.pdfStorage.mode === 'local') {
+    if (config.pdfStorage.mode !== 'blob') {
       buffer = await readStoredPdf(pdfRow.blobKey);
     }
 
@@ -291,10 +291,8 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   const startPayload = parseStartPayload(text);
   if (startPayload !== null) {
     if (!startPayload) {
-      await sendTelegramMessage({
-        chatId,
-        text: 'Send a full job description to start resume generation. Use your dashboard to generate a Telegram linking code first.',
-      });
+      const welcomeText = 'Send a full job description to start resume generation. Use your dashboard to generate a Telegram linking code first.';
+      await sendTelegramMessage({ chatId, text: welcomeText });
       return;
     }
 

@@ -85,6 +85,94 @@ function normalizeHref(url: string): string {
     return `https://${trimmed.replace(/^\/+/, '')}`;
 }
 
+type SkillGroup = {
+    label: string;
+    skills: string[];
+};
+
+function normalizeSkillValue(skill: string): string {
+    return skill.trim().replace(/[ \t]+/g, ' ');
+}
+
+function shouldOmitSkill(skill: string): boolean {
+    const normalized = skill.trim().toLowerCase();
+    if (!normalized) return true;
+
+    const genericPatterns = [
+        /\bdebugging\b/,
+        /\bsource control\b/,
+        /\bbranching\b/,
+        /\bmerging\b/,
+        /\brebasing\b/,
+        /\bproblem decomposition\b/,
+        /\btrade-?offs?\b/,
+        /\bcomplex problems?\b/,
+        /\bexcellent\b/,
+        /\bability to\b/,
+        /\bprovide options\b/,
+        /\bdrive the effort\b/,
+        /\bguidance\b/,
+        /\bplatform engineering team\b/,
+        /\bengineering productivity team\b/,
+        /\bmultiple zones\b/,
+        /\bmultiple regions\b/,
+        /\bbonus\b/,
+    ];
+
+    return genericPatterns.some((pattern) => pattern.test(normalized));
+}
+
+function groupSkills(skills: string[]): SkillGroup[] {
+    const buckets: Array<{ label: string; pattern: RegExp; skills: string[] }> = [
+        { label: 'Languages', pattern: /\b(go|golang|typescript|javascript|python|java|bash|shell|sql|rust|c\+\+|c#)\b/i, skills: [] },
+        { label: 'Data and Search', pattern: /\b(postgresql|postgres|mysql|sqlite|redis|elasticsearch|opensearch|chromadb|qdrant|pinecone|weaviate|mongodb)\b/i, skills: [] },
+        { label: 'Infrastructure', pattern: /\b(docker|docker compose|kubernetes|terraform|aws|gcp|azure|vercel|linux)\b/i, skills: [] },
+        { label: 'AI and Document Systems', pattern: /\b(llms?|openai|anthropic|langchain|rag|latex|vector|embedding)\b/i, skills: [] },
+        { label: 'Frameworks and Tools', pattern: /\b(next\.js|nextjs|react|node\.js|nodejs|bun|git|github actions|web crawler)\b/i, skills: [] },
+    ];
+
+    const other: string[] = [];
+    const seen = new Set<string>();
+
+    for (const rawSkill of skills) {
+        const skill = normalizeSkillValue(rawSkill);
+        const dedupeKey = skill.toLowerCase();
+        if (seen.has(dedupeKey) || shouldOmitSkill(skill)) continue;
+        seen.add(dedupeKey);
+
+        const bucket = buckets.find((entry) => entry.pattern.test(skill));
+        if (bucket) {
+            bucket.skills.push(skill);
+        } else {
+            other.push(skill);
+        }
+    }
+
+    const grouped = buckets
+        .filter((bucket) => bucket.skills.length > 0)
+        .map((bucket) => ({ label: bucket.label, skills: bucket.skills }));
+
+    if (other.length > 0) {
+        grouped.push({ label: 'Other Tools', skills: other });
+    }
+
+    return grouped;
+}
+
+function renderSkillsSection(groups: SkillGroup[], style: 'simple' | 'modern'): string {
+    if (groups.length === 0) return '';
+
+    if (style === 'modern') {
+        return groups
+            .map((group) => `{\\color{darktext}\\textbf{${escapeLatex(group.label)}:} ${group.skills.map((skill) => escapeLatex(skill)).join(' \\textbullet{} ')}}`)
+            .join('\\\\[4pt]\n');
+    }
+
+    return groups
+        .map((group) => `\\textbf{${escapeLatex(group.label)}:} ${group.skills.map((skill) => escapeLatex(skill)).join(', ')}`)
+        .join('\\\\[4pt]\n');
+}
+
 function resolveProjectUrls(project: { url?: string; liveUrl?: string; repoUrl?: string }) {
     const explicitLive = (project.liveUrl || '').trim();
     const explicitRepo = (project.repoUrl || '').trim();
@@ -125,6 +213,7 @@ export function generateLatexFromResume(data: ResumeData, template: LegacyLatexT
 function generateATSSimpleTemplate(data: ResumeData): string {
     const { personalInfo, experience, projects, education, skills, sectionOrder } = data;
     const order = sectionOrder || ['summary', 'education', 'experience', 'projects', 'skills'];
+    const skillGroups = groupSkills(skills);
 
     const header = `\\documentclass[a4paper,10pt]{article}
 \\usepackage[margin=1cm]{geometry}
@@ -228,9 +317,9 @@ ${proj.technologies.length > 0 ? `\\textit{Tech Stack: ${proj.technologies.map(t
 `;
         },
         skills: () => {
-            if (skills.length === 0) return '';
+            if (skillGroups.length === 0) return '';
             return `\\section*{SKILLS}
-${skills.map(skill => escapeLatex(skill)).join(' \\textbullet{} ')}
+${renderSkillsSection(skillGroups, 'simple')}
 
 `;
         }
@@ -250,6 +339,7 @@ ${skills.map(skill => escapeLatex(skill)).join(' \\textbullet{} ')}
 function generateModernProfessionalTemplate(data: ResumeData): string {
     const { personalInfo, experience, projects, education, skills, sectionOrder } = data;
     const order = sectionOrder || ['summary', 'education', 'experience', 'projects', 'skills'];
+    const skillGroups = groupSkills(skills);
 
     const header = `\\documentclass[a4paper,10pt]{article}
 \\usepackage[margin=0.8cm]{geometry}
@@ -359,9 +449,9 @@ ${proj.technologies.length > 0 ? `{\\color{lighttext}\\small\\textit{${proj.tech
 `;
         },
         skills: () => {
-            if (skills.length === 0) return '';
+            if (skillGroups.length === 0) return '';
             return `\\section*{Skills}
-{\\color{darktext}${skills.map(skill => escapeLatex(skill)).join(' \\textbullet{} ')}}
+${renderSkillsSection(skillGroups, 'modern')}
 
 `;
         }

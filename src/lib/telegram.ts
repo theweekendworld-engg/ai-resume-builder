@@ -59,6 +59,7 @@ export async function sendTelegramMessage(input: SendMessageInput): Promise<void
   const parsed = TelegramSendResponseSchema.safeParse(json);
   if (!response.ok || !parsed.success || !parsed.data.ok) {
     const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid telegram response';
+    console.error('Telegram sendMessage failed:', { status: response.status, json, detail });
     throw new Error(`Telegram send failed: ${detail}`);
   }
 }
@@ -114,4 +115,78 @@ export async function answerTelegramCallbackQuery(callbackQueryId: string): Prom
       callback_query_id: callbackQueryId,
     }),
   }).catch(() => undefined);
+}
+
+const SetWebhookResponseSchema = z.object({
+  ok: z.boolean(),
+  description: z.string().optional(),
+  result: z.boolean().optional(),
+});
+
+export async function setTelegramWebhook(webhookUrl: string): Promise<{ ok: boolean; error?: string }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
+
+  const body: Record<string, string> = { url: webhookUrl };
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  if (secret) body.secret_token = secret;
+
+  const response = await fetch(buildTelegramApiUrl('setWebhook'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const json = await response.json().catch(() => ({}));
+  const parsed = SetWebhookResponseSchema.safeParse(json);
+  if (!parsed.success || !parsed.data.ok) {
+    const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid response';
+    return { ok: false, error: detail };
+  }
+  return { ok: true };
+}
+
+export async function deleteTelegramWebhook(): Promise<{ ok: boolean; error?: string }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
+
+  const response = await fetch(buildTelegramApiUrl('deleteWebhook'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+
+  const json = await response.json().catch(() => ({}));
+  const parsed = SetWebhookResponseSchema.safeParse(json);
+  if (!parsed.success || !parsed.data.ok) {
+    const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid response';
+    return { ok: false, error: detail };
+  }
+  return { ok: true };
+}
+
+const BOT_COMMANDS = [
+  { command: 'start', description: 'Start the bot or link your account with a token from the dashboard' },
+  { command: 'generate', description: 'Paste a job description to get a tailored resume' },
+  { command: 'status', description: 'Show your latest resume generation status (linked account required)' },
+  { command: 'profile', description: 'Update profile: Full Name | Target Title | Years (linked account required)' },
+] as const;
+
+export async function setTelegramBotCommands(): Promise<{ ok: boolean; error?: string }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
+
+  const response = await fetch(buildTelegramApiUrl('setMyCommands'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commands: BOT_COMMANDS }),
+  });
+
+  const json = await response.json().catch(() => ({}));
+  const parsed = SetWebhookResponseSchema.safeParse(json);
+  if (!parsed.success || !parsed.data.ok) {
+    const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid response';
+    return { ok: false, error: detail };
+  }
+  return { ok: true };
 }

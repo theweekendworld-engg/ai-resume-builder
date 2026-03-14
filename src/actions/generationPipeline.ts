@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { GenerationStatus, PipelineStep, Prisma, ResumeVersionSource } from '@prisma/client';
+import { GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { compileLatex } from '@/actions/ai';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
@@ -20,6 +20,7 @@ type RunGenerationOptions = {
   focusAreas?: string[];
   maxProjects?: number;
   templatePreference?: LatexTemplateType;
+  sourceResumeId?: string;
 };
 
 const RetryGenerationSessionSchema = z.object({
@@ -116,47 +117,45 @@ async function saveGeneratedResumeForUser(params: {
   userId: string;
   resume: ResumeData;
   atsEstimate?: number;
+  resumeId?: string;
 }): Promise<string> {
   const title = params.resume.personalInfo.fullName?.trim()
     ? `${params.resume.personalInfo.fullName.trim()} Resume`
     : 'Generated Resume';
 
   const payload = params.resume as unknown as object;
-
-  const resume = await prisma.resume.create({
-    data: {
-      userId: params.userId,
-      title,
-      content: payload,
-    },
-    select: { id: true, title: true },
-  });
-
-  const version = await prisma.resumeVersion.create({
-    data: {
-      userId: params.userId,
-      resumeId: resume.id,
-      content: payload,
-      source: ResumeVersionSource.ai,
-    },
-    select: { id: true },
-  });
-
   const metadata = deriveResumeMetadata(params.resume, params.atsEstimate);
+  const existingResume = params.resumeId
+    ? await prisma.resume.findFirst({
+      where: { id: params.resumeId, userId: params.userId },
+      select: { id: true, title: true },
+    })
+    : null;
 
-  await prisma.resume.update({
-    where: { id: resume.id },
-    data: {
-      currentVersionId: version.id,
-      targetRole: metadata.targetRole,
-      targetCompany: metadata.targetCompany,
-      atsScore: metadata.atsScore,
-      atsSummary: metadata.atsSummary,
-      updatedAt: new Date(),
-    },
+  return prisma.$transaction(async (tx) => {
+    const resume = existingResume ?? await tx.resume.create({
+      data: {
+        userId: params.userId,
+        title,
+      },
+      select: { id: true, title: true },
+    });
+
+    await tx.resume.update({
+      where: { id: resume.id },
+      data: {
+        content: payload,
+        title: existingResume ? resume.title : title,
+        targetRole: metadata.targetRole,
+        targetCompany: metadata.targetCompany,
+        atsScore: metadata.atsScore,
+        atsSummary: metadata.atsSummary,
+        updatedAt: new Date(),
+      },
+    });
+
+    return resume.id;
   });
-
-  return resume.id;
 }
 
 async function getSessionUsageTotals(sessionId: string) {
@@ -193,9 +192,6 @@ async function maybeReuseExistingResume(params: {
       atsScore: { gte: config.resumeReuse.minAtsScore },
     },
     orderBy: { updatedAt: 'desc' },
-    include: {
-      currentVersion: true,
-    },
     take: 25,
   });
 
@@ -218,7 +214,7 @@ async function maybeReuseExistingResume(params: {
 
     if (boosted < config.resumeReuse.similarityThreshold) continue;
 
-    const content = (resume.currentVersion?.content ?? resume.content ?? null) as ResumeData | null;
+    const content = (resume.content ?? null) as ResumeData | null;
     if (!content) continue;
     const ats = resume.atsScore ?? 0;
     if (!best || boosted > best.score || (boosted === best.score && ats > best.ats)) {
@@ -292,7 +288,11 @@ async function persistStoredPdf(params: {
     userId: params.userId,
     sessionId: params.sessionId,
     operation: 'pdf_storage',
-    provider: config.pdfStorage.mode === 'blob' ? 'blob' : 'local_fs',
+    provider: config.pdfStorage.mode === 'blob'
+      ? 'blob'
+      : config.pdfStorage.mode === 'memory'
+        ? 'memory'
+        : 'local_fs',
     model: params.template,
     totalTokens: 0,
     costUsd: 0,
@@ -388,6 +388,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       staticData: true,
       draftResume: true,
       resultResumeId: true,
+      sourceResumeId: true,
       pdfUrl: true,
       atsScore: true,
       startedAt: true,
@@ -426,40 +427,42 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
     });
 
     if (activeStep === PipelineStep.reuse_check) {
-      const reuse = await maybeReuseExistingResume({
-        userId: options.userId,
-        sessionId: session.id,
-        jobDescription: session.jobDescription,
-      });
-
-      if (reuse.reused && reuse.resumeId && reuse.resume) {
-        const totals = await getSessionUsageTotals(session.id);
-        await prisma.generationSession.update({
-          where: { id: session.id },
-          data: {
-            status: GenerationStatus.completed,
-            currentStep: PipelineStep.completed,
-            resultResumeId: reuse.resumeId,
-            draftResume: reuse.resume as unknown as Prisma.InputJsonValue,
-            atsScore: reuse.atsEstimate ?? null,
-            pdfBlobKey: reuse.pdfBlobKey ?? null,
-            pdfUrl: reuse.pdfUrl ?? null,
-            completedAt: new Date(),
-            totalLatencyMs: Date.now() - session.startedAt.getTime(),
-            totalTokensUsed: totals.totalTokensUsed,
-            totalCostUsd: totals.totalCostUsd,
-          },
+      if (!session.sourceResumeId) {
+        const reuse = await maybeReuseExistingResume({
+          userId: options.userId,
+          sessionId: session.id,
+          jobDescription: session.jobDescription,
         });
 
-        return {
-          sessionId: session.id,
-          status: 'completed',
-          resume: reuse.resume,
-          resumeId: reuse.resumeId,
-          atsEstimate: reuse.atsEstimate,
-          pdfUrl: reuse.pdfUrl,
-          reused: true,
-        };
+        if (reuse.reused && reuse.resumeId && reuse.resume) {
+          const totals = await getSessionUsageTotals(session.id);
+          await prisma.generationSession.update({
+            where: { id: session.id },
+            data: {
+              status: GenerationStatus.completed,
+              currentStep: PipelineStep.completed,
+              resultResumeId: reuse.resumeId,
+              draftResume: reuse.resume as unknown as Prisma.InputJsonValue,
+              atsScore: reuse.atsEstimate ?? null,
+              pdfBlobKey: reuse.pdfBlobKey ?? null,
+              pdfUrl: reuse.pdfUrl ?? null,
+              completedAt: new Date(),
+              totalLatencyMs: Date.now() - session.startedAt.getTime(),
+              totalTokensUsed: totals.totalTokensUsed,
+              totalCostUsd: totals.totalCostUsd,
+            },
+          });
+
+          return {
+            sessionId: session.id,
+            status: 'completed',
+            resume: reuse.resume,
+            resumeId: reuse.resumeId,
+            atsEstimate: reuse.atsEstimate,
+            pdfUrl: reuse.pdfUrl,
+            reused: true,
+          };
+        }
       }
 
       activeStep = PipelineStep.jd_parsing;
@@ -579,6 +582,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         userId: options.userId,
         resume: finalResume,
         atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
+        resumeId: session.sourceResumeId ?? options.sourceResumeId,
       });
 
     activeStep = PipelineStep.pdf_generation;

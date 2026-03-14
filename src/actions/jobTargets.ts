@@ -5,13 +5,19 @@ import { prisma } from '@/lib/prisma';
 import { auth } from '@clerk/nextjs/server';
 
 const SaveJobTargetSchema = z.object({
+    resumeId: z.string().cuid().optional(),
     company: z.string().max(300).default(''),
     role: z.string().max(300).default(''),
     description: z.string().max(50000),
 });
 
-export async function saveJobTargetToCloud(company: string, role: string, description: string): Promise<{ success: boolean; error?: string }> {
-    const parsed = SaveJobTargetSchema.safeParse({ company, role, description });
+export async function saveJobTargetToCloud(
+    company: string,
+    role: string,
+    description: string,
+    resumeId?: string
+): Promise<{ success: boolean; error?: string }> {
+    const parsed = SaveJobTargetSchema.safeParse({ company, role, description, resumeId });
     if (!parsed.success) {
         return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
     }
@@ -19,14 +25,35 @@ export async function saveJobTargetToCloud(company: string, role: string, descri
         const { userId } = await auth();
         if (!userId) return { success: false, error: 'Not authenticated' };
 
-        await prisma.jobTarget.create({
-            data: {
+        const existing = await prisma.jobTarget.findFirst({
+            where: {
                 userId,
-                company: parsed.data.company,
-                role: parsed.data.role,
-                description: parsed.data.description,
+                resumeId: parsed.data.resumeId ?? null,
             },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true },
         });
+
+        if (existing) {
+            await prisma.jobTarget.update({
+                where: { id: existing.id },
+                data: {
+                    company: parsed.data.company,
+                    role: parsed.data.role,
+                    description: parsed.data.description,
+                },
+            });
+        } else {
+            await prisma.jobTarget.create({
+                data: {
+                    userId,
+                    resumeId: parsed.data.resumeId ?? null,
+                    company: parsed.data.company,
+                    role: parsed.data.role,
+                    description: parsed.data.description,
+                },
+            });
+        }
         return { success: true };
     } catch (error: unknown) {
         console.error('Failed to save job target:', error);
@@ -85,7 +112,20 @@ export async function loadJobTargetForResume(resumeId: string): Promise<{
             };
         }
 
-        return loadLatestJobTargetFromCloud();
+        const scoped = await prisma.jobTarget.findFirst({
+            where: { userId, resumeId },
+            orderBy: { updatedAt: 'desc' },
+            select: { company: true, role: true, description: true },
+        });
+
+        if (!scoped) {
+            return { success: true, jobTarget: undefined };
+        }
+
+        return {
+            success: true,
+            jobTarget: scoped,
+        };
     } catch (error: unknown) {
         console.error('Failed to load job target for resume:', error);
         return {

@@ -246,7 +246,7 @@ export function BuildWizard() {
     setClarificationAnswer('');
 
     startTransition(async () => {
-      void startGitHubSyncIfNeeded();
+      await startGitHubSyncIfNeeded();
 
       const result = await processChannelGenerate({
         channel: 'web' as const,

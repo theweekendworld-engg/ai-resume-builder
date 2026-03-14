@@ -171,11 +171,12 @@ export function ATSScorePanel() {
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Target className="h-5 w-5 text-primary" />
-          ATS Match Score
-        </CardTitle>
-      </CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            ATS Match Score
+          </CardTitle>
+          <CardDescription>Recalculate score whenever you want against the current draft.</CardDescription>
+        </CardHeader>
       <CardContent className="space-y-4">
         <Button onClick={handleRefresh} disabled={isLoading}>
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Recalculate score'}
@@ -316,4 +317,3 @@ export function ATSScorePanel() {
     </Card>
   );
 }
-

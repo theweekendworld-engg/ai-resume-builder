@@ -6,6 +6,7 @@ import { generateTailoredResume } from '@/actions/ai';
 import { createResume } from '@/actions/resume';
 import { saveJobTargetToCloud } from '@/actions/jobTargets';
 import { getUserProfile } from '@/actions/profile';
+import { ParsedResumeSchema } from '@/lib/aiSchemas';
 
 const GenerateInputSchema = z.object({
   company: z.string().max(300).optional(),
@@ -16,6 +17,7 @@ const GenerateInputSchema = z.object({
   phone: z.string().max(100).optional(),
   linkedin: z.string().max(500).optional(),
   yearsExperience: z.string().max(50).optional(),
+  parsedResume: ParsedResumeSchema.optional(),
   template: z.enum(['ats-simple', 'modern', 'classic']).default('ats-simple'),
 });
 
@@ -33,6 +35,55 @@ function createDraftResume(
     defaultSummary: string;
   }
 ): ResumeData {
+  if (input.parsedResume) {
+    return {
+      personalInfo: {
+        fullName: input.parsedResume.personalInfo.fullName || input.fullName?.trim() || profile?.fullName || '',
+        title: input.parsedResume.personalInfo.title || input.role?.trim() || profile?.defaultTitle || '',
+        email: input.parsedResume.personalInfo.email || input.email?.trim() || profile?.email || '',
+        phone: input.parsedResume.personalInfo.phone || input.phone?.trim() || profile?.phone || '',
+        location: input.parsedResume.personalInfo.location || profile?.location || '',
+        website: input.parsedResume.personalInfo.website || profile?.website || '',
+        linkedin: input.parsedResume.personalInfo.linkedin || input.linkedin?.trim() || profile?.linkedin || '',
+        github: input.parsedResume.personalInfo.github || profile?.github || '',
+        summary: input.parsedResume.personalInfo.summary || profile?.defaultSummary || '',
+      },
+      experience: input.parsedResume.experiences.map((experience, index) => ({
+        id: `exp-${index + 1}`,
+        company: experience.company,
+        role: experience.role,
+        startDate: experience.startDate,
+        endDate: experience.endDate,
+        current: experience.current,
+        location: experience.location,
+        description: [experience.description, ...(experience.highlights ?? []).map((line) => `• ${line}`)]
+          .filter(Boolean)
+          .join('\n')
+          .trim(),
+      })),
+      projects: input.parsedResume.projects.map((project, index) => ({
+        id: `proj-${index + 1}`,
+        name: project.name,
+        description: project.description,
+        url: project.liveUrl || project.githubUrl || '',
+        liveUrl: project.liveUrl || '',
+        repoUrl: project.githubUrl || '',
+        technologies: project.technologies,
+      })),
+      education: input.parsedResume.education.map((education, index) => ({
+        id: `edu-${index + 1}`,
+        institution: education.institution,
+        degree: education.degree,
+        fieldOfStudy: education.fieldOfStudy,
+        startDate: education.startDate,
+        endDate: education.endDate,
+        current: education.current,
+      })),
+      skills: input.parsedResume.skills,
+      sectionOrder: ['summary', 'experience', 'projects', 'education', 'skills'],
+    };
+  }
+
   const base = structuredClone(initialResumeData);
 
   base.personalInfo.fullName = input.fullName?.trim() || profile?.fullName || '';
@@ -94,7 +145,12 @@ export async function generateInitialResume(input: unknown): Promise<{
     }
 
     if (safeInput.jobDescription?.trim()) {
-      await saveJobTargetToCloud(safeInput.company ?? '', safeInput.role ?? '', safeInput.jobDescription);
+      await saveJobTargetToCloud(
+        safeInput.company ?? '',
+        safeInput.role ?? '',
+        safeInput.jobDescription,
+        createResult.resumeId
+      );
     }
 
     return {

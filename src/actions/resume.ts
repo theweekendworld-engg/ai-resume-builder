@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma';
 import { ResumeData } from '@/types/resume';
 import { auth } from '@clerk/nextjs/server';
 import { ResumeDataSchema } from '@/lib/aiSchemas';
-import { ResumeVersionSource } from '@prisma/client';
 
 const SaveResumeSchema = z.object({
     resumeData: ResumeDataSchema,
@@ -41,15 +40,6 @@ async function getAuthenticatedUserId(): Promise<string | null> {
     return userId ?? null;
 }
 
-async function findLatestResumeIdForUser(userId: string): Promise<string | null> {
-    const latest = await prisma.resume.findFirst({
-        where: { userId },
-        orderBy: { updatedAt: 'desc' },
-        select: { id: true },
-    });
-    return latest?.id ?? null;
-}
-
 export async function saveResumeToCloud(
     resumeData: ResumeData,
     title?: string,
@@ -62,7 +52,6 @@ export async function saveResumeToCloud(
         return { success: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
     }
     const { resumeData: data, title: safeTitle, resumeId: safeResumeId, atsScore: safeAtsScore } = parsed.data;
-    const sourceEnum = (parsed.data.source ?? 'manual') as ResumeVersionSource;
 
     try {
         const userId = await getAuthenticatedUserId();
@@ -71,51 +60,34 @@ export async function saveResumeToCloud(
         }
 
         const payload = data as object;
-        let resume = safeResumeId
+        const resume = safeResumeId
             ? await prisma.resume.findFirst({
                 where: { id: safeResumeId, userId },
             })
             : null;
 
-        if (!resume) {
-            const latestResumeId = await findLatestResumeIdForUser(userId);
-            if (latestResumeId) {
-                resume = await prisma.resume.findUnique({
-                    where: { id: latestResumeId },
-                });
-            }
-        }
-
-        if (!resume) {
-            resume = await prisma.resume.create({
+        const metadata = deriveResumeMetadata(data as ResumeData, safeAtsScore);
+        const savedResumeId = await prisma.$transaction(async (tx) => {
+            const targetResume = resume ?? await tx.resume.create({
                 data: { userId, title: safeTitle ?? 'My Resume' },
             });
-        }
 
-        const version = await prisma.resumeVersion.create({
-            data: {
-                userId,
-                resumeId: resume.id,
-                content: payload,
-                source: sourceEnum,
-            },
-        });
+            await tx.resume.update({
+                where: { id: targetResume.id },
+                data: {
+                    content: payload,
+                    title: safeTitle ?? targetResume.title,
+                    targetRole: metadata.targetRole,
+                    targetCompany: metadata.targetCompany,
+                    atsScore: metadata.atsScore,
+                    atsSummary: metadata.atsSummary,
+                    updatedAt: new Date(),
+                },
+            });
 
-        const metadata = deriveResumeMetadata(data as ResumeData, safeAtsScore);
-        await prisma.resume.update({
-            where: { id: resume.id },
-            data: {
-                content: payload,
-                title: safeTitle ?? resume.title,
-                targetRole: metadata.targetRole,
-                targetCompany: metadata.targetCompany,
-                atsScore: metadata.atsScore,
-                atsSummary: metadata.atsSummary,
-                currentVersionId: version.id,
-                updatedAt: new Date(),
-            },
+            return targetResume.id;
         });
-        return { success: true, resumeId: resume.id };
+        return { success: true, resumeId: savedResumeId };
     } catch (error: unknown) {
         console.error('Failed to save resume to cloud:', error);
         return {
@@ -142,19 +114,15 @@ export async function loadResumeFromCloud(resumeId?: string): Promise<{
         const resume = resumeId
             ? await prisma.resume.findFirst({
                 where: { id: resumeId, userId },
-                include: { currentVersion: true },
             })
             : await prisma.resume.findFirst({
                 where: { userId },
                 orderBy: { updatedAt: 'desc' },
-                include: { currentVersion: true },
             });
         if (!resume) return { success: true, data: undefined };
 
-        const content = resume.currentVersion
-            ? (resume.currentVersion.content as unknown as ResumeData)
-            : (resume.content as unknown as ResumeData | null);
-        const updatedAt = resume.currentVersion?.createdAt ?? resume.updatedAt;
+        const content = (resume.content ?? null) as ResumeData | null;
+        const updatedAt = resume.updatedAt;
 
         return {
             success: true,
@@ -189,86 +157,6 @@ export async function deleteResumeFromCloud(resumeId?: string): Promise<{ succes
         return { success: true };
     } catch (error: unknown) {
         console.error('Failed to delete resume from cloud:', error);
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
-}
-
-export async function listResumeVersions(resumeId?: string, limit = 20): Promise<{
-    success: boolean;
-    versions?: { id: string; source: string; createdAt: Date }[];
-    error?: string;
-}> {
-    try {
-        const userId = await getAuthenticatedUserId();
-        if (!userId) {
-            return { success: false, error: 'Not authenticated' };
-        }
-
-        let targetResumeId = resumeId;
-        if (!targetResumeId) {
-            targetResumeId = await findLatestResumeIdForUser(userId) ?? undefined;
-        }
-        if (!targetResumeId) {
-            return { success: true, versions: [] };
-        }
-
-        const versions = await prisma.resumeVersion.findMany({
-            where: { userId, resumeId: targetResumeId },
-            orderBy: { createdAt: 'desc' },
-            take: limit,
-            select: { id: true, source: true, createdAt: true },
-        });
-        return {
-            success: true,
-            versions: versions.map((v) => ({ id: v.id, source: v.source, createdAt: v.createdAt })),
-        };
-    } catch (error: unknown) {
-        console.error('Failed to list resume versions:', error);
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-        };
-    }
-}
-
-export async function restoreResumeVersion(versionId: string, resumeId?: string): Promise<{
-    success: boolean;
-    data?: ResumeData;
-    error?: string;
-}> {
-    try {
-        const userId = await getAuthenticatedUserId();
-        if (!userId) {
-            return { success: false, error: 'Not authenticated' };
-        }
-
-        const version = await prisma.resumeVersion.findFirst({
-            where: { id: versionId, userId, ...(resumeId ? { resumeId } : {}) },
-        });
-        if (!version) {
-            return { success: false, error: 'Version not found' };
-        }
-
-        const resume = await prisma.resume.findFirst({
-            where: { id: version.resumeId, userId },
-        });
-        if (!resume) {
-            return { success: false, error: 'Resume not found' };
-        }
-
-        await prisma.resume.update({
-            where: { id: resume.id },
-            data: { currentVersionId: version.id, content: version.content as object, updatedAt: new Date() },
-        });
-        return {
-            success: true,
-            data: version.content as unknown as ResumeData,
-        };
-    } catch (error: unknown) {
-        console.error('Failed to restore version:', error);
         return {
             success: false,
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -355,6 +243,9 @@ export async function createResume(input?: {
                 parsed.data.atsScore
             );
             if (!saveResult.success) {
+                await prisma.resume.deleteMany({
+                    where: { id: resume.id, userId },
+                });
                 return { success: false, error: saveResult.error ?? 'Failed to initialize resume content' };
             }
         }
@@ -382,7 +273,6 @@ export async function duplicateResume(resumeId: string): Promise<{
 
         const original = await prisma.resume.findFirst({
             where: { id: resumeId, userId },
-            include: { currentVersion: true },
         });
         if (!original) {
             return { success: false, error: 'Resume not found' };
@@ -396,20 +286,11 @@ export async function duplicateResume(resumeId: string): Promise<{
             select: { id: true },
         });
 
-        const content = original.currentVersion?.content ?? original.content;
+        const content = original.content;
         if (content) {
-            await prisma.resumeVersion.create({
-                data: {
-                    userId,
-                    resumeId: duplicate.id,
-                    source: 'manual',
-                    content: content as object,
-                },
-            }).then(async (version) => {
-                await prisma.resume.update({
-                    where: { id: duplicate.id },
-                    data: { currentVersionId: version.id, content: content as object, updatedAt: new Date() },
-                });
+            await prisma.resume.update({
+                where: { id: duplicate.id },
+                data: { content: content as object, updatedAt: new Date() },
             });
         }
 

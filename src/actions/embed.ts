@@ -34,6 +34,33 @@ export async function ensureKnowledgeBaseCollection() {
     });
   }
 
+  const collection = await qdrantClient.getCollection(COLLECTION_NAME);
+  const vectorConfig = collection.config?.params?.vectors;
+  const configuredSize = (
+    vectorConfig && typeof vectorConfig === 'object' && 'size' in vectorConfig
+      ? Number((vectorConfig as { size?: unknown }).size)
+      : NaN
+  );
+  if (Number.isFinite(configuredSize) && configuredSize !== config.openai.embedding.size) {
+    throw new Error(
+      `Qdrant collection "${COLLECTION_NAME}" expects vectors of size ${configuredSize}, but app config is ${config.openai.embedding.size}.`
+    );
+  }
+
+  const payloadSchema = collection.payload_schema ?? {};
+  const requiredIndexes = [
+    { field: 'userId', schema: 'keyword' as const },
+    { field: 'type', schema: 'keyword' as const },
+  ];
+  for (const index of requiredIndexes) {
+    if (payloadSchema[index.field]) continue;
+    await qdrantClient.createPayloadIndex(COLLECTION_NAME, {
+      field_name: index.field,
+      field_schema: index.schema,
+      wait: true,
+    });
+  }
+
   collectionEnsured = true;
 }
 

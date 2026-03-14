@@ -28,7 +28,7 @@ export async function GET(
       return NextResponse.json({ error: 'PDF not found' }, { status: 404 });
     }
 
-    if (config.pdfStorage.mode === 'local') {
+    if (config.pdfStorage.mode !== 'blob') {
       const buffer = await readStoredPdf(pdf.blobKey);
       if (!buffer) {
         return NextResponse.json({ error: 'PDF file not found' }, { status: 404 });

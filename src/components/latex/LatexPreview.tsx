@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { compileLatex } from '@/actions/ai';
@@ -14,11 +14,16 @@ export function LatexPreview({ code }: LatexPreviewProps) {
     const [error, setError] = useState<string | null>(null);
     const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null);
     const lastCodeRef = useRef<string>('');
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+    const isStale = useMemo(
+        () => Boolean(pdfDataUrl) && code.trim() !== lastCodeRef.current,
+        [code, pdfDataUrl]
+    );
 
     const compile = useCallback(async (forceCompile = false) => {
         if (!code.trim()) {
             setPdfDataUrl(null);
+            lastCodeRef.current = '';
+            setError(null);
             return;
         }
 
@@ -49,23 +54,6 @@ export function LatexPreview({ code }: LatexPreviewProps) {
         }
     }, [code, pdfDataUrl]);
 
-    // Auto-compile with debounce
-    useEffect(() => {
-        if (debounceRef.current) {
-            clearTimeout(debounceRef.current);
-        }
-
-        debounceRef.current = setTimeout(() => {
-            compile();
-        }, 2000); // 2 second debounce for server-side compilation
-
-        return () => {
-            if (debounceRef.current) {
-                clearTimeout(debounceRef.current);
-            }
-        };
-    }, [code, compile]);
-
     const previewSrc = pdfDataUrl ? `${pdfDataUrl}#view=FitH&zoom=page-width` : null;
 
     return (
@@ -79,8 +67,11 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                             <span className="text-xs text-muted-foreground">Compiling on server...</span>
                         </>
                     )}
+                    {!isCompiling && isStale && (
+                        <span className="text-xs text-amber-600">Preview out of date</span>
+                    )}
                     {!isCompiling && pdfDataUrl && (
-                        <span className="text-xs text-green-600">✓ Compiled</span>
+                        <span className="text-xs text-green-600">✓ Preview ready</span>
                     )}
                 </div>
                 <Button
@@ -91,7 +82,7 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                     className="h-7 text-xs"
                 >
                     <RefreshCw className={`w-3 h-3 mr-1 ${isCompiling ? 'animate-spin' : ''}`} />
-                    Recompile
+                    Refresh Preview
                 </Button>
             </div>
 
@@ -126,8 +117,8 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-2">
-                                <p className="text-sm">Enter LaTeX code to see preview</p>
-                                <p className="text-xs text-muted-foreground">Preview will auto-compile after 2 seconds</p>
+                                <p className="text-sm">Refresh preview to compile this resume</p>
+                                <p className="text-xs text-muted-foreground">Preview updates only when you click Refresh Preview</p>
                             </div>
                         )}
                     </div>

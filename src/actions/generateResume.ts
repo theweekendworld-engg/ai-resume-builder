@@ -1,7 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
-import { KnowledgeType, type KnowledgeItem, type UserProject, type Prisma } from '@prisma/client';
+import { KnowledgeType, type UserProject, type Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { calculateATSScore } from '@/actions/ai';
@@ -190,7 +190,6 @@ const SmartGenerateOptionsSchema = z.object({
 
 const jdCache = new Map<string, z.infer<typeof ParsedJDSchema>>();
 const JD_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const PROJECT_README_CONTEXT_CHARS = 1200;
 const RICH_EXPERIENCE_MIN_WORDS = 70;
 const RICH_EXPERIENCE_MIN_BULLETS = 3;
 const RICH_EXPERIENCE_MIN_METRICS = 2;
@@ -717,7 +716,11 @@ export async function generateSmartResumePipeline(
     ]))
   );
   const selectedExperiences = [...sourceExperiences]
-    .sort((a, b) => experienceRecencyScore(b) - experienceRecencyScore(a))
+    .sort((a, b) => {
+      const scoreDelta = (experienceScores.get(b.id) ?? 0) - (experienceScores.get(a.id) ?? 0);
+      if (Math.abs(scoreDelta) > 0.01) return scoreDelta;
+      return experienceRecencyScore(b) - experienceRecencyScore(a);
+    })
     .slice(0, lengthConstraints.maxExperiences);
   const experienceRelevance = new Map(selectedExperiences.map((item) => [item.id, experienceScores.get(item.id) ?? 0]));
 

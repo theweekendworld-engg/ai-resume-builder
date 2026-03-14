@@ -72,6 +72,7 @@ export async function createUserExperience(input: unknown) {
       highlights: true,
       createdAt: true,
       qdrantPointId: true,
+      embedded: true,
     },
   });
 
@@ -84,11 +85,20 @@ export async function createUserExperience(input: unknown) {
     if (embedding.pointId !== experience.qdrantPointId) {
       await prisma.userExperience.update({
         where: { id: experience.id },
-        data: { qdrantPointId: embedding.pointId },
+        data: { qdrantPointId: embedding.pointId, embedded: true },
+      });
+    } else {
+      await prisma.userExperience.update({
+        where: { id: experience.id },
+        data: { embedded: true },
       });
     }
   } catch (error: unknown) {
     console.error('Failed to embed experience:', error);
+    await prisma.userExperience.update({
+      where: { id: experience.id },
+      data: { embedded: false },
+    });
   }
 
   return { success: true, experienceId: experience.id };
@@ -125,6 +135,7 @@ export async function updateUserExperience(input: unknown) {
       highlights: true,
       createdAt: true,
       qdrantPointId: true,
+      embedded: true,
     },
   });
 
@@ -141,11 +152,20 @@ export async function updateUserExperience(input: unknown) {
       if (embedding.pointId !== updated.qdrantPointId) {
         await prisma.userExperience.update({
           where: { id: updated.id },
-          data: { qdrantPointId: embedding.pointId },
+          data: { qdrantPointId: embedding.pointId, embedded: true },
+        });
+      } else {
+        await prisma.userExperience.update({
+          where: { id: updated.id },
+          data: { embedded: true },
         });
       }
     } catch (error: unknown) {
       console.error('Failed to update experience embedding:', error);
+      await prisma.userExperience.update({
+        where: { id: updated.id },
+        data: { embedded: false },
+      });
     }
   }
 
