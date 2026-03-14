@@ -1,5 +1,6 @@
 'use server';
 
+import { revalidateTag } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
@@ -42,6 +43,10 @@ export type UserProfileDTO = {
 async function getUserId(): Promise<string | null> {
   const { userId } = await auth();
   return userId ?? null;
+}
+
+function revalidateProfileCaches(userId: string) {
+  revalidateTag(`dashboard:${userId}`);
 }
 
 function normalizePreferenceInput(value: unknown): unknown {
@@ -131,6 +136,7 @@ export async function upsertUserProfile(input: unknown): Promise<{
         preferences,
       },
     });
+    revalidateProfileCaches(userId);
 
     return {
       success: true,
@@ -196,6 +202,7 @@ export async function updateUserPreferences(input: unknown): Promise<{
         preferences: mergedPreferences as Prisma.InputJsonValue,
       },
     });
+    revalidateProfileCaches(userId);
 
     return { success: true, preferences: mergedPreferences };
   } catch (error: unknown) {
@@ -224,6 +231,7 @@ export async function completeOnboarding(): Promise<{
         onboardingComplete: true,
       },
     });
+    revalidateProfileCaches(userId);
 
     return { success: true };
   } catch (error: unknown) {
