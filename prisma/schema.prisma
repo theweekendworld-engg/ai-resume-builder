@@ -343,3 +343,27 @@ model ParsedJDCache {
     @@index([jdHash])
     @@index([expiresAt])
 }
+
+model ApplicationQuestion {
+    id           String   @id @default(cuid())
+    userId       String
+    sourceUrl    String?
+    platform     String?
+    companyName  String?
+    roleTitle    String?
+    questionText String
+    questionType String
+    answerMode   String?
+    helperText   Json?
+    draftAnswers Json?
+    sourceFacts  Json?
+    warnings     Json?
+    finalAnswer  String?
+    selectedTone String?
+    confidence   Float?
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    @@index([userId, updatedAt])
+    @@index([userId, sourceUrl, updatedAt])
+}

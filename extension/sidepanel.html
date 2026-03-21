@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Patronus Side Panel</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(circle at top, rgba(227, 214, 183, 0.55), transparent 45%),
+          linear-gradient(180deg, #f7f1e6 0%, #efe5d4 100%);
+        color: #1f2937;
+        min-height: 100vh;
+      }
+      main {
+        padding: 18px;
+      }
+      .panel {
+        background: rgba(255, 251, 242, 0.92);
+        border: 1px solid rgba(129, 98, 40, 0.18);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 18px 50px rgba(73, 52, 15, 0.08);
+      }
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #8a6f3f;
+      }
+      h1 {
+        margin: 10px 0 8px;
+        font-size: 24px;
+        line-height: 1.1;
+      }
+      p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.6;
+        color: #58616e;
+      }
+      .grid {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .tile {
+        border-radius: 14px;
+        background: #fffaf0;
+        border: 1px solid #e8d9be;
+        padding: 12px;
+      }
+      .tile-label {
+        display: block;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #917547;
+        margin-bottom: 6px;
+      }
+      .tile-value {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1f2937;
+      }
+      ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+        color: #4b5563;
+        font-size: 13px;
+      }
+      li + li {
+        margin-top: 4px;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 9px 14px;
+        font: inherit;
+        cursor: pointer;
+        background: #9a6a21;
+        color: #fffdf8;
+      }
+      button.secondary {
+        background: #ead9b8;
+        color: #4b3b1e;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(255, 250, 240, 0.75);
+        border: 1px solid rgba(145, 117, 71, 0.2);
+        font-size: 13px;
+        color: #5b6470;
+      }
+      .plan {
+        margin-top: 16px;
+      }
+      .plan-list {
+        list-style: none;
+        padding: 0;
+        margin: 10px 0 0;
+      }
+      .plan-item {
+        border-radius: 14px;
+        background: #fffaf0;
+        border: 1px solid #e8d9be;
+        padding: 12px;
+      }
+      .plan-item + .plan-item {
+        margin-top: 10px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 4px 8px;
+        background: #efe4ce;
+        color: #785624;
+        margin-bottom: 8px;
+      }
+      .plan-item strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+      }
+      .plan-item p {
+        font-size: 13px;
+        margin-top: 6px;
+      }
+      .plan-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .plan-actions button {
+        padding: 7px 12px;
+        font-size: 13px;
+      }
+      .plan-actions button.secondary {
+        background: #efe4ce;
+        color: #6b4a18;
+      }
+      .section {
+        margin-top: 18px;
+      }
+      .question-list {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+      }
+      .question-item {
+        border-radius: 14px;
+        background: #fffaf0;
+        border: 1px solid #e8d9be;
+        padding: 12px;
+      }
+      .question-item + .question-item {
+        margin-top: 10px;
+      }
+      .question-item strong {
+        display: block;
+        font-size: 14px;
+        margin-bottom: 6px;
+      }
+      .question-meta {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #72562c;
+      }
+      .question-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .question-actions button {
+        padding: 7px 12px;
+        font-size: 13px;
+      }
+      .workspace {
+        margin-top: 14px;
+        border-radius: 14px;
+        border: 1px solid #e8d9be;
+        background: rgba(255, 250, 240, 0.9);
+        padding: 14px;
+      }
+      .workspace[hidden] {
+        display: none;
+      }
+      .tone-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      .tone-row button.active {
+        background: #6f4612;
+      }
+      textarea {
+        width: 100%;
+        min-height: 132px;
+        margin-top: 12px;
+        border-radius: 12px;
+        border: 1px solid #d8c5a3;
+        padding: 12px;
+        resize: vertical;
+        font: inherit;
+        color: #1f2937;
+        background: #fffdf8;
+        box-sizing: border-box;
+      }
+      .helper-copy {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #72562c;
+      }
+      .supporting-list {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+      }
+      .supporting-list li {
+        margin-top: 8px;
+        padding: 10px;
+        border-radius: 12px;
+        background: #fffdf8;
+        border: 1px solid #ead9b8;
+      }
+      .warning-list {
+        list-style: disc;
+        padding-left: 18px;
+        margin-top: 10px;
+        color: #8a4b18;
+      }
+      .muted-box {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(239, 228, 206, 0.55);
+        border: 1px dashed rgba(145, 117, 71, 0.35);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel">
+        <div class="eyebrow">Browser Copilot</div>
+        <h1 id="heading">Waiting for page context</h1>
+        <p id="subheading">This side panel handles low-risk autofill and grounded answer suggestions for application questions.</p>
+
+        <div class="grid two">
+          <div class="tile">
+            <span class="tile-label">Platform</span>
+            <span class="tile-value" id="platform">Unknown</span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Page Type</span>
+            <span class="tile-value" id="page-kind">Unknown</span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Visible Fields</span>
+            <span class="tile-value" id="field-count">0</span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">JD Confidence</span>
+            <span class="tile-value" id="jd-confidence">Unknown</span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Reduced Regions</span>
+            <span class="tile-value" id="region-count">0</span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Detected Questions</span>
+            <span class="tile-value" id="question-count">0</span>
+          </div>
+        </div>
+
+        <p id="metadata">Waiting for parsed job metadata.</p>
+        <section class="section">
+          <div class="controls">
+            <button id="plan-fill">Plan Autofill</button>
+            <button id="apply-fill" disabled>Apply Safe Fill</button>
+            <button id="undo-fill" class="secondary" disabled>Undo Last Fill</button>
+          </div>
+          <div class="status" id="fill-status">Safe autofill is ready to preview once profile data loads.</div>
+          <div class="grid two">
+            <div class="tile">
+              <span class="tile-label">Safe Autofill</span>
+              <span class="tile-value" id="safe-fill-count">0</span>
+            </div>
+            <div class="tile">
+              <span class="tile-label">Needs Review</span>
+              <span class="tile-value" id="review-count">0</span>
+            </div>
+          </div>
+          <section class="plan">
+            <div class="eyebrow">Autofill Preview</div>
+            <ul class="plan-list" id="plan-list"></ul>
+          </section>
+        </section>
+
+        <section class="section">
+          <div class="eyebrow">Question Answers</div>
+          <div class="status" id="question-status">Detected long-form questions will show up here for grounded draft answers.</div>
+          <ul class="question-list" id="question-list"></ul>
+          <div class="muted-box" id="question-empty">No long-form question is selected yet. Pick a detected prompt and generate drafts when you are ready.</div>
+          <section class="workspace" id="question-workspace" hidden>
+            <strong id="question-workspace-title">Question answer</strong>
+            <p class="helper-copy" id="question-workspace-meta"></p>
+            <div class="tone-row" id="tone-buttons">
+              <button data-tone="concise" class="secondary">Concise</button>
+              <button data-tone="balanced" class="secondary">Balanced</button>
+              <button data-tone="high_conviction" class="secondary">High Conviction</button>
+            </div>
+            <textarea id="answer-editor" placeholder="Generated answer drafts will land here so you can edit before copying, inserting, or saving."></textarea>
+            <div class="controls">
+              <button id="copy-answer" class="secondary" disabled>Copy</button>
+              <button id="insert-answer" disabled>Insert</button>
+              <button id="save-answer" class="secondary" disabled>Save</button>
+            </div>
+            <ul class="warning-list" id="question-warnings"></ul>
+            <ul class="supporting-list" id="supporting-facts"></ul>
+          </section>
+        </section>
+        <ul id="labels"></ul>
+      </section>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+  </html>
