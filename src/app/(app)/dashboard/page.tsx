@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { getDashboardOverview } from '@/actions/dashboard';
+import { getDashboardOverview, listApplicationWorkspaces } from '@/actions/dashboard';
 import { listResumes } from '@/actions/resume';
 import { listUserProjects } from '@/actions/projects';
 import { getUserUsageStats } from '@/actions/usage';
@@ -10,12 +10,13 @@ import { DashboardShell } from '@/components/dashboard/DashboardShell';
 export default async function DashboardPage() {
   const { userId } = await auth();
   const isAdmin = isAdminUserId(userId);
-  const [overviewResult, resumeResult, projectsResult, usageStats, pdfHistory] = await Promise.all([
+  const [overviewResult, resumeResult, projectsResult, usageStats, pdfHistory, applicationWorkspacesResult] = await Promise.all([
     getDashboardOverview(),
     listResumes(),
     listUserProjects(),
     getUserUsageStats(),
     getUserPdfHistory(),
+    listApplicationWorkspaces(),
   ]);
 
   const overview = overviewResult.success
@@ -24,6 +25,7 @@ export default async function DashboardPage() {
   const resumes = resumeResult.success ? resumeResult.resumes ?? [] : [];
   const profile = overviewResult.success ? overviewResult.profile ?? undefined : undefined;
   const projects = projectsResult.success ? projectsResult.projects ?? [] : [];
+  const applicationWorkspaces = applicationWorkspacesResult.success ? applicationWorkspacesResult.workspaces ?? [] : [];
 
   const projectItems = projects.map((p) => ({
     id: p.id,
@@ -45,6 +47,8 @@ export default async function DashboardPage() {
       projects={projectItems}
       usageStats={usageStats}
       pdfHistory={pdfHistory}
+      applicationWorkspaces={applicationWorkspaces}
+      applicationListError={!applicationWorkspacesResult.success ? applicationWorkspacesResult.error : undefined}
       isAdmin={!!isAdmin}
     />
   );

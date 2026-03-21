@@ -23,6 +23,28 @@ export type DashboardOverview = {
   totalPdfs?: number;
   monthGenerations?: number;
   projectCount?: number;
+  totalApplications?: number;
+  error?: string;
+};
+
+export type ApplicationWorkspaceListResult = {
+  success: boolean;
+  workspaces?: Array<{
+    id: string;
+    sourceUrl: string;
+    sourcePlatform: string | null;
+    companyName: string | null;
+    roleTitle: string | null;
+    location: string | null;
+    applicationStatus: string;
+    fitScore: number | null;
+    fitSummary: string | null;
+    questionCount: number;
+    answeredQuestionCount: number;
+    selectedResumeId: string | null;
+    updatedAt: Date;
+    createdAt: Date;
+  }>;
   error?: string;
 };
 
@@ -41,6 +63,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           totalPdfs,
           monthGenerations,
           projectCount,
+          totalApplications,
         ] = await Promise.all([
           prisma.userProfile.findUnique({
             where: { userId },
@@ -68,6 +91,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
             },
           }),
           prisma.userProject.count({ where: { userId } }),
+          prisma.applicationWorkspace.count({ where: { userId } }),
         ]);
         return {
           profileRow,
@@ -76,6 +100,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
           totalPdfs,
           monthGenerations,
           projectCount,
+          totalApplications,
         };
       },
       ['dashboard-overview', userId],
@@ -88,6 +113,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       totalPdfs,
       monthGenerations,
       projectCount,
+      totalApplications,
     } = await load();
     const recentResumeSessions = recentResumes.length > 0
       ? await prisma.generationSession.findMany({
@@ -137,6 +163,57 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       totalPdfs,
       monthGenerations,
       projectCount,
+      totalApplications,
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+export async function listApplicationWorkspaces(): Promise<ApplicationWorkspaceListResult> {
+  try {
+    const { userId } = await auth();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const workspaces = await prisma.applicationWorkspace.findMany({
+      where: { userId },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+      take: 25,
+      include: {
+        _count: {
+          select: {
+            questions: true,
+          },
+        },
+        questions: {
+          select: {
+            finalAnswer: true,
+          },
+        },
+      },
+    });
+
+    return {
+      success: true,
+      workspaces: workspaces.map((workspace) => ({
+        id: workspace.id,
+        sourceUrl: workspace.sourceUrl,
+        sourcePlatform: workspace.sourcePlatform,
+        companyName: workspace.companyName,
+        roleTitle: workspace.roleTitle,
+        location: workspace.location,
+        applicationStatus: workspace.applicationStatus,
+        fitScore: workspace.fitScore,
+        fitSummary: workspace.fitSummary,
+        questionCount: workspace._count.questions,
+        answeredQuestionCount: workspace.questions.filter((question) => Boolean(question.finalAnswer?.trim())).length,
+        selectedResumeId: workspace.selectedResumeId,
+        updatedAt: workspace.updatedAt,
+        createdAt: workspace.createdAt,
+      })),
     };
   } catch (error: unknown) {
     return {

@@ -6,7 +6,7 @@ Track what has been built, what is currently in progress, and what remains for t
 This file should be updated as implementation progresses so we always have one current source of truth.
 
 ## Current Status
-- Current phase: `Phase 3 - AI Answers`
+- Current phase: `Phase 4 - Application Workspace`
 - Overall state: `In progress`
 - Last updated: `2026-03-21`
 
@@ -79,9 +79,9 @@ This file should be updated as implementation progresses so we always have one c
 - [x] Build answer insert/copy/save UX
 
 ### Phase 4 Application Workspace
-- [ ] Add `ApplicationWorkspace` data model
-- [ ] Add workspace create/update APIs
-- [ ] Link browser state to saved workspace state
+- [x] Add `ApplicationWorkspace` data model
+- [x] Add workspace create/update APIs
+- [x] Link browser state to saved workspace state
 
 ### Phase 5 Resume Tailoring From Browser
 - [ ] Add browser-triggered resume generation endpoint

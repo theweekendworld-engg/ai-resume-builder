@@ -26,6 +26,7 @@ The shell is still intentionally lightweight, but it now runs a real parser pipe
 - side panel can preview bulk-safe fields plus per-field review actions
 - side panel can detect long-form application questions and request grounded answer drafts
 - answer drafts support tone switching, copy, insert, and save actions
+- current job pages are persisted into recoverable application workspaces and resumed when the same role/page is revisited
 - safe autofill supports text-like fields and high-confidence select/radio/checkbox matches
 - resume/CV upload fields stay protected: the extension can focus the field and open the picker, but does not auto-attach files
 - safe autofill supports one-run undo per tab
@@ -35,4 +36,4 @@ The shell is still intentionally lightweight, but it now runs a real parser pipe
 - add authenticated backend calls
 - add page analysis action from the normalized page payload
 - connect parsed page context to backend analysis and saved job/application state
-- add application workspace persistence that groups saved questions per job
+- add browser-triggered resume generation tied to the saved application workspace

@@ -426,6 +426,7 @@ export async function suggestExtensionQuestionAnswers(params: {
   const questionRecord = await prisma.applicationQuestion.create({
     data: {
       userId: params.userId,
+      workspaceId: params.input.context?.workspaceId ?? null,
       sourceUrl: params.input.context?.sourceUrl,
       platform: params.input.context?.platform,
       companyName: params.input.context?.companyName,

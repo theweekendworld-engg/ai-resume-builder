@@ -26,6 +26,7 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
   const totalPdfs = overview.totalPdfs ?? 0;
   const monthGens = overview.monthGenerations ?? 0;
   const projectCount = overview.projectCount ?? 0;
+  const totalApplications = overview.totalApplications ?? 0;
 
   return (
     <div className="space-y-6">
@@ -34,7 +35,7 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
         <p className="text-muted-foreground">Here’s a quick snapshot of your dashboard.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Resumes</CardDescription>
@@ -57,6 +58,12 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
           <CardHeader className="pb-2">
             <CardDescription>Projects</CardDescription>
             <CardTitle className="text-2xl">{projectCount}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Applications</CardDescription>
+            <CardTitle className="text-2xl">{totalApplications}</CardTitle>
           </CardHeader>
         </Card>
       </div>

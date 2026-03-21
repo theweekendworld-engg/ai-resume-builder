@@ -11,6 +11,7 @@ import {
   Send,
   FileDown,
   Menu,
+  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -24,11 +25,13 @@ import { DashboardCopilot } from '@/components/dashboard/sections/DashboardCopil
 import { ProfileSection } from '@/components/dashboard/sections/ProfileSection';
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
 import { PdfHistorySection } from '@/components/dashboard/sections/PdfHistorySection';
+import { ApplicationsSection } from '@/components/dashboard/sections/ApplicationsSection';
 import { OnboardingDialog } from '@/components/dashboard/OnboardingDialog';
 import { DashboardTour, DASHBOARD_TOUR_STORAGE_KEY } from '@/components/dashboard/DashboardTour';
 
 export type DashboardSectionId =
   | 'overview'
+  | 'applications'
   | 'resumes'
   | 'copilot'
   | 'profile'
@@ -37,6 +40,7 @@ export type DashboardSectionId =
 
 const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { id: 'applications', label: 'Applications', icon: <Briefcase className="h-4 w-4" /> },
   { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
   { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
@@ -69,6 +73,23 @@ export type DashboardShellProps = {
   }>;
   usageStats: UserUsageStats;
   pdfHistory: { success: boolean; items?: PdfHistoryItem[]; error?: string };
+  applicationWorkspaces: Array<{
+    id: string;
+    sourceUrl: string;
+    sourcePlatform: string | null;
+    companyName: string | null;
+    roleTitle: string | null;
+    location: string | null;
+    applicationStatus: string;
+    fitScore: number | null;
+    fitSummary: string | null;
+    questionCount: number;
+    answeredQuestionCount: number;
+    selectedResumeId: string | null;
+    updatedAt: Date;
+    createdAt: Date;
+  }>;
+  applicationListError?: string;
   isAdmin: boolean;
 };
 
@@ -79,6 +100,8 @@ export function DashboardShell({
   projects,
   usageStats,
   pdfHistory,
+  applicationWorkspaces,
+  applicationListError,
   isAdmin,
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
@@ -165,6 +188,9 @@ export function DashboardShell({
           <div className="mx-auto max-w-4xl">
             {activeSection === 'overview' && (
               <OverviewSection overview={overview} usageStats={usageStats} />
+            )}
+            {activeSection === 'applications' && (
+              <ApplicationsSection workspaces={applicationWorkspaces} listError={applicationListError} />
             )}
             {activeSection === 'resumes' && (
               <ResumesSection resumes={resumes} listError={!overview.success ? overview.error : undefined} />

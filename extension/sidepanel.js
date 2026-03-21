@@ -30,6 +30,9 @@ const insertAnswerButton = document.getElementById('insert-answer');
 const saveAnswerButton = document.getElementById('save-answer');
 const questionWarnings = document.getElementById('question-warnings');
 const supportingFacts = document.getElementById('supporting-facts');
+const workspaceStatus = document.getElementById('workspace-status');
+const workspaceStage = document.getElementById('workspace-stage');
+const workspaceQuestionProgress = document.getElementById('workspace-question-progress');
 
 const state = {
   context: null,
@@ -37,6 +40,12 @@ const state = {
   plan: null,
   hasUndo: false,
   actionResults: {},
+  workspace: {
+    item: null,
+    syncSignature: '',
+    loading: false,
+    lastMatchedBy: null,
+  },
   questions: {
     selectedId: null,
     items: {},
@@ -57,6 +66,16 @@ function setStatus(message) {
 
 function setQuestionStatus(message) {
   questionStatus.textContent = message;
+}
+
+function setWorkspaceStatus(message) {
+  workspaceStatus.textContent = message;
+}
+
+function formatWorkspaceStage(status) {
+  return String(status || 'not_saved')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function renderList(items) {
@@ -180,6 +199,116 @@ function renderPlan(plan) {
   }
 }
 
+function canCreateWorkspace(context) {
+  if (!context?.url) return false;
+  if (context.classification?.pageKind === 'unsupported' || context.classification?.pageKind === 'auth_gate') {
+    return false;
+  }
+
+  return Boolean(
+    context.metadata?.roleTitle
+    || context.metadata?.companyName
+    || context.jobDescription?.text
+    || getVisibleQuestions(context).length > 0
+    || (context.stats?.visibleFieldCount ?? 0) > 0
+  );
+}
+
+function buildWorkspacePayload(context) {
+  return {
+    workspaceId: state.workspace.item?.id || undefined,
+    sourcePlatform: context?.classification?.platform,
+    sourceUrl: context?.url,
+    companyName: context?.metadata?.companyName,
+    roleTitle: context?.metadata?.roleTitle || context?.heading || context?.visibleTitle,
+    location: context?.metadata?.location,
+    employmentType: context?.metadata?.employmentType,
+    compensationText: context?.metadata?.compensationText,
+    jobDescription: context?.jobDescription?.text,
+    applicationStatus: getVisibleQuestions(context).length > 0 ? 'in_progress' : 'discovered',
+  };
+}
+
+function getWorkspaceSignature(context) {
+  if (!canCreateWorkspace(context)) return '';
+
+  return JSON.stringify({
+    workspaceId: state.workspace.item?.id || '',
+    sourceUrl: context?.url || '',
+    sourcePlatform: context?.classification?.platform || '',
+    companyName: context?.metadata?.companyName || '',
+    roleTitle: context?.metadata?.roleTitle || context?.heading || context?.visibleTitle || '',
+    location: context?.metadata?.location || '',
+    jobDescriptionSample: context?.jobDescription?.text?.slice(0, 240) || '',
+    questionCount: getVisibleQuestions(context).length,
+  });
+}
+
+function renderWorkspace() {
+  const workspace = state.workspace.item;
+  if (!workspace) {
+    workspaceStage.textContent = 'Not saved';
+    workspaceQuestionProgress.textContent = '0/0';
+    setWorkspaceStatus(canCreateWorkspace(state.context)
+      ? 'We have enough page context to save this as an application workspace.'
+      : 'We will save this job page as an application workspace once enough context is available.');
+    return;
+  }
+
+  workspaceStage.textContent = formatWorkspaceStage(workspace.applicationStatus);
+  workspaceQuestionProgress.textContent = `${workspace.answeredQuestionCount || 0}/${workspace.questionCount || 0}`;
+
+  const parts = [
+    workspace.companyName,
+    workspace.roleTitle,
+    typeof workspace.fitScore === 'number' ? `fit ${workspace.fitScore}%` : '',
+    state.workspace.lastMatchedBy ? `matched by ${state.workspace.lastMatchedBy.replace('_', ' ')}` : '',
+    workspace.updatedAt ? `updated ${new Date(workspace.updatedAt).toLocaleString()}` : '',
+  ].filter(Boolean);
+  setWorkspaceStatus(parts.join(' | '));
+}
+
+async function syncWorkspaceIfNeeded(force = false) {
+  if (!canCreateWorkspace(state.context)) {
+    state.workspace.item = null;
+    state.workspace.syncSignature = '';
+    state.workspace.lastMatchedBy = null;
+    renderWorkspace();
+    return null;
+  }
+
+  const nextSignature = getWorkspaceSignature(state.context);
+  if (!force && nextSignature && nextSignature === state.workspace.syncSignature) {
+    return state.workspace.item;
+  }
+
+  state.workspace.loading = true;
+  setWorkspaceStatus('Saving the current job page into an application workspace...');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'UPSERT_WORKSPACE',
+      payload: buildWorkspacePayload(state.context),
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to sync the application workspace');
+    }
+
+    state.workspace.item = response.payload.workspace;
+    state.workspace.syncSignature = nextSignature;
+    state.workspace.lastMatchedBy = response.payload.matchedBy;
+    renderWorkspace();
+    return state.workspace.item;
+  } catch (error) {
+    state.workspace.syncSignature = '';
+    setWorkspaceStatus(error instanceof Error ? error.message : 'Failed to sync the application workspace.');
+    return null;
+  } finally {
+    state.workspace.loading = false;
+  }
+}
+
 function getVisibleQuestions(context) {
   const questions = Array.isArray(context?.questions) ? context.questions : [];
   return questions.filter((question) => question.answerMode === 'short_text' || question.answerMode === 'long_text');
@@ -234,6 +363,7 @@ function renderContext(context) {
     renderList([]);
     renderPlan(null);
     renderQuestions();
+    renderWorkspace();
     return;
   }
 
@@ -262,6 +392,7 @@ function renderContext(context) {
 
   renderList(questionLabels.length > 0 ? questionLabels : fieldLabels);
   renderQuestions();
+  renderWorkspace();
 }
 
 function getContextSignature(context) {
@@ -309,6 +440,9 @@ async function refreshContext() {
     state.hasUndo = false;
     state.plan = null;
     state.actionResults = {};
+    state.workspace.item = null;
+    state.workspace.syncSignature = '';
+    state.workspace.lastMatchedBy = null;
     state.questions.items = {};
     state.questions.selectedId = null;
     renderContext(null);
@@ -331,6 +465,7 @@ async function refreshContext() {
   renderContext(state.context);
   renderPlan(state.plan);
   renderQuestionWorkspace();
+  await syncWorkspaceIfNeeded();
   updateButtons();
 }
 
@@ -622,6 +757,7 @@ async function suggestAnswers(questionId) {
   setQuestionStatus('Generating grounded drafts for the selected question...');
 
   try {
+    const workspace = await syncWorkspaceIfNeeded();
     const response = await chrome.runtime.sendMessage({
       type: 'SUGGEST_QUESTION_ANSWERS',
       payload: {
@@ -635,6 +771,7 @@ async function suggestAnswers(questionId) {
           sectionHeading: question.sectionHeading,
         },
         context: {
+          workspaceId: workspace?.id || state.workspace.item?.id,
           sourceUrl: state.context?.url,
           platform: state.context?.classification?.platform,
           pageKind: state.context?.classification?.pageKind,
@@ -666,6 +803,7 @@ async function suggestAnswers(questionId) {
     } else {
       setQuestionStatus(entry.warnings[0] || 'This question should be answered manually.');
     }
+    await syncWorkspaceIfNeeded(true);
   } catch (error) {
     entry.warnings = [error instanceof Error ? error.message : 'Failed to generate answer drafts'];
     setQuestionStatus(entry.warnings[0]);
@@ -768,6 +906,7 @@ async function saveAnswer() {
 
     entry.savedAt = new Date(response.payload.savedAt).toLocaleString();
     setQuestionStatus('Saved this answer to the application question record for later reuse.');
+    await syncWorkspaceIfNeeded(true);
   } catch (error) {
     setQuestionStatus(error instanceof Error ? error.message : 'Failed to save the drafted answer.');
   } finally {

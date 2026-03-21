@@ -110,6 +110,28 @@ async function saveQuestionAnswer(payload) {
   return postExtensionJson('/api/extension/questions/save', payload);
 }
 
+async function upsertWorkspace(payload) {
+  return postExtensionJson('/api/extension/workspaces/upsert', payload);
+}
+
+async function fetchWorkspace(workspaceId) {
+  const appBaseUrl = await getAppBaseUrl();
+  const response = await fetch(`${appBaseUrl}/api/extension/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error || 'Unable to load the application workspace');
+  }
+
+  return payload;
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   setPanelBehavior();
 });
@@ -231,6 +253,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Failed to save the drafted answer',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'UPSERT_WORKSPACE') {
+    upsertWorkspace(message.payload)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to sync the application workspace',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'GET_WORKSPACE') {
+    fetchWorkspace(message.workspaceId)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to load the application workspace',
         });
       });
     return true;

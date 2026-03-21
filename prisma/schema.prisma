@@ -344,9 +344,38 @@ model ParsedJDCache {
     @@index([expiresAt])
 }
 
+model ApplicationWorkspace {
+    id                   String   @id @default(cuid())
+    userId               String
+    sourcePlatform       String?
+    sourceUrl            String
+    companyName          String?
+    roleTitle            String?
+    location             String?
+    employmentType       String?
+    compensationText     String?
+    jobDescription       String?
+    applicationStatus    String   @default("discovered")
+    fitScore             Int?
+    fitSummary           String?
+    companySnapshot      Json?
+    linkedJobTargetId    String?
+    selectedResumeId     String?
+    selectedGeneratedPdfId String?
+    lastViewedAt         DateTime?
+    createdAt            DateTime @default(now())
+    updatedAt            DateTime @updatedAt
+    questions            ApplicationQuestion[]
+
+    @@unique([userId, sourceUrl])
+    @@index([userId, updatedAt])
+    @@index([userId, companyName, roleTitle, updatedAt])
+}
+
 model ApplicationQuestion {
     id           String   @id @default(cuid())
     userId       String
+    workspaceId  String?
     sourceUrl    String?
     platform     String?
     companyName  String?
@@ -363,7 +392,9 @@ model ApplicationQuestion {
     confidence   Float?
     createdAt    DateTime @default(now())
     updatedAt    DateTime @updatedAt
+    workspace    ApplicationWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
     @@index([userId, updatedAt])
     @@index([userId, sourceUrl, updatedAt])
+    @@index([workspaceId, updatedAt])
 }
