@@ -263,6 +263,43 @@
         background: rgba(239, 228, 206, 0.55);
         border: 1px dashed rgba(145, 117, 71, 0.35);
       }
+      .progress-track {
+        margin-top: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(145, 117, 71, 0.16);
+        overflow: hidden;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #9a6a21 0%, #d3a24a 100%);
+        transition: width 180ms ease;
+      }
+      .insight-list {
+        list-style: none;
+        padding: 0;
+        margin: 12px 0 0;
+      }
+      .insight-list li {
+        margin-top: 8px;
+        padding: 10px;
+        border-radius: 12px;
+        background: #fffdf8;
+        border: 1px solid #ead9b8;
+      }
+      .memory-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .memory-note {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #72562c;
+      }
     </style>
   </head>
   <body>
@@ -315,6 +352,30 @@
           </div>
         </section>
         <section class="section">
+          <div class="eyebrow">Tailored Resume</div>
+          <div class="controls">
+            <button id="generate-resume">Generate Tailored Resume</button>
+            <button id="open-resume-editor" class="secondary" disabled>Open in Editor</button>
+            <button id="download-resume-pdf" class="secondary" disabled>Download PDF</button>
+            <button id="use-resume-upload" class="secondary" disabled>Use for Upload</button>
+          </div>
+          <div class="status" id="resume-status">Generate a tailored resume from this job page once the workspace has enough job description context.</div>
+          <div class="grid two">
+            <div class="tile">
+              <span class="tile-label">Generation Stage</span>
+              <span class="tile-value" id="resume-stage">Idle</span>
+            </div>
+            <div class="tile">
+              <span class="tile-label">ATS Estimate</span>
+              <span class="tile-value" id="resume-ats">--</span>
+            </div>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" id="resume-progress"></div>
+          </div>
+        </section>
+
+        <section class="section">
           <div class="controls">
             <button id="plan-fill">Plan Autofill</button>
             <button id="apply-fill" disabled>Apply Safe Fill</button>
@@ -356,9 +417,34 @@
               <button id="insert-answer" disabled>Insert</button>
               <button id="save-answer" class="secondary" disabled>Save</button>
             </div>
+            <div class="memory-row">
+              <button id="use-previous-answer" class="secondary" disabled>Use Previous Answer</button>
+              <button id="save-reusable-answer" class="secondary" disabled>Save as Reusable</button>
+              <button id="always-reuse-answer" class="secondary" disabled>Always Reuse</button>
+            </div>
+            <p class="memory-note" id="question-memory-note"></p>
             <ul class="warning-list" id="question-warnings"></ul>
             <ul class="supporting-list" id="supporting-facts"></ul>
           </section>
+        </section>
+        <section class="section">
+          <div class="eyebrow">Company Intelligence</div>
+          <div class="controls">
+            <button id="refresh-company-insight" class="secondary">Refresh Insight</button>
+          </div>
+          <div class="status" id="company-status">Company trust and fit signals will show up here once the workspace is saved.</div>
+          <div class="grid two">
+            <div class="tile">
+              <span class="tile-label">Company Confidence</span>
+              <span class="tile-value" id="company-confidence">--</span>
+            </div>
+            <div class="tile">
+              <span class="tile-label">Role Fit</span>
+              <span class="tile-value" id="company-fit-score">--</span>
+            </div>
+          </div>
+          <ul class="insight-list" id="company-facts"></ul>
+          <ul class="insight-list" id="company-interpretation"></ul>
         </section>
         <ul id="labels"></ul>
       </section>

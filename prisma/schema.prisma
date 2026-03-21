@@ -360,6 +360,7 @@ model ApplicationWorkspace {
     fitSummary           String?
     companySnapshot      Json?
     linkedJobTargetId    String?
+    latestGenerationSessionId String?
     selectedResumeId     String?
     selectedGeneratedPdfId String?
     lastViewedAt         DateTime?
@@ -397,4 +398,46 @@ model ApplicationQuestion {
     @@index([userId, updatedAt])
     @@index([userId, sourceUrl, updatedAt])
     @@index([workspaceId, updatedAt])
+}
+
+model ReusableAnswer {
+    id                 String   @id @default(cuid())
+    userId             String
+    questionFingerprint String
+    canonicalQuestion  String
+    questionType       String?
+    answerMode         String?
+    answerText         String
+    usageCount         Int      @default(0)
+    autoUse            Boolean  @default(false)
+    sourceQuestionId   String?
+    metadata           Json?
+    lastUsedAt         DateTime?
+    createdAt          DateTime @default(now())
+    updatedAt          DateTime @updatedAt
+
+    @@unique([userId, questionFingerprint])
+    @@index([userId, updatedAt])
+    @@index([userId, autoUse, updatedAt])
+}
+
+model CompanyInsight {
+    id                  String   @id @default(cuid())
+    normalizedCompanyName String
+    website             String?
+    employeeCount       Int?
+    fundingTotal        String?
+    revenueEstimateText String?
+    reviewSummary       String?
+    engineeringSummary  String?
+    alumniSignalSummary String?
+    confidence          Float    @default(0)
+    freshnessLabel      String?
+    rawData             Json?
+    createdAt           DateTime @default(now())
+    updatedAt           DateTime @updatedAt
+
+    @@unique([normalizedCompanyName, website])
+    @@index([normalizedCompanyName, updatedAt])
+    @@index([updatedAt])
 }

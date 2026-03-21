@@ -6,7 +6,7 @@ Track what has been built, what is currently in progress, and what remains for t
 This file should be updated as implementation progresses so we always have one current source of truth.
 
 ## Current Status
-- Current phase: `Phase 4 - Application Workspace`
+- Current phase: `Phase 8 - Supported Site Depth and Polish`
 - Overall state: `In progress`
 - Last updated: `2026-03-21`
 
@@ -84,18 +84,18 @@ This file should be updated as implementation progresses so we always have one c
 - [x] Link browser state to saved workspace state
 
 ### Phase 5 Resume Tailoring From Browser
-- [ ] Add browser-triggered resume generation endpoint
-- [ ] Show generation progress in extension
-- [ ] Link generated resumes to the job/application context
+- [x] Add browser-triggered resume generation endpoint
+- [x] Show generation progress in extension
+- [x] Link generated resumes to the job/application context
 
 ### Phase 6 Memory
-- [ ] Add reusable answers model
-- [ ] Add recurring application preference memory
+- [x] Add reusable answers model
+- [x] Add recurring application preference memory
 
 ### Phase 7 Company Intelligence
-- [ ] Add company insight model
-- [ ] Add enrichment pipeline
-- [ ] Add company trust/fit UI
+- [x] Add company insight model
+- [x] Add enrichment pipeline
+- [x] Add company trust/fit UI
 
 ## Notes
 - Current API routes use the existing authenticated web session model.

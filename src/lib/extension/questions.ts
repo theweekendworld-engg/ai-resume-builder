@@ -4,6 +4,7 @@ import { parseWithRetry } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
 import { checkAiRateLimit } from '@/lib/rateLimit';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type {
   ExtensionProfileBundle,
   ExtensionQuestionSaveRequest,
@@ -15,7 +16,7 @@ import type {
 import { trackedChatCompletion } from '@/lib/usageTracker';
 
 type QuestionType = 'why_company' | 'why_role' | 'self_intro' | 'project_story' | 'experience_with_skill' | 'cover_letter' | 'eligibility' | 'compensation' | 'other';
-type SourceType = 'profile' | 'experience' | 'project' | 'education' | 'job_context';
+type SourceType = 'profile' | 'preferences' | 'experience' | 'project' | 'education' | 'job_context';
 
 type GroundingFact = {
   id: string;
@@ -24,6 +25,8 @@ type GroundingFact = {
   detail: string;
   score: number;
 };
+
+type PreferenceAnswer = NonNullable<ExtensionQuestionSuggestResponse['preferenceAnswer']>;
 
 const GeneratedDraftPayloadSchema = z.object({
   drafts: z.array(z.object({
@@ -63,6 +66,145 @@ function uniqueStrings(values: string[]): string[] {
   }
 
   return output;
+}
+
+function buildQuestionFingerprint(params: {
+  questionText: string;
+  helperText?: string[];
+  sectionHeading?: string;
+  type: QuestionType;
+}) {
+  const combinedText = [
+    params.questionText,
+    ...(params.helperText ?? []),
+    params.sectionHeading ?? '',
+  ].join(' ');
+  const normalized = normalizeText(combinedText);
+
+  if (params.type === 'eligibility') {
+    if (/sponsor|visa/.test(normalized)) return 'eligibility:sponsorship';
+    if (/authoriz|eligible|citizen|work authorization/.test(normalized)) return 'eligibility:work_authorization';
+    return 'eligibility:general';
+  }
+
+  if (params.type === 'compensation') {
+    if (/salary|compensation|pay range|desired pay|expected pay/.test(normalized)) return 'compensation:desired_compensation';
+    if (/notice|start date|availability|available to start/.test(normalized)) return 'compensation:notice_period';
+    if (/relocat/.test(normalized)) return 'compensation:relocation';
+    if (/remote|hybrid|onsite|on site|work mode/.test(normalized)) return 'compensation:work_mode';
+    return 'compensation:general';
+  }
+
+  if (params.type === 'self_intro') {
+    return 'self_intro:background';
+  }
+
+  const tokenSignature = tokenize(normalized).slice(0, 10).join('-') || 'general';
+  return `${params.type}:${tokenSignature}`;
+}
+
+function buildPreferenceAnswer(
+  questionFingerprint: string,
+  preferences: ReturnType<typeof parseUserGenerationPreferences>
+): PreferenceAnswer | null {
+  const workModes = preferences.preferredWorkModes;
+
+  if (questionFingerprint === 'eligibility:work_authorization') {
+    const parts = uniqueStrings([
+      preferences.workAuthorization,
+      preferences.requiresSponsorship === 'no' ? 'I do not require visa sponsorship.' : '',
+      preferences.requiresSponsorship === 'yes' ? 'I require visa sponsorship.' : '',
+      preferences.requiresSponsorship === 'case_by_case' ? 'My sponsorship needs depend on the role and location.' : '',
+    ]);
+
+    if (parts.length === 0) return null;
+
+    return {
+      key: 'work_authorization',
+      label: 'Work authorization',
+      answerText: parts.join(' '),
+      confidence: 0.94,
+      sourceSummary: 'Built from your saved work authorization and sponsorship preferences.',
+    };
+  }
+
+  if (questionFingerprint === 'eligibility:sponsorship') {
+    const answerText = preferences.requiresSponsorship === 'no'
+      ? 'No, I do not require visa sponsorship.'
+      : preferences.requiresSponsorship === 'yes'
+        ? 'Yes, I require visa sponsorship.'
+        : preferences.requiresSponsorship === 'case_by_case'
+          ? 'My sponsorship needs depend on the role, location, and visa context.'
+          : '';
+
+    if (!answerText) return null;
+
+    return {
+      key: 'sponsorship',
+      label: 'Sponsorship',
+      answerText,
+      confidence: 0.97,
+      sourceSummary: 'Built from your saved sponsorship preference.',
+    };
+  }
+
+  if (questionFingerprint === 'compensation:relocation') {
+    const answerText = preferences.willingToRelocate === 'yes'
+      ? 'Yes, I am open to relocation.'
+      : preferences.willingToRelocate === 'no'
+        ? 'No, I am not looking to relocate at this time.'
+        : preferences.willingToRelocate === 'case_by_case'
+          ? 'I am open to relocation on a case-by-case basis.'
+          : '';
+
+    if (!answerText) return null;
+
+    return {
+      key: 'relocation',
+      label: 'Relocation',
+      answerText,
+      confidence: 0.95,
+      sourceSummary: 'Built from your saved relocation preference.',
+    };
+  }
+
+  if (questionFingerprint === 'compensation:work_mode') {
+    if (workModes.length === 0) return null;
+
+    return {
+      key: 'work_mode',
+      label: 'Work mode',
+      answerText: `My preferred work modes are ${workModes.join(', ')}.`,
+      confidence: 0.9,
+      sourceSummary: 'Built from your saved work-mode preference.',
+    };
+  }
+
+  if (questionFingerprint === 'compensation:desired_compensation' || questionFingerprint === 'compensation:general') {
+    if (!preferences.desiredCompensation.trim()) return null;
+
+    return {
+      key: 'desired_compensation',
+      label: 'Desired compensation',
+      answerText: `My target compensation range is ${preferences.desiredCompensation.trim()}.`,
+      confidence: 0.92,
+      sourceSummary: 'Built from your saved compensation preference.',
+    };
+  }
+
+  if (questionFingerprint === 'compensation:notice_period') {
+    if (!preferences.noticePeriod.trim()) return null;
+
+    return {
+      key: 'notice_period',
+      label: 'Notice period',
+      answerText: `My notice period is ${preferences.noticePeriod.trim()}.`,
+      confidence: 0.93,
+      sourceSummary: 'Built from your saved notice-period preference.',
+    };
+  }
+
+  return null;
 }
 
 function toConfidenceBand(score: number): 'high' | 'medium' | 'low' {
@@ -133,6 +275,7 @@ function classifyQuestion(input: ExtensionQuestionSuggestRequest) {
 
 function buildGroundingFacts(bundle: ExtensionProfileBundle, input: ExtensionQuestionSuggestRequest, classification: ReturnType<typeof classifyQuestion>): GroundingFact[] {
   const context = input.context;
+  const preferences = parseUserGenerationPreferences(bundle.profile.preferences);
   const queryTokens = uniqueStrings([
     ...tokenize(input.question.questionText),
     ...tokenize((input.question.helperText ?? []).join(' ')),
@@ -156,6 +299,25 @@ function buildGroundingFacts(bundle: ExtensionProfileBundle, input: ExtensionQue
       title: bundle.profile.fullName ? `${bundle.profile.fullName} profile` : 'Profile summary',
       detail: profileSnippets.join(' | '),
       score: 2.8 + scoreTextOverlap(profileSnippets.join(' '), queryTokens),
+    });
+  }
+
+  const preferenceSnippets = uniqueStrings([
+    preferences.workAuthorization,
+    preferences.requiresSponsorship !== 'unknown' ? `Sponsorship: ${preferences.requiresSponsorship}` : '',
+    preferences.willingToRelocate !== 'unknown' ? `Relocation: ${preferences.willingToRelocate}` : '',
+    preferences.preferredWorkModes.length > 0 ? `Preferred work modes: ${preferences.preferredWorkModes.join(', ')}` : '',
+    preferences.desiredCompensation ? `Desired compensation: ${preferences.desiredCompensation}` : '',
+    preferences.noticePeriod ? `Notice period: ${preferences.noticePeriod}` : '',
+  ]);
+
+  if (preferenceSnippets.length > 0) {
+    facts.push({
+      id: 'preferences',
+      sourceType: 'preferences',
+      title: 'Application preferences',
+      detail: preferenceSnippets.join(' | '),
+      score: 1.8 + scoreTextOverlap(preferenceSnippets.join(' '), queryTokens),
     });
   }
 
@@ -238,6 +400,7 @@ function buildGroundingFacts(bundle: ExtensionProfileBundle, input: ExtensionQue
     if (classification.type === 'project_story' && fact.sourceType === 'project') bonus += 1.2;
     if (classification.type === 'experience_with_skill' && (fact.sourceType === 'experience' || fact.sourceType === 'project')) bonus += 1.1;
     if (classification.type === 'why_role' && fact.sourceType === 'job_context') bonus += 1;
+    if ((classification.type === 'eligibility' || classification.type === 'compensation') && fact.sourceType === 'preferences') bonus += 1.8;
 
     return {
       ...fact,
@@ -394,7 +557,30 @@ export async function suggestExtensionQuestionAnswers(params: {
   bundle: ExtensionProfileBundle;
 }): Promise<ExtensionQuestionSuggestResponse> {
   const classification = classifyQuestion(params.input);
+  const questionFingerprint = buildQuestionFingerprint({
+    questionText: params.input.question.questionText,
+    helperText: params.input.question.helperText,
+    sectionHeading: params.input.question.sectionHeading,
+    type: classification.type,
+  });
+  const preferences = parseUserGenerationPreferences(params.bundle.profile.preferences);
   const facts = buildGroundingFacts(params.bundle, params.input, classification);
+  const reusableAnswer = await prisma.reusableAnswer.findUnique({
+    where: {
+      userId_questionFingerprint: {
+        userId: params.userId,
+        questionFingerprint,
+      },
+    },
+    select: {
+      id: true,
+      canonicalQuestion: true,
+      answerText: true,
+      usageCount: true,
+      autoUse: true,
+    },
+  });
+  const preferenceAnswer = buildPreferenceAnswer(questionFingerprint, preferences);
   const warnings = uniqueStrings([
     facts.length < 2 ? 'This answer is based on limited profile evidence, so review it carefully before inserting.' : '',
     !params.input.context?.companyName && classification.type === 'why_company'
@@ -403,12 +589,48 @@ export async function suggestExtensionQuestionAnswers(params: {
     !params.input.context?.roleTitle && classification.type === 'why_role'
       ? 'Role title was not confidently detected on the page, so the answer stays broad.'
       : '',
+    reusableAnswer ? 'A saved reusable answer is available for this question pattern.' : '',
+    preferenceAnswer ? preferenceAnswer.sourceSummary : '',
   ]).slice(0, 4);
 
   let drafts: ExtensionQuestionSuggestResponse['drafts'] = [];
+  const reusableDraft = reusableAnswer
+    ? [{
+      tone: params.input.selectedTone,
+      answer: reusableAnswer.answerText,
+      confidence: reusableAnswer.autoUse ? 0.95 : 0.88,
+      sourceFactsUsed: facts.filter((fact) => fact.sourceType === 'preferences' || fact.sourceType === 'profile').slice(0, 2).map((fact) => ({
+        id: fact.id,
+        sourceType: fact.sourceType,
+        title: fact.title,
+        detail: fact.detail,
+      })),
+      warnings: [reusableAnswer.autoUse
+        ? 'This reusable answer was previously marked as safe to use for similar questions. Review it before inserting.'
+        : 'This answer comes from a previously accepted response. Review it before inserting.'],
+    }]
+    : [];
 
-  if (classification.type === 'eligibility' || classification.type === 'compensation') {
-    warnings.unshift('This looks like a legal, eligibility, or compensation question. Answer it manually to avoid mistakes.');
+  if (preferenceAnswer) {
+    drafts = [{
+      tone: params.input.selectedTone,
+      answer: preferenceAnswer.answerText,
+      confidence: preferenceAnswer.confidence,
+      sourceFactsUsed: facts
+        .filter((fact) => fact.sourceType === 'preferences')
+        .slice(0, 1)
+        .map((fact) => ({
+          id: fact.id,
+          sourceType: fact.sourceType,
+          title: fact.title,
+          detail: fact.detail,
+        })),
+      warnings: ['This answer was built from your saved application preferences. Double-check it before inserting.'],
+    }];
+  } else if (reusableAnswer && (reusableAnswer.autoUse || classification.type === 'eligibility' || classification.type === 'compensation')) {
+    drafts = reusableDraft;
+  } else if (classification.type === 'eligibility' || classification.type === 'compensation') {
+    warnings.unshift('This looks like a legal, eligibility, or compensation question. Save your preferences or answer it manually to avoid mistakes.');
   } else {
     const limit = await checkAiRateLimit(`ai:extension:questions:${params.userId}`);
     if (!limit.allowed) {
@@ -460,6 +682,19 @@ export async function suggestExtensionQuestionAnswers(params: {
     drafts,
     warnings,
     suggestedTone: params.input.selectedTone,
+    reusableAnswer: reusableAnswer
+      ? {
+        id: reusableAnswer.id,
+        canonicalQuestion: reusableAnswer.canonicalQuestion,
+        answerText: reusableAnswer.answerText,
+        usageCount: reusableAnswer.usageCount,
+        autoUse: reusableAnswer.autoUse,
+        matchReason: reusableAnswer.autoUse
+          ? 'You marked this answer as reusable for similar questions.'
+          : 'A previous accepted answer matches this question pattern.',
+      }
+      : undefined,
+    preferenceAnswer: preferenceAnswer ?? undefined,
   };
 }
 
@@ -474,6 +709,9 @@ export async function saveExtensionQuestionAnswer(params: {
     },
     select: {
       id: true,
+      questionText: true,
+      questionType: true,
+      answerMode: true,
     },
   });
 
@@ -495,9 +733,63 @@ export async function saveExtensionQuestionAnswer(params: {
     },
   });
 
+  let reusableAnswerId: string | undefined;
+  let reusableAnswerSaved = false;
+
+  if (params.input.saveAsReusable || params.input.alwaysUseForSimilar) {
+    const questionFingerprint = buildQuestionFingerprint({
+      questionText: existing.questionText,
+      type: (existing.questionType as QuestionType) ?? 'other',
+    });
+
+    const reusable = await prisma.reusableAnswer.upsert({
+      where: {
+        userId_questionFingerprint: {
+          userId: params.userId,
+          questionFingerprint,
+        },
+      },
+      create: {
+        userId: params.userId,
+        questionFingerprint,
+        canonicalQuestion: existing.questionText,
+        questionType: existing.questionType,
+        answerMode: existing.answerMode,
+        answerText: params.input.finalAnswer,
+        usageCount: 1,
+        autoUse: params.input.alwaysUseForSimilar,
+        sourceQuestionId: existing.id,
+        lastUsedAt: new Date(),
+        metadata: {
+          savedFrom: 'extension',
+        } as Prisma.InputJsonValue,
+      },
+      update: {
+        canonicalQuestion: existing.questionText,
+        questionType: existing.questionType,
+        answerMode: existing.answerMode,
+        answerText: params.input.finalAnswer,
+        usageCount: {
+          increment: 1,
+        },
+        autoUse: params.input.alwaysUseForSimilar ? true : undefined,
+        sourceQuestionId: existing.id,
+        lastUsedAt: new Date(),
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    reusableAnswerId = reusable.id;
+    reusableAnswerSaved = true;
+  }
+
   return {
     success: true,
     questionId: updated.id,
     savedAt: updated.updatedAt.toISOString(),
+    reusableAnswerSaved,
+    reusableAnswerId,
   };
 }

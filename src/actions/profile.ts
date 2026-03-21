@@ -63,10 +63,16 @@ function normalizePreferenceInput(value: unknown): unknown {
     ? orderRaw.split(',').map((item) => item.trim()).filter(Boolean)
     : orderRaw;
 
+  const workModesRaw = obj.preferredWorkModes;
+  const preferredWorkModes = typeof workModesRaw === 'string'
+    ? workModesRaw.split(',').map((item) => item.trim()).filter(Boolean)
+    : workModesRaw;
+
   return {
     ...obj,
     maxProjects,
     defaultSectionOrder,
+    preferredWorkModes,
   };
 }
 

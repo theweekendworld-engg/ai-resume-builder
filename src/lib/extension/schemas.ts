@@ -314,7 +314,7 @@ export const ExtensionQuestionInputSchema = z.object({
 
 export const ExtensionAnswerSourceFactSchema = z.object({
   id: z.string().max(255),
-  sourceType: z.enum(['profile', 'experience', 'project', 'education', 'job_context']),
+  sourceType: z.enum(['profile', 'preferences', 'experience', 'project', 'education', 'job_context']),
   title: z.string().max(500),
   detail: z.string().max(2000),
 });
@@ -340,18 +340,44 @@ export const ExtensionQuestionSuggestResponseSchema = z.object({
   drafts: z.array(ExtensionQuestionAnswerDraftSchema).max(3).default([]),
   warnings: z.array(z.string().max(500)).max(8).default([]),
   suggestedTone: ExtensionQuestionToneSchema,
+  reusableAnswer: z.object({
+    id: z.string(),
+    canonicalQuestion: z.string(),
+    answerText: z.string(),
+    usageCount: z.number().int().min(0),
+    autoUse: z.boolean().default(false),
+    matchReason: z.string(),
+  }).optional(),
+  preferenceAnswer: z.object({
+    key: z.enum([
+      'work_authorization',
+      'sponsorship',
+      'relocation',
+      'work_mode',
+      'desired_compensation',
+      'notice_period',
+    ]),
+    label: z.string(),
+    answerText: z.string(),
+    confidence: z.number().min(0).max(1),
+    sourceSummary: z.string(),
+  }).optional(),
 });
 
 export const ExtensionQuestionSaveRequestSchema = z.object({
   questionId: z.string().min(1).max(255),
   finalAnswer: z.string().min(1).max(5000),
   selectedTone: ExtensionQuestionToneSchema.optional(),
+  saveAsReusable: z.boolean().default(false),
+  alwaysUseForSimilar: z.boolean().default(false),
 });
 
 export const ExtensionQuestionSaveResponseSchema = z.object({
   success: z.literal(true),
   questionId: z.string(),
   savedAt: z.string().datetime(),
+  reusableAnswerSaved: z.boolean().default(false),
+  reusableAnswerId: z.string().optional(),
 });
 
 export const ExtensionWorkspaceStatusSchema = z.enum([
@@ -378,6 +404,7 @@ export const ExtensionWorkspaceSnapshotSchema = z.object({
   fitSummary: z.string().nullable().optional(),
   companySnapshot: z.unknown().nullable().optional(),
   linkedJobTargetId: z.string().nullable().optional(),
+  latestGenerationSessionId: z.string().nullable().optional(),
   selectedResumeId: z.string().nullable().optional(),
   selectedGeneratedPdfId: z.string().nullable().optional(),
   questionCount: z.number().int().min(0).default(0),
@@ -402,6 +429,7 @@ export const ExtensionWorkspaceUpsertRequestSchema = z.object({
   fitSummary: z.string().max(4000).optional(),
   companySnapshot: z.unknown().optional(),
   linkedJobTargetId: z.string().max(255).optional(),
+  latestGenerationSessionId: z.string().max(255).optional(),
   selectedResumeId: z.string().max(255).optional(),
   selectedGeneratedPdfId: z.string().max(255).optional(),
 });
@@ -410,6 +438,95 @@ export const ExtensionWorkspaceResponseSchema = z.object({
   success: z.literal(true),
   workspace: ExtensionWorkspaceSnapshotSchema,
   matchedBy: z.enum(['id', 'source_url', 'company_role', 'created']),
+});
+
+export const ExtensionResumeGenerateRequestSchema = z.object({
+  workspaceId: z.string().max(255).optional(),
+  sourceResumeId: z.string().max(255).optional(),
+  companyName: z.string().max(500).optional(),
+  roleTitle: z.string().max(500).optional(),
+  sourceUrl: z.string().url().max(3000).optional(),
+  jobDescription: z.string().min(20).max(100000).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.workspaceId && !value.jobDescription) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide a workspace ID or a job description to start resume generation.',
+      path: ['jobDescription'],
+    });
+  }
+});
+
+export const ExtensionGenerationSessionStatusSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'awaiting_clarification', 'generating', 'completed', 'failed']),
+  currentStep: z.string(),
+  stageLabel: z.string(),
+  progressPercent: z.number().int().min(0).max(100),
+  atsScore: z.number().int().min(0).max(100).nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  resumeId: z.string().nullable().optional(),
+  editorUrl: z.string().url().optional(),
+  pdfId: z.string().optional(),
+  pdfUrl: z.string().url().optional(),
+  elapsedMs: z.number().int().min(0),
+  startedAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export const ExtensionResumeGenerateResponseSchema = z.object({
+  success: z.literal(true),
+  session: ExtensionGenerationSessionStatusSchema,
+  workspace: ExtensionWorkspaceSnapshotSchema.optional(),
+});
+
+export const ExtensionCompanyInsightRequestSchema = z.object({
+  workspaceId: z.string().max(255).optional(),
+  companyName: z.string().max(500).optional(),
+  roleTitle: z.string().max(500).optional(),
+  sourceUrl: z.string().url().max(3000).optional(),
+  jobDescription: z.string().max(100000).optional(),
+  forceRefresh: z.boolean().default(false),
+}).superRefine((value, ctx) => {
+  if (!value.workspaceId && !value.companyName && !value.sourceUrl) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide a workspace ID or a company hint to load company intelligence.',
+      path: ['companyName'],
+    });
+  }
+});
+
+export const ExtensionCompanyInsightResponseSchema = z.object({
+  success: z.literal(true),
+  insight: z.object({
+    id: z.string(),
+    normalizedCompanyName: z.string(),
+    companyName: z.string(),
+    website: z.string().nullable().optional(),
+    employeeCount: z.number().int().nullable().optional(),
+    fundingTotal: z.string().nullable().optional(),
+    revenueEstimateText: z.string().nullable().optional(),
+    reviewSummary: z.string().nullable().optional(),
+    engineeringSummary: z.string().nullable().optional(),
+    alumniSignalSummary: z.string().nullable().optional(),
+    confidence: z.number().min(0).max(1),
+    freshnessDate: z.string().datetime(),
+    freshnessLabel: z.string(),
+    facts: z.array(z.string()).default([]),
+    interpretation: z.array(z.string()).default([]),
+    sourceSummary: z.string(),
+  }),
+  fit: z.object({
+    fitScore: z.number().int().min(0).max(100).nullable().optional(),
+    summary: z.string().nullable().optional(),
+    strengths: z.array(z.string()).default([]),
+    gaps: z.array(z.string()).default([]),
+    matchedSkills: z.array(z.string()).default([]),
+    missingSkills: z.array(z.string()).default([]),
+  }).optional(),
+  workspace: ExtensionWorkspaceSnapshotSchema.optional(),
 });
 
 export type ExtensionPlatform = z.infer<typeof ExtensionPlatformSchema>;
@@ -429,3 +546,7 @@ export type ExtensionQuestionSaveResponse = z.infer<typeof ExtensionQuestionSave
 export type ExtensionWorkspaceUpsertRequest = z.infer<typeof ExtensionWorkspaceUpsertRequestSchema>;
 export type ExtensionWorkspaceResponse = z.infer<typeof ExtensionWorkspaceResponseSchema>;
 export type ExtensionWorkspaceSnapshot = z.infer<typeof ExtensionWorkspaceSnapshotSchema>;
+export type ExtensionResumeGenerateRequest = z.infer<typeof ExtensionResumeGenerateRequestSchema>;
+export type ExtensionResumeGenerateResponse = z.infer<typeof ExtensionResumeGenerateResponseSchema>;
+export type ExtensionCompanyInsightRequest = z.infer<typeof ExtensionCompanyInsightRequestSchema>;
+export type ExtensionCompanyInsightResponse = z.infer<typeof ExtensionCompanyInsightResponseSchema>;

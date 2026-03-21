@@ -102,6 +102,24 @@ async function postExtensionJson(path, body) {
   return payload;
 }
 
+async function getExtensionJson(path) {
+  const appBaseUrl = await getAppBaseUrl();
+  const response = await fetch(`${appBaseUrl}${path}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.success === false) {
+    throw new Error(payload?.error || `Request to ${path} failed`);
+  }
+
+  return payload;
+}
+
 async function suggestQuestionAnswers(payload) {
   return postExtensionJson('/api/extension/questions/suggest', payload);
 }
@@ -112,6 +130,19 @@ async function saveQuestionAnswer(payload) {
 
 async function upsertWorkspace(payload) {
   return postExtensionJson('/api/extension/workspaces/upsert', payload);
+}
+
+async function startResumeGeneration(payload) {
+  return postExtensionJson('/api/extension/resume/generate', payload);
+}
+
+async function fetchGenerationStatus(sessionId, workspaceId) {
+  const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+  return getExtensionJson(`/api/extension/generate/${encodeURIComponent(sessionId)}/status${query}`);
+}
+
+async function fetchCompanyInsight(payload) {
+  return postExtensionJson('/api/extension/company-insight', payload);
 }
 
 async function fetchWorkspace(workspaceId) {
@@ -277,6 +308,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Failed to load the application workspace',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'START_RESUME_GENERATION') {
+    startResumeGeneration(message.payload)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to start resume generation',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'GET_GENERATION_STATUS') {
+    fetchGenerationStatus(message.sessionId, message.workspaceId)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to load generation status',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'GET_COMPANY_INSIGHT') {
+    fetchCompanyInsight(message.payload)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to load company insight',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'OPEN_URL') {
+    chrome.tabs.create({ url: message.url })
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to open the requested URL',
         });
       });
     return true;

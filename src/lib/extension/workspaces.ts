@@ -71,6 +71,7 @@ async function formatWorkspaceSnapshot(workspaceId: string): Promise<ExtensionWo
     fitSummary: workspace.fitSummary,
     companySnapshot: workspace.companySnapshot,
     linkedJobTargetId: workspace.linkedJobTargetId,
+    latestGenerationSessionId: workspace.latestGenerationSessionId,
     selectedResumeId: workspace.selectedResumeId,
     selectedGeneratedPdfId: workspace.selectedGeneratedPdfId,
     questionCount: workspace._count.questions,
@@ -152,6 +153,7 @@ export async function upsertExtensionWorkspace(params: {
           ? toNullableJsonInput(params.input.companySnapshot)
           : toNullableJsonInput(existing.companySnapshot),
         linkedJobTargetId: chooseString(params.input.linkedJobTargetId, existing.linkedJobTargetId),
+        latestGenerationSessionId: chooseString(params.input.latestGenerationSessionId, existing.latestGenerationSessionId),
         selectedResumeId: chooseString(params.input.selectedResumeId, existing.selectedResumeId),
         selectedGeneratedPdfId: chooseString(params.input.selectedGeneratedPdfId, existing.selectedGeneratedPdfId),
         lastViewedAt: new Date(),
@@ -182,6 +184,7 @@ export async function upsertExtensionWorkspace(params: {
       fitSummary: params.input.fitSummary?.trim() || null,
       companySnapshot: toNullableJsonInput(params.input.companySnapshot),
       linkedJobTargetId: params.input.linkedJobTargetId?.trim() || null,
+      latestGenerationSessionId: params.input.latestGenerationSessionId?.trim() || null,
       selectedResumeId: params.input.selectedResumeId?.trim() || null,
       selectedGeneratedPdfId: params.input.selectedGeneratedPdfId?.trim() || null,
       lastViewedAt: new Date(),

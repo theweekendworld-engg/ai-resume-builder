@@ -34,6 +34,25 @@ const workspaceStatus = document.getElementById('workspace-status');
 const workspaceStage = document.getElementById('workspace-stage');
 const workspaceQuestionProgress = document.getElementById('workspace-question-progress');
 
+const generateResumeButton = document.getElementById('generate-resume');
+const openResumeEditorButton = document.getElementById('open-resume-editor');
+const downloadResumePdfButton = document.getElementById('download-resume-pdf');
+const useResumeUploadButton = document.getElementById('use-resume-upload');
+const resumeStatus = document.getElementById('resume-status');
+const resumeStage = document.getElementById('resume-stage');
+const resumeAts = document.getElementById('resume-ats');
+const resumeProgress = document.getElementById('resume-progress');
+const usePreviousAnswerButton = document.getElementById('use-previous-answer');
+const saveReusableAnswerButton = document.getElementById('save-reusable-answer');
+const alwaysReuseAnswerButton = document.getElementById('always-reuse-answer');
+const questionMemoryNote = document.getElementById('question-memory-note');
+const refreshCompanyInsightButton = document.getElementById('refresh-company-insight');
+const companyStatus = document.getElementById('company-status');
+const companyConfidence = document.getElementById('company-confidence');
+const companyFitScore = document.getElementById('company-fit-score');
+const companyFacts = document.getElementById('company-facts');
+const companyInterpretation = document.getElementById('company-interpretation');
+
 const state = {
   context: null,
   bundle: null,
@@ -45,6 +64,15 @@ const state = {
     syncSignature: '',
     loading: false,
     lastMatchedBy: null,
+  },
+  resume: {
+    session: null,
+    polling: false,
+  },
+  company: {
+    loading: false,
+    insight: null,
+    signature: '',
   },
   questions: {
     selectedId: null,
@@ -70,6 +98,14 @@ function setQuestionStatus(message) {
 
 function setWorkspaceStatus(message) {
   workspaceStatus.textContent = message;
+}
+
+function setResumeStatus(message) {
+  resumeStatus.textContent = message;
+}
+
+function setCompanyStatus(message) {
+  companyStatus.textContent = message;
 }
 
 function formatWorkspaceStage(status) {
@@ -268,6 +304,73 @@ function renderWorkspace() {
   setWorkspaceStatus(parts.join(' | '));
 }
 
+function renderResumeGeneration() {
+  const session = state.resume.session;
+  if (!session) {
+    resumeStage.textContent = 'Idle';
+    resumeAts.textContent = '--';
+    resumeProgress.style.width = '0%';
+    setResumeStatus(state.workspace.item?.jobDescription
+      ? 'This workspace is ready for tailored resume generation from the browser.'
+      : 'Generate a tailored resume once this workspace has a saved job description.');
+    updateButtons();
+    return;
+  }
+
+  resumeStage.textContent = session.stageLabel || session.currentStep || 'Preparing';
+  resumeAts.textContent = typeof session.atsScore === 'number' ? `${session.atsScore}%` : '--';
+  resumeProgress.style.width = `${Math.max(0, Math.min(100, session.progressPercent || 0))}%`;
+
+  const parts = [
+    session.status,
+    session.errorMessage || '',
+    session.resumeId ? 'resume ready' : '',
+    session.pdfUrl ? 'pdf ready' : '',
+  ].filter(Boolean);
+  setResumeStatus(parts.join(' | '));
+  updateButtons();
+}
+
+function renderInsightList(target, items, emptyMessage) {
+  target.replaceChildren();
+
+  if (!Array.isArray(items) || items.length === 0) {
+    const item = document.createElement('li');
+    item.textContent = emptyMessage;
+    target.appendChild(item);
+    return;
+  }
+
+  for (const entry of items) {
+    const item = document.createElement('li');
+    item.textContent = entry;
+    target.appendChild(item);
+  }
+}
+
+function renderCompanyInsight() {
+  const insight = state.company.insight;
+  if (!insight) {
+    companyConfidence.textContent = '--';
+    companyFitScore.textContent = '--';
+    renderInsightList(companyFacts, [], 'Saved company facts will appear here once we have enough context.');
+    renderInsightList(companyInterpretation, [], 'Interpretation notes will appear here after analysis runs.');
+    setCompanyStatus(state.workspace.item?.companyName
+      ? 'Refresh to pull the latest company trust and fit read for this workspace.'
+      : 'Company intelligence needs a saved workspace with a detected company name.');
+    return;
+  }
+
+  companyConfidence.textContent = `${Math.round((insight.insight?.confidence ?? 0) * 100)}%`;
+  companyFitScore.textContent = typeof insight.fit?.fitScore === 'number' ? `${insight.fit.fitScore}%` : '--';
+  renderInsightList(companyFacts, insight.insight?.facts ?? [], 'No structured company facts were found on this page.');
+  renderInsightList(companyInterpretation, insight.insight?.interpretation ?? [], 'Interpretation remains limited because the page exposed little reliable signal.');
+  setCompanyStatus([
+    insight.insight?.freshnessLabel,
+    insight.insight?.sourceSummary,
+  ].filter(Boolean).join(' | '));
+}
+
 async function syncWorkspaceIfNeeded(force = false) {
   if (!canCreateWorkspace(state.context)) {
     state.workspace.item = null;
@@ -327,6 +430,8 @@ function getQuestionEntry(questionId) {
       warnings: [],
       classification: null,
       editorText: '',
+      reusableAnswer: null,
+      preferenceAnswer: null,
       loading: false,
       saving: false,
       savedAt: null,
@@ -347,6 +452,17 @@ function updateButtons() {
   copyAnswerButton.disabled = !hasAnswer;
   insertAnswerButton.disabled = !selectedQuestion?.locator || !hasAnswer || Boolean(selectedEntry?.loading);
   saveAnswerButton.disabled = !selectedEntry?.questionId || !hasAnswer || Boolean(selectedEntry?.saving);
+  usePreviousAnswerButton.disabled = !selectedEntry?.reusableAnswer;
+  saveReusableAnswerButton.disabled = !selectedEntry?.questionId || !hasAnswer || Boolean(selectedEntry?.saving);
+  alwaysReuseAnswerButton.disabled = !selectedEntry?.questionId || !hasAnswer || Boolean(selectedEntry?.saving);
+
+  const activeSession = state.resume.session;
+  const hasGeneratedResume = Boolean(activeSession?.resumeId);
+  const hasPdf = Boolean(activeSession?.pdfUrl);
+  generateResumeButton.disabled = !state.workspace.item?.id || !state.workspace.item?.jobDescription || state.resume.polling;
+  openResumeEditorButton.disabled = !hasGeneratedResume;
+  downloadResumePdfButton.disabled = !hasPdf;
+  useResumeUploadButton.disabled = !hasPdf;
 }
 
 function renderContext(context) {
@@ -364,6 +480,8 @@ function renderContext(context) {
     renderPlan(null);
     renderQuestions();
     renderWorkspace();
+    renderResumeGeneration();
+    renderCompanyInsight();
     return;
   }
 
@@ -393,6 +511,8 @@ function renderContext(context) {
   renderList(questionLabels.length > 0 ? questionLabels : fieldLabels);
   renderQuestions();
   renderWorkspace();
+  renderResumeGeneration();
+  renderCompanyInsight();
 }
 
 function getContextSignature(context) {
@@ -443,6 +563,10 @@ async function refreshContext() {
     state.workspace.item = null;
     state.workspace.syncSignature = '';
     state.workspace.lastMatchedBy = null;
+    state.resume.session = null;
+    state.resume.polling = false;
+    state.company.insight = null;
+    state.company.signature = '';
     state.questions.items = {};
     state.questions.selectedId = null;
     renderContext(null);
@@ -465,7 +589,13 @@ async function refreshContext() {
   renderContext(state.context);
   renderPlan(state.plan);
   renderQuestionWorkspace();
-  await syncWorkspaceIfNeeded();
+  const workspace = await syncWorkspaceIfNeeded();
+  if (workspace?.latestGenerationSessionId) {
+    await pollGenerationStatus(workspace.latestGenerationSessionId, workspace.id, false);
+  } else if (!workspace) {
+    state.resume.session = null;
+  }
+  await maybeRefreshCompanyInsight(false);
   updateButtons();
 }
 
@@ -690,6 +820,7 @@ function renderQuestionWorkspace() {
     questionEmpty.hidden = false;
     questionWarnings.replaceChildren();
     supportingFacts.replaceChildren();
+    questionMemoryNote.textContent = '';
     answerEditor.value = '';
     updateButtons();
     return;
@@ -737,6 +868,11 @@ function renderQuestionWorkspace() {
     item.append(title, detail);
     supportingFacts.appendChild(item);
   }
+
+  questionMemoryNote.textContent = [
+    entry.preferenceAnswer ? `${entry.preferenceAnswer.label}: ${entry.preferenceAnswer.sourceSummary}` : '',
+    entry.reusableAnswer ? `Reusable answer available (${entry.reusableAnswer.usageCount || 0} prior use${entry.reusableAnswer.usageCount === 1 ? '' : 's'}).` : '',
+  ].filter(Boolean).join(' | ');
 
   updateButtons();
 }
@@ -793,13 +929,19 @@ async function suggestAnswers(questionId) {
     entry.classification = payload.classification;
     entry.drafts = Array.isArray(payload.drafts) ? payload.drafts : [];
     entry.warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
+    entry.reusableAnswer = payload.reusableAnswer || null;
+    entry.preferenceAnswer = payload.preferenceAnswer || null;
     entry.selectedTone = payload.suggestedTone || entry.selectedTone;
     const preferredDraft = entry.drafts.find((draft) => draft.tone === entry.selectedTone) || entry.drafts[0];
-    entry.editorText = preferredDraft?.answer || '';
+    entry.editorText = entry.reusableAnswer?.autoUse
+      ? entry.reusableAnswer.answerText
+      : preferredDraft?.answer || '';
     entry.savedAt = null;
 
     if (entry.drafts.length > 0) {
       setQuestionStatus(`Generated ${entry.drafts.length} grounded draft${entry.drafts.length === 1 ? '' : 's'}. Review before you insert anything.`);
+    } else if (entry.reusableAnswer) {
+      setQuestionStatus('A reusable answer is available for this question. Review it before inserting.');
     } else {
       setQuestionStatus(entry.warnings[0] || 'This question should be answered manually.');
     }
@@ -876,7 +1018,7 @@ async function insertAnswer() {
   setQuestionStatus(`Inserted the answer into "${selectedQuestion.questionText}". You can still edit it on the page or undo the last fill run.`);
 }
 
-async function saveAnswer() {
+async function saveAnswer(options = {}) {
   const selectedQuestion = getSelectedQuestion();
   if (!selectedQuestion) return;
 
@@ -897,6 +1039,8 @@ async function saveAnswer() {
         questionId: entry.questionId,
         finalAnswer: answerEditor.value.trim(),
         selectedTone: entry.selectedTone,
+        saveAsReusable: Boolean(options.saveAsReusable),
+        alwaysUseForSimilar: Boolean(options.alwaysUseForSimilar),
       },
     });
 
@@ -905,7 +1049,20 @@ async function saveAnswer() {
     }
 
     entry.savedAt = new Date(response.payload.savedAt).toLocaleString();
-    setQuestionStatus('Saved this answer to the application question record for later reuse.');
+    if (response.payload.reusableAnswerSaved) {
+      entry.reusableAnswer = {
+        id: response.payload.reusableAnswerId,
+        canonicalQuestion: selectedQuestion.questionText,
+        answerText: answerEditor.value.trim(),
+        usageCount: (entry.reusableAnswer?.usageCount || 0) + 1,
+        autoUse: Boolean(options.alwaysUseForSimilar) || Boolean(entry.reusableAnswer?.autoUse),
+        matchReason: 'Saved from your accepted answer.',
+      };
+    }
+
+    setQuestionStatus(response.payload.reusableAnswerSaved
+      ? 'Saved this answer and added it to reusable memory for similar questions.'
+      : 'Saved this answer to the application question record for later reuse.');
     await syncWorkspaceIfNeeded(true);
   } catch (error) {
     setQuestionStatus(error instanceof Error ? error.message : 'Failed to save the drafted answer.');
@@ -915,6 +1072,220 @@ async function saveAnswer() {
     renderQuestionWorkspace();
     updateButtons();
   }
+}
+
+function usePreviousAnswer() {
+  const selectedQuestion = getSelectedQuestion();
+  if (!selectedQuestion) return;
+
+  const entry = getQuestionEntry(getQuestionKey(selectedQuestion));
+  if (!entry.reusableAnswer) {
+    setQuestionStatus('No reusable answer is available for this question yet.');
+    return;
+  }
+
+  entry.editorText = entry.reusableAnswer.answerText;
+  answerEditor.value = entry.editorText;
+  renderQuestionWorkspace();
+  setQuestionStatus('Loaded your previous accepted answer into the editor.');
+}
+
+function getCompanyInsightSignature() {
+  const workspace = state.workspace.item;
+  if (!workspace?.companyName) return '';
+
+  return JSON.stringify({
+    workspaceId: workspace.id,
+    companyName: workspace.companyName,
+    roleTitle: workspace.roleTitle,
+    sourceUrl: workspace.sourceUrl,
+    jobDescriptionSample: workspace.jobDescription?.slice(0, 160) || '',
+  });
+}
+
+async function maybeRefreshCompanyInsight(force = false) {
+  const workspace = state.workspace.item;
+  if (!workspace?.companyName) {
+    state.company.insight = null;
+    state.company.signature = '';
+    renderCompanyInsight();
+    return;
+  }
+
+  const signature = getCompanyInsightSignature();
+  if (!force && signature && signature === state.company.signature) {
+    renderCompanyInsight();
+    return;
+  }
+
+  state.company.loading = true;
+  setCompanyStatus('Refreshing company trust and fit signals...');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'GET_COMPANY_INSIGHT',
+      payload: {
+        workspaceId: workspace.id,
+        companyName: workspace.companyName,
+        roleTitle: workspace.roleTitle,
+        sourceUrl: workspace.sourceUrl,
+        jobDescription: workspace.jobDescription,
+        forceRefresh: force,
+      },
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to load company insight');
+    }
+
+    state.company.insight = response.payload;
+    state.company.signature = signature;
+    if (response.payload.workspace) {
+      state.workspace.item = response.payload.workspace;
+      renderWorkspace();
+    }
+    renderCompanyInsight();
+  } catch (error) {
+    setCompanyStatus(error instanceof Error ? error.message : 'Failed to load company insight.');
+  } finally {
+    state.company.loading = false;
+  }
+}
+
+async function pollGenerationStatus(sessionId, workspaceId, announce = true) {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'GET_GENERATION_STATUS',
+      sessionId,
+      workspaceId,
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to load generation status');
+    }
+
+    state.resume.session = response.payload.session;
+    state.resume.polling = ['pending', 'generating'].includes(response.payload.session.status);
+    if (response.payload.workspace) {
+      state.workspace.item = response.payload.workspace;
+      renderWorkspace();
+    }
+
+    if (announce) {
+      if (response.payload.session.status === 'completed') {
+        setResumeStatus('Tailored resume is ready. You can open it in the editor, download the PDF, or use it for upload.');
+      } else if (response.payload.session.status === 'failed') {
+        setResumeStatus(response.payload.session.errorMessage || 'Resume generation failed.');
+      }
+    }
+
+    renderResumeGeneration();
+  } catch (error) {
+    state.resume.polling = false;
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to load generation status.');
+  }
+}
+
+async function generateResume() {
+  const workspace = state.workspace.item || await syncWorkspaceIfNeeded();
+  if (!workspace?.id) {
+    setResumeStatus('Save this page as an application workspace first.');
+    return;
+  }
+
+  if (!workspace.jobDescription) {
+    setResumeStatus('This page needs a parsed job description before resume generation can start.');
+    return;
+  }
+
+  state.resume.polling = true;
+  setResumeStatus('Starting tailored resume generation...');
+  updateButtons();
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_RESUME_GENERATION',
+      payload: {
+        workspaceId: workspace.id,
+        sourceResumeId: workspace.selectedResumeId || undefined,
+        companyName: workspace.companyName || undefined,
+        roleTitle: workspace.roleTitle || undefined,
+        sourceUrl: workspace.sourceUrl,
+        jobDescription: workspace.jobDescription,
+      },
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to start resume generation');
+    }
+
+    state.resume.session = response.payload.session;
+    if (response.payload.workspace) {
+      state.workspace.item = response.payload.workspace;
+      renderWorkspace();
+    }
+    renderResumeGeneration();
+    setResumeStatus('Resume generation is underway. Progress will keep updating here.');
+  } catch (error) {
+    state.resume.polling = false;
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to start resume generation.');
+  } finally {
+    updateButtons();
+  }
+}
+
+async function openUrl(url) {
+  if (!url) return;
+  const response = await chrome.runtime.sendMessage({
+    type: 'OPEN_URL',
+    url,
+  });
+
+  if (!response?.ok) {
+    throw new Error(response?.error || 'Failed to open the requested URL');
+  }
+}
+
+function getUploadTarget() {
+  if (state.plan?.actions?.some((action) => action.action === 'manual_upload')) {
+    return state.plan.actions.find((action) => action.action === 'manual_upload');
+  }
+
+  const fileField = state.context?.fields?.find((field) => field.inputType === 'file');
+  if (!fileField) return null;
+
+  return {
+    locator: fileField.locator,
+    fieldLabel: fileField.label,
+  };
+}
+
+async function useResumeForUpload() {
+  const session = state.resume.session;
+  if (!session?.pdfUrl) {
+    setResumeStatus('Generate a PDF first so it can be used for upload.');
+    return;
+  }
+
+  const uploadTarget = getUploadTarget();
+  if (!uploadTarget?.locator) {
+    setResumeStatus('No upload field is visible on this page yet. Download the PDF first, then use it in the site picker.');
+    await openUrl(session.pdfUrl);
+    return;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'FOCUS_FIELD',
+    locator: uploadTarget.locator,
+  });
+
+  if (!response?.ok) {
+    setResumeStatus(response?.error || 'Failed to focus the upload field.');
+    return;
+  }
+
+  await openUrl(session.pdfUrl);
+  setResumeStatus('Opened the resume PDF and focused the upload field. Download the PDF if needed, then choose it in the picker.');
 }
 
 planFillButton.addEventListener('click', () => {
@@ -993,8 +1364,56 @@ saveAnswerButton.addEventListener('click', () => {
   });
 });
 
+usePreviousAnswerButton.addEventListener('click', () => {
+  usePreviousAnswer();
+});
+
+saveReusableAnswerButton.addEventListener('click', () => {
+  saveAnswer({ saveAsReusable: true }).catch((error) => {
+    setQuestionStatus(error instanceof Error ? error.message : 'Failed to save the reusable answer.');
+  });
+});
+
+alwaysReuseAnswerButton.addEventListener('click', () => {
+  saveAnswer({ saveAsReusable: true, alwaysUseForSimilar: true }).catch((error) => {
+    setQuestionStatus(error instanceof Error ? error.message : 'Failed to save the reusable answer.');
+  });
+});
+
+generateResumeButton.addEventListener('click', () => {
+  generateResume().catch((error) => {
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to start resume generation.');
+  });
+});
+
+openResumeEditorButton.addEventListener('click', () => {
+  openUrl(state.resume.session?.editorUrl).catch((error) => {
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to open the generated resume.');
+  });
+});
+
+downloadResumePdfButton.addEventListener('click', () => {
+  openUrl(state.resume.session?.pdfUrl).catch((error) => {
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to open the generated PDF.');
+  });
+});
+
+useResumeUploadButton.addEventListener('click', () => {
+  useResumeForUpload().catch((error) => {
+    setResumeStatus(error instanceof Error ? error.message : 'Failed to prepare the resume for upload.');
+  });
+});
+
+refreshCompanyInsightButton.addEventListener('click', () => {
+  maybeRefreshCompanyInsight(true).catch((error) => {
+    setCompanyStatus(error instanceof Error ? error.message : 'Failed to refresh company insight.');
+  });
+});
+
 refreshContext().then(() => {
   setStatus('Safe autofill is ready to preview once profile data loads.');
   setQuestionStatus('Detected long-form questions will show up here for grounded draft answers.');
+  setResumeStatus('Generate a tailored resume once this page has enough saved workspace context.');
+  setCompanyStatus('Company trust and fit signals will appear here after workspace sync.');
 });
 window.setInterval(refreshContext, 2000);
