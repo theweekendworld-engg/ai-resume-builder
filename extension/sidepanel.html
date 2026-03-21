@@ -352,6 +352,26 @@
           </div>
         </section>
         <section class="section">
+          <div class="eyebrow">Job Fit</div>
+          <div class="controls">
+            <button id="analyze-job">Analyze This Job</button>
+          </div>
+          <div class="status" id="analysis-status">Run job analysis to score fit, surface strengths, and flag missing requirements from the parsed JD.</div>
+          <div class="grid two">
+            <div class="tile">
+              <span class="tile-label">Fit Score</span>
+              <span class="tile-value" id="analysis-fit-score">--</span>
+            </div>
+            <div class="tile">
+              <span class="tile-label">Next Action</span>
+              <span class="tile-value" id="analysis-next-action">--</span>
+            </div>
+          </div>
+          <p id="analysis-summary">Analysis summary will appear here after you run it.</p>
+          <ul class="insight-list" id="analysis-strengths"></ul>
+          <ul class="insight-list" id="analysis-gaps"></ul>
+        </section>
+        <section class="section">
           <div class="eyebrow">Tailored Resume</div>
           <div class="controls">
             <button id="generate-resume">Generate Tailored Resume</button>

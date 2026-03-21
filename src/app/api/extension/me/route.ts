@@ -1,20 +1,21 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { getExtensionProfileBundle } from '@/lib/extension/profile';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { userId, authType } = await requireExtensionAuth(req);
 
     const bundle = await getExtensionProfileBundle(userId);
     return NextResponse.json({
       success: true,
       bundle,
+      authType,
     });
   } catch (error: unknown) {
+    if (isExtensionAuthError(error)) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 401 });
+    }
     return NextResponse.json(
       {
         success: false,

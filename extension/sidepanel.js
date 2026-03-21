@@ -33,6 +33,13 @@ const supportingFacts = document.getElementById('supporting-facts');
 const workspaceStatus = document.getElementById('workspace-status');
 const workspaceStage = document.getElementById('workspace-stage');
 const workspaceQuestionProgress = document.getElementById('workspace-question-progress');
+const analyzeJobButton = document.getElementById('analyze-job');
+const analysisStatus = document.getElementById('analysis-status');
+const analysisFitScore = document.getElementById('analysis-fit-score');
+const analysisNextAction = document.getElementById('analysis-next-action');
+const analysisSummary = document.getElementById('analysis-summary');
+const analysisStrengths = document.getElementById('analysis-strengths');
+const analysisGaps = document.getElementById('analysis-gaps');
 
 const generateResumeButton = document.getElementById('generate-resume');
 const openResumeEditorButton = document.getElementById('open-resume-editor');
@@ -64,6 +71,11 @@ const state = {
     syncSignature: '',
     loading: false,
     lastMatchedBy: null,
+  },
+  analysis: {
+    loading: false,
+    signature: '',
+    result: null,
   },
   resume: {
     session: null,
@@ -100,6 +112,10 @@ function setWorkspaceStatus(message) {
   workspaceStatus.textContent = message;
 }
 
+function setAnalysisStatus(message) {
+  analysisStatus.textContent = message;
+}
+
 function setResumeStatus(message) {
   resumeStatus.textContent = message;
 }
@@ -112,6 +128,16 @@ function formatWorkspaceStage(status) {
   return String(status || 'not_saved')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatRecommendedNextAction(action) {
+  const labels = {
+    fill_basics: 'Fill Basics',
+    tailor_resume: 'Tailor Resume',
+    review_before_applying: 'Review Carefully',
+  };
+
+  return labels[action] || '--';
 }
 
 function renderList(items) {
@@ -304,6 +330,43 @@ function renderWorkspace() {
   setWorkspaceStatus(parts.join(' | '));
 }
 
+function renderAnalysis() {
+  const result = state.analysis.result;
+  const workspace = state.workspace.item;
+
+  if (!result) {
+    analysisFitScore.textContent = typeof workspace?.fitScore === 'number' ? `${workspace.fitScore}%` : '--';
+    analysisNextAction.textContent = '--';
+    analysisSummary.textContent = workspace?.fitSummary
+      || 'Analysis summary will appear here after you run it.';
+    renderInsightList(
+      analysisStrengths,
+      [],
+      workspace?.fitSummary
+        ? 'Run analysis again to refresh detailed strengths for this page.'
+        : 'Role strengths will appear here after analysis runs.'
+    );
+    renderInsightList(
+      analysisGaps,
+      [],
+      workspace?.fitSummary
+        ? 'Run analysis again to refresh missing-skill detail for this page.'
+        : 'Likely gaps and risks will appear here after analysis runs.'
+    );
+    setAnalysisStatus(state.context?.jobDescription?.text
+      ? 'Run job analysis to score fit, surface strengths, and flag missing requirements from the parsed JD.'
+      : 'This page needs a parsed job description before fit analysis can run.');
+    return;
+  }
+
+  analysisFitScore.textContent = `${result.fitScore}%`;
+  analysisNextAction.textContent = formatRecommendedNextAction(result.recommendedNextAction);
+  analysisSummary.textContent = result.summary;
+  renderInsightList(analysisStrengths, result.strengths ?? [], 'No strong fit signals were recovered from the saved profile.');
+  renderInsightList(analysisGaps, result.gaps ?? [], 'No major gaps were flagged by the current analysis.');
+  setAnalysisStatus('Analysis is up to date for the current page snapshot.');
+}
+
 function renderResumeGeneration() {
   const session = state.resume.session;
   if (!session) {
@@ -445,6 +508,7 @@ function updateButtons() {
   const safeActions = state.plan?.actions?.filter((action) => action.action === 'auto_fill') ?? [];
   applyFillButton.disabled = safeActions.length === 0;
   undoFillButton.disabled = !state.hasUndo;
+  analyzeJobButton.disabled = !state.context?.jobDescription?.text || state.analysis.loading;
 
   const selectedQuestion = getSelectedQuestion();
   const selectedEntry = selectedQuestion ? getQuestionEntry(getQuestionKey(selectedQuestion)) : null;
@@ -480,6 +544,7 @@ function renderContext(context) {
     renderPlan(null);
     renderQuestions();
     renderWorkspace();
+    renderAnalysis();
     renderResumeGeneration();
     renderCompanyInsight();
     return;
@@ -511,6 +576,7 @@ function renderContext(context) {
   renderList(questionLabels.length > 0 ? questionLabels : fieldLabels);
   renderQuestions();
   renderWorkspace();
+  renderAnalysis();
   renderResumeGeneration();
   renderCompanyInsight();
 }
@@ -538,6 +604,68 @@ function getContextSignature(context) {
   });
 }
 
+function getAnalysisSignature(context) {
+  return JSON.stringify({
+    url: context?.url || '',
+    roleTitle: context?.metadata?.roleTitle || '',
+    companyName: context?.metadata?.companyName || '',
+    location: context?.metadata?.location || '',
+    jobDescriptionSample: context?.jobDescription?.text?.slice(0, 240) || '',
+  });
+}
+
+function buildAnalysisPayload(context) {
+  return {
+    url: context?.url,
+    platformHint: context?.classification?.platform,
+    pageKindHint: context?.classification?.pageKind,
+    visibleTitle: context?.visibleTitle,
+    companyName: context?.metadata?.companyName,
+    roleTitle: context?.metadata?.roleTitle,
+    location: context?.metadata?.location,
+    metadata: context?.metadata,
+    jobDescription: context?.jobDescription?.text,
+    extractedJobDescription: context?.jobDescription,
+    normalizedPage: context,
+    fields: Array.isArray(context?.fields) ? context.fields : [],
+    questions: getVisibleQuestions(context).map((question) => ({
+      label: question.questionText,
+      typeHint: question.typeHint,
+    })),
+  };
+}
+
+async function persistAnalysisResult(result) {
+  const workspace = state.workspace.item || await syncWorkspaceIfNeeded();
+  if (!workspace?.id) return;
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'UPSERT_WORKSPACE',
+    payload: {
+      workspaceId: workspace.id,
+      sourcePlatform: state.context?.classification?.platform,
+      sourceUrl: state.context?.url,
+      companyName: result.metadata?.companyName || workspace.companyName || state.context?.metadata?.companyName,
+      roleTitle: result.metadata?.roleTitle || workspace.roleTitle || state.context?.metadata?.roleTitle,
+      location: result.metadata?.location || workspace.location || state.context?.metadata?.location,
+      employmentType: state.context?.metadata?.employmentType || workspace.employmentType,
+      compensationText: state.context?.metadata?.compensationText || workspace.compensationText,
+      jobDescription: state.context?.jobDescription?.text || workspace.jobDescription,
+      applicationStatus: getVisibleQuestions(state.context).length > 0 ? 'in_progress' : 'analyzed',
+      fitScore: result.fitScore,
+      fitSummary: result.summary,
+    },
+  });
+
+  if (!response?.ok) {
+    throw new Error(response?.error || 'Failed to persist the analysis into the application workspace');
+  }
+
+  state.workspace.item = response.payload.workspace;
+  state.workspace.lastMatchedBy = response.payload.matchedBy;
+  renderWorkspace();
+}
+
 function pruneQuestionState() {
   const questions = getVisibleQuestions(state.context);
   const visibleIds = new Set(questions.map((question) => getQuestionKey(question)));
@@ -563,6 +691,9 @@ async function refreshContext() {
     state.workspace.item = null;
     state.workspace.syncSignature = '';
     state.workspace.lastMatchedBy = null;
+    state.analysis.result = null;
+    state.analysis.signature = '';
+    state.analysis.loading = false;
     state.resume.session = null;
     state.resume.polling = false;
     state.company.insight = null;
@@ -583,6 +714,8 @@ async function refreshContext() {
   if (previousSignature !== nextSignature) {
     state.plan = null;
     state.actionResults = {};
+    state.analysis.result = null;
+    state.analysis.signature = '';
   }
 
   pruneQuestionState();
@@ -596,6 +729,7 @@ async function refreshContext() {
     state.resume.session = null;
   }
   await maybeRefreshCompanyInsight(false);
+  renderAnalysis();
   updateButtons();
 }
 
@@ -1090,6 +1224,40 @@ function usePreviousAnswer() {
   setQuestionStatus('Loaded your previous accepted answer into the editor.');
 }
 
+async function analyzeCurrentJob() {
+  if (!state.context?.jobDescription?.text) {
+    setAnalysisStatus('This page needs a parsed job description before fit analysis can run.');
+    return;
+  }
+
+  state.analysis.loading = true;
+  updateButtons();
+  setAnalysisStatus('Analyzing the current job against your saved profile...');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'ANALYZE_PAGE_CONTEXT',
+      payload: buildAnalysisPayload(state.context),
+    });
+
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to analyze the current page');
+    }
+
+    state.analysis.result = response.payload;
+    state.analysis.signature = getAnalysisSignature(state.context);
+    renderAnalysis();
+    await persistAnalysisResult(response.payload);
+    setAnalysisStatus('Analysis complete and synced into the application workspace.');
+  } catch (error) {
+    setAnalysisStatus(error instanceof Error ? error.message : 'Failed to analyze the current page.');
+  } finally {
+    state.analysis.loading = false;
+    renderAnalysis();
+    updateButtons();
+  }
+}
+
 function getCompanyInsightSignature() {
   const workspace = state.workspace.item;
   if (!workspace?.companyName) return '';
@@ -1143,6 +1311,7 @@ async function maybeRefreshCompanyInsight(force = false) {
     if (response.payload.workspace) {
       state.workspace.item = response.payload.workspace;
       renderWorkspace();
+      renderAnalysis();
     }
     renderCompanyInsight();
   } catch (error) {
@@ -1380,6 +1549,12 @@ alwaysReuseAnswerButton.addEventListener('click', () => {
   });
 });
 
+analyzeJobButton.addEventListener('click', () => {
+  analyzeCurrentJob().catch((error) => {
+    setAnalysisStatus(error instanceof Error ? error.message : 'Failed to analyze the current job.');
+  });
+});
+
 generateResumeButton.addEventListener('click', () => {
   generateResume().catch((error) => {
     setResumeStatus(error instanceof Error ? error.message : 'Failed to start resume generation.');
@@ -1413,6 +1588,7 @@ refreshCompanyInsightButton.addEventListener('click', () => {
 refreshContext().then(() => {
   setStatus('Safe autofill is ready to preview once profile data loads.');
   setQuestionStatus('Detected long-form questions will show up here for grounded draft answers.');
+  setAnalysisStatus('Run job analysis to score fit, surface strengths, and flag missing requirements from the parsed JD.');
   setResumeStatus('Generate a tailored resume once this page has enough saved workspace context.');
   setCompanyStatus('Company trust and fit signals will appear here after workspace sync.');
 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { getExtensionGenerationStatus } from '@/lib/extension/resume';
 
 type RouteContext = {
@@ -8,10 +8,7 @@ type RouteContext = {
 
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { userId } = await requireExtensionAuth(req);
 
     const { sessionId } = await context.params;
     const workspaceId = req.nextUrl.searchParams.get('workspaceId') || undefined;
@@ -24,6 +21,9 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json(response);
   } catch (error: unknown) {
+    if (isExtensionAuthError(error)) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 401 });
+    }
     return NextResponse.json(
       {
         success: false,

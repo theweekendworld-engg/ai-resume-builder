@@ -31,6 +31,7 @@ This file should be updated as implementation progresses so we always have one c
   - [x] content script
   - [x] popup UI
   - [x] side panel UI
+- [x] Added popup controls for backend URL configuration and auth/access checks
 
 ### Phase 1 Page Detection + Analysis
 - [x] Built structured page classifier
@@ -39,6 +40,7 @@ This file should be updated as implementation progresses so we always have one c
 - [x] Built normalized field detection
 - [x] Improved extension shell to publish parsed page context
 - [x] Expanded backend analyze contract to accept normalized page payloads
+- [x] Added explicit side-panel job analysis and persisted fit summaries into workspaces
 
 ### Phase 2 Safe Autofill
 - [x] Built fill planner for basic profile fields
@@ -53,8 +55,8 @@ This file should be updated as implementation progresses so we always have one c
 ## In Progress
 
 ### Phase 0 Foundation
-- [ ] Extension auth handshake beyond current web-session assumptions
-- [ ] Extension-to-backend token/session design
+- [x] Extension auth handshake beyond current web-session assumptions
+- [x] Extension-to-backend token/session design
 - [ ] Real extension build tooling decision
 
 ## Remaining
@@ -62,7 +64,7 @@ This file should be updated as implementation progresses so we always have one c
 ### Phase 1 Page Detection + Analysis
 - [x] Build normalized page model
 - [x] Improve analysis payload from browser to backend
-- [ ] Persist analyzed job context more intentionally
+- [x] Persist analyzed job context more intentionally
 
 ### Phase 2 Safe Autofill
 - [x] Build raw field scanner
@@ -98,6 +100,6 @@ This file should be updated as implementation progresses so we always have one c
 - [x] Add company trust/fit UI
 
 ## Notes
-- Current API routes use the existing authenticated web session model.
-- Extension-specific secure token/session flow is still pending.
+- Extension routes now accept dedicated extension bearer tokens issued from an authenticated web-session handshake.
+- The extension stores and refreshes a scoped access token in browser extension storage instead of relying on cookies for day-to-day API calls.
 - The initial extension shell is intentionally simple so we can start building the parser and page-analysis loop quickly.

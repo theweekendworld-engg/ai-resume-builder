@@ -8,6 +8,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "bun test",
     "postinstall": "prisma generate"
   },
   "dependencies": {

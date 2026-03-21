@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@clerk/nextjs/server';
+import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { startExtensionResumeGeneration } from '@/lib/extension/resume';
 import { ExtensionResumeGenerateRequestSchema } from '@/lib/extension/schemas';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
-    }
+    const { userId } = await requireExtensionAuth(req);
 
     const body = await req.json().catch(() => ({}));
     const parsed = ExtensionResumeGenerateRequestSchema.safeParse(body);
@@ -29,6 +26,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (error: unknown) {
+    if (isExtensionAuthError(error)) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 401 });
+    }
     return NextResponse.json(
       {
         success: false,

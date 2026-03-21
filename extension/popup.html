@@ -5,38 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Patronus</title>
     <style>
+      :root {
+        color-scheme: light;
+      }
       body {
         margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        min-width: 320px;
-        background: #f5efe4;
+        font-family: Georgia, "Times New Roman", serif;
+        min-width: 360px;
+        background:
+          radial-gradient(circle at top, rgba(227, 214, 183, 0.45), transparent 42%),
+          linear-gradient(180deg, #f7f1e6 0%, #efe5d4 100%);
         color: #1f2937;
       }
       main {
         padding: 16px;
       }
       .card {
-        background: #fffdf7;
-        border: 1px solid #decfb2;
-        border-radius: 14px;
-        padding: 14px;
+        background: rgba(255, 251, 242, 0.94);
+        border: 1px solid rgba(129, 98, 40, 0.18);
+        border-radius: 18px;
+        padding: 16px;
+        box-shadow: 0 18px 50px rgba(73, 52, 15, 0.08);
       }
       .eyebrow {
         font-size: 11px;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
         color: #8a6f3f;
         margin-bottom: 8px;
       }
       .title {
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 20px;
+        line-height: 1.1;
         margin: 0 0 8px;
       }
       .muted {
         color: #5b6470;
         font-size: 13px;
         line-height: 1.5;
+      }
+      .section {
+        margin-top: 16px;
+        border-top: 1px solid rgba(145, 117, 71, 0.16);
+        padding-top: 16px;
+      }
+      .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        background: #efe4ce;
+        color: #785624;
+      }
+      .pill[data-tone="good"] {
+        background: #dfe7d2;
+        color: #47613d;
+      }
+      .pill[data-tone="warn"] {
+        background: #f2e4c7;
+        color: #8a5d18;
+      }
+      .pill[data-tone="bad"] {
+        background: #f1d7d2;
+        color: #8b3d2f;
       }
       dl {
         display: grid;
@@ -52,17 +93,72 @@
         margin: 0;
         font-weight: 600;
       }
+      label {
+        display: block;
+        font-size: 12px;
+        color: #8a6f3f;
+        margin-bottom: 6px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 12px;
+        border: 1px solid #d8c5a3;
+        background: #fffdf8;
+        padding: 10px 12px;
+        font: inherit;
+        color: #1f2937;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 9px 14px;
+        font: inherit;
+        cursor: pointer;
+        background: #9a6a21;
+        color: #fffdf8;
+      }
+      button.secondary {
+        background: #ead9b8;
+        color: #4b3b1e;
+      }
+      .helper {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #72562c;
+      }
     </style>
   </head>
   <body>
     <main>
       <div class="card">
-        <div class="eyebrow">Phase 1</div>
+        <div class="eyebrow">Browser Copilot</div>
         <h1 class="title">Patronus Job Copilot</h1>
-        <p class="muted" id="status">Reading the current tab...</p>
+        <p class="muted" id="status">Reading the current tab and checking app access...</p>
+        <div class="status-row">
+          <span class="pill" id="access-pill" data-tone="warn">Checking App</span>
+          <span class="muted" id="access-message">We are verifying that the extension can reach your app session.</span>
+        </div>
         <dl id="details"></dl>
+
+        <div class="section">
+          <label for="app-base-url">App Base URL</label>
+          <input id="app-base-url" type="url" placeholder="https://your-app.example.com" />
+          <p class="helper" id="app-base-url-note">The extension uses this app origin for profile, workspace, answer, and resume-generation calls.</p>
+          <div class="controls">
+            <button id="save-app-url">Save URL</button>
+            <button id="open-dashboard" class="secondary">Open Dashboard</button>
+            <button id="open-sign-in" class="secondary">Open Sign In</button>
+          </div>
+        </div>
       </div>
     </main>
     <script type="module" src="popup.js"></script>
   </body>
-  </html>
+</html>

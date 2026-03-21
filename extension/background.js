@@ -2,6 +2,7 @@ import { getAppBaseUrl } from './lib/app-config.js';
 import { getUndoStorageKey } from './fill/undo-store.js';
 
 const TAB_KEY_PREFIX = 'tab:';
+const EXTENSION_SESSION_KEY = 'extensionSession';
 
 async function setPanelBehavior() {
   if (!chrome.sidePanel?.setPanelBehavior) return;
@@ -64,60 +65,170 @@ async function sendToActiveTab(message) {
   };
 }
 
-async function fetchExtensionProfileBundle() {
+async function loadExtensionSession() {
   const appBaseUrl = await getAppBaseUrl();
-  const response = await fetch(`${appBaseUrl}/api/extension/me`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
+  const stored = await chrome.storage.local.get(EXTENSION_SESSION_KEY);
+  const session = stored?.[EXTENSION_SESSION_KEY];
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload?.success) {
-    throw new Error(payload?.error || 'Unable to load extension profile bundle');
+  if (!session || typeof session !== 'object') {
+    return null;
   }
 
-  return payload.bundle;
+  if (session.appBaseUrl !== appBaseUrl) {
+    await chrome.storage.local.remove(EXTENSION_SESSION_KEY);
+    return null;
+  }
+
+  return session;
 }
 
-async function postExtensionJson(path, body) {
+async function saveExtensionSession(session) {
+  await chrome.storage.local.set({
+    [EXTENSION_SESSION_KEY]: session,
+  });
+}
+
+async function clearExtensionSession() {
+  await chrome.storage.local.remove(EXTENSION_SESSION_KEY);
+}
+
+function shouldRefreshExtensionSession(expiresAt) {
+  if (!expiresAt) return true;
+  const expiry = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiry)) return true;
+  return expiry - Date.now() <= (5 * 60 * 1000);
+}
+
+async function createExtensionSession() {
   const appBaseUrl = await getAppBaseUrl();
-  const response = await fetch(`${appBaseUrl}${path}`, {
+  const response = await fetch(`${appBaseUrl}/api/extension/session`, {
     method: 'POST',
     credentials: 'include',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body ?? {}),
+    body: JSON.stringify({}),
   });
 
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    throw new Error(payload?.error || `Request to ${path} failed`);
+  if (response.status === 401) {
+    await clearExtensionSession();
+    return null;
   }
 
-  return payload;
+  if (!response.ok || payload?.success === false || !payload?.accessToken) {
+    throw new Error(payload?.error || 'Unable to create an extension session');
+  }
+
+  const session = {
+    accessToken: payload.accessToken,
+    expiresAt: payload.expiresAt,
+    tokenType: payload.tokenType || 'Bearer',
+    sessionId: payload.sessionId,
+    appBaseUrl,
+  };
+  await saveExtensionSession(session);
+  return session;
+}
+
+async function ensureExtensionSession(forceRefresh = false) {
+  const current = await loadExtensionSession();
+  if (!forceRefresh && current?.accessToken && !shouldRefreshExtensionSession(current.expiresAt)) {
+    return current;
+  }
+
+  return createExtensionSession();
+}
+
+async function fetchExtensionApi(path, options = {}) {
+  const appBaseUrl = await getAppBaseUrl();
+
+  async function runWithSession(session) {
+    const headers = {
+      Accept: 'application/json',
+      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(session?.accessToken ? { Authorization: `${session.tokenType || 'Bearer'} ${session.accessToken}` } : {}),
+      ...(options.headers || {}),
+    };
+
+    const response = await fetch(`${appBaseUrl}${path}`, {
+      method: options.method || 'GET',
+      credentials: 'include',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  }
+
+  let session = await ensureExtensionSession(false);
+  let result = await runWithSession(session);
+
+  if (result.response.status === 401) {
+    await clearExtensionSession();
+    session = await ensureExtensionSession(true);
+    if (!session) {
+      throw new Error(result.payload?.error || 'Sign in to the web app to authorize the browser extension.');
+    }
+    result = await runWithSession(session);
+  }
+
+  if (!result.response.ok || result.payload?.success === false) {
+    throw new Error(result.payload?.error || `Request to ${path} failed`);
+  }
+
+  return result.payload;
+}
+
+async function fetchExtensionProfileBundle() {
+  const payload = await fetchExtensionApi('/api/extension/me');
+  return payload.bundle;
+}
+
+async function probeExtensionAccess() {
+  const appBaseUrl = await getAppBaseUrl();
+
+  try {
+    const session = await ensureExtensionSession(false);
+    if (!session) {
+      return {
+        ok: true,
+        status: 'unauthenticated',
+        appBaseUrl,
+        message: 'Sign in to the web app in this browser first.',
+      };
+    }
+
+    const payload = await fetchExtensionApi('/api/extension/me');
+    return {
+      ok: true,
+      status: 'authenticated',
+      appBaseUrl,
+      authType: payload?.authType || 'extension_token',
+      expiresAt: session.expiresAt,
+      message: 'Dedicated extension access token is active.',
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      status: 'unreachable',
+      appBaseUrl,
+      message: error instanceof Error ? error.message : 'Unable to reach the configured app URL.',
+    };
+  }
+}
+
+async function postExtensionJson(path, body) {
+  return fetchExtensionApi(path, {
+    method: 'POST',
+    body: body ?? {},
+  });
 }
 
 async function getExtensionJson(path) {
-  const appBaseUrl = await getAppBaseUrl();
-  const response = await fetch(`${appBaseUrl}${path}`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    throw new Error(payload?.error || `Request to ${path} failed`);
-  }
-
-  return payload;
+  return fetchExtensionApi(path);
 }
 
 async function suggestQuestionAnswers(payload) {
@@ -145,22 +256,12 @@ async function fetchCompanyInsight(payload) {
   return postExtensionJson('/api/extension/company-insight', payload);
 }
 
+async function analyzeExtensionPage(payload) {
+  return postExtensionJson('/api/extension/page/analyze', payload);
+}
+
 async function fetchWorkspace(workspaceId) {
-  const appBaseUrl = await getAppBaseUrl();
-  const response = await fetch(`${appBaseUrl}/api/extension/workspaces/${encodeURIComponent(workspaceId)}`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    throw new Error(payload?.error || 'Unable to load the application workspace');
-  }
-
-  return payload;
+  return fetchExtensionApi(`/api/extension/workspaces/${encodeURIComponent(workspaceId)}`);
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -226,6 +327,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Unable to load extension profile bundle',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'CHECK_EXTENSION_ACCESS') {
+    probeExtensionAccess()
+      .then((payload) => sendResponse(payload))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Unable to verify extension access',
         });
       });
     return true;
@@ -344,6 +457,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Failed to load company insight',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'ANALYZE_PAGE_CONTEXT') {
+    analyzeExtensionPage(message.payload)
+      .then((payload) => sendResponse({ ok: true, payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Failed to analyze the current page',
         });
       });
     return true;

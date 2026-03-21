@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { parseWithRetry } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
+import { buildQuestionFingerprint } from '@/lib/extension/questionIdentity';
 import { prisma } from '@/lib/prisma';
 import { checkAiRateLimit } from '@/lib/rateLimit';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
@@ -66,41 +67,6 @@ function uniqueStrings(values: string[]): string[] {
   }
 
   return output;
-}
-
-function buildQuestionFingerprint(params: {
-  questionText: string;
-  helperText?: string[];
-  sectionHeading?: string;
-  type: QuestionType;
-}) {
-  const combinedText = [
-    params.questionText,
-    ...(params.helperText ?? []),
-    params.sectionHeading ?? '',
-  ].join(' ');
-  const normalized = normalizeText(combinedText);
-
-  if (params.type === 'eligibility') {
-    if (/sponsor|visa/.test(normalized)) return 'eligibility:sponsorship';
-    if (/authoriz|eligible|citizen|work authorization/.test(normalized)) return 'eligibility:work_authorization';
-    return 'eligibility:general';
-  }
-
-  if (params.type === 'compensation') {
-    if (/salary|compensation|pay range|desired pay|expected pay/.test(normalized)) return 'compensation:desired_compensation';
-    if (/notice|start date|availability|available to start/.test(normalized)) return 'compensation:notice_period';
-    if (/relocat/.test(normalized)) return 'compensation:relocation';
-    if (/remote|hybrid|onsite|on site|work mode/.test(normalized)) return 'compensation:work_mode';
-    return 'compensation:general';
-  }
-
-  if (params.type === 'self_intro') {
-    return 'self_intro:background';
-  }
-
-  const tokenSignature = tokenize(normalized).slice(0, 10).join('-') || 'general';
-  return `${params.type}:${tokenSignature}`;
 }
 
 function buildPreferenceAnswer(
@@ -560,7 +526,6 @@ export async function suggestExtensionQuestionAnswers(params: {
   const questionFingerprint = buildQuestionFingerprint({
     questionText: params.input.question.questionText,
     helperText: params.input.question.helperText,
-    sectionHeading: params.input.question.sectionHeading,
     type: classification.type,
   });
   const preferences = parseUserGenerationPreferences(params.bundle.profile.preferences);
@@ -645,35 +610,87 @@ export async function suggestExtensionQuestionAnswers(params: {
     });
   }
 
-  const questionRecord = await prisma.applicationQuestion.create({
-    data: {
-      userId: params.userId,
-      workspaceId: params.input.context?.workspaceId ?? null,
-      sourceUrl: params.input.context?.sourceUrl,
-      platform: params.input.context?.platform,
-      companyName: params.input.context?.companyName,
-      roleTitle: params.input.context?.roleTitle,
-      questionText: params.input.question.questionText,
-      questionType: classification.type,
-      answerMode: params.input.question.answerMode,
-      helperText: params.input.question.helperText as Prisma.InputJsonValue,
-      draftAnswers: drafts as Prisma.InputJsonValue,
-      sourceFacts: facts.map((fact) => ({
-        id: fact.id,
-        sourceType: fact.sourceType,
-        title: fact.title,
-        detail: fact.detail,
-      })) as Prisma.InputJsonValue,
-      warnings: warnings as Prisma.InputJsonValue,
-      selectedTone: params.input.selectedTone,
-      confidence: drafts.length > 0
-        ? Math.max(...drafts.map((draft) => draft.confidence))
-        : classification.confidenceScore,
-    },
-    select: {
-      id: true,
-    },
-  });
+  const questionText = params.input.question.questionText.trim();
+  const answerMode = params.input.question.answerMode;
+  const sourceFacts = facts.map((fact) => ({
+    id: fact.id,
+    sourceType: fact.sourceType,
+    title: fact.title,
+    detail: fact.detail,
+  })) as Prisma.InputJsonValue;
+  const questionData = {
+    workspaceId: params.input.context?.workspaceId ?? null,
+    sourceUrl: params.input.context?.sourceUrl,
+    platform: params.input.context?.platform,
+    companyName: params.input.context?.companyName,
+    roleTitle: params.input.context?.roleTitle,
+    questionText,
+    questionType: classification.type,
+    answerMode,
+    helperText: params.input.question.helperText as Prisma.InputJsonValue,
+    draftAnswers: drafts as Prisma.InputJsonValue,
+    sourceFacts,
+    warnings: warnings as Prisma.InputJsonValue,
+    selectedTone: params.input.selectedTone,
+    confidence: drafts.length > 0
+      ? Math.max(...drafts.map((draft) => draft.confidence))
+      : classification.confidenceScore,
+  };
+
+  const existingQuestionFilters: Prisma.ApplicationQuestionWhereInput[] = [];
+  if (params.input.context?.workspaceId) {
+    existingQuestionFilters.push({
+      workspaceId: params.input.context.workspaceId,
+      questionText,
+      answerMode,
+    });
+  }
+  if (params.input.context?.sourceUrl) {
+    existingQuestionFilters.push({
+      sourceUrl: params.input.context.sourceUrl,
+      questionText,
+      answerMode,
+    });
+  }
+  if (params.input.context?.companyName?.trim() && params.input.context?.roleTitle?.trim()) {
+    existingQuestionFilters.push({
+      companyName: params.input.context.companyName.trim(),
+      roleTitle: params.input.context.roleTitle.trim(),
+      questionText,
+      answerMode,
+    });
+  }
+
+  const existingQuestion = existingQuestionFilters.length > 0
+    ? await prisma.applicationQuestion.findFirst({
+      where: {
+        userId: params.userId,
+        OR: existingQuestionFilters,
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    })
+    : null;
+
+  const questionRecord = existingQuestion
+    ? await prisma.applicationQuestion.update({
+      where: {
+        id: existingQuestion.id,
+      },
+      data: questionData,
+      select: {
+        id: true,
+      },
+    })
+    : await prisma.applicationQuestion.create({
+      data: {
+        userId: params.userId,
+        ...questionData,
+      },
+      select: {
+        id: true,
+      },
+    });
 
   return {
     success: true,
@@ -712,6 +729,7 @@ export async function saveExtensionQuestionAnswer(params: {
       questionText: true,
       questionType: true,
       answerMode: true,
+      helperText: true,
     },
   });
 
@@ -739,6 +757,7 @@ export async function saveExtensionQuestionAnswer(params: {
   if (params.input.saveAsReusable || params.input.alwaysUseForSimilar) {
     const questionFingerprint = buildQuestionFingerprint({
       questionText: existing.questionText,
+      helperText: existing.helperText,
       type: (existing.questionType as QuestionType) ?? 'other',
     });
 

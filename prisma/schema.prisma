@@ -441,3 +441,18 @@ model CompanyInsight {
     @@index([normalizedCompanyName, updatedAt])
     @@index([updatedAt])
 }
+
+model ExtensionAccessToken {
+    id         String   @id @default(cuid())
+    userId     String
+    client     String   @default("chrome_extension")
+    tokenHash  String   @unique
+    expiresAt  DateTime
+    lastUsedAt DateTime?
+    revokedAt  DateTime?
+    createdAt  DateTime @default(now())
+    updatedAt  DateTime @updatedAt
+
+    @@index([userId, client, revokedAt, expiresAt])
+    @@index([expiresAt])
+}
