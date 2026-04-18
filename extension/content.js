@@ -1,6 +1,28 @@
 (function extensionContent(globalScope) {
-  let lastPublishedSignature = '';
-  let publishTimer = null;
+  if (globalScope.__PATRONUS_CONTENT_READY__) {
+    return;
+  }
+  globalScope.__PATRONUS_CONTENT_READY__ = true;
+
+  function hasValidExtensionContext() {
+    try {
+      return Boolean(chrome?.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
+
+  function safeSendResponse(sendResponse, payload) {
+    if (!hasValidExtensionContext()) {
+      return;
+    }
+
+    try {
+      sendResponse(payload);
+    } catch {
+      // Ignore stale callbacks from invalidated extension instances.
+    }
+  }
 
   function createFallbackContext(error) {
     return {
@@ -30,74 +52,34 @@
     };
   }
 
-  function snapshotSignature(payload) {
-    return JSON.stringify({
-      url: payload.url,
-      pageKind: payload.classification?.pageKind,
-      platform: payload.classification?.platform,
-      heading: payload.heading,
-      fieldCount: payload.stats?.visibleFieldCount,
-      questionCount: payload.stats?.questionCount,
-      roleTitle: payload.metadata?.roleTitle,
-      companyName: payload.metadata?.companyName,
-      jobDescriptionSample: payload.jobDescription?.text?.slice(0, 240) || '',
-    });
-  }
-
-  function publishSnapshot(force) {
-    const payload = (() => {
+  function parseSnapshot() {
+    return (() => {
       try {
         return globalScope.PatronusParser?.parseCurrentPage?.() || createFallbackContext(new Error('Parser unavailable'));
       } catch (error) {
         return createFallbackContext(error);
       }
     })();
-
-    const signature = snapshotSignature(payload);
-    if (!force && signature === lastPublishedSignature) {
-      return;
-    }
-
-    lastPublishedSignature = signature;
-    chrome.runtime.sendMessage({
-      type: 'PAGE_CONTEXT',
-      payload,
-    });
   }
 
-  function schedulePublish(delay, force) {
-    globalScope.clearTimeout(publishTimer);
-    publishTimer = globalScope.setTimeout(() => publishSnapshot(Boolean(force)), delay);
+  if (!hasValidExtensionContext()) {
+    return;
   }
-
-  publishSnapshot(true);
-
-  globalScope.addEventListener('load', () => publishSnapshot(true));
-  globalScope.addEventListener('focus', () => schedulePublish(150, true));
-  globalScope.addEventListener('popstate', () => schedulePublish(150, true));
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      schedulePublish(150, true);
-    }
-  });
-
-  const observer = new MutationObserver(() => {
-    schedulePublish(350, false);
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'style', 'aria-hidden', 'aria-expanded', 'open'],
-  });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === 'PARSE_PAGE_CONTEXT') {
+      safeSendResponse(sendResponse, {
+        ok: true,
+        payload: parseSnapshot(),
+      });
+      return undefined;
+    }
+
     if (message?.type === 'APPLY_FILL_PLAN') {
       globalScope.PatronusFill?.applyFillPlan?.(message?.payload?.actions || [])
-        .then((result) => sendResponse(result))
+        .then((result) => safeSendResponse(sendResponse, result))
         .catch((error) => {
-          sendResponse({
+          safeSendResponse(sendResponse, {
             appliedCount: 0,
             restoredCount: 0,
             results: [{
@@ -114,9 +96,9 @@
 
     if (message?.type === 'UNDO_FILL_PLAN') {
       globalScope.PatronusFill?.undoFillPlan?.(message?.payload?.undoEntries || [])
-        .then((result) => sendResponse(result))
+        .then((result) => safeSendResponse(sendResponse, result))
         .catch((error) => {
-          sendResponse({
+          safeSendResponse(sendResponse, {
             appliedCount: 0,
             restoredCount: 0,
             results: [{
@@ -132,9 +114,9 @@
 
     if (message?.type === 'FOCUS_FIELD') {
       globalScope.PatronusFill?.focusField?.(message?.payload?.locator)
-        .then((result) => sendResponse(result))
+        .then((result) => safeSendResponse(sendResponse, result))
         .catch((error) => {
-          sendResponse({
+          safeSendResponse(sendResponse, {
             appliedCount: 0,
             restoredCount: 0,
             results: [{

@@ -3,6 +3,48 @@ import { getUndoStorageKey } from './fill/undo-store.js';
 
 const TAB_KEY_PREFIX = 'tab:';
 const EXTENSION_SESSION_KEY = 'extensionSession';
+const EXTENSION_CONNECT_GRANT_KEY = 'extensionConnectGrant';
+const CONTENT_SCRIPT_FILES = [
+  'parsers/utils.js',
+  'parsers/page-classifier.js',
+  'parsers/dom-reducer.js',
+  'parsers/jd-extractor.js',
+  'parsers/field-detector.js',
+  'parsers/index.js',
+  'fill/fill-executor.js',
+  'content.js',
+];
+const inFlightApiRequests = new Map();
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function buildApiRequestKey(path, body) {
+  return `${path}:${stableStringify(body ?? {})}`;
+}
+
+function runApiSingleFlight(key, operation) {
+  const existing = inFlightApiRequests.get(key);
+  if (existing) return existing;
+
+  const promise = operation().finally(() => {
+    if (inFlightApiRequests.get(key) === promise) {
+      inFlightApiRequests.delete(key);
+    }
+  });
+
+  inFlightApiRequests.set(key, promise);
+  return promise;
+}
 
 async function setPanelBehavior() {
   if (!chrome.sidePanel?.setPanelBehavior) return;
@@ -25,6 +67,10 @@ async function saveTabContext(tabId, payload) {
       updatedAt: new Date().toISOString(),
     },
   });
+}
+
+async function clearTabContext(tabId) {
+  await chrome.storage.session.remove(getStorageKey(tabId));
 }
 
 async function loadTabContext(tabId) {
@@ -65,6 +111,80 @@ async function sendToActiveTab(message) {
   };
 }
 
+async function parseActiveTabContext() {
+  const activeTab = await getActiveTab();
+  if (!activeTab?.id) {
+    throw new Error('No active tab');
+  }
+
+  const response = await sendParseRequest(activeTab.id);
+
+  if (!response?.ok || !response?.payload) {
+    throw new Error(response?.error || 'Failed to parse the active tab');
+  }
+
+  await saveTabContext(activeTab.id, response.payload);
+  return {
+    tabId: activeTab.id,
+    context: response.payload,
+  };
+}
+
+async function applyFillPlanFromBackground(actions) {
+  const { tabId, response } = await sendToActiveTab({
+    type: 'APPLY_FILL_PLAN',
+    payload: {
+      actions,
+    },
+  });
+
+  const undoEntries = Array.isArray(response?.undoEntries) ? response.undoEntries : [];
+  if (undoEntries.length > 0) {
+    await saveUndoEntries(tabId, undoEntries);
+  } else {
+    await clearUndoEntries(tabId);
+  }
+
+  return {
+    ok: true,
+    result: {
+      appliedCount: response?.appliedCount ?? 0,
+      restoredCount: response?.restoredCount ?? 0,
+      results: Array.isArray(response?.results) ? response.results : [],
+    },
+    hasUndo: undoEntries.length > 0,
+  };
+}
+
+async function sendParseRequest(tabId) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'PARSE_PAGE_CONTEXT',
+    });
+
+    if (response?.ok && response?.payload) {
+      return response;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const needsInjection = message.includes('Receiving end does not exist')
+      || message.includes('Could not establish connection');
+
+    if (!needsInjection) {
+      throw error;
+    }
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: CONTENT_SCRIPT_FILES,
+  });
+
+  return chrome.tabs.sendMessage(tabId, {
+    type: 'PARSE_PAGE_CONTEXT',
+  });
+}
+
 async function loadExtensionSession() {
   const appBaseUrl = await getAppBaseUrl();
   const stored = await chrome.storage.local.get(EXTENSION_SESSION_KEY);
@@ -92,6 +212,33 @@ async function clearExtensionSession() {
   await chrome.storage.local.remove(EXTENSION_SESSION_KEY);
 }
 
+async function loadExtensionConnectGrant() {
+  const appBaseUrl = await getAppBaseUrl();
+  const stored = await chrome.storage.local.get(EXTENSION_CONNECT_GRANT_KEY);
+  const grant = stored?.[EXTENSION_CONNECT_GRANT_KEY];
+
+  if (!grant || typeof grant !== 'object') {
+    return null;
+  }
+
+  if (grant.appBaseUrl !== appBaseUrl) {
+    await chrome.storage.local.remove(EXTENSION_CONNECT_GRANT_KEY);
+    return null;
+  }
+
+  return grant;
+}
+
+async function saveExtensionConnectGrant(grant) {
+  await chrome.storage.local.set({
+    [EXTENSION_CONNECT_GRANT_KEY]: grant,
+  });
+}
+
+async function clearExtensionConnectGrant() {
+  await chrome.storage.local.remove(EXTENSION_CONNECT_GRANT_KEY);
+}
+
 function shouldRefreshExtensionSession(expiresAt) {
   if (!expiresAt) return true;
   const expiry = new Date(expiresAt).getTime();
@@ -99,11 +246,28 @@ function shouldRefreshExtensionSession(expiresAt) {
   return expiry - Date.now() <= (5 * 60 * 1000);
 }
 
-async function createExtensionSession() {
+function isExpired(expiresAt) {
+  if (!expiresAt) return true;
+  const expiry = new Date(expiresAt).getTime();
+  return Number.isNaN(expiry) || expiry <= Date.now();
+}
+
+function sessionFromPayload(session, appBaseUrl) {
+  if (!session?.accessToken) return null;
+  return {
+    accessToken: session.accessToken,
+    expiresAt: session.expiresAt,
+    tokenType: session.tokenType || 'Bearer',
+    sessionId: session.sessionId,
+    appBaseUrl,
+  };
+}
+
+async function startExtensionConnect() {
   const appBaseUrl = await getAppBaseUrl();
-  const response = await fetch(`${appBaseUrl}/api/extension/session`, {
+  const response = await fetch(`${appBaseUrl}/api/extension/connect/start`, {
     method: 'POST',
-    credentials: 'include',
+    credentials: 'omit',
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
@@ -112,24 +276,103 @@ async function createExtensionSession() {
   });
 
   const payload = await response.json().catch(() => ({}));
-  if (response.status === 401) {
-    await clearExtensionSession();
-    return null;
+  if (!response.ok || payload?.success === false || !payload?.grantId || !payload?.verifier || !payload?.connectUrl) {
+    throw new Error(payload?.error || 'Unable to start extension connection');
   }
 
-  if (!response.ok || payload?.success === false || !payload?.accessToken) {
-    throw new Error(payload?.error || 'Unable to create an extension session');
-  }
-
-  const session = {
-    accessToken: payload.accessToken,
+  const grant = {
+    grantId: payload.grantId,
+    verifier: payload.verifier,
     expiresAt: payload.expiresAt,
-    tokenType: payload.tokenType || 'Bearer',
-    sessionId: payload.sessionId,
     appBaseUrl,
   };
-  await saveExtensionSession(session);
-  return session;
+  await saveExtensionConnectGrant(grant);
+  await chrome.tabs.create({ url: payload.connectUrl });
+
+  return {
+    status: 'pending',
+    appBaseUrl,
+    expiresAt: payload.expiresAt,
+    connectUrl: payload.connectUrl,
+  };
+}
+
+async function pollExtensionConnectGrant() {
+  const appBaseUrl = await getAppBaseUrl();
+  const grant = await loadExtensionConnectGrant();
+
+  if (!grant) {
+    return {
+      status: 'none',
+      appBaseUrl,
+    };
+  }
+
+  if (isExpired(grant.expiresAt)) {
+    await clearExtensionConnectGrant();
+    return {
+      status: 'expired',
+      appBaseUrl,
+      message: 'Connection request expired. Start a new connection from the extension.',
+    };
+  }
+
+  const response = await fetch(`${appBaseUrl}/api/extension/connect/poll`, {
+    method: 'POST',
+    credentials: 'omit',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      grantId: grant.grantId,
+      verifier: grant.verifier,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (payload?.status === 'pending') {
+    return {
+      status: 'pending',
+      appBaseUrl,
+      expiresAt: payload.expiresAt || grant.expiresAt,
+      message: 'Finish signing in on the web page, then return here.',
+    };
+  }
+
+  if (payload?.status === 'authorized' && payload?.session) {
+    const session = sessionFromPayload(payload.session, appBaseUrl);
+    if (!session) {
+      throw new Error('Extension connection did not return an access token');
+    }
+
+    await saveExtensionSession(session);
+    await clearExtensionConnectGrant();
+    return {
+      status: 'authenticated',
+      appBaseUrl,
+      authType: 'extension_token',
+      expiresAt: session.expiresAt,
+      session,
+      message: 'Dedicated extension access token is active.',
+    };
+  }
+
+  if (!response.ok || payload?.success === false) {
+    await clearExtensionConnectGrant();
+    return {
+      status: 'expired',
+      appBaseUrl,
+      message: payload?.error || 'Connection request could not be completed. Start a new connection from the extension.',
+    };
+  }
+
+  return {
+    status: 'pending',
+    appBaseUrl,
+    expiresAt: grant.expiresAt,
+    message: 'Finish signing in on the web page, then return here.',
+  };
 }
 
 async function ensureExtensionSession(forceRefresh = false) {
@@ -138,7 +381,12 @@ async function ensureExtensionSession(forceRefresh = false) {
     return current;
   }
 
-  return createExtensionSession();
+  if (current?.accessToken) {
+    await clearExtensionSession();
+  }
+
+  const connectResult = await pollExtensionConnectGrant();
+  return connectResult.status === 'authenticated' ? connectResult.session : null;
 }
 
 async function fetchExtensionApi(path, options = {}) {
@@ -154,7 +402,7 @@ async function fetchExtensionApi(path, options = {}) {
 
     const response = await fetch(`${appBaseUrl}${path}`, {
       method: options.method || 'GET',
-      credentials: 'include',
+      credentials: 'omit',
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
@@ -164,13 +412,17 @@ async function fetchExtensionApi(path, options = {}) {
   }
 
   let session = await ensureExtensionSession(false);
+  if (!session?.accessToken) {
+    throw new Error('Connect the browser extension to your signed-in Patronus account first.');
+  }
+
   let result = await runWithSession(session);
 
   if (result.response.status === 401) {
     await clearExtensionSession();
     session = await ensureExtensionSession(true);
     if (!session) {
-      throw new Error(result.payload?.error || 'Sign in to the web app to authorize the browser extension.');
+      throw new Error(result.payload?.error || 'Connect the browser extension to your signed-in Patronus account first.');
     }
     result = await runWithSession(session);
   }
@@ -193,11 +445,22 @@ async function probeExtensionAccess() {
   try {
     const session = await ensureExtensionSession(false);
     if (!session) {
+      const grant = await loadExtensionConnectGrant();
+      if (grant) {
+        return {
+          ok: true,
+          status: 'pending',
+          appBaseUrl,
+          expiresAt: grant.expiresAt,
+          message: 'Finish signing in on the web page, then return to the extension.',
+        };
+      }
+
       return {
         ok: true,
         status: 'unauthenticated',
         appBaseUrl,
-        message: 'Sign in to the web app in this browser first.',
+        message: 'Connect the extension to your signed-in Patronus account.',
       };
     }
 
@@ -227,6 +490,14 @@ async function postExtensionJson(path, body) {
   });
 }
 
+async function postExtensionJsonSingleFlight(path, body) {
+  const requestBody = body ?? {};
+  return runApiSingleFlight(
+    buildApiRequestKey(path, requestBody),
+    () => postExtensionJson(path, requestBody)
+  );
+}
+
 async function getExtensionJson(path) {
   return fetchExtensionApi(path);
 }
@@ -240,7 +511,7 @@ async function saveQuestionAnswer(payload) {
 }
 
 async function upsertWorkspace(payload) {
-  return postExtensionJson('/api/extension/workspaces/upsert', payload);
+  return postExtensionJsonSingleFlight('/api/extension/workspaces/upsert', payload);
 }
 
 async function startResumeGeneration(payload) {
@@ -253,7 +524,7 @@ async function fetchGenerationStatus(sessionId, workspaceId) {
 }
 
 async function fetchCompanyInsight(payload) {
-  return postExtensionJson('/api/extension/company-insight', payload);
+  return postExtensionJsonSingleFlight('/api/extension/company-insight', payload);
 }
 
 async function analyzeExtensionPage(payload) {
@@ -263,6 +534,11 @@ async function analyzeExtensionPage(payload) {
 async function fetchWorkspace(workspaceId) {
   return fetchExtensionApi(`/api/extension/workspaces/${encodeURIComponent(workspaceId)}`);
 }
+
+globalThis.__PATRONUS_EXTENSION_DEBUG__ = {
+  parseActiveTabContext,
+  applyFillPlanFromBackground,
+};
 
 chrome.runtime.onInstalled.addListener(() => {
   setPanelBehavior();
@@ -305,6 +581,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           loadUndoEntries(activeTab.id),
         ]);
 
+        if (context?.url && activeTab.url && context.url !== activeTab.url) {
+          await Promise.all([
+            clearTabContext(activeTab.id),
+            clearUndoEntries(activeTab.id),
+          ]);
+
+          sendResponse({
+            ok: true,
+            context: null,
+            hasUndo: false,
+          });
+          return;
+        }
+
         sendResponse({
           ok: true,
           context,
@@ -315,6 +605,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : 'Unable to load tab context',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'PARSE_ACTIVE_TAB_CONTEXT') {
+    parseActiveTabContext()
+      .then(({ context }) => {
+        sendResponse({
+          ok: true,
+          context,
+        });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Unable to parse the active tab',
         });
       });
     return true;
@@ -344,31 +651,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === 'APPLY_FILL_PLAN') {
-    sendToActiveTab({
-      type: 'APPLY_FILL_PLAN',
-      payload: {
-        actions: message.actions,
-      },
-    })
-      .then(async ({ tabId, response }) => {
-        const undoEntries = Array.isArray(response?.undoEntries) ? response.undoEntries : [];
-        if (undoEntries.length > 0) {
-          await saveUndoEntries(tabId, undoEntries);
-        } else {
-          await clearUndoEntries(tabId);
-        }
-
+  if (message?.type === 'START_EXTENSION_CONNECT') {
+    startExtensionConnect()
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => {
         sendResponse({
-          ok: true,
-          result: {
-            appliedCount: response?.appliedCount ?? 0,
-            restoredCount: response?.restoredCount ?? 0,
-            results: Array.isArray(response?.results) ? response.results : [],
-          },
-          hasUndo: undoEntries.length > 0,
+          ok: false,
+          error: error instanceof Error ? error.message : 'Unable to start extension connection',
         });
-      })
+      });
+    return true;
+  }
+
+  if (message?.type === 'POLL_EXTENSION_CONNECT') {
+    pollExtensionConnectGrant()
+      .then((payload) => sendResponse({ ok: true, ...payload }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Unable to check extension connection',
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === 'APPLY_FILL_PLAN') {
+    applyFillPlanFromBackground(message.actions)
+      .then((result) => sendResponse(result))
       .catch((error) => {
         sendResponse({
           ok: false,

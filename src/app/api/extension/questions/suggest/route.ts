@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { getExtensionProfileBundle } from '@/lib/extension/profile';
 import { suggestExtensionQuestionAnswers } from '@/lib/extension/questions';
-import { ExtensionQuestionSuggestRequestSchema } from '@/lib/extension/schemas';
+import { ExtensionQuestionSuggestRequestSchema, normalizeExtensionRequestBody } from '@/lib/extension/schemas';
 
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await requireExtensionAuth(req);
 
     const body = await req.json().catch(() => ({}));
-    const parsed = ExtensionQuestionSuggestRequestSchema.safeParse(body);
+    const parsed = ExtensionQuestionSuggestRequestSchema.safeParse(normalizeExtensionRequestBody(body));
     if (!parsed.success) {
       return NextResponse.json(
         {

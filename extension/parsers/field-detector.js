@@ -182,6 +182,16 @@
       field.helperTextCandidates.join(' '),
     ].filter(Boolean).join(' ');
     const text = utils.normalizeToken(sources);
+    const questionLike = /[?]/.test(field.label)
+      || /(why|describe|tell us|please share|what makes|how do you)/.test(text);
+
+    if ((field.inputType === 'textarea' || field.inputType === 'text') && questionLike) {
+      return {
+        key: 'custom_question',
+        confidenceScore: field.inputType === 'textarea' ? 0.9 : 0.76,
+        reasons: ['Field label reads like a custom application question.'],
+      };
+    }
 
     const rules = [
       { key: 'full_name', weight: 0.96, match: /full name|your name|legal name/ },
@@ -218,7 +228,7 @@
       }
     }
 
-    if (/[?]/.test(field.label) || /(why|describe|tell us|please share|what makes|how do you)/.test(text)) {
+    if (questionLike) {
       return {
         key: 'custom_question',
         confidenceScore: field.inputType === 'textarea' ? 0.85 : 0.7,

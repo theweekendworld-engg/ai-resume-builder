@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { createExtensionAccessToken } from '@/lib/extension/sessionToken';
 
-const EXTENSION_CLIENT = 'chrome_extension';
+export const EXTENSION_CLIENT = 'chrome_extension';
 
 export type ExtensionSessionPayload = {
   success: true;
@@ -10,6 +10,24 @@ export type ExtensionSessionPayload = {
   tokenType: 'Bearer';
   expiresAt: string;
 };
+
+type ExtensionSessionRecord = {
+  id: string;
+  expiresAt: Date;
+};
+
+export function formatExtensionSessionPayload(
+  record: ExtensionSessionRecord,
+  accessToken: string
+): ExtensionSessionPayload {
+  return {
+    success: true,
+    sessionId: record.id,
+    accessToken,
+    tokenType: 'Bearer',
+    expiresAt: record.expiresAt.toISOString(),
+  };
+}
 
 export async function createExtensionSession(userId: string): Promise<ExtensionSessionPayload> {
   const now = new Date();
@@ -40,11 +58,5 @@ export async function createExtensionSession(userId: string): Promise<ExtensionS
     },
   });
 
-  return {
-    success: true,
-    sessionId: record.id,
-    accessToken: token.rawToken,
-    tokenType: 'Bearer',
-    expiresAt: record.expiresAt.toISOString(),
-  };
+  return formatExtensionSessionPayload(record, token.rawToken);
 }

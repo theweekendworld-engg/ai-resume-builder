@@ -10,6 +10,11 @@ const isPublicRoute = createRouteMatcher([
     '/sign-up(.*)',
     '/terms',
     '/privacy',
+]);
+
+const isSelfAuthenticatedApiRoute = createRouteMatcher([
+    '/api/extension(.*)',
+    '/api/v1(.*)',
     '/api/telegram/webhook',
     '/api/telegram/process',
 ]);
@@ -41,7 +46,7 @@ function isAdminUserId(userId: string | null | undefined): boolean {
 }
 
 export default clerkMiddleware(async (auth, req) => {
-    if (!isPublicRoute(req)) {
+    if (!isPublicRoute(req) && !isSelfAuthenticatedApiRoute(req)) {
         const session = await auth.protect();
         const pathname = req.nextUrl.pathname;
         const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');

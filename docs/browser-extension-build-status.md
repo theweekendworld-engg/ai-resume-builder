@@ -100,6 +100,6 @@ This file should be updated as implementation progresses so we always have one c
 - [x] Add company trust/fit UI
 
 ## Notes
-- Extension routes now accept dedicated extension bearer tokens issued from an authenticated web-session handshake.
-- The extension stores and refreshes a scoped access token in browser extension storage instead of relying on cookies for day-to-day API calls.
+- Extension routes now accept dedicated extension bearer tokens issued through a one-time connect grant approved in the authenticated web app.
+- The extension stores a scoped access token in browser extension storage and does not rely on Clerk cookies for day-to-day API calls.
 - The initial extension shell is intentionally simple so we can start building the parser and page-analysis loop quickly.

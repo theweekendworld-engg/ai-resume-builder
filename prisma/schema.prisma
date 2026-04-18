@@ -456,3 +456,18 @@ model ExtensionAccessToken {
     @@index([userId, client, revokedAt, expiresAt])
     @@index([expiresAt])
 }
+
+model ExtensionConnectGrant {
+    id             String   @id @default(cuid())
+    client         String   @default("chrome_extension")
+    verifierHash   String   @unique
+    approvedUserId String?
+    approvedAt     DateTime?
+    consumedAt     DateTime?
+    expiresAt      DateTime
+    createdAt      DateTime @default(now())
+    updatedAt      DateTime @updatedAt
+
+    @@index([expiresAt])
+    @@index([approvedUserId, createdAt])
+}

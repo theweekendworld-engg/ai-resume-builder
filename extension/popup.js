@@ -9,6 +9,7 @@ const appBaseUrlNote = document.getElementById('app-base-url-note');
 const saveAppUrlButton = document.getElementById('save-app-url');
 const openDashboardButton = document.getElementById('open-dashboard');
 const openSignInButton = document.getElementById('open-sign-in');
+let connectPollTimer = null;
 
 function appendRow(label, value) {
   const dt = document.createElement('dt');
@@ -52,6 +53,19 @@ async function openUrl(url) {
   });
 }
 
+function scheduleConnectionPoll() {
+  if (connectPollTimer) return;
+  connectPollTimer = setInterval(() => {
+    refreshAccess().catch(() => undefined);
+  }, 2000);
+}
+
+function stopConnectionPoll() {
+  if (!connectPollTimer) return;
+  clearInterval(connectPollTimer);
+  connectPollTimer = null;
+}
+
 async function refreshContext() {
   const response = await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_TAB_CONTEXT' });
   if (!response?.ok) {
@@ -83,6 +97,7 @@ async function refreshAccess() {
   }
 
   if (response.status === 'authenticated') {
+    stopConnectionPoll();
     const expiryText = response.expiresAt
       ? ` Token active until ${new Date(response.expiresAt).toLocaleString()}.`
       : '';
@@ -94,15 +109,27 @@ async function refreshAccess() {
     return;
   }
 
-  if (response.status === 'unauthenticated') {
+  if (response.status === 'pending') {
+    scheduleConnectionPoll();
     setAccessState({
       tone: 'warn',
-      label: 'Sign In',
-      message: 'Open the app sign-in page in this browser first, then return to the extension.',
+      label: 'Finish Sign In',
+      message: response.message || 'Finish signing in on the web page, then return to the extension.',
     });
     return;
   }
 
+  if (response.status === 'unauthenticated') {
+    stopConnectionPoll();
+    setAccessState({
+      tone: 'warn',
+      label: 'Connect',
+      message: 'Connect this extension to your signed-in Patronus account.',
+    });
+    return;
+  }
+
+  stopConnectionPoll();
   setAccessState({
     tone: 'bad',
     label: 'Unreachable',
@@ -123,8 +150,32 @@ openDashboardButton.addEventListener('click', async () => {
 });
 
 openSignInButton.addEventListener('click', async () => {
-  const appBaseUrl = appBaseUrlInput.value.trim() || await getAppBaseUrl();
-  await openUrl(`${appBaseUrl.replace(/\/+$/, '')}/sign-in`);
+  const saved = await setAppBaseUrl(appBaseUrlInput.value);
+  appBaseUrlInput.value = saved;
+  appBaseUrlNote.textContent = `Saved app base URL: ${saved}`;
+
+  setAccessState({
+    tone: 'warn',
+    label: 'Opening',
+    message: 'Opening a secure connection tab...',
+  });
+
+  const response = await chrome.runtime.sendMessage({ type: 'START_EXTENSION_CONNECT' });
+  if (!response?.ok) {
+    setAccessState({
+      tone: 'bad',
+      label: 'Connect Failed',
+      message: response?.error || 'Unable to start extension connection.',
+    });
+    return;
+  }
+
+  scheduleConnectionPoll();
+  setAccessState({
+    tone: 'warn',
+    label: 'Finish Sign In',
+    message: 'Finish signing in on the web page, then return to the extension.',
+  });
 });
 
 Promise.all([

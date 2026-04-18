@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
-import { ExtensionWorkspaceUpsertRequestSchema } from '@/lib/extension/schemas';
+import { ExtensionWorkspaceUpsertRequestSchema, normalizeExtensionRequestBody } from '@/lib/extension/schemas';
 import { upsertExtensionWorkspace } from '@/lib/extension/workspaces';
 
 export async function POST(req: NextRequest) {
@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const { userId } = await requireExtensionAuth(req);
 
     const body = await req.json().catch(() => ({}));
-    const parsed = ExtensionWorkspaceUpsertRequestSchema.safeParse(body);
+    const parsed = ExtensionWorkspaceUpsertRequestSchema.safeParse(normalizeExtensionRequestBody(body));
     if (!parsed.success) {
       return NextResponse.json(
         {

@@ -2,6 +2,7 @@ import { buildFillPlan } from './fill/fill-planner.js';
 
 const heading = document.getElementById('heading');
 const subheading = document.getElementById('subheading');
+const parsePageButton = document.getElementById('parse-page');
 const platform = document.getElementById('platform');
 const pageKind = document.getElementById('page-kind');
 const fieldCount = document.getElementById('field-count');
@@ -77,6 +78,7 @@ const state = {
     signature: '',
     result: null,
   },
+  parsing: false,
   resume: {
     session: null,
     polling: false,
@@ -91,6 +93,62 @@ const state = {
     items: {},
   },
 };
+const inFlightOperations = new Map();
+
+function runSingleFlight(key, operation) {
+  const existing = inFlightOperations.get(key);
+  if (existing) return existing;
+
+  const promise = operation().finally(() => {
+    if (inFlightOperations.get(key) === promise) {
+      inFlightOperations.delete(key);
+    }
+  });
+
+  inFlightOperations.set(key, promise);
+  return promise;
+}
+
+function resetWorkspaceState() {
+  state.workspace.item = null;
+  state.workspace.syncSignature = '';
+  state.workspace.loading = false;
+  state.workspace.lastMatchedBy = null;
+}
+
+function resetCompanyState() {
+  state.company.loading = false;
+  state.company.insight = null;
+  state.company.signature = '';
+}
+
+function resetResumeState() {
+  state.resume.session = null;
+  state.resume.polling = false;
+}
+
+function resetPageScopedBackendState() {
+  resetWorkspaceState();
+  resetCompanyState();
+  resetResumeState();
+}
+
+function resetLocalPageState() {
+  state.plan = null;
+  state.actionResults = {};
+  state.analysis.result = null;
+  state.analysis.signature = '';
+}
+
+function resetAllPageState() {
+  state.context = null;
+  state.hasUndo = false;
+  resetLocalPageState();
+  resetPageScopedBackendState();
+  state.analysis.loading = false;
+  state.questions.items = {};
+  state.questions.selectedId = null;
+}
 
 function formatConfidence(context) {
   const band = context?.jobDescription?.confidenceBand || context?.classification?.confidenceBand || 'unknown';
@@ -436,9 +494,7 @@ function renderCompanyInsight() {
 
 async function syncWorkspaceIfNeeded(force = false) {
   if (!canCreateWorkspace(state.context)) {
-    state.workspace.item = null;
-    state.workspace.syncSignature = '';
-    state.workspace.lastMatchedBy = null;
+    resetWorkspaceState();
     renderWorkspace();
     return null;
   }
@@ -451,21 +507,31 @@ async function syncWorkspaceIfNeeded(force = false) {
   state.workspace.loading = true;
   setWorkspaceStatus('Saving the current job page into an application workspace...');
 
+  const syncKey = `workspace:${nextSignature}`;
+  const payload = buildWorkspacePayload(state.context);
+
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: 'UPSERT_WORKSPACE',
-      payload: buildWorkspacePayload(state.context),
+    return await runSingleFlight(syncKey, async () => {
+      const response = await chrome.runtime.sendMessage({
+        type: 'UPSERT_WORKSPACE',
+        payload,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || 'Failed to sync the application workspace');
+      }
+
+      const isCurrentPage = getWorkspaceSignature(state.context) === nextSignature;
+      if (isCurrentPage) {
+        state.workspace.item = response.payload.workspace;
+        state.workspace.syncSignature = nextSignature;
+        state.workspace.lastMatchedBy = response.payload.matchedBy;
+        renderWorkspace();
+        return state.workspace.item;
+      }
+
+      return null;
     });
-
-    if (!response?.ok) {
-      throw new Error(response?.error || 'Failed to sync the application workspace');
-    }
-
-    state.workspace.item = response.payload.workspace;
-    state.workspace.syncSignature = nextSignature;
-    state.workspace.lastMatchedBy = response.payload.matchedBy;
-    renderWorkspace();
-    return state.workspace.item;
   } catch (error) {
     state.workspace.syncSignature = '';
     setWorkspaceStatus(error instanceof Error ? error.message : 'Failed to sync the application workspace.');
@@ -508,7 +574,9 @@ function updateButtons() {
   const safeActions = state.plan?.actions?.filter((action) => action.action === 'auto_fill') ?? [];
   applyFillButton.disabled = safeActions.length === 0;
   undoFillButton.disabled = !state.hasUndo;
+  parsePageButton.disabled = state.parsing;
   analyzeJobButton.disabled = !state.context?.jobDescription?.text || state.analysis.loading;
+  refreshCompanyInsightButton.disabled = state.company.loading || !state.workspace.item?.companyName;
 
   const selectedQuestion = getSelectedQuestion();
   const selectedEntry = selectedQuestion ? getQuestionEntry(getQuestionKey(selectedQuestion)) : null;
@@ -532,14 +600,14 @@ function updateButtons() {
 function renderContext(context) {
   if (!context) {
     heading.textContent = 'Waiting for page context';
-    subheading.textContent = 'Open a job page or application form to begin detection.';
+    subheading.textContent = 'Open a job page or application form, then parse it when you are ready.';
     platform.textContent = 'Unknown';
     pageKind.textContent = 'Unknown';
     fieldCount.textContent = '0';
     jdConfidence.textContent = 'Unknown';
     regionCount.textContent = '0';
     questionCount.textContent = '0';
-    metadata.textContent = 'Waiting for parsed job metadata.';
+    metadata.textContent = 'Click "Parse This Page" when you want the extension to read the current job page.';
     renderList([]);
     renderPlan(null);
     renderQuestions();
@@ -684,27 +752,14 @@ function pruneQuestionState() {
 async function refreshContext() {
   const response = await chrome.runtime.sendMessage({ type: 'GET_ACTIVE_TAB_CONTEXT' });
   if (!response?.ok) {
-    state.context = null;
-    state.hasUndo = false;
-    state.plan = null;
-    state.actionResults = {};
-    state.workspace.item = null;
-    state.workspace.syncSignature = '';
-    state.workspace.lastMatchedBy = null;
-    state.analysis.result = null;
-    state.analysis.signature = '';
-    state.analysis.loading = false;
-    state.resume.session = null;
-    state.resume.polling = false;
-    state.company.insight = null;
-    state.company.signature = '';
-    state.questions.items = {};
-    state.questions.selectedId = null;
+    resetAllPageState();
     renderContext(null);
     updateButtons();
     return;
   }
 
+  const previousUrl = state.context?.url || '';
+  const nextUrl = response.context?.url || '';
   const previousSignature = getContextSignature(state.context);
   const nextSignature = getContextSignature(response.context);
 
@@ -712,25 +767,73 @@ async function refreshContext() {
   state.hasUndo = Boolean(response.hasUndo);
 
   if (previousSignature !== nextSignature) {
-    state.plan = null;
-    state.actionResults = {};
-    state.analysis.result = null;
-    state.analysis.signature = '';
+    resetLocalPageState();
+  }
+
+  if (previousUrl && nextUrl && previousUrl !== nextUrl) {
+    resetPageScopedBackendState();
   }
 
   pruneQuestionState();
   renderContext(state.context);
   renderPlan(state.plan);
   renderQuestionWorkspace();
+
+  if (!canCreateWorkspace(state.context)) {
+    resetPageScopedBackendState();
+    renderWorkspace();
+    renderCompanyInsight();
+    renderResumeGeneration();
+    renderAnalysis();
+    updateButtons();
+    return;
+  }
+
+  renderAnalysis();
+  updateButtons();
+}
+
+async function syncParsedPageEffects() {
   const workspace = await syncWorkspaceIfNeeded();
   if (workspace?.latestGenerationSessionId) {
     await pollGenerationStatus(workspace.latestGenerationSessionId, workspace.id, false);
   } else if (!workspace) {
     state.resume.session = null;
   }
+
   await maybeRefreshCompanyInsight(false);
   renderAnalysis();
   updateButtons();
+}
+
+async function parseCurrentPage() {
+  if (state.parsing) return;
+
+  state.parsing = true;
+  parsePageButton.textContent = 'Parsing...';
+  updateButtons();
+  setStatus('Parsing the current page on demand...');
+  setQuestionStatus('Parse the current page to detect application questions.');
+  setAnalysisStatus('Parsing the current page before job analysis can run.');
+  setResumeStatus('Parsing the current page before resume generation can use this workspace.');
+  setCompanyStatus('Parsing the current page before company insight can refresh.');
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'PARSE_ACTIVE_TAB_CONTEXT' });
+    if (!response?.ok) {
+      throw new Error(response?.error || 'Failed to parse the current page');
+    }
+
+    await refreshContext();
+    await syncParsedPageEffects();
+    setStatus('Page parsed. You can now plan autofill, review questions, or run job analysis.');
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : 'Failed to parse the current page.');
+  } finally {
+    state.parsing = false;
+    parsePageButton.textContent = 'Parse This Page';
+    updateButtons();
+  }
 }
 
 async function ensureBundle() {
@@ -1288,36 +1391,48 @@ async function maybeRefreshCompanyInsight(force = false) {
 
   state.company.loading = true;
   setCompanyStatus('Refreshing company trust and fit signals...');
+  updateButtons();
+
+  const requestKey = `company:${signature}:${force ? 'force' : 'cached'}`;
+  const payload = {
+    workspaceId: workspace.id,
+    companyName: workspace.companyName,
+    roleTitle: workspace.roleTitle,
+    sourceUrl: workspace.sourceUrl,
+    jobDescription: workspace.jobDescription,
+    forceRefresh: force,
+  };
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      type: 'GET_COMPANY_INSIGHT',
-      payload: {
-        workspaceId: workspace.id,
-        companyName: workspace.companyName,
-        roleTitle: workspace.roleTitle,
-        sourceUrl: workspace.sourceUrl,
-        jobDescription: workspace.jobDescription,
-        forceRefresh: force,
-      },
+    return await runSingleFlight(requestKey, async () => {
+      const response = await chrome.runtime.sendMessage({
+        type: 'GET_COMPANY_INSIGHT',
+        payload,
+      });
+
+      if (!response?.ok) {
+        throw new Error(response?.error || 'Failed to load company insight');
+      }
+
+      if (getCompanyInsightSignature() === signature) {
+        state.company.insight = response.payload;
+        state.company.signature = signature;
+        if (response.payload.workspace) {
+          state.workspace.item = response.payload.workspace;
+          renderWorkspace();
+          renderAnalysis();
+        }
+        renderCompanyInsight();
+      }
+
+      return state.company.insight;
     });
 
-    if (!response?.ok) {
-      throw new Error(response?.error || 'Failed to load company insight');
-    }
-
-    state.company.insight = response.payload;
-    state.company.signature = signature;
-    if (response.payload.workspace) {
-      state.workspace.item = response.payload.workspace;
-      renderWorkspace();
-      renderAnalysis();
-    }
-    renderCompanyInsight();
   } catch (error) {
     setCompanyStatus(error instanceof Error ? error.message : 'Failed to load company insight.');
   } finally {
     state.company.loading = false;
+    updateButtons();
   }
 }
 
@@ -1461,6 +1576,12 @@ planFillButton.addEventListener('click', () => {
   planAutofill();
 });
 
+parsePageButton.addEventListener('click', () => {
+  parseCurrentPage().catch((error) => {
+    setStatus(error instanceof Error ? error.message : 'Failed to parse the current page.');
+  });
+});
+
 applyFillButton.addEventListener('click', () => {
   applyFill();
 });
@@ -1586,10 +1707,10 @@ refreshCompanyInsightButton.addEventListener('click', () => {
 });
 
 refreshContext().then(() => {
-  setStatus('Safe autofill is ready to preview once profile data loads.');
-  setQuestionStatus('Detected long-form questions will show up here for grounded draft answers.');
-  setAnalysisStatus('Run job analysis to score fit, surface strengths, and flag missing requirements from the parsed JD.');
-  setResumeStatus('Generate a tailored resume once this page has enough saved workspace context.');
-  setCompanyStatus('Company trust and fit signals will appear here after workspace sync.');
+  setStatus('Parse the current page when you want to prepare autofill and question detection.');
+  setQuestionStatus('Parse the current page to detect long-form questions for grounded draft answers.');
+  setAnalysisStatus('Parse the current page, then run job analysis when you want fit scoring.');
+  setResumeStatus('Parse the current page first, then generate a tailored resume once workspace data is saved.');
+  setCompanyStatus('Parse the current page first, then refresh company insight when you need it.');
 });
 window.setInterval(refreshContext, 2000);

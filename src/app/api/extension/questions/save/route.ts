@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { saveExtensionQuestionAnswer } from '@/lib/extension/questions';
-import { ExtensionQuestionSaveRequestSchema } from '@/lib/extension/schemas';
+import { ExtensionQuestionSaveRequestSchema, normalizeExtensionRequestBody } from '@/lib/extension/schemas';
 
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await requireExtensionAuth(req);
 
     const body = await req.json().catch(() => ({}));
-    const parsed = ExtensionQuestionSaveRequestSchema.safeParse(body);
+    const parsed = ExtensionQuestionSaveRequestSchema.safeParse(normalizeExtensionRequestBody(body));
     if (!parsed.success) {
       return NextResponse.json(
         {

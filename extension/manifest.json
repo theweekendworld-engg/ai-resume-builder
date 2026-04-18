@@ -3,7 +3,7 @@
   "name": "Patronus Job Copilot",
   "description": "Developer job application copilot for analysis, autofill, and resume tailoring.",
   "version": "0.0.1",
-  "permissions": ["storage", "tabs", "sidePanel"],
+  "permissions": ["storage", "tabs", "sidePanel", "scripting"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js",

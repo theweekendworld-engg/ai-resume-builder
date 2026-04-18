@@ -1,5 +1,23 @@
 import { z } from 'zod';
 
+export function normalizeExtensionRequestBody(value: unknown): unknown {
+  if (value === null) return undefined;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeExtensionRequestBody(item));
+  }
+
+  if (typeof value === 'object' && value) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, nestedValue]) => nestedValue !== null)
+        .map(([key, nestedValue]) => [key, normalizeExtensionRequestBody(nestedValue)])
+    );
+  }
+
+  return value;
+}
+
 export const ExtensionPlatformSchema = z.enum([
   'linkedin',
   'greenhouse',

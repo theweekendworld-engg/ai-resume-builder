@@ -98,11 +98,9 @@ Recommended approach:
 Implementation shape:
 1. User clicks `Sign in` in extension.
 2. Extension opens web app auth page in a new tab.
-3. Logged-in web app calls a dedicated endpoint to mint an extension session token.
-4. Token is passed back to extension through:
-   - redirect URL with one-time code, or
-   - `chrome.runtime.sendMessage` via an extension bridge page
-5. Background worker stores token and attaches `Authorization: Bearer ...` to extension API calls.
+3. Extension creates a one-time connect grant and opens the web app approval page.
+4. Logged-in web app approves the grant after Clerk authentication.
+5. Background worker polls with its private verifier, receives a scoped token, stores it, and attaches `Authorization: Bearer ...` to extension API calls.
 
 Minimal version:
 - use opaque session tokens stored in database
@@ -112,7 +110,8 @@ Minimal version:
 Do not expose many tiny endpoints at first.
 
 Start with a small extension API surface:
-- `POST /api/extension/session/create`
+- `POST /api/extension/connect/start`
+- `POST /api/extension/connect/poll`
 - `GET /api/extension/me`
 - `POST /api/extension/page/analyze`
 - `POST /api/extension/questions/suggest`
@@ -646,7 +645,8 @@ This sequencing keeps schema churn low in the beginning.
 ## API Rollout Plan
 
 ### First Wave
-- `POST /api/extension/session/create`
+- `POST /api/extension/connect/start`
+- `POST /api/extension/connect/poll`
 - `GET /api/extension/me`
 - `POST /api/extension/page/analyze`
 
