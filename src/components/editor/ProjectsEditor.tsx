@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Plus, Sparkles, Loader2 } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
+import { InlineBulletSuggestions } from './InlineBulletSuggestions';
 import { toast } from 'sonner';
 
 type SuggestedProject = {
@@ -363,6 +364,13 @@ export function ProjectsEditor() {
                 placeholder="Describe the project, your role, technologies used, and key achievements..."
                 className="min-h-[150px] flex-1 resize-y"
               />
+              {item.description.trim() && (
+                <InlineBulletSuggestions
+                  description={item.description}
+                  onChange={(next) => updateProject(item.id, { description: next })}
+                  type="project"
+                />
+              )}
             </div>
 
             <div className="flex flex-col gap-2">

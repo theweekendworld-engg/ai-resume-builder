@@ -11,6 +11,7 @@ import { StepTemplate } from '@/components/onboarding/StepTemplate';
 import { StepGenerate } from '@/components/onboarding/StepGenerate';
 import { OnboardingState } from '@/components/onboarding/types';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import { LatexTemplateType } from '@/templates/latex';
 import { ResumeUploadZone } from '@/components/resume-import/ResumeUploadZone';
 import { ImportPreviewDialog } from '@/components/resume-import/ImportPreviewDialog';
 import type { ParsedResumeData } from '@/lib/aiSchemas';
@@ -37,14 +38,14 @@ type GeneratePayload = {
   phone: string;
   linkedin: string;
   parsedResume?: ParsedResumeData;
-  template: 'ats-simple' | 'modern' | 'classic';
+  template: LatexTemplateType;
 };
 
 type GenerateActionState = {
   success: boolean;
   error?: string;
   resumeId?: string;
-  template?: 'ats-simple' | 'modern' | 'classic';
+  template?: LatexTemplateType;
 };
 
 export function OnboardingWizard() {

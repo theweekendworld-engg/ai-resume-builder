@@ -18,6 +18,9 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-7 text-[13px] text-muted-foreground md:flex">
+          <Link href="/score" className="transition-colors hover:text-foreground">
+            Check resume
+          </Link>
           <Link href="/#features" className="transition-colors hover:text-foreground">
             Features
           </Link>
@@ -36,8 +39,8 @@ export function Navbar() {
                 Sign in
               </Button>
             </SignInButton>
-            <Link href="/sign-up">
-              <Button size="sm" className="text-[13px]">Get started</Button>
+            <Link href="/sign-up?redirect_url=/build">
+              <Button size="sm" className="text-[13px]">Build a resume</Button>
             </Link>
           </SignedOut>
           <SignedIn>

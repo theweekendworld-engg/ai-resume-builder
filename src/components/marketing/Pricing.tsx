@@ -3,10 +3,10 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Check } from 'lucide-react';
 
 const perks = [
-  'Unlimited resumes',
-  'AI-powered suggestions',
-  'ATS scoring',
-  'PDF & LaTeX export',
+  'Free ATS score — no account needed',
+  'AI-tailored resumes for every role',
+  'Unlimited resumes & PDF export',
+  'Auto-fill & track your applications',
 ];
 
 export function Pricing() {
@@ -28,13 +28,14 @@ export function Pricing() {
               <span className="text-muted-foreground">Upgrade when you&apos;re ready.</span>
             </h2>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
-              Build and export your first resumes completely free. Power users
-              can unlock higher AI limits and priority generation.
+              Score, build, export, and start applying — completely free. Power
+              users can unlock higher AI limits and priority generation when they
+              need them.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link href="/sign-up">
+              <Link href="/score">
                 <Button size="lg" className="group gap-2">
-                  Get started free
+                  Check my resume — free
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Button>
               </Link>

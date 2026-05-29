@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Wand2 } from 'lucide-react';
 import { improveText } from '@/actions/ai';
 import { rewriteBulletPoint, type BulletEnhancementType } from '@/actions/copilot';
+import { DiffPreview } from '@/components/editor/DiffPreview';
 
 interface AIRewriteModalProps {
     open: boolean;
@@ -239,11 +240,13 @@ export function AIRewriteModal({
 
                     {rewrittenText && (
                         <div className="space-y-2">
-                            <Label>Suggested Text</Label>
+                            <Label>Before / After</Label>
+                            <DiffPreview before={originalText} after={rewrittenText} />
+                            <Label>Suggested Text (editable)</Label>
                             <Textarea
                                 value={rewrittenText}
                                 onChange={(e) => setRewrittenText(e.target.value)}
-                                className="min-h-[150px]"
+                                className="min-h-[120px]"
                             />
                             {keywordHints.length > 0 && (
                                 <div className="flex flex-wrap gap-1">

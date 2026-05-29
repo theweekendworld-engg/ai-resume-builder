@@ -15,6 +15,8 @@ import {
   Brain,
   Settings,
   TrendingUp,
+  Palette,
+  ListChecks,
 } from 'lucide-react';
 
 interface EditorSidebarProps {
@@ -36,8 +38,13 @@ const contentItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[
   { id: 'skills', label: 'Skills', icon: <Code className="h-4 w-4" /> },
 ];
 
+const designItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+  { id: 'design', label: 'Design & Template', icon: <Palette className="h-4 w-4" /> },
+];
+
 const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'score-improve', label: 'Review & Improve', icon: <TrendingUp className="h-4 w-4" /> },
+  { id: 'fix-checklist', label: 'Fix Checklist', icon: <ListChecks className="h-4 w-4" /> },
 ];
 
 const utilityItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
@@ -92,6 +99,7 @@ export function EditorSidebar({ activePanel, onSelect, collapsed, onToggleCollap
       <div className="space-y-4 overflow-auto pb-2">
         <NavSection title="Setup" items={setupItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Content" items={contentItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Design" items={designItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Optimize" items={optimizeItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Utility" items={utilityItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
       </div>

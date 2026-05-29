@@ -15,7 +15,13 @@ export function Footer() {
             AI resume builder for faster, better job applications.
           </p>
         </div>
-        <div className="flex items-center gap-5">
+        <div className="flex flex-wrap items-center gap-5">
+          <Link href="/score" className="transition-colors hover:text-foreground">
+            Check resume
+          </Link>
+          <Link href="/sign-up?redirect_url=/build" className="transition-colors hover:text-foreground">
+            Build a resume
+          </Link>
           <Link href="/privacy" className="transition-colors hover:text-foreground">
             Privacy
           </Link>

@@ -56,6 +56,33 @@ export interface ResumeGenerationPreferences {
     targetLength?: '1-page' | '2-page' | 'auto';
 }
 
+/**
+ * Visual identity of a resume. This is the contract between the editor design
+ * controls and the LaTeX render backend (`src/templates/latex.ts`).
+ *
+ * `sectionOrder` intentionally stays on `ResumeData` (not duplicated here) — the
+ * theme references it conceptually but the array of record remains on the resume.
+ */
+export type ResumeTemplateId = 'ats-simple' | 'modern' | 'classic' | 'minimal';
+
+export type ResumeFontFamily = 'sans' | 'serif' | 'mono';
+
+export type ResumeDensity = 'compact' | 'normal' | 'relaxed';
+
+export interface ResumeTheme {
+    templateId: ResumeTemplateId;
+    accentColor: string; // hex, e.g. '#1F4E79'
+    fontFamily: ResumeFontFamily; // maps to LaTeX font packages
+    density: ResumeDensity; // affects margins / line spacing
+}
+
+export const DEFAULT_RESUME_THEME: ResumeTheme = {
+    templateId: 'ats-simple',
+    accentColor: '#1F4E79',
+    fontFamily: 'sans',
+    density: 'normal',
+};
+
 export const initialResumeData: ResumeData = {
     personalInfo: {
         fullName: "",

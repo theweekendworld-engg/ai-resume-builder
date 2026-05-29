@@ -42,7 +42,10 @@ export const ExtensionConfidenceBandSchema = z.enum(['high', 'medium', 'low']);
 export const ExtensionReducedRegionSchema = z.object({
   id: z.string().max(255),
   kind: z.enum(['dialog', 'form', 'main', 'sidebar', 'section']),
-  elementPath: z.string().min(1).max(5000),
+  elementPath: z.preprocess(
+    (value) => typeof value === 'string' && value.trim().length === 0 ? 'body' : value,
+    z.string().min(1).max(5000)
+  ),
   textSample: z.string().max(4000),
   visibleTextLength: z.number().int().min(0),
   interactiveCount: z.number().int().min(0),

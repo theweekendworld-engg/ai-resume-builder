@@ -3,9 +3,12 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, ChevronLeft, Loader2, Sparkles, AlertCircle, Circle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Loader2, Sparkles, AlertCircle, Circle, FileCheck2, Wand2 } from 'lucide-react';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { getGitHubIntegrationStatus, syncTopGitHubProjects } from '@/actions/github';
+import { parseResumeText } from '@/actions/parseResumeText';
+import { saveResumeToCloud } from '@/actions/resume';
+import { readPendingScore, type PendingScore } from '@/lib/pendingScore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -100,6 +103,8 @@ export function BuildWizard() {
     setupPath: '/dashboard',
     message: null,
   });
+  const [pendingImport, setPendingImport] = useState<PendingScore | null>(null);
+  const [importing, setImporting] = useState(false);
   const [isPending, startTransition] = useTransition();
   const trackGenerationSession = useGenerationMonitorStore((state) => state.trackSession);
   const markGenerationCompleted = useGenerationMonitorStore((state) => state.markCompleted);
@@ -144,6 +149,41 @@ export function BuildWizard() {
       }
     };
   }, []);
+
+  // If the user arrived from the free resume check, surface a one-click path to
+  // load that exact resume instead of building a fresh one from a JD. The fix
+  // checklist itself is seeded by the editor (it reads the same handoff and then
+  // clears it), so we deliberately do NOT clear sessionStorage here.
+  useEffect(() => {
+    setPendingImport(readPendingScore());
+  }, []);
+
+  const startResumeImport = () => {
+    if (!pendingImport || importing) return;
+    setImporting(true);
+    setError(null);
+    startTransition(async () => {
+      try {
+        const parsed = await parseResumeText(pendingImport.extractedText);
+        const saved = await saveResumeToCloud(
+          parsed,
+          undefined,
+          'import',
+          undefined,
+          Math.round(pendingImport.score)
+        );
+        if (!saved.success || !saved.resumeId) {
+          throw new Error(saved.error ?? 'Could not save your resume.');
+        }
+        router.push(`/editor/${saved.resumeId}`);
+      } catch (err) {
+        setImporting(false);
+        const message = err instanceof Error ? err.message : 'Could not load your resume.';
+        setError(message);
+        toast.error(message);
+      }
+    });
+  };
 
   const currentStepIndex = useMemo(
     () => (currentStep ? PIPELINE_STEPS.findIndex((step) => step.id === currentStep) : -1),
@@ -432,7 +472,40 @@ export function BuildWizard() {
       </div>
 
       {stage === 'target' ? (
-        <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
+        <div className="space-y-4">
+          {pendingImport && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileCheck2 className="h-5 w-5 text-primary" />
+                  Pick up where you left off
+                </CardTitle>
+                <CardDescription>
+                  We saved the resume you just checked
+                  {typeof pendingImport.score === 'number' ? ` (score ${Math.round(pendingImport.score)})` : ''}
+                  {pendingImport.fixes.length > 0
+                    ? ` and ${pendingImport.fixes.length} prioritized fix${pendingImport.fixes.length === 1 ? '' : 'es'}.`
+                    : '.'}{' '}
+                  Load it into the editor to start fixing — your checklist will be waiting.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center gap-3">
+                <Button onClick={startResumeImport} disabled={importing || isPending}>
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Load my resume &amp; start fixing
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setPendingImport(null)}
+                  className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+                  disabled={importing}
+                >
+                  Or build a fresh resume from a job description
+                </button>
+              </CardContent>
+            </Card>
+          )}
+          <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
           <Card>
             <CardHeader>
               <CardTitle>Step 1: Paste the Job Description</CardTitle>
@@ -502,6 +575,7 @@ export function BuildWizard() {
               )}
             </CardContent>
           </Card>
+          </div>
         </div>
       ) : (
         <div className="space-y-4">

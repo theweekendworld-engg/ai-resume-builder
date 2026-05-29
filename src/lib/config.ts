@@ -1,3 +1,18 @@
+function resolveEmbeddingSize(model: string, override?: string): number {
+    const parsedOverride = Number(override);
+    if (Number.isFinite(parsedOverride) && parsedOverride > 0) {
+        return parsedOverride;
+    }
+
+    const normalizedModel = String(model || "").trim().toLowerCase();
+    if (normalizedModel === "text-embedding-3-small") return 1536;
+    if (normalizedModel === "text-embedding-3-large") return 3072;
+    if (normalizedModel === "text-embedding-ada-002") return 1536;
+    return 3072;
+}
+
+const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
+
 export const config = {
     openai: {
         apiKey: process.env.OPENAI_API_KEY as string,
@@ -12,8 +27,8 @@ export const config = {
             resumeParse: process.env.OPENAI_MODEL || "gpt-5-mini",
         },
         embedding: {
-            model: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large",
-            size: Number(process.env.OPENAI_EMBEDDING_SIZE || 3072),
+            model: embeddingModel,
+            size: resolveEmbeddingSize(embeddingModel, process.env.OPENAI_EMBEDDING_SIZE),
         },
     },
     app: {

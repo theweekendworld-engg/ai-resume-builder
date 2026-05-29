@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProposedChangesCard } from '@/components/copilot';
+import { CopilotQuickActions } from '@/components/copilot/CopilotQuickActions';
 import { 
     Sparkles, 
     Loader2, 
@@ -180,6 +181,9 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
 
     const content = (
         <div className="space-y-6">
+                        {/* Context-aware one-click actions */}
+                        <CopilotQuickActions />
+
                         {/* Job Description Input */}
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">

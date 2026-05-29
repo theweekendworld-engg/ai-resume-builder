@@ -1,23 +1,29 @@
-import { ClipboardPaste, Sparkles, Download } from 'lucide-react';
+import { FileSearch, Sparkles, Download, SendHorizonal } from 'lucide-react';
 
 const steps = [
   {
-    icon: ClipboardPaste,
-    title: 'Paste the job description',
+    icon: FileSearch,
+    title: 'Check your score',
     description:
-      'Drop in the listing so AI understands exactly what the role requires.',
+      'Drop in your current resume and get an instant ATS and quality score with a prioritized fix list — no account needed.',
   },
   {
     icon: Sparkles,
-    title: 'Tailor with AI',
+    title: 'Build & tailor with AI',
     description:
-      'Get section-level rewrites, keyword suggestions, and ATS scoring in real time.',
+      'Fix every flagged issue in the editor. Paste a job description and let AI tailor each bullet to the role.',
   },
   {
     icon: Download,
-    title: 'Export & apply',
+    title: 'Export a polished PDF',
     description:
-      'Download a polished PDF or fine-tune with LaTeX — then hit apply.',
+      'Pick a template, tune the design, and download a clean, ATS-safe PDF you’re proud to send.',
+  },
+  {
+    icon: SendHorizonal,
+    title: 'Apply & track',
+    description:
+      'Auto-fill applications with the browser extension and keep every one organized in your workspace.',
   },
 ];
 
@@ -29,11 +35,15 @@ export function HowItWorks() {
           How it works
         </p>
         <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-          Three steps to a better resume
+          From score to submitted, in one place
         </h2>
+        <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
+          One account carries you across the whole journey — no re-uploading, no
+          re-onboarding.
+        </p>
       </div>
 
-      <div className="mt-14 grid gap-8 sm:gap-6 md:grid-cols-3">
+      <div className="mt-14 grid gap-8 sm:gap-6 md:grid-cols-4">
         {steps.map((step, index) => {
           const Icon = step.icon;
           return (

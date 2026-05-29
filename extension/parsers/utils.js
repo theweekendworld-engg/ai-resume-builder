@@ -99,6 +99,8 @@
 
   function getElementPath(element) {
     if (!(element instanceof Element)) return '';
+    if (element === document.body) return 'body';
+    if (element === document.documentElement) return 'html';
 
     const parts = [];
     let current = element;

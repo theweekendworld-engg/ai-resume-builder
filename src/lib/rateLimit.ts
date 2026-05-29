@@ -4,6 +4,7 @@ import { Redis } from '@upstash/redis';
 let ratelimitKb: Ratelimit | null | undefined = undefined;
 let ratelimitAi: Ratelimit | null | undefined = undefined;
 let ratelimitGitHub: Ratelimit | null | undefined = undefined;
+let ratelimitAnonScore: Ratelimit | null | undefined = undefined;
 
 function getRedis(): Redis | null {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -51,6 +52,19 @@ function getGitHubLimiter(): Ratelimit | null {
     return ratelimitGitHub;
 }
 
+function getAnonScoreLimiter(): Ratelimit | null {
+    if (ratelimitAnonScore !== undefined) return ratelimitAnonScore;
+    const redis = getRedis();
+    ratelimitAnonScore = redis
+        ? new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(10, '1 h'),
+              analytics: true,
+          })
+        : null;
+    return ratelimitAnonScore;
+}
+
 export async function checkKbRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
     const limiter = getKbLimiter();
     if (!limiter) return { allowed: true };
@@ -73,4 +87,12 @@ export async function checkGitHubRateLimit(identifier: string): Promise<{ allowe
     const result = await limiter.limit(identifier);
     if (result.success) return { allowed: true };
     return { allowed: false, error: 'Too many GitHub requests. Please try again in a minute.' };
+}
+
+export async function checkAnonScoreRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
+    const limiter = getAnonScoreLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(identifier);
+    if (result.success) return { allowed: true };
+    return { allowed: false, error: "You've reached the free limit for now. Please try again in a little while." };
 }

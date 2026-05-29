@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Plus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
+import { InlineBulletSuggestions } from './InlineBulletSuggestions';
 import { suggestSectionSkillHints } from '@/actions/copilot';
 import { useEffect, useState } from 'react';
 import type { ExperienceItem } from '@/types/resume';
@@ -258,6 +259,13 @@ export function ExperienceEditor() {
                                         placeholder="• Achieved X by doing Y, resulting in Z..."
                                         className="min-h-[180px] resize-y"
                                     />
+                                    {item.description.trim() && (
+                                        <InlineBulletSuggestions
+                                            description={item.description}
+                                            onChange={(next) => updateExperience(item.id, { description: next })}
+                                            type="bullet"
+                                        />
+                                    )}
                                 </div>
                             </div>
                         )}
