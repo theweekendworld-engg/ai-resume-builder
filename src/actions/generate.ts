@@ -19,7 +19,7 @@ const GenerateInputSchema = z.object({
   linkedin: z.string().max(500).optional(),
   yearsExperience: z.string().max(50).optional(),
   parsedResume: ParsedResumeSchema.optional(),
-  template: z.enum(['ats-simple', 'modern', 'classic']).default('ats-simple'),
+  template: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).default('ats-simple'),
 });
 
 function createDraftResume(
@@ -103,7 +103,7 @@ function createDraftResume(
 export async function generateInitialResume(input: unknown): Promise<{
   success: boolean;
   resumeId?: string;
-  template?: 'ats-simple' | 'modern' | 'classic';
+  template?: 'ats-simple' | 'modern' | 'classic' | 'minimal';
   error?: string;
 }> {
   const parsed = GenerateInputSchema.safeParse(input);

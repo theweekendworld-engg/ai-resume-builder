@@ -7,9 +7,21 @@ import { getUserPdfHistory } from '@/actions/pdfs';
 import { isAdminUserId } from '@/lib/adminAuth';
 import { DashboardShell } from '@/components/dashboard/DashboardShell';
 
-export default async function DashboardPage() {
+const KNOWN_SECTIONS = ['overview', 'applications', 'resumes', 'copilot', 'profile', 'telegram', 'pdf'] as const;
+type KnownSection = (typeof KNOWN_SECTIONS)[number];
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
   const { userId } = await auth();
   const isAdmin = isAdminUserId(userId);
+  const params = await searchParams;
+  const sectionParam = typeof params.section === 'string' ? params.section : '';
+  const initialSection: KnownSection = (KNOWN_SECTIONS as readonly string[]).includes(sectionParam)
+    ? (sectionParam as KnownSection)
+    : 'overview';
   const [overviewResult, resumeResult, projectsResult, usageStats, pdfHistory, applicationWorkspacesResult] = await Promise.all([
     getDashboardOverview(),
     listResumes(),
@@ -50,6 +62,7 @@ export default async function DashboardPage() {
       applicationWorkspaces={applicationWorkspaces}
       applicationListError={!applicationWorkspacesResult.success ? applicationWorkspacesResult.error : undefined}
       isAdmin={!!isAdmin}
+      initialSection={initialSection}
     />
   );
 }

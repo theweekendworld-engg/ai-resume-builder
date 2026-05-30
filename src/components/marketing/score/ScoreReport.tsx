@@ -16,6 +16,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { AnonScoreReport, ScoreBand, ScoreFix } from '@/lib/anonScoreSchema';
+import { trackFunnelEvent } from '@/lib/funnelEvents';
 
 const SIGNUP_URL = '/sign-up?redirect_url=/build';
 const PENDING_SCORE_KEY = 'patronus:pendingScore';
@@ -154,6 +155,11 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
     );
 
     const handleFixAll = () => {
+        trackFunnelEvent('score_cta_clicked', {
+            score: report.overall,
+            band: report.band,
+            fixCount: report.fixes.length,
+        });
         stashPendingScore(report, extractedText);
         router.push(SIGNUP_URL);
     };

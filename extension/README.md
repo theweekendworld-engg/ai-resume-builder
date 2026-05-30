@@ -1,41 +1,68 @@
-# Browser Extension
+# Patronus Extension
 
-This folder contains the browser extension client for the job application copilot.
+Chrome MV3 extension. Phase 1 of the one-stop-platform-plan introduced a Vite + React + TypeScript build pipeline; the legacy vanilla files at the root of this directory are kept as the parser modules (`parsers/*.js`) until Phase 1 slice 2 ports them to TS.
 
-## Current State
-Phase 3 answer assistant foundation:
-- manifest
-- background worker
-- structured content-script parser pipeline
-- popup UI
-- side panel UI
+## Building
 
-The shell is still intentionally lightweight, but it now runs a real parser pipeline before storing page context.
+From the repo root:
 
-## Load Locally
-1. Open `chrome://extensions`
-2. Enable Developer Mode
-3. Click `Load unpacked`
-4. Select this `extension/` folder
+```bash
+bun run ext:install     # one-time, installs extension/-local deps
+bun run ext:build       # produces extension/dist/
+```
 
-## Current Behavior
-- content script classifies the page and reduces the DOM to relevant regions
-- job metadata and job-description candidates are extracted from the reduced regions
-- visible fields are normalized into shared semantic keys where confidence is high enough
-- background worker stores the latest parsed page context per tab
-- popup can verify backend access, mint a dedicated extension token from the signed-in web session, and configure the target app base URL
-- side panel can preview bulk-safe fields plus per-field review actions
-- side panel can run explicit job-fit analysis and persist the fit summary into the saved application workspace
-- side panel can detect long-form application questions and request grounded answer drafts
-- answer drafts support tone switching, copy, insert, and save actions
-- current job pages are persisted into recoverable application workspaces and resumed when the same role/page is revisited
-- repeated answer regeneration updates the existing saved question record instead of creating duplicates
-- safe autofill supports text-like fields and high-confidence select/radio/checkbox matches
-- resume/CV upload fields stay protected: the extension can focus the field and open the picker, but does not auto-attach files
-- safe autofill supports one-run undo per tab
-- popup and side panel show the parsed page context
+Or from this directory:
 
-## Next Steps
-- decide whether extension tokens need explicit revoke/sign-out controls in the UI
-- add real extension bundling/build tooling
-- deepen site-specific adapters for major ATS platforms
+```bash
+cd extension/
+bun install
+bun run build
+```
+
+## Loading the extension in Chrome
+
+After a build:
+
+1. Open `chrome://extensions`.
+2. Enable Developer Mode.
+3. Click **Load unpacked**.
+4. Select `extension/dist/` (the build output — **not** this directory).
+
+The legacy vanilla extension at the root of this directory is no longer the loaded artifact. It remains in the tree because Phase 1 slice 1 only ships the build pipeline + shells; the parser modules (`parsers/*.js`) are still loaded as content scripts in their JS form during this transition. They will be ported to TS in slice 2.
+
+## Dev loop
+
+```bash
+cd extension/
+bun run dev
+```
+
+Vite serves the side panel / popup with HMR; reload the extension from `chrome://extensions` after changes to the background worker or content script.
+
+## What's here vs. what's deferred
+
+Built this slice (Phase 1 slice 1):
+- Vite + React + TS + tailwind + crxjs build pipeline
+- MV3 manifest (`manifest.config.ts`) generating `dist/manifest.json`
+- Typed background service worker with `messageBus`, `tokenStore`, `tabContext`
+- Content script TS shim that drives the existing JS parser pipeline
+- Side panel React app with 5 routes: Apply, Tailor, Answers, Workspaces, Settings
+- Popup with connected / expired / disconnected states
+- Local design tokens matching the web app's tailwind theme
+
+Deferred to slice 2:
+- 1:1 TS port of the parser modules (`parsers/*.js` → `src/parsers/*.ts`)
+- `ApplicationSession` state machine + persistence
+- `POST /api/extension/session/orchestrate` backend route
+- Profile completeness gate with deep link
+- Real component depth for Fields/Questions/Workspace cards
+- Telemetry event wiring
+- Deletion of legacy vanilla `popup.*`, `sidepanel.*`, `background.js`, `content.js`
+
+## Tests
+
+The Phase 0 fixture suite lives at `__tests__/parsers/` and runs against the JS parser modules. Run from the repo root:
+
+```bash
+bun run test:extension
+```

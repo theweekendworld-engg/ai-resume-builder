@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens — kept in sync with the web app's tailwind theme so the
+   extension feels like the same product. Values are HSL channels so tailwind
+   utilities can apply alpha via `/<alpha-value>`. */
+@layer base {
+    :root {
+        --bg: 0 0% 100%;
+        --surface: 0 0% 100%;
+        --foreground: 222 47% 11%;
+        --muted: 210 40% 96%;
+        --muted-foreground: 215 16% 47%;
+        --border: 214 32% 91%;
+        --primary: 217 91% 60%;
+        --primary-foreground: 0 0% 100%;
+        --destructive: 0 84% 60%;
+        --success: 142 71% 45%;
+        --warning: 38 92% 50%;
+    }
+
+    .dark {
+        --bg: 222 47% 7%;
+        --surface: 222 47% 9%;
+        --foreground: 210 40% 98%;
+        --muted: 217 33% 17%;
+        --muted-foreground: 215 20% 65%;
+        --border: 217 33% 22%;
+        --primary: 217 91% 60%;
+        --primary-foreground: 0 0% 100%;
+        --destructive: 0 63% 50%;
+        --success: 142 71% 45%;
+        --warning: 38 92% 50%;
+    }
+
+    html,
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-feature-settings: 'cv11', 'ss01';
+        font-size: 13px;
+        line-height: 20px;
+    }
+
+    body {
+        background: hsl(var(--bg));
+        color: hsl(var(--foreground));
+    }
+
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+}
+
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    }
+    .btn-primary {
+        @apply btn bg-primary text-primary-foreground hover:opacity-90;
+    }
+    .btn-ghost {
+        @apply btn hover:bg-muted;
+    }
+    .btn-outline {
+        @apply btn border border-border bg-transparent hover:bg-muted;
+    }
+    .card {
+        @apply rounded-lg border border-border bg-surface;
+    }
+    .chip {
+        @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium;
+    }
+}

@@ -1,0 +1,231 @@
+import { useMemo, useState } from 'react';
+import { Loader2, FileSearch, Sparkles, Layers } from 'lucide-react';
+import { cn } from '@/shared/ui/cn';
+import { usePageContext } from '../hooks/usePageContext';
+import { useSession } from '../hooks/useSession';
+import { useFillPlan } from '../hooks/useFillPlan';
+import {
+    ProfileCompletenessBanner,
+    useProfileCompleteness,
+} from '../components/ProfileCompletenessBanner';
+import { FieldRow } from '../components/FieldRow';
+import { FillUndoToast } from '../components/FillUndoToast';
+import { QuestionsCard } from '../components/QuestionsCard';
+import { trackExtensionEvent } from '@/shared/lib/telemetry';
+
+const APP_BASE_DEFAULT = 'http://localhost:3000';
+
+const BAND_STYLES = {
+    high: 'border-success/40 bg-success/10 text-success',
+    medium: 'border-warning/40 bg-warning/10 text-warning',
+    low: 'border-destructive/40 bg-destructive/10 text-destructive',
+} as const;
+
+export function ApplyRoute() {
+    const { state, reparse } = usePageContext();
+    const session = useSession();
+    const completeness = useProfileCompleteness();
+    const { state: fillState, apply, undo } = useFillPlan();
+    const [filledIds, setFilledIds] = useState<Set<string>>(new Set());
+    const [lastApplied, setLastApplied] = useState<{ count: number; key: string } | null>(null);
+    const [applying, setApplying] = useState(false);
+
+    const safeIdsForBulk = useMemo(() => {
+        if (fillState.status !== 'ready') return [];
+        return fillState.plan.actions
+            .filter((a) => a.canApply && a.action === 'auto_fill')
+            .map((a) => a.id);
+    }, [fillState]);
+
+    if (state.status === 'loading') {
+        return (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Scanning the page…
+            </div>
+        );
+    }
+
+    if (state.status === 'empty') {
+        return (
+            <div className="card p-4 text-sm">
+                <div className="mb-2 flex items-center gap-2 font-medium">
+                    <FileSearch className="h-4 w-4" /> No job page detected
+                </div>
+                <p className="text-muted-foreground">
+                    Open a job listing or application form and reopen this panel.
+                </p>
+                <button type="button" onClick={reparse} className="btn-ghost mt-3 text-xs">
+                    Re-scan this page
+                </button>
+            </div>
+        );
+    }
+
+    const { pageModel } = state;
+    const jd = pageModel.jobDescription;
+    const actions = fillState.status === 'ready' ? fillState.plan.actions : [];
+    const safeCount = safeIdsForBulk.length;
+    const reviewCount = actions.filter(
+        (a) => a.canApply && a.action !== 'auto_fill'
+    ).length;
+    const autofillEnabled = completeness.complete && safeCount > 0 && !applying;
+
+    const handleBulkFill = async () => {
+        if (!autofillEnabled) return;
+        setApplying(true);
+        const ids = safeIdsForBulk;
+        const outcome = await apply(ids);
+        setApplying(false);
+        if (outcome) {
+            const appliedCount = outcome.appliedCount ?? 0;
+            setFilledIds((prev) => {
+                const next = new Set(prev);
+                for (const id of ids) next.add(id);
+                return next;
+            });
+            if (appliedCount > 0) {
+                setLastApplied({ count: appliedCount, key: `bulk-${Date.now()}` });
+            }
+            trackExtensionEvent('fill.applied', {
+                count: appliedCount,
+                source: 'bulk',
+                platform: pageModel.classification.platform,
+            });
+        }
+    };
+
+    const handleFillSingle = async (id: string) => {
+        const action = actions.find((a) => a.id === id);
+        if (!action) return;
+        setApplying(true);
+        const outcome = await apply([id]);
+        setApplying(false);
+        if (outcome) {
+            const appliedCount = outcome.appliedCount ?? 0;
+            if (appliedCount > 0) {
+                setFilledIds((prev) => new Set(prev).add(id));
+                setLastApplied({ count: appliedCount, key: `single-${id}-${Date.now()}` });
+            }
+            trackExtensionEvent('fill.applied', {
+                count: appliedCount,
+                source: 'single',
+                semanticKey: action.fieldKey,
+                band: action.confidenceBand,
+            });
+        }
+    };
+
+    const handleUndo = async () => {
+        await undo();
+        setFilledIds(new Set());
+        setLastApplied(null);
+    };
+
+    return (
+        <div className="space-y-3">
+            <ProfileCompletenessBanner appBase={APP_BASE_DEFAULT} />
+
+            <section className="card p-3">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                    <h2 className="text-base font-semibold leading-tight">
+                        {(pageModel.metadata['roleTitle'] as string) ?? pageModel.heading ?? 'Job page'}
+                    </h2>
+                    <span className="chip border-border bg-muted text-muted-foreground capitalize">
+                        {pageModel.classification.platform}
+                    </span>
+                </div>
+                {pageModel.metadata['companyName'] ? (
+                    <p className="text-sm text-muted-foreground">
+                        {pageModel.metadata['companyName'] as string}
+                    </p>
+                ) : null}
+                {jd ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                        <span className={cn('chip', BAND_STYLES[jd.confidenceBand])}>
+                            JD {jd.confidenceBand}
+                        </span>
+                        <span className="text-muted-foreground">{jd.text.length} chars</span>
+                    </div>
+                ) : null}
+                {session ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Layers className="h-3.5 w-3.5" />
+                        <span>
+                            Step {session.step.index}
+                            {session.step.total ? ` of ${session.step.total}` : ''} ·{' '}
+                            {session.history.length} visited
+                        </span>
+                    </div>
+                ) : null}
+            </section>
+
+            {lastApplied ? (
+                <FillUndoToast
+                    appliedCount={lastApplied.count}
+                    onUndo={handleUndo}
+                    onDismiss={() => setLastApplied(null)}
+                    keyId={lastApplied.key}
+                />
+            ) : null}
+
+            <section className="card p-3">
+                <div className="mb-2 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        <h3 className="text-sm font-semibold">Fields detected</h3>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                        {pageModel.stats.visibleFieldCount} total
+                    </span>
+                </div>
+                <button
+                    type="button"
+                    disabled={!autofillEnabled}
+                    onClick={handleBulkFill}
+                    className="btn-primary w-full"
+                    title={
+                        !completeness.complete && completeness.ready
+                            ? 'Complete your profile to enable autofill'
+                            : safeCount === 0
+                              ? 'No high-confidence fields ready to fill'
+                              : undefined
+                    }
+                >
+                    {applying ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                    )}
+                    Fill {safeCount} ready field{safeCount === 1 ? '' : 's'}
+                </button>
+                {reviewCount > 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        {reviewCount} field{reviewCount === 1 ? '' : 's'} need review.
+                    </p>
+                ) : null}
+                {actions.length > 0 ? (
+                    <div className="mt-3 space-y-1.5">
+                        {actions.map((action) => (
+                            <FieldRow
+                                key={action.id}
+                                action={action}
+                                filled={filledIds.has(action.id)}
+                                onFill={() => handleFillSingle(action.id)}
+                            />
+                        ))}
+                    </div>
+                ) : null}
+            </section>
+
+            <QuestionsCard questions={pageModel.questions} />
+
+            <button
+                type="button"
+                onClick={reparse}
+                className="btn-ghost w-full text-xs text-muted-foreground"
+            >
+                Re-scan this page
+            </button>
+        </div>
+    );
+}

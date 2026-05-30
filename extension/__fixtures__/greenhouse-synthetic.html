@@ -1,0 +1,120 @@
+<!--
+  SYNTHETIC FIXTURE — replace with a real sanitized capture from boards.greenhouse.io.
+  See extension/__fixtures__/README.md for capture & sanitization rules.
+
+  Purpose: exercises the parser pipeline end-to-end against a Greenhouse-shaped
+  page. Selectors (#application_form), labels, and JD copy mirror the public
+  Greenhouse template so the page classifier + field detector + JD extractor
+  all light up the way they would on a real page.
+-->
+<html lang="en">
+<head>
+  <title>Senior Backend Engineer at Example Corp</title>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Senior Backend Engineer</h1>
+      <div class="job-meta">
+        <span class="company">Example Corp</span>
+        <span class="location">San Francisco, CA · Remote</span>
+      </div>
+    </header>
+
+    <section id="content" class="job-description">
+      <h2>About the job</h2>
+      <p>
+        Example Corp is hiring a Senior Backend Engineer to lead infrastructure
+        work on our payments platform. You will join a small team building
+        reliable systems handling millions of transactions per day.
+      </p>
+
+      <h3>Responsibilities</h3>
+      <ul>
+        <li>Design and ship backend services with high availability requirements</li>
+        <li>Improve observability and on-call ergonomics across the platform</li>
+        <li>Mentor engineers and review code with rigor</li>
+        <li>Partner with product to scope and deliver complex initiatives</li>
+      </ul>
+
+      <h3>Requirements</h3>
+      <ul>
+        <li>5+ years of professional backend experience</li>
+        <li>Strong skills in Go, Python, or a comparable systems language</li>
+        <li>Experience with Postgres, Kafka, and distributed systems patterns</li>
+      </ul>
+
+      <h3>Preferred qualifications</h3>
+      <ul>
+        <li>Experience with gRPC and protocol buffers</li>
+        <li>Comfort operating Kubernetes in production</li>
+      </ul>
+    </section>
+
+    <form id="application_form" action="/applications" method="post">
+      <h2>Apply for this job</h2>
+
+      <div class="field">
+        <label for="first_name">First Name <span class="required">*</span></label>
+        <input id="first_name" name="job_application[first_name]" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="last_name">Last Name <span class="required">*</span></label>
+        <input id="last_name" name="job_application[last_name]" type="text" required />
+      </div>
+
+      <div class="field">
+        <label for="email">Email <span class="required">*</span></label>
+        <input id="email" name="job_application[email]" type="email" required />
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone</label>
+        <input id="phone" name="job_application[phone]" type="tel" />
+      </div>
+
+      <div class="field">
+        <label for="linkedin">LinkedIn Profile</label>
+        <input id="linkedin" name="job_application[urls][LinkedIn]" type="url" />
+      </div>
+
+      <div class="field">
+        <label for="github">GitHub</label>
+        <input id="github" name="job_application[urls][GitHub]" type="url" />
+      </div>
+
+      <div class="field">
+        <label for="portfolio">Personal website</label>
+        <input id="portfolio" name="job_application[urls][Portfolio]" type="url" />
+      </div>
+
+      <div class="field">
+        <label for="resume">Resume/CV <span class="required">*</span></label>
+        <input id="resume" name="job_application[resume]" type="file" required />
+      </div>
+
+      <div class="field">
+        <label for="cover_letter">Cover letter</label>
+        <textarea id="cover_letter" name="job_application[cover_letter_text]" rows="4"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="work_auth">Are you legally authorized to work in the United States?</label>
+        <select id="work_auth" name="job_application[work_authorization]">
+          <option value="">Select...</option>
+          <option value="yes">Yes</option>
+          <option value="no">No</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="why_company">Why do you want to work at Example Corp?</label>
+        <textarea id="why_company" name="job_application[answers][why]" rows="6"></textarea>
+      </div>
+
+      <button type="submit">Submit Application</button>
+    </form>
+  </main>
+</body>
+</html>

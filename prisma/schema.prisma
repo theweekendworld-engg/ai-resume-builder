@@ -364,6 +364,15 @@ model ApplicationWorkspace {
     selectedResumeId     String?
     selectedGeneratedPdfId String?
     lastViewedAt         DateTime?
+    // Multi-step orchestration (Phase 1 slice 3): mirrors the per-tab session
+    // held in the extension's background worker, so the user can leave / come
+    // back and pick up where they left off.
+    activeSessionId      String?
+    sessionState         Json?
+    currentStepIndex     Int?
+    totalSteps           Int?
+    currentStepLabel     String?
+    stepHistory          Json     @default("[]")
     createdAt            DateTime @default(now())
     updatedAt            DateTime @updatedAt
     questions            ApplicationQuestion[]
@@ -470,4 +479,30 @@ model ExtensionConnectGrant {
 
     @@index([expiresAt])
     @@index([approvedUserId, createdAt])
+}
+
+model FunnelEvent {
+    id         String   @id @default(cuid())
+    sessionId  String
+    userId     String?
+    type       String
+    payload    Json     @default("{}")
+    ipHash     String?
+    occurredAt DateTime @default(now())
+
+    @@index([type, occurredAt])
+    @@index([sessionId])
+    @@index([userId, occurredAt])
+}
+
+model ExtensionEvent {
+    id         String   @id @default(cuid())
+    userId     String
+    type       String
+    payload    Json     @default("{}")
+    extVersion String?
+    occurredAt DateTime @default(now())
+
+    @@index([userId, occurredAt])
+    @@index([type, occurredAt])
 }

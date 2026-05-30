@@ -1,0 +1,74 @@
+<!--
+  SYNTHETIC FIXTURE — replace with a real sanitized capture of a LinkedIn Easy Apply modal.
+  Only capture the modal's DOM subtree, not the surrounding feed. See README.md.
+-->
+<html lang="en">
+<head>
+  <title>Software Engineer | Example Co | LinkedIn</title>
+</head>
+<body>
+  <div class="application-outlet">
+    <div class="job-details">
+      <h1 class="t-24 job-details-jobs-unified-top-card__job-title">Software Engineer</h1>
+      <div class="job-details-jobs-unified-top-card__primary-description-container">
+        <span class="company-name">Example Co</span>
+        <span class="bullet">·</span>
+        <span class="location">San Francisco Bay Area · Hybrid</span>
+      </div>
+
+      <section class="jobs-description">
+        <h2>About the job</h2>
+        <p>
+          Example Co is hiring a Software Engineer to join our infrastructure
+          team. You will work on services that power our core product used by
+          millions of customers.
+        </p>
+        <h3>Responsibilities</h3>
+        <ul>
+          <li>Design, build, and ship reliable backend services</li>
+          <li>Improve observability and platform tooling</li>
+          <li>Collaborate with product to scope and deliver features</li>
+        </ul>
+        <h3>Required qualifications</h3>
+        <ul>
+          <li>3+ years of professional software engineering experience</li>
+          <li>Strong programming skills in at least one server-side language</li>
+        </ul>
+      </section>
+    </div>
+
+    <div role="dialog" aria-label="Easy Apply to Software Engineer at Example Co" aria-modal="true">
+      <h2 class="t-20">Apply to Example Co</h2>
+
+      <form aria-label="Easy Apply" novalidate>
+        <div class="jobs-easy-apply-form-section__grouping">
+          <label for="ea-name">Full name</label>
+          <input id="ea-name" name="firstAndLastName" type="text" required />
+        </div>
+
+        <div class="jobs-easy-apply-form-section__grouping">
+          <label for="ea-email">Email address</label>
+          <input id="ea-email" name="emailAddress" type="email" required />
+        </div>
+
+        <div class="jobs-easy-apply-form-section__grouping">
+          <label for="ea-phone">Mobile phone number</label>
+          <input id="ea-phone" name="phoneNumber" type="tel" />
+        </div>
+
+        <div class="jobs-easy-apply-form-section__grouping">
+          <label for="ea-resume">Resume <span class="required">*</span></label>
+          <input id="ea-resume" name="resume" type="file" required />
+        </div>
+
+        <div class="jobs-easy-apply-form-section__grouping">
+          <label for="ea-why">Why are you interested in this role?</label>
+          <textarea id="ea-why" name="why" rows="6"></textarea>
+        </div>
+
+        <button type="submit">Submit application</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

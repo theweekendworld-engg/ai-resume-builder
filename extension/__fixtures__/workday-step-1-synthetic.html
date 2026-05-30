@@ -1,0 +1,99 @@
+<!--
+  SYNTHETIC FIXTURE — replace with a real sanitized capture from a Workday
+  application's first step (typically "My Information"). Capture the inner
+  iframe document if the host site embeds Workday in an iframe. See README.md.
+-->
+<html lang="en">
+<head>
+  <title>My Information — Apply | Example Workday</title>
+</head>
+<body>
+  <main data-automation-id="myInformationPage">
+    <header>
+      <h1 data-automation-id="jobPostingHeader">Senior Platform Engineer</h1>
+      <p class="job-meta">
+        Example Workday — Remote — United States
+      </p>
+    </header>
+
+    <ol aria-label="Application steps" data-automation-id="progressBar">
+      <li aria-current="step" data-automation-id="progressBarActiveStep">My Information</li>
+      <li>My Experience</li>
+      <li>Application Questions</li>
+      <li>Voluntary Disclosures</li>
+      <li>Self Identify</li>
+      <li>Review</li>
+    </ol>
+
+    <section class="job-summary">
+      <h2>About this role</h2>
+      <p>
+        Example Workday is looking for a Senior Platform Engineer to help us
+        scale our internal developer platform. The role focuses on reliability,
+        observability, and developer ergonomics.
+      </p>
+      <h3>Responsibilities</h3>
+      <ul>
+        <li>Own platform components used by all product teams</li>
+        <li>Improve deployment, observability, and on-call tooling</li>
+        <li>Mentor engineers and run platform reviews</li>
+      </ul>
+      <h3>Qualifications</h3>
+      <ul>
+        <li>6+ years of backend or platform engineering</li>
+        <li>Experience with Kubernetes, AWS, and observability stacks</li>
+        <li>Strong written communication</li>
+      </ul>
+    </section>
+
+    <form data-automation-id="myInformationForm">
+      <fieldset>
+        <legend>Personal information</legend>
+
+        <div class="field-row">
+          <label for="wd-legal-name-first">Legal first name <span class="required">*</span></label>
+          <input id="wd-legal-name-first" name="legalNameFirst" type="text" required data-automation-id="legalNameFirst" />
+        </div>
+
+        <div class="field-row">
+          <label for="wd-legal-name-last">Legal last name <span class="required">*</span></label>
+          <input id="wd-legal-name-last" name="legalNameLast" type="text" required data-automation-id="legalNameLast" />
+        </div>
+
+        <div class="field-row">
+          <label for="wd-email">Email address <span class="required">*</span></label>
+          <input id="wd-email" name="email" type="email" required data-automation-id="email" />
+        </div>
+
+        <div class="field-row">
+          <label for="wd-phone">Phone number</label>
+          <input id="wd-phone" name="phone" type="tel" data-automation-id="phone" />
+        </div>
+
+        <div class="field-row">
+          <label for="wd-address">Current address (city, state)</label>
+          <input id="wd-address" name="address" type="text" data-automation-id="address" />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Eligibility</legend>
+
+        <div class="field-row">
+          <p class="question-prompt">Are you legally authorized to work in the United States?</p>
+          <label><input type="radio" name="workAuth" value="yes" /> Yes</label>
+          <label><input type="radio" name="workAuth" value="no" /> No</label>
+        </div>
+
+        <div class="field-row">
+          <p class="question-prompt">Will you now or in the future require sponsorship for employment visa status?</p>
+          <label><input type="radio" name="visaSponsorship" value="yes" /> Yes</label>
+          <label><input type="radio" name="visaSponsorship" value="no" /> No</label>
+        </div>
+      </fieldset>
+
+      <button type="submit" data-automation-id="saveAndContinueButton">Save and Continue</button>
+    </form>
+  </main>
+</body>
+</html>

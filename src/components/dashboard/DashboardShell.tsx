@@ -91,6 +91,7 @@ export type DashboardShellProps = {
   }>;
   applicationListError?: string;
   isAdmin: boolean;
+  initialSection?: DashboardSectionId;
 };
 
 export function DashboardShell({
@@ -103,8 +104,9 @@ export function DashboardShell({
   applicationWorkspaces,
   applicationListError,
   isAdmin,
+  initialSection = 'overview',
 }: DashboardShellProps) {
-  const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
+  const [activeSection, setActiveSection] = useState<DashboardSectionId>(initialSection);
   const [navOpen, setNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);

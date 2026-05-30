@@ -152,7 +152,7 @@ const SemanticClaimValidationSchema = z.object({
 });
 
 const SmartGenerateOptionsSchema = z.object({
-  templatePreference: z.enum(['ats-simple', 'modern', 'classic']).optional(),
+  templatePreference: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).optional(),
   maxProjects: z.number().int().min(1).max(6).optional(),
   focusAreas: z.array(z.string().max(100)).max(20).optional(),
   fallbackResumeData: ResumeDataSchema.optional(),

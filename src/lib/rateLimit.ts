@@ -5,6 +5,7 @@ let ratelimitKb: Ratelimit | null | undefined = undefined;
 let ratelimitAi: Ratelimit | null | undefined = undefined;
 let ratelimitGitHub: Ratelimit | null | undefined = undefined;
 let ratelimitAnonScore: Ratelimit | null | undefined = undefined;
+let ratelimitFunnelEvent: Ratelimit | null | undefined = undefined;
 
 function getRedis(): Redis | null {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -95,4 +96,24 @@ export async function checkAnonScoreRateLimit(identifier: string): Promise<{ all
     const result = await limiter.limit(identifier);
     if (result.success) return { allowed: true };
     return { allowed: false, error: "You've reached the free limit for now. Please try again in a little while." };
+}
+
+function getFunnelEventLimiter(): Ratelimit | null {
+    if (ratelimitFunnelEvent !== undefined) return ratelimitFunnelEvent;
+    const redis = getRedis();
+    ratelimitFunnelEvent = redis
+        ? new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(60, '1 m'),
+              analytics: false,
+          })
+        : null;
+    return ratelimitFunnelEvent;
+}
+
+export async function checkFunnelEventRateLimit(identifier: string): Promise<{ allowed: boolean }> {
+    const limiter = getFunnelEventLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(identifier);
+    return { allowed: result.success };
 }

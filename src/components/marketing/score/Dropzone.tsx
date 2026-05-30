@@ -6,6 +6,10 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
+const PDF_MIME = 'application/pdf';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const ACCEPTED_MIMES = new Set<string>([PDF_MIME, DOCX_MIME]);
+const ACCEPT_ATTRIBUTE = `${PDF_MIME},${DOCX_MIME},.pdf,.docx`;
 
 interface DropzoneProps {
     file: File | null;
@@ -16,14 +20,14 @@ interface DropzoneProps {
 }
 
 function validate(file: File): string | null {
-    if (file.type !== 'application/pdf') {
-        return 'Please upload a PDF file.';
+    if (!ACCEPTED_MIMES.has(file.type)) {
+        return 'Please upload a PDF or DOCX file.';
     }
     if (file.size === 0) {
-        return 'That file is empty. Please choose a valid PDF.';
+        return 'That file is empty. Please choose a valid PDF or DOCX.';
     }
     if (file.size > MAX_FILE_SIZE) {
-        return 'That file is larger than 2MB. Please upload a smaller PDF.';
+        return 'That file is larger than 2MB. Please upload a smaller file.';
     }
     return null;
 }
@@ -107,15 +111,15 @@ export function Dropzone({ file, onFileSelected, onClear, onError, disabled }: D
                 <UploadCloud className="h-7 w-7" />
             </div>
             <p className="text-base font-medium text-foreground">
-                Drop your resume PDF here
+                Drop your resume here
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
-                or click to browse · PDF only · up to 2MB
+                or click to browse · PDF or DOCX · up to 2MB
             </p>
             <input
                 ref={inputRef}
                 type="file"
-                accept="application/pdf"
+                accept={ACCEPT_ATTRIBUTE}
                 className="hidden"
                 disabled={disabled}
                 onChange={(e) => handleFiles(e.target.files)}

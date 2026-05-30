@@ -26,7 +26,17 @@ bun.lockb
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+
+# editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# build caches
+.swc/
+.turbo/
 
 # debug
 npm-debug.log*

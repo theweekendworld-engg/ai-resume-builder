@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PDFParse } from 'pdf-parse';
 import { checkAnonScoreRateLimit } from '@/lib/rateLimit';
 import { scoreResumeText } from '@/lib/anonScore';
+import { extractDocxText } from '@/lib/docxParser';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_JD_CHARS = 6000;
+const PDF_MIME = 'application/pdf';
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const ACCEPTED_MIMES = new Set<string>([PDF_MIME, DOCX_MIME]);
 
 function getClientIp(req: NextRequest): string {
     const forwarded = req.headers.get('x-forwarded-for');
@@ -57,16 +61,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
         }
 
-        if (file.type !== 'application/pdf') {
+        if (!ACCEPTED_MIMES.has(file.type)) {
             return NextResponse.json(
-                { success: false, error: 'Only PDF files are supported' },
+                { success: false, error: 'Only PDF and DOCX files are supported' },
                 { status: 400 }
             );
         }
 
         if (file.size === 0) {
             return NextResponse.json(
-                { success: false, error: 'File is empty. Please upload a valid PDF.' },
+                { success: false, error: 'File is empty. Please upload a valid PDF or DOCX.' },
                 { status: 400 }
             );
         }
@@ -81,24 +85,28 @@ export async function POST(req: NextRequest) {
         // Parse in memory, score, return, discard. Nothing is persisted.
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
+        const isPdf = file.type === PDF_MIME;
+        const fileLabel = isPdf ? 'PDF' : 'DOCX';
 
         let extractedText: string;
         try {
-            extractedText = await extractPdfText(buffer);
+            extractedText = isPdf
+                ? await extractPdfText(buffer)
+                : await extractDocxText(buffer);
         } catch (err) {
-            console.error('Anon score PDF parse error:', err);
+            console.error(`Anon score ${fileLabel} parse error:`, err);
             return NextResponse.json(
-                { success: false, error: 'Could not read that PDF. Please try a different file.' },
+                { success: false, error: `Could not read that ${fileLabel}. Please try a different file.` },
                 { status: 422 }
             );
         }
 
         if (!extractedText || extractedText.trim().length < 30) {
+            const hint = isPdf
+                ? 'We could not extract text from that PDF. It may be a scanned image. Try a text-based PDF.'
+                : 'We could not extract text from that DOCX. The file may be empty or password-protected.';
             return NextResponse.json(
-                {
-                    success: false,
-                    error: 'We could not extract text from that PDF. It may be a scanned image. Try a text-based PDF.',
-                },
+                { success: false, error: hint },
                 { status: 422 }
             );
         }

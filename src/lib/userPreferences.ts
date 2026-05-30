@@ -4,7 +4,7 @@ export const SectionOrderItemSchema = z.enum(['summary', 'experience', 'projects
 export const WorkModePreferenceSchema = z.enum(['remote', 'hybrid', 'onsite']);
 
 export const UserGenerationPreferencesSchema = z.object({
-  defaultTemplate: z.enum(['ats-simple', 'modern', 'classic']).default('ats-simple'),
+  defaultTemplate: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).default('ats-simple'),
   defaultSectionOrder: z.array(SectionOrderItemSchema).min(1).max(5).default(['summary', 'experience', 'projects', 'education', 'skills']),
   maxProjects: z.number().int().min(1).max(6).default(3),
   targetLength: z.enum(['1-page', '2-page', 'auto']).default('auto'),

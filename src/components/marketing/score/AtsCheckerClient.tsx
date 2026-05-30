@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dropzone } from '@/components/marketing/score/Dropzone';
 import { ScoreReport } from '@/components/marketing/score/ScoreReport';
 import type { AnonScoreReport } from '@/lib/anonScoreSchema';
+import { trackFunnelEvent } from '@/lib/funnelEvents';
 
 type Status = 'idle' | 'loading';
 
@@ -42,6 +43,14 @@ export function AtsCheckerClient() {
             toast.error('Please upload a resume PDF first.');
             return;
         }
+        const startedAt = Date.now();
+        const fileType: 'pdf' | 'docx' =
+            file.type === 'application/pdf' ? 'pdf' : 'docx';
+        trackFunnelEvent('score_started', {
+            hasJD: jobDescription.trim().length > 0,
+            fileType,
+            fileSizeKb: Math.round(file.size / 1024),
+        });
         setStatus('loading');
         try {
             const formData = new FormData();
@@ -52,18 +61,40 @@ export function AtsCheckerClient() {
 
             const res = await fetch('/api/score', { method: 'POST', body: formData });
             const data: ScoreResponse = await res.json();
+            const durationMs = Date.now() - startedAt;
 
             if (!res.ok || !data.success) {
                 const message = !data.success ? data.error : 'Could not score your resume.';
+                if (res.status === 429) {
+                    trackFunnelEvent('score_rate_limited', { durationMs });
+                } else {
+                    trackFunnelEvent('score_failed', {
+                        durationMs,
+                        status: res.status,
+                        reason: message,
+                    });
+                }
                 toast.error(message);
                 setStatus('idle');
                 return;
             }
 
+            trackFunnelEvent('score_completed', {
+                durationMs,
+                score: data.report.overall,
+                band: data.report.band,
+                fixCount: data.report.fixes.length,
+                hasJD: jobDescription.trim().length > 0,
+                fileType,
+            });
             setResult({ report: data.report, extractedText: data.extractedText });
             setStatus('idle');
         } catch (err) {
             console.error('Score request failed:', err);
+            trackFunnelEvent('score_failed', {
+                durationMs: Date.now() - startedAt,
+                reason: err instanceof Error ? err.message : 'network_or_parse_error',
+            });
             toast.error('Something went wrong. Please try again.');
             setStatus('idle');
         }

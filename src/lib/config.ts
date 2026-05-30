@@ -1,4 +1,6 @@
-function resolveEmbeddingSize(model: string, override?: string): number {
+// Exported for tests; resolves the embedding vector size from the model name
+// when an explicit OPENAI_EMBEDDING_SIZE env override is missing or invalid.
+export function resolveEmbeddingSize(model: string, override?: string): number {
     const parsedOverride = Number(override);
     if (Number.isFinite(parsedOverride) && parsedOverride > 0) {
         return parsedOverride;

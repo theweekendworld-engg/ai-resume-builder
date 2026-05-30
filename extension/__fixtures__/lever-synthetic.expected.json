@@ -1,0 +1,24 @@
+{
+  "_synthetic": true,
+  "_note": "Replace this fixture with a real sanitized capture from jobs.lever.co. See README.md.",
+  "url": "https://jobs.lever.co/example-inc/frontend-staff-eng",
+  "platform": "lever",
+  "pageKind": "application_form",
+  "jobDescription": {
+    "present": true,
+    "minTextLength": 200,
+    "mustContainKeywords": ["requirements"]
+  },
+  "metadata": {
+    "roleTitleContains": "Frontend Engineer"
+  },
+  "fields": {
+    "minCount": 5,
+    "maxCount": 25,
+    "semanticKeysPresent": ["email", "full_name", "resume_upload"],
+    "highConfidenceSemanticKeys": ["email"]
+  },
+  "questions": {
+    "minCount": 0
+  }
+}

@@ -9,6 +9,7 @@ import { getGitHubIntegrationStatus, syncTopGitHubProjects } from '@/actions/git
 import { parseResumeText } from '@/actions/parseResumeText';
 import { saveResumeToCloud } from '@/actions/resume';
 import { readPendingScore, type PendingScore } from '@/lib/pendingScore';
+import { trackFunnelEvent } from '@/lib/funnelEvents';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -175,6 +176,10 @@ export function BuildWizard() {
         if (!saved.success || !saved.resumeId) {
           throw new Error(saved.error ?? 'Could not save your resume.');
         }
+        trackFunnelEvent('score_to_signup', {
+          score: Math.round(pendingImport.score),
+          resumeId: saved.resumeId,
+        });
         router.push(`/editor/${saved.resumeId}`);
       } catch (err) {
         setImporting(false);
