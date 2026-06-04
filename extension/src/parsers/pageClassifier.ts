@@ -16,6 +16,7 @@ export type Platform =
     | 'workday'
     | 'indeed'
     | 'wellfound'
+    | 'ashby'
     | 'generic';
 
 export type PageKind =
@@ -48,6 +49,7 @@ export function detectPlatform(): Platform {
     if (host.includes('myworkdayjobs.com') || host.includes('workday.com')) return 'workday';
     if (host.includes('indeed.com')) return 'indeed';
     if (host.includes('wellfound.com') || host.includes('angel.co')) return 'wellfound';
+    if (host.includes('ashbyhq.com')) return 'ashby';
     return 'generic';
 }
 
@@ -105,6 +107,21 @@ export function classifyPage(): PageClassification {
         pageKind = 'application_form';
         score = 0.95;
         reasons.push('Detected a Greenhouse application form.');
+    } else if (
+        platform === 'ashby' &&
+        /\/application/.test(window.location.pathname) &&
+        counts.inputs.length >= 2
+    ) {
+        pageKind = 'application_form';
+        score = 0.94;
+        reasons.push('Detected an Ashby application form.');
+    } else if (
+        platform === 'ashby' &&
+        counts.inputs.length === 0
+    ) {
+        pageKind = 'job_detail';
+        score = 0.88;
+        reasons.push('Detected an Ashby job listing page.');
     } else if (platform === 'workday' && hasStepper && counts.inputs.length >= 3) {
         pageKind = 'multi_step_application';
         score = 0.94;

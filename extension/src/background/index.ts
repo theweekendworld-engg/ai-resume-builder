@@ -280,12 +280,27 @@ on('GET_PAGE_CONTEXT', async (msg) => ({
 on('REQUEST_REPARSE', async (msg) => {
     try {
         await chrome.tabs.sendMessage(msg.tabId, { type: 'CONTENT_REPARSE' });
-        return { ok: true, data: { requested: true } };
-    } catch (err) {
-        return {
-            ok: false,
-            error: err instanceof Error ? err.message : 'reparse_failed',
-        };
+        return { ok: true, data: { requested: true, reinjected: false } };
+    } catch {
+        // Content script not present (e.g. extension reloaded without page
+        // reload). Reinject it from the manifest's content_scripts entry.
+        try {
+            const manifest = chrome.runtime.getManifest();
+            const files = manifest.content_scripts?.[0]?.js ?? [];
+            if (files.length === 0) {
+                return { ok: false, error: 'no_content_script_in_manifest' };
+            }
+            await chrome.scripting.executeScript({
+                target: { tabId: msg.tabId },
+                files,
+            });
+            return { ok: true, data: { requested: true, reinjected: true } };
+        } catch (injectErr) {
+            return {
+                ok: false,
+                error: injectErr instanceof Error ? injectErr.message : 'inject_failed',
+            };
+        }
     }
 });
 

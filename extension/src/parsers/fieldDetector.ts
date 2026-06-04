@@ -256,20 +256,31 @@ function inferFieldKey(field: DraftField): {
     confidenceScore: number;
     reasons: string[];
 } {
-    const sources = [
-        field.label,
-        field.name,
-        field.id,
-        field.placeholder,
-        field.sectionHeading,
-        field.helperTextCandidates.join(' '),
-    ]
+    // Match rules against the field's own signals only: primary label,
+    // placeholder, and the input's own name/id. Section headings and helper
+    // text candidates are intentionally excluded because they often pull text
+    // from sibling fields (e.g. a "Phone *" label sitting next to a Country
+    // select inside the same row container) and would cause the phone/website
+    // regex to win for unrelated fields.
+    const ownSignals = [field.label, field.name, field.id, field.placeholder]
         .filter(Boolean)
         .join(' ');
-    const text = normalizeToken(sources);
+    const text = normalizeToken(ownSignals);
+    // Question detection benefits from the broader text (helper text often
+    // contains the actual prompt), so keep a separate corpus for that check.
+    const questionCorpus = normalizeToken(
+        [
+            field.label,
+            field.placeholder,
+            field.sectionHeading,
+            field.helperTextCandidates.join(' '),
+        ]
+            .filter(Boolean)
+            .join(' ')
+    );
     const questionLike =
         /[?]/.test(field.label) ||
-        /(why|describe|tell us|please share|what makes|how do you)/.test(text);
+        /(why|describe|tell us|please share|what makes|how do you)/.test(questionCorpus);
 
     if ((field.inputType === 'textarea' || field.inputType === 'text') && questionLike) {
         return {

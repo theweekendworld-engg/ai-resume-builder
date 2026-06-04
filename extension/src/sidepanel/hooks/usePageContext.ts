@@ -60,7 +60,16 @@ export function usePageContext(): {
     const reparse = async () => {
         const tabId = await getActiveTabId();
         if (tabId == null) return;
-        await request({ type: 'REQUEST_REPARSE', tabId });
+        setState({ status: 'loading' });
+        const res = await request<{ requested: boolean; reinjected?: boolean }>({
+            type: 'REQUEST_REPARSE',
+            tabId,
+        });
+        // If the content script was reinjected, give it time to parse the page
+        // and send PAGE_CONTEXT_UPDATED before we query the background cache.
+        if (res.ok && res.data?.reinjected) {
+            await new Promise((r) => setTimeout(r, 1200));
+        }
         await refresh();
     };
 
