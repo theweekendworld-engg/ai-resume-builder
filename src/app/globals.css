@@ -1,16 +1,92 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap');
 @layer theme, base, clerk, components, utilities;
 @import "tailwindcss";
 
 @plugin "tailwindcss-animate";
 
 /*
+  Tailwind v4 defaults the `dark:` variant to `prefers-color-scheme`.
+  next-themes drives the theme with a class, so the variant must follow the
+  class instead — otherwise `dark:` utilities fire off the OS setting while the
+  tokens follow the class, and the two disagree.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
   Patronus theme — "Your best self, in the light"
   Deep navy = the space; silvery blue = the patronus glow; soft silver-white = clarity.
-  Use .patronus-glow for CTAs and key cards.
+
+  Two themes, per design/00 §3.1. Light is the default (`:root`), dark is opt-in
+  via `.dark`. `.dark` is a plain class, not tied to <html>, so any subtree can
+  be forced dark by putting the class on its wrapper element.
+
+  All colour tokens are bare HSL triplets consumed as `hsl(var(--token))`.
 */
+
+/* Theme-independent. Kept out of the colour blocks so both themes share it. */
 :root {
+  --radius: 0.625rem;
+
+  /* Motion — design/00 §7.1 */
+  --duration-micro: 120ms;
+  --duration-state: 180ms;
+  --duration-enter: 220ms;
+  --duration-exit: 160ms;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-state: cubic-bezier(0.2, 0, 0, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ── Light (default) — design/00 §3.1 ────────────────────────────────────── */
+:root,
+.light {
+  color-scheme: light;
+
+  --background: 210 20% 99%;      /* near-white, faint cool cast */
+  --foreground: 222 35% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 35% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 35% 12%;
+
+  --primary: 205 78% 42%;          /* darkened from the dark-mode 72% L for AA on white */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 22% 96%;
+  --secondary-foreground: 222 30% 18%;
+  --muted: 210 22% 96%;
+  --muted-foreground: 215 14% 42%;  /* measured 5.49:1 on --background */
+  --accent: 205 70% 94%;
+  --accent-foreground: 205 78% 30%;
+  --destructive: 0 68% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 18% 89%;
+  --input: 214 18% 89%;
+  --ring: 205 78% 42%;
+  --glow: 205 78% 55%;
+
+  /*
+    Interactive boundaries (WCAG 1.4.11 wants 3:1). `--border` is a decorative
+    hairline and measures 1.30:1 on --card, which is fine for a separator and
+    not fine for the edge of a control. Use --border-strong on anything the
+    user is meant to recognise as an interactive boundary.
+  */
+  --border-strong: 214 16% 58%;     /* 3.19:1 on --card */
+
+  /* Semantic status — design/00 §3.2. See the contrast note below. */
+  --success: 152 62% 30%;           /* 5.19:1 on --card */
+  --success-foreground: 0 0% 100%;
+  --warning: 38 95% 31%;            /* 5.04:1 on --card */
+  --warning-foreground: 0 0% 100%;
+  --danger: 0 68% 46%;              /* 5.72:1 on --card */
+  --danger-foreground: 0 0% 100%;
+  --info: 205 78% 42%;              /* 4.64:1 on --card */
+  --info-foreground: 0 0% 100%;
+}
+
+/* ── Dark — the previous :root block, moved verbatim ─────────────────────── */
+.dark {
+  color-scheme: dark;
+
   --background: 222 42% 6%;
   --foreground: 210 18% 96%;
   --card: 222 32% 9%;
@@ -34,6 +110,18 @@
   --ring: 205 85% 72%;
   --radius: 0.625rem;
   --glow: 205 85% 72%;
+
+  --border-strong: 215 16% 44%;     /* 3.51:1 on --card */
+
+  /* Semantic status — design/00 §3.2, dark column. */
+  --success: 152 50% 55%;           /* 8.60:1 on --card */
+  --success-foreground: 222 42% 8%;
+  --warning: 38 88% 62%;            /* 10.10:1 on --card */
+  --warning-foreground: 222 42% 8%;
+  --danger: 0 72% 58%;              /* 4.55:1 on --card */
+  --danger-foreground: 222 42% 8%;
+  --info: 205 85% 72%;              /* 9.51:1 on --card */
+  --info-foreground: 222 42% 8%;
 }
 
 @theme inline {
@@ -54,13 +142,28 @@
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-border: hsl(var(--border));
+  --color-border-strong: hsl(var(--border-strong));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-danger: hsl(var(--danger));
+  --color-danger-foreground: hsl(var(--danger-foreground));
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-heading: var(--font-sora), system-ui, sans-serif;
 }
 
+/* ── Signature surfaces (glow) — reward moments only, design/00 §1 ───────── */
 .patronus-glow {
   box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
 }
@@ -70,8 +173,85 @@
 .hover\:patronus-glow:hover {
   box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
 }
+
+/*
+  ── Work surfaces — design/00 §1 Problem 2, §6 ────────────────────────────
+  Opt-in flattener for dense surfaces (log list, review queue, tables, packet
+  editor, settings). Strips the marketing chrome that `Card` and `Button`
+  carry by default — backdrop-blur (one compositing layer per element, which
+  is what drops frames on a 500-row list), shadow, and glow — and replaces
+  them with a flat fill and a 1px hairline.
+
+  Usage: `<Card className="surface-work">`, `<Button className="surface-work">`.
+
+  The rule is deliberately split across two cascade positions:
+
+  - The fill and hairline sit in `@layer components`, BELOW Tailwind's
+    utilities layer. They are defaults, not overrides. Anything the caller
+    states explicitly must win — the 2px left rule on an errored/draft/
+    confidential Win (`border-l-2 border-warning`, §3.3, the one sanctioned
+    2px in the system) and the row state tints (`hover:bg-secondary/40`,
+    `bg-success/8`) land on the *same element* as `surface-work` in
+    `win-card.tsx`. A plain unlayered `border:` / `background-color:`
+    shorthand here would silently erase all of them.
+  - The chrome-stripping — shadow, backdrop-blur, glow — is unlayered, so it
+    beats both the utilities layer and `.patronus-glow*`. That is the part
+    that actually has to override, and it is why the class exists.
+
+  Elevation above flat is plain Tailwind: `shadow-sm` for a raised row or
+  sticky header, `shadow-lg` for genuinely floating chrome (drawer, popover,
+  toast). Glow is reserved for the confirm animation and packet-ready moment.
+*/
+@layer components {
+  .surface-work {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: 1px solid hsl(var(--border));
+  }
+}
+
+.surface-work,
+.surface-work:hover {
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ── Density — design/00 §5.4 ─────────────────────────────────────────────
+   Put `density-*` on the scrolling container; put `density-row` on each row.
+   The row reads the variables the container set, so a surface changes density
+   in one place. */
+.density-compact {
+  --density-row-height: 48px;
+  --density-py: 8px;
+  --density-px: 12px;
+}
+.density-default {
+  --density-row-height: 56px;
+  --density-py: 12px;
+  --density-px: 16px;
+}
+.density-relaxed {
+  --density-row-height: auto;
+  --density-py: 20px;
+  --density-px: 24px;
+}
+.density-row {
+  min-height: var(--density-row-height, 56px);
+  padding-block: var(--density-py, 12px);
+  padding-inline: var(--density-px, 16px);
+}
+
+/* ── Numerals — design/00 §4.2 ────────────────────────────────────────────
+   Every count, date, metric and quota. Non-tabular figures make columns
+   wobble as values change. */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
 .font-heading {
-  font-family: 'Sora', system-ui, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
 }
 
 * {
@@ -80,14 +260,14 @@
 
 body {
   @apply bg-background text-foreground;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Sora', system-ui, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
 }
 
 @keyframes fade-in-up {
@@ -118,6 +298,21 @@ h1, h2, h3, h4, h5, h6 {
   animation-delay: 0.4s;
 }
 
+/* ── Reduced motion — design/00 §7.3 ──────────────────────────────────────
+   Drop transforms and height animations entirely; keep colour and opacity
+   crossfades at 100ms. Never remove the feedback, only the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: opacity, color, background-color, border-color, fill, stroke !important;
+    transition-duration: 100ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -136,7 +331,8 @@ h1, h2, h3, h4, h5, h6 {
   background: hsl(var(--muted-foreground));
 }
 
-/* Clerk: keep Connected Accounts readable in dark mode, including disabled providers. */
+/* Clerk: keep Connected Accounts readable, including disabled providers.
+   Token-based, so it follows whichever theme is active. */
 .cl-profileSection__connectedAccounts .cl-profileSectionItem {
   background: hsl(var(--card) / 0.85) !important;
   border: 1px solid hsl(var(--border) / 0.8) !important;

@@ -27,6 +27,20 @@ export const config = {
             assembly: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
             claimValidation: process.env.OPENAI_MODEL || "gpt-5-mini",
             resumeParse: process.env.OPENAI_MODEL || "gpt-5-mini",
+            // R1 per-task keys (ADR-6 / P0.4). No model id at a call site, ever:
+            // every one of these is reachable only through `TaskKey` in src/lib/ai/tasks.ts.
+            // Cheap tasks default to the small model; anything a human reads defaults to the large one.
+            winDraft: process.env.OPENAI_MODEL_WIN_DRAFT || process.env.OPENAI_MODEL || "gpt-5-mini",
+            winStructure: process.env.OPENAI_MODEL_WIN_STRUCTURE || process.env.OPENAI_MODEL || "gpt-5-mini",
+            digestCompose: process.env.OPENAI_MODEL_DIGEST_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            monthReview: process.env.OPENAI_MODEL_MONTH_REVIEW || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            packetThemes: process.env.OPENAI_MODEL_PACKET_THEMES || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            packetMap: process.env.OPENAI_MODEL_PACKET_MAP || process.env.OPENAI_MODEL || "gpt-5-mini",
+            packetCompose: process.env.OPENAI_MODEL_PACKET_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            interviewTurn: process.env.OPENAI_MODEL_INTERVIEW_TURN || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            interviewExtract: process.env.OPENAI_MODEL_INTERVIEW_EXTRACT || process.env.OPENAI_MODEL || "gpt-5-mini",
+            radarNormalize: process.env.OPENAI_MODEL_RADAR_NORMALIZE || process.env.OPENAI_MODEL || "gpt-5-mini",
+            radarReason: process.env.OPENAI_MODEL_RADAR_REASON || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
         },
         embedding: {
             model: embeddingModel,

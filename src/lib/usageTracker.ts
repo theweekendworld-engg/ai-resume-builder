@@ -55,6 +55,18 @@ function toTwoDecimals(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * Per-call cost precision.
+ *
+ * 2dp silently floors every sub-cent call to $0.00 — and under the Career OS
+ * model most calls ARE sub-cent (win drafting ~$0.001, digest compose ~$0.002).
+ * That would make the per-feature cost tripwires in PRD 08 §4.3 read zero for
+ * exactly the high-volume operations they exist to watch. Store micro-dollars.
+ */
+function toMicroDollars(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
 function resolveOpenAiPrice(model: string): OpenAiPrice {
   const normalized = (model || '').toLowerCase().trim();
   return OPENAI_PRICING_USD_PER_1M[normalized] ?? { inputPer1M: 0, outputPer1M: 0 };
@@ -70,7 +82,7 @@ export function calculateOpenAiCostUsd(params: {
   const outputTokens = Math.max(0, params.outputTokens ?? 0);
   const inputCost = (inputTokens / 1_000_000) * price.inputPer1M;
   const outputCost = (outputTokens / 1_000_000) * price.outputPer1M;
-  return toTwoDecimals(inputCost + outputCost);
+  return toMicroDollars(inputCost + outputCost);
 }
 
 export async function logUsageEvent(input: UsageLogInput): Promise<void> {
@@ -341,7 +353,7 @@ function summarizeLogs(logs: Array<{
     result[operation] = {
       calls: entry.calls,
       tokens: entry.tokens,
-      costUsd: toTwoDecimals(entry.costUsd),
+      costUsd: Math.round(entry.costUsd * 10000) / 10000,
       avgLatencyMs: entry.calls > 0 ? Math.round(entry.latencyMs / entry.calls) : 0,
     };
   }

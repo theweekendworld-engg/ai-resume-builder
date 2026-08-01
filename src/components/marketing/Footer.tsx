@@ -7,7 +7,7 @@ export function Footer() {
         <div className="space-y-1.5">
           <div className="flex items-center gap-2.5">
             <img src="/logo.png" alt="Patronus Logo" className="h-7 w-auto drop-shadow-[0_0_6px_rgba(143,201,255,0.5)]" />
-            <p className="font-medium text-foreground/80" style={{ fontFamily: "'Sora', system-ui, sans-serif" }}>
+            <p className="font-heading font-medium text-foreground/80">
               Patronus
             </p>
           </div>

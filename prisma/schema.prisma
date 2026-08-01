@@ -69,6 +69,51 @@ enum ResumeImportStep {
     failed
 }
 
+// --- Career Context Graph: evidence + grounding (v2 architecture §3) ---
+enum EvidenceKind {
+    repo
+    metric_confirmed
+    document
+    url
+    interview_assertion
+    import
+}
+
+enum GroundState {
+    grounded
+    needs_confirmation
+    unsupported
+}
+
+// --- Monetization & entitlements (v2 architecture §7) ---
+enum Tier {
+    free
+    always_on
+    pro
+    team
+}
+
+// --- Application lifecycle (v2 architecture §5) ---
+// Superset enum: covers the existing extension vocabulary
+// (discovered/analyzed/in_progress/applied/archived) plus the richer product
+// lifecycle from the master plan so existing rows migrate cleanly and neither
+// the extension nor future web UI breaks. `applied` and `submitted` overlap by
+// design during the transition; dedupe is a follow-up.
+enum ApplicationStatus {
+    discovered
+    analyzed
+    drafting
+    in_progress
+    submitted
+    applied
+    in_review
+    interview
+    offer
+    rejected
+    ghosted
+    archived
+}
+
 model Resume {
     id        String   @id @default(cuid())
     userId    String // Clerk User ID
@@ -355,7 +400,7 @@ model ApplicationWorkspace {
     employmentType       String?
     compensationText     String?
     jobDescription       String?
-    applicationStatus    String   @default("discovered")
+    applicationStatus    ApplicationStatus @default(discovered)
     fitScore             Int?
     fitSummary           String?
     companySnapshot      Json?
@@ -505,4 +550,279 @@ model ExtensionEvent {
 
     @@index([userId, occurredAt])
     @@index([type, occurredAt])
+}
+
+// =========================================================================
+// Career Context Graph — evidence & impact layer (v2 architecture §3)
+// The truth substrate the Truthfulness Engine and Context Interview share.
+// =========================================================================
+
+model Evidence {
+    id              String       @id @default(cuid())
+    userId          String
+    kind            EvidenceKind
+    sourceRef       String // github repo id, blob key, URL, ResumeImportSession id, ...
+    excerpt         String // the supporting text/snippet
+    confidence      Float        @default(1.0)
+    confirmedByUser Boolean      @default(false)
+    createdAt       DateTime     @default(now())
+    claimLinks      ClaimLink[]
+
+    @@index([userId, kind])
+}
+
+model ClaimLink {
+    id          String      @id @default(cuid())
+    userId      String
+    claimType   String // experience_highlight | project_bullet | impact_metric | skill
+    claimRefId  String // points at UserExperience/UserProject/ImpactMetric/Resume claim
+    evidenceId  String
+    groundState GroundState @default(needs_confirmation)
+    createdAt   DateTime    @default(now())
+    evidence    Evidence    @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+    @@index([userId, claimType, claimRefId])
+    @@index([evidenceId])
+}
+
+model ImpactMetric {
+    id            String   @id @default(cuid())
+    userId        String
+    subjectType   String // experience | project
+    subjectId     String
+    statement     String // "cut p95 latency"
+    metric        String // "p95 latency"
+    baseline      String? // "800ms"
+    result        String? // "180ms"
+    delta         String? // "-77%"
+    timeframe     String? // "Q2 2025, 6 weeks"
+    scope         String? // "checkout service, 2M req/day"
+    source        String // interview | import | github | manual
+    embedded      Boolean  @default(false)
+    qdrantPointId String?
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
+
+    @@index([userId, subjectType, subjectId])
+}
+
+// =========================================================================
+// Monetization & entitlements (v2 architecture §7)
+// =========================================================================
+
+model Subscription {
+    id               String    @id @default(cuid())
+    userId           String    @unique
+    stripeCustomerId String
+    stripeSubId      String?
+    tier             Tier      @default(free)
+    status           String // active | past_due | canceled | trialing | incomplete
+    currentPeriodEnd DateTime?
+    createdAt        DateTime  @default(now())
+    updatedAt        DateTime  @updatedAt
+
+    @@index([stripeCustomerId])
+}
+
+model UsageQuota {
+    id          String   @id @default(cuid())
+    userId      String
+    periodStart DateTime
+    action      String // tailored_generation | auto_apply | context_interview | tier2_grounding
+    used        Int      @default(0)
+    limit       Int
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@unique([userId, periodStart, action])
+    @@index([userId, action])
+}
+
+// =========================================================================
+// Career OS v3 — platform primitives (impl/00 ADR-1, ADR-4, ADR-7)
+// Owned by the orchestrator. Feature agents must not edit this file.
+// =========================================================================
+
+enum JobStatus {
+    pending
+    running
+    succeeded
+    failed
+    dead
+}
+
+/// Postgres-as-queue. Drained by the single hourly cron (ADR-2) under a time
+/// budget. Handlers fan out rather than loop — see impl/00 §P-2.
+model Job {
+    id          String    @id @default(cuid())
+    kind        String
+    payload     Json      @default("{}")
+    /// Unique idempotency key. A duplicate enqueue is a silent no-op, not an error.
+    dedupeKey   String?   @unique
+    status      JobStatus @default(pending)
+    priority    Int       @default(100)
+    runAt       DateTime  @default(now())
+    attempts    Int       @default(0)
+    maxAttempts Int       @default(3)
+    lockedAt    DateTime?
+    lockedBy    String?
+    lastError   String?
+    result      Json?
+    durationMs  Int?
+    costUsd     Float     @default(0)
+    createdAt   DateTime  @default(now())
+    finishedAt  DateTime?
+
+    @@index([status, runAt, priority])
+    @@index([kind, createdAt])
+    @@index([status, lockedAt])
+}
+
+model EmailSend {
+    id         String    @id @default(cuid())
+    userId     String
+    template   String
+    subject    String
+    providerId String?
+    status     String    @default("queued") // queued|sent|delivered|bounced|complained|failed
+    openedAt   DateTime?
+    clickedAt  DateTime?
+    error      String?
+    createdAt  DateTime  @default(now())
+
+    @@index([userId, createdAt])
+    @@index([template, createdAt])
+    /// Unique so the provider webhook resolves a send exactly, rather than
+    /// findFirst-by-recency. Provider ids are already unique upstream.
+    @@unique([providerId])
+}
+
+/// Notification preferences + the derived weekly-digest schedule (ADR-3).
+/// Timezone and digest slot live here, not in UserProfile.preferences JSON, so
+/// the "who is due this hour" query is indexable.
+model EmailPreference {
+    userId           String   @id
+    weeklyDigest     Boolean  @default(true)
+    monthlyReview    Boolean  @default(true)
+    radarDigest      Boolean  @default(true)
+    missionNudges    Boolean  @default(true)
+    productUpdates   Boolean  @default(true)
+    unsubscribedAll  Boolean  @default(false)
+    unsubscribeToken String   @unique
+    timezone         String   @default("Etc/UTC")
+    digestDay        Int      @default(5) // 1=Mon … 7=Sun
+    digestHour       Int      @default(16)
+    digestChannel    Channel  @default(email)
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    @@index([weeklyDigest, digestDay, digestHour])
+}
+
+model FeatureFlag {
+    key            String   @id
+    enabled        Boolean  @default(false)
+    allowUserIds   Json     @default("[]")
+    rolloutPercent Int      @default(0)
+    description    String   @default("")
+    updatedAt      DateTime @updatedAt
+}
+
+// =========================================================================
+// The Work Log — the kernel (PRD 01)
+// Confirming a Win writes Evidence(confirmedByUser=true) + ClaimLink(grounded).
+// That single write is both the retention loop and the moat. Do not break it.
+// =========================================================================
+
+enum WinStatus {
+    draft
+    confirmed
+    dismissed
+    archived
+}
+
+enum WinCategory {
+    shipped
+    improved
+    fixed
+    led
+    influenced
+    grew
+    learned
+    saved
+}
+
+enum WinSensitivity {
+    shareable
+    internal_only
+    confidential
+}
+
+enum WinSource {
+    manual
+    github
+    calendar
+    linear
+    jira
+    ambient
+    backfill
+    import
+}
+
+model Win {
+    id              String         @id @default(cuid())
+    userId          String
+    title           String // <= 120 chars, enforced in the app layer
+    narrative       String         @default("")
+    /// The date the work happened — never the date it was logged.
+    occurredAt      DateTime
+    periodEnd       DateTime? // multi-week efforts; occurredAt is the start
+    category        WinCategory
+    status          WinStatus      @default(draft)
+    /// Enforced at the QUERY layer, never the prompt layer. See lib/graph/visibility.
+    sensitivity     WinSensitivity @default(shareable)
+    source          WinSource
+    sourceRef       String? // PR url, calendar event id, telegram msg id
+    /// One Win per capture signal. Populated in Wave C; unique prevents double-draft.
+    signalId        String?        @unique
+    employerId      String? // -> UserExperience.id
+    projectId       String? // -> UserProject.id
+    skills          Json           @default("[]")
+    collaborators   Json           @default("[]")
+    impactMetricId  String? // -> ImpactMetric.id
+    confidence      Float          @default(0.5)
+    dismissedReason String? // not_a_win | noise | duplicate | expired | user
+    confirmedAt     DateTime?
+    embedded        Boolean        @default(false)
+    qdrantPointId   String?
+    createdAt       DateTime       @default(now())
+    updatedAt       DateTime       @updatedAt
+
+    @@index([userId, occurredAt(sort: Desc)])
+    @@index([userId, status, createdAt])
+    @@index([userId, employerId, occurredAt])
+    @@index([userId, category, occurredAt])
+    @@index([userId, sensitivity])
+}
+
+model WeeklyDigest {
+    id             String    @id @default(cuid())
+    userId         String
+    /// Monday 00:00 in the user's timezone, stored UTC.
+    weekStart      DateTime
+    channel        Channel
+    winIds         Json      @default("[]")
+    /// Root of the signed single-use action tokens embedded in the email.
+    token          String    @unique
+    sentAt         DateTime?
+    openedAt       DateTime?
+    firstActionAt  DateTime?
+    confirmedCount Int       @default(0)
+    dismissedCount Int       @default(0)
+    /// True when an empty signal week intentionally produced no send.
+    skipped        Boolean   @default(false)
+    createdAt      DateTime  @default(now())
+
+    @@unique([userId, weekStart])
+    @@index([userId, sentAt])
 }

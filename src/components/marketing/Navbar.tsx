@@ -10,8 +10,7 @@ export function Navbar() {
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
         <Link
           href="/"
-          className="flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground"
-          style={{ fontFamily: "'Sora', system-ui, sans-serif" }}
+          className="font-heading flex items-center gap-2.5 text-base font-semibold tracking-tight text-foreground"
         >
           <img src="/logo.png" alt="Patronus Logo" className="h-8 w-auto drop-shadow-[0_0_8px_rgba(143,201,255,0.6)]" />
           Patronus
