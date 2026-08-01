@@ -245,8 +245,9 @@ describe('generateStructured — usage accounting', () => {
     });
 });
 
-// Requires a live Postgres. Unreachable in this environment (Prisma P1001).
-describe.skip('generateStructured — ApiUsageLog persistence', () => {
+// Implemented in `structured.integration.test.ts` against the local Docker
+// Postgres, plus a regression test that a sub-cent call records a non-zero cost.
+describe.skip('generateStructured — ApiUsageLog persistence (see structured.integration.test.ts)', () => {
     // TODO(db): assert one ApiUsageLog row per call with metadata.feature / metadata.task
     // populated, so the v_feature_cost_daily tripwire view (PRD 08 §4.3) has data.
     test('writes an ApiUsageLog row with the feature tag', () => {});

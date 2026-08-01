@@ -421,18 +421,20 @@ describe('sendEmail guard rails', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Everything below needs a live Postgres or a real Resend key.
+// The database-backed cases are implemented in `send.integration.test.ts`
+// against the local Docker Postgres — consent enforcement, the critical-template
+// bypass, unsubscribe idempotency and category isolation, and hard-bounce
+// suppression. Only the Resend block below still needs a real key.
 // ---------------------------------------------------------------------------
 
-// TODO(db): unskip once a test database is reachable (Prisma P1001 today).
-describe.skip('sendEmail against the database', () => {
+describe.skip('sendEmail against the database (see send.integration.test.ts)', () => {
     test('an opted-out user is skipped and no EmailSend row is written', () => {});
     test('a first send creates the EmailPreference row and its unsubscribe token', () => {});
     test('a successful send writes an EmailSend row with the provider id', () => {});
 });
 
 // TODO(db): unskip once a test database is reachable.
-describe.skip('applyUnsubscribe', () => {
+describe.skip('applyUnsubscribe (see send.integration.test.ts)', () => {
     test('is idempotent — the second call returns the same outcome as the first', () => {});
     test('an unknown token returns unknown_token rather than throwing', () => {});
     test('a category unsubscribe leaves the other categories untouched', () => {});
@@ -447,7 +449,7 @@ describe.skip('sendEmail against Resend', () => {
 });
 
 // TODO(db): unskip once a test database is reachable.
-describe.skip('/api/email/webhook', () => {
+describe.skip('/api/email/webhook (partially covered in send.integration.test.ts via suppressUserEmail)', () => {
     test('a hard bounce sets unsubscribedAll on that user', () => {});
     test('an out-of-order email.sent does not overwrite a recorded bounce', () => {});
     test('an unknown provider id is acknowledged without an error', () => {});

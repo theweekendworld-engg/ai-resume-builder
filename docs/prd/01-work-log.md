@@ -111,7 +111,8 @@ The AI proposes sensitivity from signals (private repo → `internal_only`; keyw
 Rules:
 - Only `confirmed` Wins produce `Evidence` + `ClaimLink(grounded)` and get embedded.
 - `dismissed` Wins are retained (not deleted) — they train the noise filter (02 §6.4) and prevent re-drafting the same signal.
-- Un-confirming is allowed (`confirmed → draft`): it revokes the `ClaimLink` (sets `groundState = needs_confirmation`) and removes the Qdrant point. This must be transactional.
+- Un-confirming is allowed (`confirmed → draft`): it **deletes** the `Evidence` + `ClaimLink` rows the confirm created, and removes the Qdrant point. This must be transactional.
+  > *Amended 2026-08-02, after implementation.* This originally said "revokes the `ClaimLink` (sets `groundState = needs_confirmation`)". Deleting is better: it keeps "exactly one Evidence + ClaimLink pair per source artifact" true across `confirm → un-confirm → confirm` cycles, which downgrading does not — a re-confirm would have to find and upgrade the existing row or it silently duplicates. Nothing is lost, because the confirm recreates both from the same source. The `ImpactMetric` is *not* deleted: it is user content, not a confirm artifact.
 - `archived` hides from the default log view but stays in packets and exports.
 - Drafts older than **45 days** with no action are auto-dismissed with `dismissedReason = 'expired'`, so the inbox never becomes a graveyard. Notify once at 30 days ("12 unreviewed wins from July are about to expire").
 

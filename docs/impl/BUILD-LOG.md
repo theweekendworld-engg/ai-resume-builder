@@ -179,6 +179,152 @@ Wave B agents touch **existing** surfaces, so **B-2 (dirty tree) must resolve fi
 
 ---
 
+## Interlude — local database, and the skipped tests turned on
+
+**B-1 resolved locally.** Owner directed local Docker first, Supabase later. Both containers were already running (`postgres:16-alpine` :5432, Qdrant :6333) and `.env.local` already pointed at them. Applied `20260801120000`; all 6 tables and all 4 load-bearing unique constraints verified in the database, not just the schema file.
+
+Note for anyone running Prisma CLI: `.env` still points at the paused Supabase and the CLI reads `.env`, not `.env.local`. Override inline:
+```
+export DATABASE_URL="postgres://postgres:postgres@localhost:5432/resume_builder"
+export DIRECT_URL="postgres://postgres:postgres@localhost:5432/resume_builder"
+```
+
+### The `.env.test` trap — worth knowing before it bites someone
+
+`bun test` sets `NODE_ENV=test`, and **Bun deliberately does not load `.env.local` in that mode.** Tests were therefore falling through to `.env` — production Supabase. Had that project been live rather than paused, the first DB-backed test run would have written to production.
+
+Added **`.env.test`** (committed; local-only credentials, no secrets). Bun loads `.env.{NODE_ENV}` above `.env`, so tests are now pinned to the containers. It also carries a deliberately fake `RESEND_API_KEY`/`EMAIL_FROM`, because `sendEmail` checks `emailConfigured()` *before* it checks user preferences — without them the opt-out and critical-bypass paths are unreachable and would silently never be tested.
+
+### 26 integration tests written, replacing the `describe.skip` stubs
+
+| File | Tests | Verifies |
+|---|---|---|
+| `runner.integration.test.ts` | 9 | Dedupe as a DB guarantee (incl. an 8-way concurrent race collapsing to one row), atomic claim under concurrency, `(priority, runAt)` ordering with future-`runAt` exclusion, backoff persisted to the row, dead-lettering that keeps the row, stuck-lock recovery at the 10-minute boundary (11 min reclaimed, 9 min left alone), drain returning inside its budget with work remaining |
+| `send.integration.test.ts` | 13 | Consent enforcement, **the critical-template bypass**, unsubscribe idempotency, category isolation not escalating to global, resubscribe after a prefetcher-triggered unsubscribe, hard-bounce and complaint suppression |
+| `structured.integration.test.ts` | 4 | `metadata.feature`/`metadata.task` present on every row (the group-by keys the tripwire view needs), **a sub-cent call records non-zero cost** (regression guard on the rounding bug), failure logged as `failed`, retry token accounting |
+
+**Suite: 379 → 405 pass, 0 fail.** All 26 pass in isolation and in the full run.
+
+Two findings worth keeping:
+- **A5's critical-template bypass is verified working.** The test asserts a `magic_link` to a fully-unsubscribed user is *not* skipped; the log shows it reaching the provider and failing on the fake key — proof it cleared the consent gate.
+- **A1's concurrency claims hold against real Postgres.** Eight simultaneous enqueues of one `dedupeKey` produce exactly one row with one winner, and two concurrent `claimJobs` calls never return the same job.
+
+Still skipped: the Resend provider block (needs a real sandbox key) and the stub blocks, retained as documentation pointing at the integration files.
+
+### Phase 0 gaps closed by the orchestrator
+
+Wave A's five agents covered P0.2, P0.3, P0.4 and P0.7. **P0.5, P0.8, P0.9 and P0.10 were specced but never assigned to anyone** — an orchestration miss, closed here.
+
+| Task | Landed | Notes |
+|---|---|---|
+| P0.5 · feature flags | `src/lib/flags.ts` | Postgres-backed, 60s single-flight cache. **Fails closed** — an unreadable flag table serves stale cache or `false`, never accidentally enables an unfinished feature. Allow-list beats `enabled` so the team can hold access to a flag that is off for everyone. FNV-1a bucketing keyed by `(userId, flag)` so a user does not flap in and out as the percentage moves, and is not in the same bucket for every flag. |
+| P0.8 · timezone & schedule | `src/lib/time.ts` + 22 tests | `Intl` only, no date library, explicit `now` on every function for determinism. |
+| P0.9 · telemetry | `src/lib/track.ts` | Server-side counterpart to the client-only `funnelEvents.ts`. Typed event union rather than free strings, so a typo fails at compile time instead of becoming a silently missing metric. Never throws, never blocks. |
+| P0.9 · ops page | `src/actions/ops.ts`, `/admin/ops` | Activation funnel with the log-fill rate against its 40% target, job health by kind, dead-letter list, cost per feature vs. the PRD 08 §4.3 tripwires, email deliverability. Server-rendered tables, no charting library. |
+| P0.10 · env reference | `.env.example` | Every variable, grouped, with the consequence of leaving it unset. Documents the `.env` / `.env.local` / `.env.test` precedence trap at the top. |
+
+**Timezone tests are the ones worth having.** `weekStartFor` is exercised against a +05:30 zone — Monday 00:00 IST resolves to the previous Sunday 18:30 UTC, which naive whole-hour date maths gets wrong — and across a US DST transition. Plus the case that justifies the derived-schedule design at all: the same UTC instant is due for one user's zone and not another's.
+
+**Deliberate incompleteness on the ops page:** `sourceConnected` reports 0 and is wired in Wave C when `CaptureSource` exists. Reported as zero rather than omitted so the funnel's shape stays stable.
+
+---
+
+## Wave B — the Work Log
+
+### B1 · win graph, drafting, actions — **accepted** (verified)
+
+11 files, all new; no existing file touched. **Full suite 499 pass, 24 skip, 0 fail.** B1's own files: 72 tests. Real local Postgres *and* real local Qdrant — only the embedding vector and the model are stubbed. No `describe.skip`. Teardown verified clean: zero leftover fixture rows, Qdrant back to its 17 pre-existing points.
+
+**All three thesis tests pass** — 53 tests across the three files, verified independently, not taken on report:
+
+| Test | How it is asserted |
+|---|---|
+| **1 · Evidence round trip** | Confirm writes exactly one `Evidence(confirmedByUser=true)` + one `ClaimLink(claimType='win', groundState='grounded')` per artifact; re-confirm does not duplicate; un-confirm removes both plus the Qdrant point synchronously; `confirm → un-confirm → confirm` still yields exactly one pair; the `WinSource → EvidenceKind` map asserted exhaustively. |
+| **2 · Sensitivity filter** | Asserts the SQL predicate and the Qdrant predicate *as objects*, then applies both against the real stores. **The strongest case force-inserts a `confidential` point into Qdrant and shows the filter excludes it** — proving the filter works, rather than passing because the point was never written. That is exactly the distinction the spec demanded. |
+| **3 · No fabricated numbers** | An 8-case corpus with 5 deliberate fabrications (derived %, invented scope, invented team size, rounded figure, invented multiplier). Every digit run in the output is checked against the source **with a regex independent of the guard's own parser** — so a bug in the guard cannot make its own test pass. |
+
+**Deviations accepted:**
+| # | Deviation | Verdict |
+|---|---|---|
+| 3 | Un-confirm **deletes** Evidence + ClaimLink rather than downgrading `groundState` | **Better than the spec.** Keeps "exactly one pair per artifact" true across confirm/un-confirm cycles, which downgrading does not. **PRD 01 §4.4 amended to match** so the two don't diverge. |
+| 4 | `ImpactMetric` written at draft time, not inside the confirm transaction | Correct — the Win row has nowhere to hold a quantity before confirm. Un-confirm leaves it: user content, not a confirm artifact. |
+| 5 | `quantifyPrompt` is a deterministic per-category string, not a cached model call | Right call. It renders on every unquantified row of a 500-row log; a model call per row is absurd. Swappable later without a contract change. |
+| 8 | Quarter-long dump → ≤10 drafts (PRD 01 §12) not implemented | Genuine gap, correctly reported rather than faked: `CreateWinFromText` returns a single `WinView` and cannot express it. Needs a contract change. |
+
+**Orchestrator edits applied** (both correctly refused by B1 as out of scope):
+- `src/lib/entitlements.ts` — added `win_draft` and `month_in_review` to `MeteredAction` and to all four tiers. Free `win_draft` = 30/mo (env-overridable), an abuse ceiling well above real usage, because **capture itself is never gated**. Verified: `checkEntitlement('probe','win_draft')` → free, limit 30, allowed.
+- `src/lib/jobs/registry.ts` — registered `embed_win` in the slot A1 reserved. Without this, enqueued embed jobs would have gone straight to `dead`.
+
+**Carried risks:** un-confirm reverses Postgres first and Qdrant second by design, so a failed Qdrant delete leaves an orphan point with the claim already un-grounded (fail-closed) — the weekly reconcile job that cleans these up is specced but not built. The Qdrant payload also has no index on `sensitivity`; filtering is correct but unindexed, and fixing it means editing `ensureKnowledgeBaseCollection` in `src/actions/embed.ts`.
+
+### B2 · log UI — **accepted** (verified)
+
+14 files, all new. `bunx tsc --noEmit` clean; `bunx eslint` on its paths reports **0 errors and 0 warnings** — not merely `--quiet` clean.
+
+**Two design calls worth keeping:**
+- **Rejected `ui/sheet` for the drawer.** `SheetContent` hard-codes an 80%-black scrim and locks body scroll, which would defeat the one thing the drawer exists for — preserving list scroll position — and its overlay className isn't reachable from outside. Used Radix dialog with `modal={false}`, which additionally lets a user click straight from one Win to another instead of closing first.
+- **Caught a flaw in its own fixtures.** At the real 90-day free-tier window there are only two month groups, so the sticky-header behaviour never renders and cannot be reviewed. It widened the fixture range deliberately and disclosed it, rather than shipping a gallery that silently can't exercise the feature.
+
+Ring-trap compliance verified by grep: the only `.surface-work` element it owns containing a control routes through `focusRingOutline`.
+
+**Carried risks:** not visually verified in a browser (sticky-header stacking against `GlobalGenerationBanner`, and light/dark contrast on the amber banner, are reasoned from tokens rather than measured) · `ReviewQueue` items are a mount-time snapshot, so drafts arriving from a background sync need a reload — deliberate, since re-deriving mid-collapse would yank rows out of the confirm animation · optimistic drawer patches don't roll back on failure.
+
+## Wave B integration gate — **PASSED** (2026-08-02)
+
+| Check | Result |
+|---|---|
+| `bunx tsc --noEmit` | **0 errors** |
+| `bun test` | **499 pass, 24 skip, 0 fail** |
+| `bunx eslint src --quiet` | 0 errors |
+| Gates 1–4 | clean (only the two grandfathered AI imports) |
+| **Gate 5 — ring on `.surface-work`** | clean. Added this gate after A4 found the trap. |
+| Ownership audit | neither agent touched a forbidden path |
+
+### The contract-first bet paid off — and this is the transferable lesson
+
+B2 enumerated **ten** contract gaps, with the design-doc reference and current workaround for each. Both agents independently identified the same core five, which suggests a real list rather than one agent's preference.
+
+The most consequential: **no action could write an `ImpactMetric`.** `WinPatch` had no `impact` field, so the quantify prompt — which PRD 01 calls the drawer's highest-leverage interaction, and which is the Context Interview mechanic delivered one question at a time — had nothing to call. Invisible until someone tried to ship the drawer.
+
+Also real: quick capture needed to structure *without persisting* (otherwise every abandoned capture leaves a row); `CreateWinInput` carried raw text only, costing two round trips for edit-then-submit; and `ConfirmWin` couldn't carry the source string from a `GroundChip`, silently dropping the one-click evidence capture that makes the chip a producer rather than a status light.
+
+**Building the UI against the contract before the implementation existed is what surfaced these.** Sequencing B1 → B2 would have found the same ten gaps later, against code already written.
+
+Contract extended (`EvidenceView.label/detail/available`, `StructuredDraft`, `ImpactInput`, `EmployerOption`, `CreateWinInput.draft`, `ConfirmWin` evidence param, and six new actions). B1 resumed to implement — additive only, since B2 consumes the original eight exactly as typed.
+
+### Contract gaps B1 surfaced — blocking B2 integration
+
+1. **Four actions B2 needs are absent from `wins.types.ts`:** `structureDraft`, `addImpact`, `archiveWin`, `deleteWin`. B2 declared them in `src/components/log/data-source.ts`; its `logData = winsActions` one-liner will not type-check until they exist. B1 correctly declined to invent signatures. **Resolve after B2 reports**, so the contract matches what the UI actually calls.
+2. **`CreateWinFromText` cannot express a merge proposal.** `Result<T>`'s failure branch has only `error` and `code`, so the duplicate target rides in the code as `merge_proposal:<winId>` with an exported parser. It works and is tested; a third field on the failure branch would be cleaner. **Logged as debt — not churning freshly-tested code mid-wave for cosmetics.**
+
+---
+
+## Wave C prep — schema landed ahead of spawn
+
+Same move that worked for Wave B: put every model the wave needs in place *before* the agents exist, so `prisma/schema.prisma` is never in their contention set.
+
+`20260802090000_wave_c_capture_packets_interview` — 8 enums, 6 tables, 2 FKs, applied and verified against the local database. Generated from a live-DB diff (`prisma migrate diff --from-url`) rather than hand-authored, so the delta is provably exactly what was added and nothing else.
+
+| Models | For |
+|---|---|
+| `CaptureSource`, `CaptureSignal`, `CaptureRun` | C1 — connectors (PRD 02 §5) |
+| `CompetencyFramework`, `ReviewPacket` | C2 — packets (PRD 03 §6) |
+| `InterviewSession` | C3 — backfill (PRD 07 §5.2) |
+
+`CaptureSignal_sourceId_externalId_key` verified present in the database. It is the constraint that makes re-syncing safe, a duplicated cron harmless, and one-Win-per-signal a guarantee rather than handler discipline.
+
+**Ops page completed:** `sourceConnected` now counts distinct users with an active connector, replacing the placeholder zero. The funnel is whole.
+
+### Contract propagation — expected fallout, handled
+
+Extending `EvidenceView` and making `CreateWinInput.text` optional broke downstream call sites, which is the contract doing its job:
+- **B2's `fixtures.ts`** — fixed by the orchestrator (B2 had finished). Evidence now carries server-shaped `label`/`detail`/`available`, with one seeded dead source so the strikethrough treatment is actually reachable in the gallery, and `createWinFromText` honours a user-edited `draft` over re-structuring.
+- **B1's `wins.ts` and `winDrafting.ts`** — left alone. B1 is mid-task on exactly those files; editing an agent's files while it runs is how you get a lost update. It will resolve them as part of the additions.
+
+Suite stayed at **499 pass / 0 fail** throughout — the outstanding errors are compile-time only.
+
+---
+
 ## Open blockers
 
 | # | Blocker | Since | Impact |

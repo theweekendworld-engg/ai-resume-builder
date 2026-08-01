@@ -826,3 +826,233 @@ model WeeklyDigest {
     @@unique([userId, weekStart])
     @@index([userId, sentAt])
 }
+
+// =========================================================================
+// Wave C — capture connectors (PRD 02 §5)
+// Orchestrator-owned. Landed ahead of Wave C so no feature agent edits this file.
+// =========================================================================
+
+enum CaptureSourceKind {
+    github
+    calendar
+    linear
+    jira
+}
+
+enum CaptureSourceStatus {
+    active
+    paused
+    error
+    revoked
+}
+
+enum CaptureRunStatus {
+    running
+    success
+    degraded
+    failed
+}
+
+model CaptureSource {
+    id                 String              @id @default(cuid())
+    userId             String
+    kind               CaptureSourceKind
+    status             CaptureSourceStatus @default(active)
+    externalAccountId  String // gh login/id, google sub, ...
+    scopes             Json                @default("[]")
+    /// includedRepos[], excludedKeywords[], calendars[] — adapter-specific.
+    config             Json                @default("{}")
+    /// ISO timestamp of the last processed item. Deliberately not a page token:
+    /// timestamps survive provider API changes, page tokens do not.
+    cursor             String?
+    consentGrantedAt   DateTime
+    /// Which consent copy the user agreed to. We must be able to answer
+    /// "what exactly did this user consent to, and when".
+    consentCopyVersion String
+    lastSyncedAt       DateTime?
+    lastSuccessAt      DateTime?
+    errorCount         Int                 @default(0)
+    lastError          String?
+    revokedAt          DateTime?
+    createdAt          DateTime            @default(now())
+    updatedAt          DateTime            @updatedAt
+
+    runs    CaptureRun[]
+    signals CaptureSignal[]
+
+    /// One source per kind per user in R1. Relaxing this to include
+    /// externalAccountId is what enables two GitHub accounts (PRD 02 §11).
+    @@unique([userId, kind])
+    @@index([status, lastSyncedAt])
+}
+
+model CaptureSignal {
+    id          String    @id @default(cuid())
+    userId      String
+    sourceId    String
+    /// Provider-stable id — GitHub node ID, never the PR number, which is
+    /// per-repo and reused after transfers.
+    externalId  String
+    kind        String // pr_merged | pr_reviewed | issue_closed | release_published | repo_created
+    occurredAt  DateTime
+    title       String
+    body        String    @default("")
+    url         String?
+    metadata    Json      @default("{}")
+    /// Set when several signals collapse into one candidate (PRD 02 §4.1).
+    groupKey    String?
+    isNoise     Boolean   @default(false)
+    noiseRule   String?
+    processedAt DateTime?
+    winId       String?
+    createdAt   DateTime  @default(now())
+
+    source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+    /// THE idempotency guarantee. Makes re-syncing safe, makes a duplicated
+    /// cron harmless, and guarantees one Win per signal. Do not drop this.
+    @@unique([sourceId, externalId])
+    @@index([userId, occurredAt])
+    @@index([sourceId, processedAt])
+    @@index([groupKey])
+}
+
+model CaptureRun {
+    id           String           @id @default(cuid())
+    userId       String
+    sourceId     String
+    status       CaptureRunStatus @default(running)
+    trigger      String // initial | scheduled | manual
+    windowStart  DateTime?
+    windowEnd    DateTime?
+    itemsScanned Int              @default(0)
+    itemsNoise   Int              @default(0)
+    candidates   Int              @default(0)
+    winsDrafted  Int              @default(0)
+    costUsd      Float            @default(0)
+    error        String?
+    startedAt    DateTime         @default(now())
+    finishedAt   DateTime?
+
+    source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+    @@index([userId, startedAt])
+    @@index([sourceId, startedAt])
+}
+
+// =========================================================================
+// Wave C — review packets & competency frameworks (PRD 03 §6)
+// =========================================================================
+
+enum FrameworkSource {
+    uploaded
+    template
+    default
+}
+
+enum PacketType {
+    performance_review
+    promotion_case
+    self_appraisal
+    brag_doc
+}
+
+enum PacketStatus {
+    generating
+    ready
+    failed
+}
+
+model CompetencyFramework {
+    id           String          @id @default(cuid())
+    /// Null for system-owned public templates (Google, Meta, ... ).
+    userId       String?
+    name         String
+    sourceType   FrameworkSource
+    companyName  String?
+    /// [{key,name,order,summary}]
+    levels       Json            @default("[]")
+    /// [{key,name,description,levelExpectations:{levelKey:string}}]
+    competencies Json            @default("[]")
+    rawSourceRef String? // blob key of the uploaded document
+    /// An internal leveling rubric is confidential by default: user-scoped,
+    /// never shared across users, never training data.
+    isConfidential Boolean       @default(true)
+    createdAt    DateTime        @default(now())
+    updatedAt    DateTime        @updatedAt
+
+    @@index([userId])
+    @@index([sourceType, companyName])
+}
+
+model ReviewPacket {
+    id           String       @id @default(cuid())
+    userId       String
+    type         PacketType
+    status       PacketStatus @default(generating)
+    periodStart  DateTime
+    periodEnd    DateTime
+    employerId   String?
+    frameworkId  String?
+    targetLevel  String?
+    audience     String       @default("manager")
+    /// Exact inputs, so a packet is reproducible.
+    winIds       Json         @default("[]")
+    /// {summary, themes[], competencies[], growth, appendix}
+    content      Json?
+    /// Block-keyed overrides that survive regeneration.
+    userEdits    Json         @default("{}")
+    gaps         Json         @default("[]")
+    wordCount    Int          @default(0)
+    exports      Json         @default("[]")
+    generationMs Int?
+    costUsd      Float        @default(0)
+    createdAt    DateTime     @default(now())
+    updatedAt    DateTime     @updatedAt
+
+    @@index([userId, createdAt])
+    @@index([userId, periodEnd])
+}
+
+// =========================================================================
+// Wave C — backfill interview (PRD 07 §5.2)
+// =========================================================================
+
+enum InterviewStatus {
+    active
+    paused
+    completed
+    abandoned
+}
+
+enum InterviewSubject {
+    employer
+    project
+    competency
+    period
+}
+
+model InterviewSession {
+    id            String           @id @default(cuid())
+    userId        String
+    subjectType   InterviewSubject
+    subjectId     String?
+    subjectLabel  String
+    status        InterviewStatus  @default(active)
+    /// [{role, content, at}] — sensitive PII. People disclose conflicts and
+    /// failures here. Never embedded for external output; deletable
+    /// independently of the Wins it produced.
+    transcript    Json             @default("[]")
+    /// Prevents repeating a topic across a resumed session.
+    askedTopics   Json             @default("[]")
+    winIds        Json             @default("[]")
+    questionCount Int              @default(0)
+    costUsd       Float            @default(0)
+    startedAt     DateTime         @default(now())
+    lastActiveAt  DateTime         @updatedAt
+    completedAt   DateTime?
+    expiresAt     DateTime
+
+    @@index([userId, status, lastActiveAt])
+    @@index([expiresAt])
+}

@@ -718,10 +718,14 @@ describe('JobKind', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration — requires a live Postgres (P1001 in this environment)
+// Integration tests live in `runner.integration.test.ts`.
+//
+// Every case sketched below is now implemented there and passing against the
+// local Docker Postgres. Kept as `describe.skip` documentation of intent —
+// delete this block once the integration file is uncontroversial.
 // ---------------------------------------------------------------------------
 
-describe.skip('runner integration (live database)', () => {
+describe.skip('runner integration (see runner.integration.test.ts)', () => {
     // TODO(db): enqueue the same dedupeKey twice -> exactly one Job row exists,
     // the first call returns {deduped:false} and the second {deduped:true} with
     // the *same* jobId, and neither call throws.

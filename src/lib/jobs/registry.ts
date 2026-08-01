@@ -10,6 +10,7 @@
 import { registerHandler, registeredKinds } from './runner';
 import type { JobKind } from './types';
 import { noopHandler } from './handlers/noop';
+import { embedWinHandler } from './handlers/embedWin';
 
 let registered = false;
 
@@ -18,7 +19,8 @@ export function registerAllHandlers(): JobKind[] {
     if (registered) return registeredKinds();
 
     registerHandler('noop', noopHandler);
-    // Phase 1+: capture_sync, draft_wins, embed_win
+    registerHandler('embed_win', embedWinHandler);
+    // Phase 2+: capture_sync, draft_wins
     // Phase 3+: weekly_digest, month_in_review, email_send
     // Phase 4+: radar_snapshot, reconcile_qdrant
 
