@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Loader2, FileSearch, Sparkles, Layers, BookmarkCheck, BookmarkPlus } from 'lucide-react';
 import { cn } from '@/shared/ui/cn';
 import { request } from '@/background/messageBus';
@@ -34,6 +34,12 @@ export function ApplyRoute() {
     /** Set locally on success so the row updates without waiting for a session refresh. */
     const [trackedNow, setTrackedNow] = useState(false);
     const [lastApplied, setLastApplied] = useState<{ count: number; key: string } | null>(null);
+    // Remount key for the undo toast. A counter rather than Date.now(): the
+    // clock is impure (react-hooks/purity) and all this needs to be is
+    // different from last time.
+    const fillSeq = useRef(0);
+    // Stable, so the toast's 30s timer is not restarted by unrelated renders.
+    const dismissToast = useCallback(() => setLastApplied(null), []);
     const [applying, setApplying] = useState(false);
 
     const safeIdsForBulk = useMemo(() => {
@@ -90,7 +96,7 @@ export function ApplyRoute() {
                 return next;
             });
             if (appliedCount > 0) {
-                setLastApplied({ count: appliedCount, key: `bulk-${Date.now()}` });
+                setLastApplied({ count: appliedCount, key: `bulk-${(fillSeq.current += 1)}` });
             }
             trackExtensionEvent('fill.applied', {
                 count: appliedCount,
@@ -110,7 +116,7 @@ export function ApplyRoute() {
             const appliedCount = outcome.appliedCount ?? 0;
             if (appliedCount > 0) {
                 setFilledIds((prev) => new Set(prev).add(id));
-                setLastApplied({ count: appliedCount, key: `single-${id}-${Date.now()}` });
+                setLastApplied({ count: appliedCount, key: `single-${id}-${(fillSeq.current += 1)}` });
             }
             trackExtensionEvent('fill.applied', {
                 count: appliedCount,
@@ -225,10 +231,10 @@ export function ApplyRoute() {
 
             {lastApplied ? (
                 <FillUndoToast
+                    key={lastApplied.key}
                     appliedCount={lastApplied.count}
                     onUndo={handleUndo}
-                    onDismiss={() => setLastApplied(null)}
-                    keyId={lastApplied.key}
+                    onDismiss={dismissToast}
                 />
             ) : null}
 

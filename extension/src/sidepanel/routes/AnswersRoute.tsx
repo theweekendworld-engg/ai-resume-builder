@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, MessageSquare, Pencil, Trash2, Zap, ZapOff } from 'lucide-react';
+import { Loader2, MessageSquare, Pencil, RefreshCw, Trash2, Zap, ZapOff } from 'lucide-react';
 import { cn } from '@/shared/ui/cn';
 import { request } from '@/background/messageBus';
 import { trackExtensionEvent } from '@/shared/lib/telemetry';
@@ -42,9 +42,14 @@ export function AnswersRoute() {
         });
     }, []);
 
+    /**
+     * Fetch and store. Deliberately does NOT flip `loading` on the way in —
+     * `loading` already starts true, so the mount path has nothing to set, and
+     * setting it synchronously from the effect below would cost a cascading
+     * render to reach the state the component was born in. `reload` adds that
+     * back for the callers that need it.
+     */
     const load = useCallback(async () => {
-        setLoading(true);
-        setError(null);
         const res = await request<{ answers?: SavedAnswerWire[] }>({ type: 'LIST_ANSWERS' });
         setLoading(false);
         if (!res.ok) {
@@ -58,7 +63,18 @@ export function AnswersRoute() {
         setAnswers(res.data?.answers ?? []);
     }, []);
 
+    /** Refetch from an event handler, where showing the spinner again is right. */
+    const reload = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        await load();
+    }, [load]);
+
     useEffect(() => {
+        // Nothing lands during this commit — `load` awaits the message round
+        // trip before it sets anything. The lint rule traces into the callee
+        // but not past the await.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         void load();
         trackExtensionEvent('answers.opened', {});
     }, [load]);
@@ -158,7 +174,24 @@ export function AnswersRoute() {
                 ) : null}
             </section>
 
-            {error ? <div className="card p-3 text-xs text-destructive">{error}</div> : null}
+            {error ? (
+                <div className="card flex items-center gap-2 p-3 text-xs text-destructive">
+                    <span className="flex-1">{error}</span>
+                    {/* An error with no way out is a dead end; the failure is
+                        usually a sleeping service worker and a retry fixes it.
+                        No busy state on the button — `reload` sets `loading`,
+                        and the early return above replaces this whole card with
+                        the full-panel spinner. */}
+                    <button
+                        type="button"
+                        onClick={() => void reload()}
+                        className="btn-outline shrink-0 text-[11px]"
+                    >
+                        <RefreshCw className="h-3 w-3" />
+                        Try again
+                    </button>
+                </div>
+            ) : null}
 
             {answers.length === 0 && !error ? (
                 <div className="card p-4 text-sm">

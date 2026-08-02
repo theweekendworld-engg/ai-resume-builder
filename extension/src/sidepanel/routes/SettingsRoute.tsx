@@ -44,7 +44,7 @@ export function SettingsRoute() {
                 ) : (
                     <>
                         <p className="text-xs text-muted-foreground">
-                            You're not connected to your Patronus account. Connecting lets
+                            You&apos;re not connected to your Patronus account. Connecting lets
                             the extension fill forms and tailor resumes for you.
                         </p>
                         <button

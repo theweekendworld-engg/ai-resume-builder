@@ -34,6 +34,10 @@ export function useFillPlan(): {
     }, []);
 
     useEffect(() => {
+        // Same shape as usePageContext: `refresh` awaits chrome.tabs.query
+        // before it sets anything, so no state changes during this commit. The
+        // lint rule follows the call but not the await.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         refresh();
         const listener = (
             raw: unknown,

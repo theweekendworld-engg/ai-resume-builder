@@ -36,6 +36,11 @@ export function usePageContext(): {
     };
 
     useEffect(() => {
+        // `refresh` is async and its first statement is an await on
+        // chrome.tabs.query, so nothing it sets lands during this commit —
+        // it is a subscription read, not a synchronous state update. The lint
+        // rule traces into the callee and cannot see past the await.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         refresh();
         const listener = (
             msg: unknown,
