@@ -13,6 +13,9 @@ import { noopHandler } from './handlers/noop';
 import { embedWinHandler } from './handlers/embedWin';
 import { captureSyncHandler } from './handlers/captureSync';
 import { draftWinsHandler } from './handlers/draftWins';
+import { proactiveDowngradeHandler } from './handlers/proactiveDowngrade';
+import { monthInReviewHandler } from './handlers/monthInReview';
+import { weeklyDigestHandler } from './handlers/weeklyDigest';
 
 let registered = false;
 
@@ -24,7 +27,10 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('embed_win', embedWinHandler);
     registerHandler('capture_sync', captureSyncHandler);
     registerHandler('draft_wins', draftWinsHandler);
-    // Phase 3+: weekly_digest, month_in_review, email_send
+    registerHandler('proactive_downgrade', proactiveDowngradeHandler);
+    registerHandler('month_in_review', monthInReviewHandler);
+    registerHandler('weekly_digest', weeklyDigestHandler);
+    // Later: email_send
     // Phase 4+: radar_snapshot, reconcile_qdrant
 
     registered = true;

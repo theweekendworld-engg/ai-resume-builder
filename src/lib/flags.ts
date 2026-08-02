@@ -17,6 +17,7 @@ export const FEATURE_FLAGS = [
     'github_capture',
     'weekly_digest',
     'review_packet',
+    'month_in_review',
     'backfill',
 ] as const;
 

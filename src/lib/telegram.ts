@@ -64,6 +64,51 @@ export async function sendTelegramMessage(input: SendMessageInput): Promise<void
   }
 }
 
+type EditMessageInput = {
+  chatId: string | number;
+  messageId: number;
+  text: string;
+  replyMarkup?: TelegramReplyMarkup;
+};
+
+/**
+ * Rewrite a message that is already in the chat. The weekly digest confirms in
+ * place with this (PRD 01 §5.2) — a second message per tap would turn a
+ * five-item digest into eleven notifications.
+ *
+ * Never throws: an edit failing is cosmetic, and by the time it is called the
+ * Win has already been written. `message is not modified` in particular is a
+ * normal response to a double tap, not an error.
+ */
+export async function editTelegramMessageText(input: EditMessageInput): Promise<boolean> {
+  const body: Record<string, unknown> = {
+    chat_id: input.chatId,
+    message_id: input.messageId,
+    text: input.text,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+  };
+  if (input.replyMarkup) body.reply_markup = input.replyMarkup;
+
+  try {
+    const response = await fetch(buildTelegramApiUrl('editMessageText'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await response.json().catch(() => ({}));
+    const parsed = TelegramSendResponseSchema.safeParse(json);
+    if (!response.ok || !parsed.success || !parsed.data.ok) {
+      console.warn('Telegram editMessageText failed:', { status: response.status, json });
+      return false;
+    }
+    return true;
+  } catch (error: unknown) {
+    console.warn('Telegram editMessageText threw:', error);
+    return false;
+  }
+}
+
 export async function sendTelegramDocument(input: SendDocumentInput): Promise<void> {
   const form = new FormData();
   form.append('chat_id', String(input.chatId));

@@ -1056,3 +1056,42 @@ model InterviewSession {
     @@index([userId, status, lastActiveAt])
     @@index([expiresAt])
 }
+
+// =========================================================================
+// Month in Review (PRD 01 §6.4)
+//
+// The only scheduled payoff before the first review packet at ~month six, so
+// it carries the first quarter of the relationship on its own.
+//
+// Stored rather than composed on demand: recomposing per page load would give
+// a different document on every refresh, which is fatal for the artefact
+// people screenshot. Previously lived in `Job.result`, which is durable but
+// not queryable and gets pruned by any job retention policy.
+// =========================================================================
+
+model MonthlyReview {
+    id          String    @id @default(cuid())
+    userId      String
+    /// `yyyy-mm` of the month being reviewed, in the user's timezone.
+    period      String
+    headline    String
+    /// The one generated block. Null when composition was dropped by the
+    /// entity or digit check — fail closed; every other block is computed.
+    paragraph   String?
+    /// Deterministic, from real counts. Null when no rule fired; the spec
+    /// forbids falling back to generic encouragement.
+    observation String?
+    mixSentence String?
+    receipt     String
+    winIds      Json      @default("[]")
+    winCount    Int       @default(0)
+    quantifiedCount Int   @default(0)
+    /// Null until the email actually goes out. The web view renders either way.
+    sentAt      DateTime?
+    degraded    Boolean   @default(false)
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+
+    @@unique([userId, period])
+    @@index([userId, createdAt])
+}

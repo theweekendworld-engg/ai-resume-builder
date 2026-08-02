@@ -22,6 +22,7 @@ export type JobKind =
     | 'embed_win'
     | 'radar_snapshot'
     | 'reconcile_qdrant'
+    | 'proactive_downgrade'
     | 'email_send';
 
 export const JOB_KINDS: readonly JobKind[] = [
@@ -33,6 +34,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'embed_win',
     'radar_snapshot',
     'reconcile_qdrant',
+    'proactive_downgrade',
     'email_send',
 ] as const;
 

@@ -102,6 +102,13 @@ export function LogRail({
  * list, so it names what the record is already good for. It renders only once
  * there is a record to describe — a first-run user reading "0 wins · 0 years"
  * is being told they have nothing, which is exactly wrong at that moment.
+ *
+ * Three rules govern the copy and none of them are stylistic:
+ *   - Outcome framing, never storage framing. "74 wins saved" is a chore
+ *     reporting on itself; "enough for a promotion packet" is an asset.
+ *   - It ends "on demand", because availability is the whole claim — the
+ *     record's value is that it is ready the day you need it, not that it exists.
+ *   - Real numbers only. There is nothing to round up to here.
  */
 function RecordStatement({ summary, years }: { summary: LogSummary; years: number }) {
   if (summary.totalConfirmed === 0 || years === 0) return null;
@@ -115,7 +122,7 @@ function RecordStatement({ summary, years }: { summary: LogSummary; years: numbe
         <span className="num">{summary.totalConfirmed}</span> wins ·{' '}
         <span className="num">{years}</span> {years === 1 ? 'year' : 'years'} ·{' '}
         <span className="num">{summary.withEvidence}</span> with evidence — enough for a promotion
-        packet, a resume, and a negotiation dossier.
+        packet, a resume, and a negotiation dossier, on demand.
       </p>
     </div>
   );

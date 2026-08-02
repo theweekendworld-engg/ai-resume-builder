@@ -441,6 +441,57 @@ Not worth solving at this scale — but if Wave D runs agents in parallel again,
 
 ---
 
+## Wave D — the weekly ritual and Month in Review
+
+**Database isolation worked.** Each agent got its own migrated database (`resume_builder_d1`, `_d2`) after Wave C's phantom failures. Zero flaky runs this wave. The plan depended on an inline `DATABASE_URL` beating `.env.test` — verified before relying on it, because silent failure there would have put both agents back on one database while I believed otherwise.
+
+### D1 · weekly ritual — **accepted** (verified)
+
+~14 files. **1181 pass / 0 fail** on its own database.
+
+**The token security work is the strongest testing in the build.** `winTokens.ts` is the only unauthenticated write path in the product, and D1 treated it that way:
+- *Forgery* — tampered action (confirm body + dismiss signature), tampered win id, tampered root, wrong secret, truncated signature, unsigned payload, `a.b.c`, oversized input, `../../etc/passwd`, empty secret. All reject, all **indistinguishably**.
+- *Scope* — a validly-signed token for a Win not on that digest → `out_of_scope`; **another user's Win listed on the attacker's own digest → `win_missing`, victim's Win stays `draft`.**
+- *Blast radius* — a confirm leaves title, narrative, sensitivity, date and category untouched; the readable surface is five fields of one Win; no `ExtensionAccessToken` or `ChannelLinkToken` is mintable; `edit` writes nothing at all.
+- *Replay* — single-use, concurrent double-tap yields one `applied` + one `already_done` and exactly one Evidence row.
+
+**Double-fired cron proven at all three layers**, because each is a separate chance to double-send: schedule → one Job row; dispatch → at most one child per `(userId, weekStart)`; send → one email, one row, second returns `already_sent`. Plus a genuine `Promise.all` race arbitrated by the unique constraint.
+
+**Deviations accepted:** tokens are ~110 chars not 64, because both ids ride in the payload so verification needs **zero DB reads** — signature first, database second · expiry is derived server-side from `WeeklyDigest.createdAt` rather than signed, so **there is no expiry field for an attacker to extend** · `sendOne` claims `sentAt` *before* the provider call and releases on failure, choosing at-most-once because "exactly one digest" was the stated requirement.
+
+**Zero-signal behaviour is exactly right:** no email, row written with `skipped: true`, zero `EmailSend` rows. The nudge fires on the **third** consecutive quiet week, has a different subject, contains no confirm buttons, and marks `sentAt` while keeping `skipped: true` so it cannot repeat.
+
+### D2 · Month in Review — **accepted** (verified, plus a follow-up round)
+
+**136 pass / 0 fail** across its suites; 567 pass across the wider sweep.
+
+**The best reasoning of the wave.** D2 was told to *generate* the headline, mix sentence and observation. It computed them instead:
+
+> A *spelled-out* wrong count slips past the numeric guard, because "four of" is prose, not a measurement.
+
+The guard checks digits. "Four of eight wins were `improved`" is arithmetic the model was already handed — regenerating it as words creates a fabrication surface the guard **structurally cannot see**. Only the paragraph, the one block that genuinely needs prose, goes through the model. That reasoning generalises well beyond this feature.
+
+It also found a real hole in the **shared** guard from the outside: `enforceYears: false` means `"finished the 2019 replatform"` passes. D2's own digit check catches it.
+
+The observation is a priority-ordered rule set with **no default branch** — nothing fires, nothing prints. "Specific or absent" enforced structurally rather than hoped for.
+
+**Orchestrator follow-up:** D2 had stored the composed review in `Job.result` (correct given what existed, but not queryable and pruned by job retention, and a composed-but-unsent month rendered no paragraph). Added a `MonthlyReview` model — nullability mirroring D2's own design, `sentAt` null until the email sends — migrated all three databases, and sent D2 back to migrate onto it plus instrument the paragraph-drop path it had flagged as the one place the feature can quietly degrade. Both confirmed green.
+
+## Wave D integration gate — **PASSED** (2026-08-02)
+
+| Check | Result |
+|---|---|
+| `bunx tsc --noEmit` | **0 errors** |
+| `bun test` | **1182 pass, 24 skip, 0 fail** |
+| `bunx eslint src --quiet` | 0 errors |
+| All five grep gates | clean (only the three known pre-existing G2 violations) |
+
+**One real failure found and fixed — mine.** Registering `weekly_digest` broke A1's `registry.test.ts`, which asserted that kind was *not* yet registered. Rather than deleting the assertion I inverted it into something stronger: **every JobKind the cron can enqueue must have a handler.** A registered kind with no handler dies on `UnknownJobKindError` at run time, not build time, so that test is now the only thing between "we shipped a new job" and "it silently goes dead."
+
+**Orchestrator work this wave:** wired the proactive-downgrade sweep C4 couldn't reach (`jobs/` was outside its scope) · registered `month_in_review` and `weekly_digest` · added the `month_in_review` feature flag · fixed `/log?compose=1`, which D1 correctly reported as inert — the digest's "Add a win" link and the quiet-week nudge were dropping users on the log with nothing focused, a dead end at the exact moment they intended to write.
+
+---
+
 ## Open blockers
 
 | # | Blocker | Since | Impact |

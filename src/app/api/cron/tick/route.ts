@@ -22,6 +22,7 @@ import {
     verifyCronSecret,
 } from '@/lib/jobs/runner';
 import { registerAllHandlers } from '@/lib/jobs/registry';
+import { scheduleDigestWork } from '@/lib/jobs/handlers/weeklyDigest';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,23 @@ async function handleTick(req: NextRequest): Promise<NextResponse> {
     const budgetMs = resolveBudgetMs();
     const batchSize = resolveBatchSize();
 
+    // Derived scheduling (ADR-3). Only the FIRST tick of a chain schedules:
+    // a self-retrigger is the same hour continuing, and the hour-granular
+    // dedupe keys would no-op anyway — this just saves the queries.
+    //
+    // Enqueued before the drain on purpose, so this invocation drains what it
+    // just scheduled instead of leaving the digest an hour late.
+    let scheduled: Awaited<ReturnType<typeof scheduleDigestWork>> | null = null;
+    if (depth === 0) {
+        try {
+            scheduled = await scheduleDigestWork();
+        } catch (error: unknown) {
+            // Scheduling is additive. A failure here must not stop the drain,
+            // which is what recovers stuck jobs and retries dead letters.
+            console.error('[cron/tick] digest scheduling failed', error);
+        }
+    }
+
     let result;
     try {
         result = await drain(budgetMs, batchSize);
@@ -96,6 +114,7 @@ async function handleTick(req: NextRequest): Promise<NextResponse> {
         depth,
         maxDepth: MAX_CHAIN_DEPTH,
         retriggered,
+        scheduled,
         ...result,
     });
 }

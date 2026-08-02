@@ -20,6 +20,53 @@ const samples: { [K in TransactionalTemplateKey]: TransactionalTemplateData[K] }
     magic_link: { url: 'https://app.example.com/w/tok', expiresInMinutes: 15, requestedFrom: 'Chrome on macOS' },
     source_disconnected: { sourceName: 'GitHub', reconnectUrl: 'https://app.example.com/settings/sources' },
     packet_ready: { packetTitle: 'H1 promo packet', url: 'https://app.example.com/packets/1' },
+    weekly_digest: {
+        dateRange: 'Jul 25 – 31',
+        sendDateLabel: 'Friday, Jul 31',
+        wins: [
+            {
+                winId: 'win_1',
+                title: 'Cut checkout p95 latency 800ms → 180ms',
+                narrative: 'Rewrote the pricing lookup as a batched query with a read-through cache.',
+                provenance: 'PR #482 · patronus/api',
+                confirmUrl: 'https://app.example.com/w/tok-c',
+                editUrl: 'https://app.example.com/w/tok-e',
+                dismissUrl: 'https://app.example.com/w/tok-d',
+            },
+        ],
+        overflow: 7,
+        addWinUrl: 'https://app.example.com/log?compose=1&src=digest',
+        logUrl: 'https://app.example.com/log',
+        totalConfirmed: 14,
+        streakWeeks: 6,
+    },
+    digest_nudge: {
+        quietWeeks: 3,
+        replyUrl: 'https://app.example.com/log?compose=1&src=nudge',
+        sourcesUrl: 'https://app.example.com/settings/sources',
+    },
+    month_in_review: {
+        label: 'July 2026',
+        headline: '8 wins, 5 with hard numbers',
+        subject: 'July: 8 wins, 5 with numbers',
+        paragraph:
+            'July was your reliability month. The checkout latency work removed what had been the top support complaint for two quarters.',
+        mix: [
+            { category: 'shipped', count: 3 },
+            { category: 'improved', count: 4 },
+            { category: 'influenced', count: 1 },
+            { category: 'grew', count: 0 },
+        ],
+        mixSentence: 'Four of eight wins were `improved`. Only one was `influenced`, and none were `grew`.',
+        observation:
+            'None of your wins this month mention business impact — revenue, cost, or user numbers. For a Staff-level case that\'s usually required.',
+        receipt:
+            'This review drew on 8 wins from July, 5 with evidence. Your record now holds 74 wins — 12 of them from more than 90 days ago.',
+        winCount: 8,
+        reviewUrl: 'https://app.example.com/log/review/2026-07',
+        packetUrl: 'https://app.example.com/packets/new',
+        logUrl: 'https://app.example.com/log',
+    },
 };
 
 const keys = Object.keys(transactionalTemplates) as TransactionalTemplateKey[];

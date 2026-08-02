@@ -16,8 +16,26 @@ describe('registry', () => {
         expect(getHandler('noop')).toBe(noopHandler);
     });
 
-    test('unregistered kinds stay unregistered until their phase lands', () => {
-        expect(getHandler('weekly_digest')).toBeUndefined();
+    test('every kind the cron can enqueue has a handler', () => {
+        // A registered JobKind with no handler dies on UnknownJobKindError at
+        // run time, not at build time — so this assertion is the only thing
+        // standing between "we shipped a new job" and "it silently goes dead".
+        const wired: JobKind[] = [
+            'noop',
+            'embed_win',
+            'capture_sync',
+            'draft_wins',
+            'proactive_downgrade',
+            'month_in_review',
+            'weekly_digest',
+        ];
+        for (const kind of wired) {
+            expect(getHandler(kind)).toBeDefined();
+        }
+    });
+
+    test('kinds whose phase has not landed are still unregistered', () => {
+        expect(getHandler('email_send')).toBeUndefined();
     });
 });
 

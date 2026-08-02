@@ -117,3 +117,30 @@ export async function checkFunnelEventRateLimit(identifier: string): Promise<{ a
     const result = await limiter.limit(identifier);
     return { allowed: result.success };
 }
+
+let ratelimitWinToken: Ratelimit | null | undefined = undefined;
+
+function getWinTokenLimiter(): Ratelimit | null {
+    if (ratelimitWinToken !== undefined) return ratelimitWinToken;
+    const redis = getRedis();
+    ratelimitWinToken = redis
+        ? new Ratelimit({
+              redis,
+              // PRD 01 §9.3: 20 actions/minute per token root. A digest carries
+              // at most 15 buttons, so a real human never reaches this — it is
+              // there to bound what someone who scraped a root can do with it.
+              limiter: Ratelimit.slidingWindow(20, '1 m'),
+              analytics: true,
+          })
+        : null;
+    return ratelimitWinToken;
+}
+
+/** `identifier` is the digest token root, never the full signed token. */
+export async function checkWinTokenRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
+    const limiter = getWinTokenLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(`win-token:${identifier}`);
+    if (result.success) return { allowed: true };
+    return { allowed: false, error: 'Too many actions from this link. Try again in a minute.' };
+}

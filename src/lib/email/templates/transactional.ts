@@ -22,6 +22,13 @@ import {
     renderEmail,
     type EmailBlock,
 } from '../layout';
+import {
+    digestNudgeTemplate,
+    weeklyDigestTemplate,
+    type DigestNudgeData,
+    type WeeklyDigestData,
+} from './weeklyDigest';
+import { monthInReviewTemplate, type MonthInReviewEmailData } from './monthInReview';
 
 /** Maps 1:1 onto the boolean columns of EmailPreference, plus `transactional`. */
 export type EmailCategory =
@@ -104,6 +111,13 @@ export type TransactionalTemplateData = {
     magic_link: { url: string; expiresInMinutes?: number; requestedFrom?: string };
     source_disconnected: { sourceName: string; reconnectUrl: string };
     packet_ready: { packetTitle: string; url: string };
+    // Non-transactional templates that still go out through `sendEmail`, which
+    // is the only place preferences, List-Unsubscribe and EmailSend rows are
+    // handled. Their definitions live in their own files; only the registry
+    // entry belongs here.
+    weekly_digest: WeeklyDigestData;
+    digest_nudge: DigestNudgeData;
+    month_in_review: MonthInReviewEmailData;
 };
 
 export type TransactionalTemplateKey = keyof TransactionalTemplateData;
@@ -238,6 +252,9 @@ export const transactionalTemplates: {
     magic_link: magicLink,
     source_disconnected: sourceDisconnected,
     packet_ready: packetReady,
+    weekly_digest: weeklyDigestTemplate,
+    digest_nudge: digestNudgeTemplate,
+    month_in_review: monthInReviewTemplate,
 };
 
 export function getTransactionalTemplate<K extends TransactionalTemplateKey>(

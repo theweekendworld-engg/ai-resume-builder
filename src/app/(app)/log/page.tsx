@@ -23,7 +23,7 @@ export const metadata = {
 export default async function LogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ win?: string; scenario?: string }>;
+  searchParams: Promise<{ win?: string; scenario?: string; compose?: string }>;
 }) {
   // Flag-gated (ADR-7). The surface now reads and writes real data, so it stays
   // invisible until `work_log` is switched on — team first, then a cohort.
@@ -33,5 +33,15 @@ export default async function LogPage({
   const params = await searchParams;
   const snapshot = await loadLogSnapshot(parseScenario(params.scenario));
 
-  return <LogScreen snapshot={snapshot} now={logNow()} initialWinId={params.win ?? null} />;
+  return (
+    <LogScreen
+      snapshot={snapshot}
+      now={logNow()}
+      initialWinId={params.win ?? null}
+      // The digest's "Add a win" link and the quiet-week nudge land here.
+      // Without this they drop the user on the log with nothing focused,
+      // which is a dead end at the exact moment they intended to write.
+      initialCompose={params.compose === '1'}
+    />
+  );
 }

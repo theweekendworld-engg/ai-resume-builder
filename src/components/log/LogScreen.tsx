@@ -35,6 +35,8 @@ export interface LogScreenProps {
   now: Date;
   /** From `?win=<id>` — the deep link is a share affordance, not a route. */
   initialWinId: string | null;
+  /** Opens quick capture on first paint. Set by `/log?compose=1` from email. */
+  initialCompose?: boolean;
 }
 
 function byRecency(a: WinView, b: WinView): number {
@@ -62,7 +64,7 @@ function mergeWins(current: WinView[], incoming: WinView[]): WinView[] {
  * opens a dialog or navigates. The rest of the surface — filters, the rail,
  * the drawer — is what people use afterwards, and is laid out accordingly.
  */
-export function LogScreen({ snapshot, now, initialWinId }: LogScreenProps) {
+export function LogScreen({ snapshot, now, initialWinId, initialCompose = false }: LogScreenProps) {
   const router = useRouter();
 
   const [wins, setWins] = React.useState<WinView[]>(snapshot.page.items);
@@ -71,7 +73,7 @@ export function LogScreen({ snapshot, now, initialWinId }: LogScreenProps) {
   const [summary, setSummary] = React.useState(snapshot.summary);
   const [filters, setFilters] = React.useState<LogFilterState>(NO_FILTERS);
   const [openWinId, setOpenWinId] = React.useState<string | null>(initialWinId);
-  const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureOpen, setCaptureOpen] = React.useState(initialCompose);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [syncError, setSyncError] = React.useState<string | null>(
     snapshot.surface.sync.state === 'error' ? snapshot.surface.sync.message : null,
