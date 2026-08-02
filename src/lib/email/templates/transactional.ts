@@ -29,6 +29,7 @@ import {
     type WeeklyDigestData,
 } from './weeklyDigest';
 import { monthInReviewTemplate, type MonthInReviewEmailData } from './monthInReview';
+import { radarDigestTemplate, type RadarDigestEmailData } from './radarDigest';
 
 /** Maps 1:1 onto the boolean columns of EmailPreference, plus `transactional`. */
 export type EmailCategory =
@@ -118,6 +119,7 @@ export type TransactionalTemplateData = {
     weekly_digest: WeeklyDigestData;
     digest_nudge: DigestNudgeData;
     month_in_review: MonthInReviewEmailData;
+    radar_digest: RadarDigestEmailData;
 };
 
 export type TransactionalTemplateKey = keyof TransactionalTemplateData;
@@ -255,6 +257,7 @@ export const transactionalTemplates: {
     weekly_digest: weeklyDigestTemplate,
     digest_nudge: digestNudgeTemplate,
     month_in_review: monthInReviewTemplate,
+    radar_digest: radarDigestTemplate,
 };
 
 export function getTransactionalTemplate<K extends TransactionalTemplateKey>(

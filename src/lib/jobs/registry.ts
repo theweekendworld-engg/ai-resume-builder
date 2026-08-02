@@ -10,6 +10,7 @@
 import { registerHandler, registeredKinds } from './runner';
 import { ingestBoardHandler } from './handlers/ingestBoard';
 import { skillRollupHandler } from './handlers/skillRollup';
+import { radarSnapshotHandler } from './handlers/radarSnapshot';
 import type { JobKind } from './types';
 import { noopHandler } from './handlers/noop';
 import { embedWinHandler } from './handlers/embedWin';
@@ -35,6 +36,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('weekly_digest', weeklyDigestHandler);
     registerHandler('ingest_board', ingestBoardHandler);
     registerHandler('skill_rollup', skillRollupHandler);
+    registerHandler('radar_snapshot', radarSnapshotHandler);
     registerHandler('reconcile_qdrant', reconcileGraphHandler);
     // Later: email_send
     // Phase 4+: radar_snapshot, reconcile_qdrant

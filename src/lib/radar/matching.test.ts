@@ -94,13 +94,21 @@ describe('ranking', () => {
         expect(rankCandidates(many, input())).toHaveLength(MATCH_LIMIT);
     });
 
-    test('a posting with no matching skills still scores, but low', () => {
+    test('a posting matching nothing is not shown at all', () => {
+        // computeFitScore floors at 20, so a total mismatch still returns a
+        // number. Rendering it would tell someone "you'd likely win this" on
+        // zero evidence. An empty panel is the honest answer.
+        expect(rankCandidates([candidate({ skills: ['php', 'scala', 'elixir'] })], input())).toEqual([]);
+    });
+
+    test('a partial fit still surfaces — the bar is evidence, not perfection', () => {
         const [match] = rankCandidates(
-            [candidate({ skills: ['php', 'scala', 'elixir'] })],
+            [candidate({ skills: ['postgresql', 'kubernetes', 'php', 'scala'] })],
             input(),
         );
-        expect(match.fitScore).toBeLessThan(40);
-        expect(match.matched).toEqual([]);
+        expect(match).toBeDefined();
+        expect(match.matched).toContain('postgresql');
+        expect(match.missing).toContain('php');
     });
 });
 

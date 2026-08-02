@@ -19,6 +19,8 @@ import { prisma } from '@/lib/prisma';
  * Names are the ones the PRDs specify — do not rename without updating them.
  */
 export const SERVER_EVENTS = [
+    // Career Radar
+    'radar_viewed',
     // Work log — PRD 01 §11
     'win_drafted',
     'win_confirmed',

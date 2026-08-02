@@ -45,6 +45,28 @@ const samples: { [K in TransactionalTemplateKey]: TransactionalTemplateData[K] }
         replyUrl: 'https://app.example.com/log?compose=1&src=nudge',
         sourcesUrl: 'https://app.example.com/settings/sources',
     },
+    radar_digest: {
+        monthLabel: 'August',
+        roleLabel: 'Senior · software engineering',
+        geoLabel: 'sf bay',
+        band: {
+            kind: 'band' as const,
+            low: '$162k',
+            high: '$313k',
+            median: '$196k',
+            provenance: 'Based on 45 disclosed ranges, last 180 days.',
+        },
+        matches: [
+            {
+                title: 'Staff Software Engineer, API Platform',
+                company: 'Stripe',
+                url: 'https://boards.greenhouse.io/stripe/jobs/1',
+                pay: '$230k–$310k',
+            },
+        ],
+        skills: [{ label: 'Python', postingCount: 111, pay: '$245k–$339k' }],
+        radarUrl: 'https://app.example.com/radar',
+    },
     month_in_review: {
         label: 'July 2026',
         headline: '8 wins, 5 with hard numbers',

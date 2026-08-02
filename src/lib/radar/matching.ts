@@ -45,6 +45,17 @@ const RECENCY_WINDOW_DAYS = 30;
  */
 const MIN_SKILLS_FOR_MATCH = 3;
 
+/**
+ * A match must clear this to be shown at all.
+ *
+ * `computeFitScore` floors at 20, so a posting matching NOTHING still returns
+ * a number. Rendering that as a match tells someone "you'd likely win this"
+ * on zero evidence — the same unearned claim this product refuses to put in a
+ * resume. An empty matches panel is a real answer; five roles at the floor is
+ * a lie with a layout.
+ */
+const MIN_FIT_TO_SHOW = 35;
+
 export type MatchCandidate = {
     postingId: string;
     title: string;
@@ -200,6 +211,7 @@ export function rankCandidates(candidates: MatchCandidate[], input: MatchInput):
 
             return [{ posting, fitScore, matched: matchedRequired, missing: missingRequired, ageDays }];
         })
+        .filter((match) => match.fitScore >= MIN_FIT_TO_SHOW)
         .sort((a, b) => rank(b.fitScore, b.ageDays) - rank(a.fitScore, a.ageDays))
         .slice(0, MATCH_LIMIT);
 }
