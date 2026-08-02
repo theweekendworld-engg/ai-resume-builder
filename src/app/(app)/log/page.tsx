@@ -31,13 +31,19 @@ export default async function LogPage({
   if (!userId || !(await isEnabled(userId, 'work_log'))) notFound();
 
   const params = await searchParams;
-  const snapshot = await loadLogSnapshot(parseScenario(params.scenario));
+  const [snapshot, canConnectSources] = await Promise.all([
+    loadLogSnapshot(parseScenario(params.scenario)),
+    // `/settings/sources` 404s unless this is on, so the empty state has to
+    // know before it offers to send anyone there.
+    isEnabled(userId, 'github_capture'),
+  ]);
 
   return (
     <LogScreen
       snapshot={snapshot}
       now={logNow()}
       initialWinId={params.win ?? null}
+      canConnectSources={canConnectSources}
       // The digest's "Add a win" link and the quiet-week nudge land here.
       // Without this they drop the user on the log with nothing focused,
       // which is a dead end at the exact moment they intended to write.

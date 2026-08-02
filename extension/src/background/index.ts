@@ -1,5 +1,5 @@
 import { on } from './messageBus';
-import { setAuth, clearAuth, getAuthState, getToken } from './tokenStore';
+import { clearAuth, getAuthState, getToken } from './tokenStore';
 import {
     setPageModel,
     getPageModel,
@@ -61,16 +61,6 @@ async function getProfileBundle(): Promise<ProfileBackendBundle | null> {
 on('PING', async () => ({ ok: true, data: { pong: true } }));
 
 on('AUTH_GET', async () => ({ ok: true, data: await getAuthState() }));
-
-on('AUTH_HANDSHAKE', async (msg) => {
-    await setAuth({
-        token: msg.token,
-        userId: msg.userId,
-        email: msg.email,
-        expiresAt: msg.expiresAt,
-    });
-    return { ok: true, data: { stored: true } };
-});
 
 on('AUTH_CLEAR', async () => {
     await clearAuth();

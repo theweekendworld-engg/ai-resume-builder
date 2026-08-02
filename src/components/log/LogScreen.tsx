@@ -37,6 +37,15 @@ export interface LogScreenProps {
   initialWinId: string | null;
   /** Opens quick capture on first paint. Set by `/log?compose=1` from email. */
   initialCompose?: boolean;
+  /**
+   * Whether `/settings/sources` will actually render for this user.
+   *
+   * That page calls `notFound()` unless `github_capture` is on, so offering
+   * "Connect GitHub" without checking sends a brand-new user from the empty
+   * state straight into a 404 — on the first screen they ever see. When the
+   * connector is off, logging one manually IS the primary action.
+   */
+  canConnectSources?: boolean;
 }
 
 function byRecency(a: WinView, b: WinView): number {
@@ -64,7 +73,13 @@ function mergeWins(current: WinView[], incoming: WinView[]): WinView[] {
  * opens a dialog or navigates. The rest of the surface — filters, the rail,
  * the drawer — is what people use afterwards, and is laid out accordingly.
  */
-export function LogScreen({ snapshot, now, initialWinId, initialCompose = false }: LogScreenProps) {
+export function LogScreen({
+  snapshot,
+  now,
+  initialWinId,
+  initialCompose = false,
+  canConnectSources = false,
+}: LogScreenProps) {
   const router = useRouter();
 
   const [wins, setWins] = React.useState<WinView[]>(snapshot.page.items);
@@ -426,9 +441,21 @@ export function LogScreen({ snapshot, now, initialWinId, initialCompose = false 
             <EmptyState
               icon={Inbox}
               title="No wins yet"
-              description="Connect GitHub and we'll draft your last 90 days in about a minute."
-              action={{ label: 'Connect GitHub', href: '/settings/sources' }}
-              secondary={{ label: 'or log one manually', onClick: () => setCaptureOpen(true) }}
+              description={
+                canConnectSources
+                  ? "Connect GitHub and we'll draft your last 90 days in about a minute."
+                  : 'Start with one thing you shipped this week. It takes about a minute.'
+              }
+              action={
+                canConnectSources
+                  ? { label: 'Connect GitHub', href: '/settings/sources' }
+                  : { label: 'Log your first win', onClick: () => setCaptureOpen(true) }
+              }
+              secondary={
+                canConnectSources
+                  ? { label: 'or log one manually', onClick: () => setCaptureOpen(true) }
+                  : undefined
+              }
               samples={snapshot.samples.map(toWinRecord)}
             />
           ) : (

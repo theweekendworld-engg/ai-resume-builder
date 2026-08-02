@@ -71,7 +71,16 @@ export type DigestNudgeData = {
     quietWeeks: number;
     /** Goes straight to the compose box with the reply prefilled-empty. */
     replyUrl: string;
-    sourcesUrl: string;
+    /**
+     * Omitted when the connector is not available to this user.
+     *
+     * `/settings/sources` calls notFound() unless `github_capture` is on, so a
+     * "Connect a source" button sent unconditionally is a 404 in an email —
+     * the worst place for one, because the reader cannot see it is our fault.
+     * Absent also changes the copy: "quiet on your connected sources" is not a
+     * sentence you can write to someone who has none.
+     */
+    sourcesUrl?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -207,12 +216,16 @@ export const digestNudgeTemplate: TemplateDefinition<DigestNudgeData> = {
             blocks: [
                 heading('What did you work on?'),
                 paragraph(
-                    `Quiet ${data.quietWeeks === 1 ? 'week' : `${data.quietWeeks} weeks`} on your connected sources — which usually means the work moved somewhere they cannot see. Reviews, mentoring, design calls and unblocking other people never show up in a commit log.`,
+                    data.sourcesUrl
+                        ? `Quiet ${data.quietWeeks === 1 ? 'week' : `${data.quietWeeks} weeks`} on your connected sources — which usually means the work moved somewhere they cannot see. Reviews, mentoring, design calls and unblocking other people never show up in a commit log.`
+                        : `Quiet ${data.quietWeeks === 1 ? 'week' : `${data.quietWeeks} weeks`} in your log. The work that is hardest to remember later is usually the work that left no trace — reviews, mentoring, design calls, unblocking someone.`,
                 ),
                 paragraph("What's one thing you'd want your manager to know about?"),
                 buttonRow([
                     { label: 'Log it in one line', href: data.replyUrl },
-                    { label: 'Connect a source', href: data.sourcesUrl, variant: 'secondary' },
+                    ...(data.sourcesUrl
+                        ? [{ label: 'Connect a source', href: data.sourcesUrl, variant: 'secondary' as const }]
+                        : []),
                 ]),
                 divider(),
                 paragraph(

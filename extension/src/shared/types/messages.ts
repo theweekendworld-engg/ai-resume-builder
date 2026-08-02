@@ -185,7 +185,6 @@ export type GenerationSessionWire = {
 export type Message =
     | { type: 'PING' }
     | { type: 'AUTH_GET' }
-    | { type: 'AUTH_HANDSHAKE'; token: string; userId: string; email?: string; expiresAt: string }
     | { type: 'AUTH_CLEAR' }
     | { type: 'CONNECT_START' }
     | { type: 'CONNECT_CANCEL' }

@@ -884,6 +884,10 @@ async function sendNudge(
     if (claim.count === 0) return { skipped: 'no_signals', quietWeeks: input.quietWeeks, nudge: 'already_sent' };
 
     const appUrl = getAppUrl();
+    // Only offer the connector to someone who can actually reach it — the page
+    // 404s when the flag is off, and a dead button in an email reads as a
+    // broken product rather than an unreleased feature.
+    const canConnectSources = await isEnabled(input.userId, 'github_capture');
     const result = await sendEmail({
         userId: input.userId,
         to,
@@ -891,7 +895,7 @@ async function sendNudge(
         data: {
             quietWeeks: input.quietWeeks,
             replyUrl: `${appUrl}/log?compose=1&src=nudge`,
-            sourcesUrl: `${appUrl}/settings/sources`,
+            ...(canConnectSources ? { sourcesUrl: `${appUrl}/settings/sources` } : {}),
         },
         idempotencyKey: `digest_nudge:${input.digest.id}`,
     });

@@ -180,6 +180,37 @@ describe('welcome template', () => {
     });
 });
 
+describe('digest_nudge template', () => {
+    const nudge = (sourcesUrl?: string) =>
+        transactionalTemplates.digest_nudge.render(
+            { quietWeeks: 3, replyUrl: 'https://app.example.com/log?compose=1&src=nudge', sourcesUrl },
+            ctx
+        );
+
+    test('offers the connector when the user can reach it', () => {
+        const rendered = nudge('https://app.example.com/settings/sources');
+        expect(rendered.html).toContain('/settings/sources');
+        expect(rendered.text).toContain('connected sources');
+    });
+
+    test('omits the connector button when the page would 404', () => {
+        // `/settings/sources` calls notFound() unless `github_capture` is on.
+        // A dead button in an email is the worst kind — the reader cannot see
+        // that the feature is unreleased rather than broken.
+        const rendered = nudge(undefined);
+        expect(rendered.html).not.toContain('/settings/sources');
+        expect(rendered.text).not.toContain('Connect a source');
+    });
+
+    test('and stops claiming the user has sources', () => {
+        // "quiet on your connected sources" is not a sentence you can send to
+        // someone who has none.
+        const rendered = nudge(undefined);
+        expect(rendered.text).not.toContain('connected sources');
+        expect(rendered.text).toContain('Quiet 3 weeks in your log');
+    });
+});
+
 describe('magic_link template', () => {
     test('states the expiry in the subject line preview and the body', () => {
         const rendered = transactionalTemplates.magic_link.render({ url: 'https://app.example.com/w/t' }, ctx);
