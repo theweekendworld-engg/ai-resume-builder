@@ -158,6 +158,30 @@ export type SavedAnswerWire = {
     updatedAt: string;
 };
 
+/**
+ * A resume-tailoring run, as reported by the backend.
+ *
+ * Generation is asynchronous and can take tens of seconds, so the panel starts
+ * a run and then polls this shape until it reaches a terminal status.
+ */
+export type GenerationSessionWire = {
+    id: string;
+    status: 'pending' | 'awaiting_clarification' | 'generating' | 'completed' | 'failed';
+    currentStep: string;
+    stageLabel: string;
+    progressPercent: number;
+    atsScore?: number | null;
+    errorMessage?: string | null;
+    resumeId?: string | null;
+    editorUrl?: string;
+    pdfId?: string;
+    pdfUrl?: string;
+    elapsedMs: number;
+    startedAt: string;
+    updatedAt: string;
+    completedAt?: string | null;
+};
+
 export type Message =
     | { type: 'PING' }
     | { type: 'AUTH_GET' }
@@ -174,6 +198,15 @@ export type Message =
     | { type: 'BIND_WORKSPACE'; tabId: number; workspaceId: string }
     | { type: 'GET_PROFILE' }
     | { type: 'LIST_WORKSPACES' }
+    | {
+          type: 'TAILOR_START';
+          jobDescription?: string;
+          companyName?: string;
+          roleTitle?: string;
+          sourceUrl?: string;
+          workspaceId?: string;
+      }
+    | { type: 'TAILOR_STATUS'; sessionId: string }
     | { type: 'LIST_ANSWERS' }
     | { type: 'UPDATE_ANSWER'; answerId: string; answerText?: string; autoUse?: boolean }
     | { type: 'DELETE_ANSWER'; answerId: string }

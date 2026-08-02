@@ -12,7 +12,11 @@ import { reconcileSessionOnPageUpdate, getSession, bindWorkspace } from './sessi
 import { startConnectFlow, cancelConnectFlow, pollConnectOnce } from './connect';
 import { buildFillPlan } from '@/fill/planner';
 import type { ResolvedProfileBundle } from '@/fill/valueResolver';
-import type { SavedAnswerWire, WorkspaceListItemWire } from '@/shared/types/messages';
+import type {
+    GenerationSessionWire,
+    SavedAnswerWire,
+    WorkspaceListItemWire,
+} from '@/shared/types/messages';
 
 type ProfileBackendBundle = {
     profile?: {
@@ -471,6 +475,74 @@ on('DELETE_ANSWER', async (msg) => {
         return { ok: true, data: { deletedId: msg.answerId } };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'delete_error' };
+    }
+});
+
+// ─────────────────────────────────────────────────── resume tailoring
+//
+// The backend for this has existed and been fully metered for a while; what
+// was missing was any way to reach it from the extension. Generation is
+// asynchronous and can run for tens of seconds, so the panel starts a run and
+// polls — the service worker deliberately holds no timer of its own, because
+// an MV3 worker can be evicted mid-run and a poll loop living here would
+// vanish with it. The panel owns the clock.
+
+on('TAILOR_START', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/resume/generate`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                ...(msg.jobDescription ? { jobDescription: msg.jobDescription } : {}),
+                ...(msg.companyName ? { companyName: msg.companyName } : {}),
+                ...(msg.roleTitle ? { roleTitle: msg.roleTitle } : {}),
+                ...(msg.sourceUrl ? { sourceUrl: msg.sourceUrl } : {}),
+                ...(msg.workspaceId ? { workspaceId: msg.workspaceId } : {}),
+            }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            session?: GenerationSessionWire;
+            error?: string;
+            paywall?: unknown;
+        };
+
+        if (!res.ok) {
+            // A quota refusal is a product state, not a transport failure, so
+            // it is surfaced with its own code and the server's own wording
+            // rather than collapsed into a generic error.
+            if (res.status === 402 || json.paywall) {
+                return { ok: false, error: `paywall:${json.error ?? 'Upgrade required'}` };
+            }
+            return { ok: false, error: json.error ?? `tailor_failed_${res.status}` };
+        }
+        return { ok: true, data: { session: json.session } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'tailor_error' };
+    }
+});
+
+on('TAILOR_STATUS', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(
+            `${base}/api/extension/generate/${encodeURIComponent(msg.sessionId)}/status`,
+            { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) return { ok: false, error: `status_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; session?: GenerationSessionWire };
+        return { ok: true, data: { session: json.session } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'status_error' };
     }
 });
 

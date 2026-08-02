@@ -11,9 +11,9 @@ import {
 import { FieldRow } from '../components/FieldRow';
 import { FillUndoToast } from '../components/FillUndoToast';
 import { QuestionsCard } from '../components/QuestionsCard';
+import { useAppBaseUrl } from '../hooks/useAppBaseUrl';
 import { trackExtensionEvent } from '@/shared/lib/telemetry';
 
-const APP_BASE_DEFAULT = 'http://localhost:3000';
 
 const BAND_STYLES = {
     high: 'border-success/40 bg-success/10 text-success',
@@ -22,6 +22,7 @@ const BAND_STYLES = {
 } as const;
 
 export function ApplyRoute() {
+    const appBase = useAppBaseUrl();
     const { state, reparse } = usePageContext();
     const session = useSession();
     const completeness = useProfileCompleteness();
@@ -123,7 +124,7 @@ export function ApplyRoute() {
 
     return (
         <div className="space-y-3">
-            <ProfileCompletenessBanner appBase={APP_BASE_DEFAULT} />
+            <ProfileCompletenessBanner appBase={appBase} />
 
             <section className="card p-3">
                 <div className="mb-1 flex items-center justify-between gap-2">

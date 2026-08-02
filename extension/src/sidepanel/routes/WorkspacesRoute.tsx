@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Inbox, ExternalLink, FileText, RefreshCw } from 'lucide-react';
 import { cn } from '@/shared/ui/cn';
 import { request } from '@/background/messageBus';
+import { useAppBaseUrl } from '../hooks/useAppBaseUrl';
 import type { WorkspaceListItemWire, WorkspaceListResult } from '@/shared/types/messages';
-
-const APP_BASE_DEFAULT = 'http://localhost:3000';
 
 const STATUS_STYLES: Record<string, string> = {
     discovered: 'border-border bg-muted text-muted-foreground',
@@ -32,6 +31,7 @@ function formatWhen(iso: string) {
 }
 
 export function WorkspacesRoute() {
+    const appBase = useAppBaseUrl();
     const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'unauthenticated'>('loading');
     const [workspaces, setWorkspaces] = useState<WorkspaceListItemWire[]>([]);
 
@@ -161,7 +161,7 @@ export function WorkspacesRoute() {
                             ) : null}
                             {workspace.selectedResumeId ? (
                                 <a
-                                    href={`${APP_BASE_DEFAULT}/editor/${workspace.selectedResumeId}`}
+                                    href={`${appBase}/editor/${workspace.selectedResumeId}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="btn-ghost text-xs"

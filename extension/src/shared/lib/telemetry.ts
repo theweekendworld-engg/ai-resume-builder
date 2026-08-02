@@ -24,7 +24,14 @@ export type ExtensionEventType =
     | 'answers.opened'
     | 'answers.auto_use_toggled'
     | 'answers.edited'
-    | 'answers.deleted';
+    | 'answers.deleted'
+    // Tailoring is the metered feature the Search tier sells, so `paywalled`
+    // is as important to measure as `finished`: it counts people who wanted it
+    // and hit the wall.
+    | 'tailor.started'
+    | 'tailor.finished'
+    | 'tailor.paywalled'
+    | 'tailor.pdf_opened';
 
 type EventEnvelope = {
     type: ExtensionEventType;
