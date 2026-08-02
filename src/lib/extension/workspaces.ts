@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { ApplicationStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type {
   ExtensionWorkspaceResponse,
@@ -26,10 +26,14 @@ function chooseString(nextValue?: string | null, currentValue?: string | null) {
   return currentValue ?? null;
 }
 
-function chooseStatus(nextStatus?: string | null, currentStatus?: string | null) {
+function chooseStatus(nextStatus?: string | null, currentStatus?: string | null): ApplicationStatus {
   const nextRank = STATUS_RANK[nextStatus ?? ''] ?? -1;
   const currentRank = STATUS_RANK[currentStatus ?? ''] ?? -1;
-  return nextRank >= currentRank ? (nextStatus ?? currentStatus ?? 'discovered') : (currentStatus ?? 'discovered');
+  const chosen = nextRank >= currentRank
+    ? (nextStatus ?? currentStatus ?? 'discovered')
+    : (currentStatus ?? 'discovered');
+  // STATUS_RANK keys are all valid ApplicationStatus members; default covers the rest.
+  return (chosen in ApplicationStatus ? chosen : 'discovered') as ApplicationStatus;
 }
 
 async function formatWorkspaceSnapshot(workspaceId: string): Promise<ExtensionWorkspaceSnapshot> {
@@ -196,6 +200,66 @@ export async function upsertExtensionWorkspace(params: {
     success: true,
     workspace: await formatWorkspaceSnapshot(created.id),
     matchedBy: 'created',
+  };
+}
+
+export type ExtensionWorkspaceListItem = {
+  id: string;
+  sourceUrl: string;
+  sourcePlatform: string | null;
+  companyName: string | null;
+  roleTitle: string | null;
+  location: string | null;
+  applicationStatus: ApplicationStatus;
+  fitScore: number | null;
+  questionCount: number;
+  answeredQuestionCount: number;
+  selectedResumeId: string | null;
+  updatedAt: string;
+  createdAt: string;
+};
+
+export type ExtensionWorkspaceListResponse = {
+  success: boolean;
+  workspaces: ExtensionWorkspaceListItem[];
+};
+
+/**
+ * List the user's application workspaces for the extension inbox. Mirrors the
+ * web dashboard's `listApplicationWorkspaces` (src/actions/dashboard.ts) but
+ * scoped to extension auth and serialized with ISO date strings.
+ */
+export async function listExtensionWorkspaces(params: {
+  userId: string;
+  limit?: number;
+}): Promise<ExtensionWorkspaceListResponse> {
+  const workspaces = await prisma.applicationWorkspace.findMany({
+    where: { userId: params.userId },
+    orderBy: { updatedAt: 'desc' },
+    take: Math.min(Math.max(params.limit ?? 25, 1), 100),
+    include: {
+      _count: { select: { questions: true } },
+      questions: { select: { finalAnswer: true } },
+    },
+  });
+
+  return {
+    success: true,
+    workspaces: workspaces.map((workspace) => ({
+      id: workspace.id,
+      sourceUrl: workspace.sourceUrl,
+      sourcePlatform: workspace.sourcePlatform,
+      companyName: workspace.companyName,
+      roleTitle: workspace.roleTitle,
+      location: workspace.location,
+      applicationStatus: workspace.applicationStatus,
+      fitScore: workspace.fitScore,
+      questionCount: workspace._count.questions,
+      answeredQuestionCount: workspace.questions.filter((q) => Boolean(q.finalAnswer?.trim())).length,
+      selectedResumeId: workspace.selectedResumeId,
+      updatedAt: workspace.updatedAt.toISOString(),
+      createdAt: workspace.createdAt.toISOString(),
+    })),
   };
 }
 

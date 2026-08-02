@@ -17,6 +17,8 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/v1(.*)',
     '/api/telegram/webhook',
     '/api/telegram/process',
+    // Stripe webhook is authenticated by signature, not a Clerk session.
+    '/api/stripe/webhook',
 ]);
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -60,7 +62,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process') && !pathname.startsWith('/api/stripe/webhook');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }
