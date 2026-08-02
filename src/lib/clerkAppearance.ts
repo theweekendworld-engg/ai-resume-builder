@@ -1,19 +1,35 @@
+/**
+ * Clerk's palette, bound to the app's theme tokens.
+ *
+ * These were eight hardcoded dark hexes, and because `ClerkProvider` carries
+ * this appearance in the ROOT layout, that palette shipped on every page. Once
+ * the authenticated app defaulted to light, the result was a widget split down
+ * the middle: `variables` painted a navy card with near-white text, while the
+ * `elements` map below overrode *some* nodes with semantic classes that
+ * correctly flipped light — near-white text on a near-white card, across every
+ * UserButton, both auth pages and the whole UserProfile.
+ *
+ * Clerk accepts any valid CSS color string, so `hsl(var(--token))` resolves at
+ * paint time against whichever theme is active. One source of truth, and the
+ * widget can no longer disagree with the page it sits on.
+ */
 const clerkSharedVariables = {
   variables: {
-    // Use explicit colors for Clerk token generation to avoid low-contrast derived shades.
-    colorPrimary: '#8fc9ff',
-    colorPrimaryForeground: '#081526',
-    colorForeground: '#edf2fa',
-    colorMutedForeground: '#aab6c9',
-    colorMuted: '#1a2334',
-    colorNeutral: '#a5b3c9',
-    colorBackground: '#121a28',
-    colorInput: '#1a2334',
-    colorInputForeground: '#edf2fa',
-    colorBorder: '#2b364b',
-    colorRing: '#8fc9ff',
-    borderRadius: '0.625rem',
-    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    colorPrimary: 'hsl(var(--primary))',
+    colorPrimaryForeground: 'hsl(var(--primary-foreground))',
+    colorForeground: 'hsl(var(--foreground))',
+    colorMutedForeground: 'hsl(var(--muted-foreground))',
+    colorMuted: 'hsl(var(--muted))',
+    colorNeutral: 'hsl(var(--muted-foreground))',
+    colorBackground: 'hsl(var(--card))',
+    colorInput: 'hsl(var(--input))',
+    colorInputForeground: 'hsl(var(--foreground))',
+    colorBorder: 'hsl(var(--border))',
+    colorRing: 'hsl(var(--ring))',
+    borderRadius: 'var(--radius)',
+    // next/font hashes the family name, so the literal "Inter" no longer
+    // resolves and this silently fell back to system-ui.
+    fontFamily: 'var(--font-inter), -apple-system, BlinkMacSystemFont, sans-serif',
   },
 } as const;
 
