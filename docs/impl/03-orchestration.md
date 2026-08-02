@@ -180,6 +180,24 @@ grep -rn "backdrop-blur" src/components/patterns src/components/log
 grep -rn "surface-work" src/components | grep -E "ring-2|ring-ring"
 ```
 
+**Gate 0 — does a clean checkout compile?** Run this *before* the others, because everything below it type-checks the working tree, and a green working tree says nothing about what a clone gets:
+
+```bash
+TMP=$(mktemp -d); git archive HEAD | tar -x -C "$TMP"
+ln -s "$PWD/node_modules" "$TMP/node_modules"
+(cd "$TMP" && bunx tsc --noEmit 2>&1 | grep -E "error TS" | grep -v "^extension/")
+```
+
+**This gate was missing for four waves and the tree was unbuildable the whole time.** `src/lib/groundState.ts` was imported by committed code from Wave A onward and never added; `src/services/claimGrounding.ts` the same from Wave C. Every gate passed, every suite was green, and nobody could have cloned the repo and built it. The failure mode is specific to this workflow: agents create files, the orchestrator stages a hand-written path list, and anything omitted stays invisible because it is still sitting in the working tree.
+
+Cheaper partial check when a full extract is overkill — every untracked file that committed code imports:
+```bash
+git status --short | grep '^??' | awk '{print $2}' | while read -r f; do
+  base=$(basename "$f" | sed 's/\.[tj]sx\?$//')
+  git grep -l "/$base'" HEAD -- 'src/*' >/dev/null 2>&1 && echo "UNCOMMITTED BUT IMPORTED: $f"
+done
+```
+
 **Gate 2's history is the lesson:** it passed clean through two full waves while `resumeAgent.ts` sat there calling the model directly. A gate that only checks the pattern you happened to think of is a gate that reports success. When an agent reports a rule violation the gate missed, widen the gate in the same pass.
 
 ---

@@ -50,6 +50,18 @@ grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiO
 
 ---
 
+## Before you commit
+
+**Type-check a clean checkout, not the working tree.** They are different questions, and only one of them is what a clone gets.
+
+```bash
+TMP=$(mktemp -d); git archive HEAD | tar -x -C "$TMP"
+ln -s "$PWD/node_modules" "$TMP/node_modules"
+(cd "$TMP" && bunx tsc --noEmit | grep -v "^extension/")
+```
+
+Four waves shipped with the tree unbuildable because `groundState.ts` and `claimGrounding.ts` were imported by committed code and never added. `bunx tsc --noEmit` passed every time — it was reading files that existed locally and nowhere else.
+
 ## Invariants
 
 - **Fail closed on truth.** A claim that cannot be positively grounded resolves to `needs_confirmation`, never `grounded`. Errors and timeouts resolve *down*.
