@@ -24,6 +24,7 @@
  */
 
 import { MissionStepKind, MissionType } from '@prisma/client';
+import type { PlanFeature } from '@/lib/plans';
 import type { ServerEvent } from '@/lib/track';
 
 /**
@@ -374,3 +375,38 @@ export function nonManualRatio(template: MissionTemplate): number {
     const nonManual = template.steps.filter((step) => step.condition.kind !== 'attested').length;
     return nonManual / template.steps.length;
 }
+
+/**
+ * Entitlements (§8), expressed as the capability each mission actually uses.
+ *
+ * Deliberately NOT a new set of `mission_*` plan features. §8's table lines up
+ * exactly with capabilities the plan model already gates — M1 and M5 run on
+ * rubrics and readiness, M3 on Radar, M2 on apply orchestration — so the gate
+ * is "you need the thing this mission is made of", not a second entitlement
+ * vocabulary that could drift out of step with the first.
+ *
+ * `null` means no gate: M7 is the resting state and every user has it from day
+ * one, which is the Career tier expressed as a process.
+ */
+export const MISSION_FEATURE: Record<BuiltMissionType, PlanFeature | null> = {
+    [MissionType.get_promoted]: 'rubric_mapping',
+    [MissionType.ic_to_manager]: 'rubric_mapping',
+    [MissionType.switch_domain]: 'radar_full',
+    [MissionType.return_from_break]: 'log_history_unlimited',
+    [MissionType.land_new_role]: 'apply_orchestration',
+    [MissionType.keep_warm]: null,
+};
+
+/**
+ * The outcome vocabulary (§2 rule 4).
+ *
+ * Plain words, and no scoring — a mission is not graded. "not_yet" sits level
+ * with "achieved" on purpose: it is the honest answer at the highest-intent
+ * moment in the product, and a vocabulary that made it read as the losing
+ * option would corrupt the one dataset this whole mechanic exists to build.
+ *
+ * Lives here rather than beside the action because a `'use server'` module may
+ * only export async functions — a const array in one is a build error.
+ */
+export const MISSION_RESULTS = ['achieved', 'not_yet', 'changed_course'] as const;
+export type MissionResult = (typeof MISSION_RESULTS)[number];

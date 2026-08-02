@@ -20,6 +20,7 @@ export const FEATURE_FLAGS = [
     'month_in_review',
     'backfill',
     'career_radar',
+    'missions',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];
