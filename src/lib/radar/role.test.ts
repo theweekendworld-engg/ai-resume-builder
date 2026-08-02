@@ -65,10 +65,20 @@ describe('seniority — IC ladder', () => {
 });
 
 describe('seniority — the regression itself', () => {
-    test('an unmarked title is unknown, NEVER mid', () => {
-        // This single assertion is the whole point of the module.
-        expect(classifySeniority('Software Engineer')).toBe('unknown');
-        expect(classifySeniority('AI Engineer - FDE (Forward Deployed Engineer)')).toBe('unknown');
+    test('an unlevelled IC title resolves to mid, the industry baseline', () => {
+        // Safe only because the management guards run first — this line is
+        // reached having already ruled out director/manager/staff/senior.
+        expect(classifySeniority('Software Engineer')).toBe('mid');
+        expect(classifySeniority('Product Designer')).toBe('mid');
+        expect(classifySeniority('Account Executive, Enterprise')).toBe('mid');
+    });
+
+    test('but a MANAGEMENT title never reaches that default', () => {
+        // The regression the default was originally blamed for. The guard,
+        // not the default, is what prevents it.
+        expect(classifySeniority('Director of Engineering')).not.toBe('mid');
+        expect(classifySeniority('Engineering Manager - Backend')).not.toBe('mid');
+        expect(classifySeniority('Head of Design')).not.toBe('mid');
     });
 
     test('unknown is excluded from bands', () => {
@@ -119,8 +129,14 @@ describe('normalizeRole — the band key', () => {
             .toBe(normalizeRole('Staff Software Engineer', 'nyc').bandKey);
     });
 
-    test('an unknown seniority yields no key, so it cannot enter a band', () => {
-        expect(normalizeRole('Software Engineer', 'us_remote').bandKey).toBeNull();
+    test('an unlevelled but recognisable role does get a key', () => {
+        // Two readable signals — family and (defaulted) seniority — is the bar.
+        expect(normalizeRole('Software Engineer', 'us_remote').bandKey)
+            .toBe('software_engineering::mid::us_remote');
+    });
+
+    test('an intern posting still yields no key — different pay instrument', () => {
+        expect(normalizeRole('Software Engineering Intern', 'us_remote').bandKey).toBeNull();
     });
 
     test('an unknown family yields no key', () => {

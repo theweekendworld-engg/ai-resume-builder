@@ -1206,6 +1206,16 @@ model JobPosting {
   /// Normalised skill slugs from the requirements, for SkillSignal rollup.
   skills Json @default("[]")
 
+  /// Role classification, computed once at ingest so a band query is an index
+  /// scan rather than a re-classification of every row on every read.
+  roleFamily String?
+  seniority  String?
+  /// `family::seniority::geo`. NULL when the posting must never enter a
+  /// published band — an unclassifiable title, or an intern posting. Storing
+  /// the exclusion as a NULL rather than leaving it to a runtime check means a
+  /// future caller writing its own query cannot forget it.
+  bandKey    String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1213,7 +1223,7 @@ model JobPosting {
 
   @@unique([sourceId, externalId])
   /// The band query: eligible rows for a geo, recent first.
-  @@index([compBandEligible, geoBucket, postedAt])
+  @@index([bandKey, compBandEligible, postedAt])
   @@index([sourceId, closedAt])
 }
 

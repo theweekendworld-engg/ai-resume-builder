@@ -8,6 +8,7 @@
  */
 
 import { registerHandler, registeredKinds } from './runner';
+import { ingestBoardHandler } from './handlers/ingestBoard';
 import type { JobKind } from './types';
 import { noopHandler } from './handlers/noop';
 import { embedWinHandler } from './handlers/embedWin';
@@ -31,6 +32,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('proactive_downgrade', proactiveDowngradeHandler);
     registerHandler('month_in_review', monthInReviewHandler);
     registerHandler('weekly_digest', weeklyDigestHandler);
+    registerHandler('ingest_board', ingestBoardHandler);
     registerHandler('reconcile_qdrant', reconcileGraphHandler);
     // Later: email_send
     // Phase 4+: radar_snapshot, reconcile_qdrant

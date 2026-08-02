@@ -102,8 +102,28 @@ export function classifySeniority(title: string): Seniority {
     if (JUNIOR.test(t)) return 'junior';
     if (EXPLICIT_MID.test(t)) return 'mid';
 
-    // Deliberately NOT 'mid'. See the module comment.
-    return 'unknown';
+    /*
+     * Nothing matched. This is the case the module comment warns about, and
+     * the resolution is narrower than it first appears.
+     *
+     * The original danger was management titles landing in the mid bucket —
+     * "Director of Engineering" and "Engineering Manager" say neither "senior"
+     * nor "staff", so a blanket default swept them in and published a mid
+     * median above the senior one. That danger is now handled ABOVE, by
+     * DIRECTOR_PLUS and MANAGER, which run before this line is ever reached.
+     *
+     * What is left here is a title carrying no level word at all — "Product
+     * Designer", "Account Executive", "Data Scientist". In industry naming an
+     * unmodified title IS the baseline level, so treating it as unknown is not
+     * caution, it is discarding evidence: it excluded 62% of real postings,
+     * including plenty of ordinary mid-level roles.
+     *
+     * So an unlevelled title resolves to `mid`, and `unknown` is reserved for
+     * the case where we cannot even name the role family (handled in
+     * `normalizeRole`, which requires BOTH a family and a seniority). Two
+     * independent signals must be readable before a posting enters a band.
+     */
+    return 'mid';
 }
 
 export function classifyFamily(title: string): RoleFamily {
