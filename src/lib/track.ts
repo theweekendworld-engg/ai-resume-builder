@@ -97,6 +97,19 @@ export const SERVER_EVENTS = [
     'cancel_flow_completed',
     'data_exported',
 
+    // Resume generation. The primary generation path emitted NOTHING until
+    // Missions needed to know it had happened — the one funnel step with no
+    // event was the one the product is named after.
+    'resume_generated',
+
+    // Missions — PRD 05 §7
+    'mission_started',
+    'mission_step_completed',
+    'mission_paused',
+    'mission_resumed',
+    'mission_completed',
+    'mission_abandoned',
+
     // AI safety — PRD 08 §5
     'ai_guard_violation',
 ] as const;

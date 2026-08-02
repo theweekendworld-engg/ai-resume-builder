@@ -1284,3 +1284,105 @@ model OfferDataPoint {
   @@index([roleTitle, geoBucket, offeredAt])
   @@index([userId])
 }
+
+// ═══════════════════════════════════════════════════ Missions (PRD 05)
+//
+// A Mission is a goal the user commits to, decomposed into steps that consume
+// and enrich the graph, with a completion condition and a recorded outcome.
+//
+// Templates live in code (`src/lib/missions/catalog.ts`), never here.
+// Instantiating a mission COPIES the template into MissionStep rows, so
+// shipping a changed template can never mutate someone's in-flight mission.
+
+enum MissionType {
+  get_promoted
+  land_new_role
+  switch_domain
+  negotiate_offer
+  ic_to_manager
+  return_from_break
+  keep_warm
+}
+
+enum MissionStatus {
+  proposed
+  active
+  paused
+  completed
+  abandoned
+}
+
+enum MissionStepStatus {
+  pending
+  active
+  done
+  skipped
+  blocked
+}
+
+enum MissionStepKind {
+  automatic
+  threshold
+  attested
+}
+
+model Mission {
+  id     String        @id @default(cuid())
+  userId String
+  type   MissionType
+  status MissionStatus @default(proposed)
+
+  /// User-editable — "Staff by March", not the catalog's generic label.
+  title      String
+  targetDate DateTime?
+
+  /// targetLevel, frameworkId, weeklyApplicationTarget, … — per-type config
+  /// the catalog reads when instantiating and the evaluator reads when
+  /// scoring thresholds.
+  config Json @default("{}")
+
+  startedAt   DateTime?
+  pausedAt    DateTime?
+  completedAt DateTime?
+
+  /// {result, reportedAt, note, compDelta?} — §2 rule 4: completion ALWAYS
+  /// asks "did you get it?". This column is the outcome dataset.
+  outcome Json?
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  steps     MissionStep[]
+
+  @@index([userId, status, updatedAt])
+}
+
+model MissionStep {
+  id        String @id @default(cuid())
+  missionId String
+
+  /// Stable identifier from the template, e.g. 'close_gap'. Survives a title
+  /// change, which is why progress keys off it and not the label.
+  key   String
+  title String
+  order Int
+
+  kind   MissionStepKind
+  status MissionStepStatus @default(pending)
+
+  /// {event} for automatic, {query, threshold} for threshold, {} for attested.
+  condition Json @default("{}")
+
+  /// {current, target} — DERIVED. §6.1: never incremented by an event handler,
+  /// always recomputed by `evaluateMission`. Stored only so the UI can render
+  /// without re-running the evaluator.
+  progress Json @default("{}")
+
+  dueAt         DateTime?
+  completedAt   DateTime?
+  blockedReason String?
+
+  mission Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@unique([missionId, key])
+  @@index([missionId, order])
+}

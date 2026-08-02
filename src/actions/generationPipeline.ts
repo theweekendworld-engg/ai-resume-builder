@@ -18,6 +18,7 @@ import {
 } from '@/lib/resumeIdentity';
 import { generateLatexFromResume, type LatexTemplateType } from '@/templates/latex';
 import { logUsageEvent } from '@/lib/usageTracker';
+import { track } from '@/lib/track';
 import type { ResumeData } from '@/types/resume';
 
 type RunGenerationOptions = {
@@ -711,6 +712,15 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         totalTokensUsed: totals.totalTokensUsed,
         totalCostUsd: totals.totalCostUsd,
       },
+    });
+
+    // The primary generation path had no telemetry at all. Missions needs it
+    // to auto-complete "refresh your resume", and the funnel wanted it anyway.
+    await track(session.userId, 'resume_generated', {
+      feature: 'resume',
+      sessionId: session.id,
+      reused: false,
+      atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? null,
     });
 
     return {
