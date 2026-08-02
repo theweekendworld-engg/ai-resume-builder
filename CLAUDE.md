@@ -39,9 +39,12 @@ grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiO
   | grep -vE ":[0-9]+:import type "
 ```
 
-**Known violations, all pre-dating the rule — do not copy these patterns:**
-- `src/agents/resumeAgent.ts` — uses `generateText` + `aiOpenAI(config.openai.models.general)`. **No numeric guard, no per-feature cost tag, no retry policy.** Any new agent must follow `src/agents/tools/backfill.ts` instead, which keeps the module shape but routes generation through `generateStructured`.
-- `src/lib/usageTracker.ts`, `src/lib/anonScore.ts` — grandfathered `openai` imports.
+**One known violation remains:**
+- `src/lib/usageTracker.ts` — a grandfathered `openai` import. It owns the raw Responses-API call and the embedding path, which `generateStructured` sits on top of rather than replaces, so it is the floor of the stack and not a call site. Leave it.
+
+Two others are gone, and how they went is the useful part:
+- `src/agents/resumeAgent.ts` was **deleted, not migrated**. It wrapped a tool-calling loop around `generateSmartResumePipeline`, discarded the model's own output, duplicated four pipeline steps as tools, and on failure fell through to the identical pipeline call. The fix for an unguarded call is sometimes to notice it was buying nothing. New agents follow `src/agents/tools/backfill.ts`.
+- `src/lib/anonScore.ts` now routes through `generateStructured`. It guards `fixes.N.suggestion` only — see the comment there on why guarding the commentary would flag correct analysis.
 
 **3. Sensitivity is a query concern, never a prompt concern.** Any retrieval feeding an external artifact (resume, cover letter, apply answer) filters `sensitivity = 'shareable'` **in the database query**. Never instruct a model to skip confidential content — use `src/lib/graph/visibility.ts`. Tests assert the filter, not the output.
 

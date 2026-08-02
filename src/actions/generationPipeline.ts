@@ -5,7 +5,6 @@ import { GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { compileLatex } from '@/actions/ai';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
-import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
 import { persistClaimGroundings } from '@/lib/claimGroundingStore';
 import { storePdfArtifact } from '@/lib/pdfStorage';
@@ -364,6 +363,42 @@ async function markFailure(params: {
   });
 }
 
+/**
+ * Generate one resume.
+ *
+ * This used to run a tool-calling agent (`src/agents/resumeAgent.ts`) in front
+ * of `generateSmartResumePipeline`, falling back to the pipeline whenever the
+ * agent failed to produce anything. That layer is gone, and removing it was a
+ * deletion rather than a migration because there was nothing in it to keep:
+ *
+ *   Its own output was discarded. The model's text result was never read —
+ *   the resume came out of the `runLegacyPipeline` tool, i.e. out of the
+ *   function below, called through one extra layer of indirection.
+ *
+ *   Its other four tools duplicated work. `parseJobDescription`,
+ *   `searchProjectsBySkillGroup`, `validateClaims` and `scoreATS` are all
+ *   steps the pipeline already runs internally (`jd_parsing` …
+ *   `claim_validation`, `ats_scoring`). When the model chose to call them we
+ *   paid for the same JD parse and the same embedding search twice and threw
+ *   one copy away.
+ *
+ *   Failure cost a round-trip and changed nothing. If the model declined to
+ *   call `runLegacyPipeline` the agent returned AGENT_EMPTY_RESULT and this
+ *   function called the pipeline directly with identical arguments — so the
+ *   model was deciding between "do the deterministic thing" and "bill us for
+ *   deciding, then do the deterministic thing".
+ *
+ * On top of that it was the repo's largest violation of CLAUDE.md rule 2: a
+ * raw AI-SDK text call on a hardcoded model id, with no numeric guard, no
+ * `ApiUsageLog` line, and no retry policy, sitting on the primary generation
+ * path. Generation is now deterministic, one model-call cheaper per resume,
+ * and fully accounted for.
+ *
+ * One thing did die with it, and it was already dead: `checkDataCompleteness`
+ * returned INSUFFICIENT_DATA for a thin profile, which this function then
+ * ignored by falling through to the pipeline anyway. Turning that into a real
+ * gate is a product decision, not a refactor — see the note in the commit.
+ */
 async function runPrimaryResumePipeline(params: {
   sessionId: string;
   userId: string;
@@ -375,33 +410,6 @@ async function runPrimaryResumePipeline(params: {
   onStepStart?: (step: SmartPipelineStep) => Promise<void> | void;
   onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
 }) {
-  const agentResult = await runResumeAgent({
-    jobDescription: params.jobDescription,
-    userId: params.userId,
-    sessionId: params.sessionId,
-    fallbackResumeData: params.fallbackResumeData,
-    focusAreas: params.focusAreas,
-    maxProjects: params.maxProjects,
-    onStep: async (step) => {
-      if (step.status === 'started') return;
-      if (step.tool === 'parseJobDescription') {
-        await params.onStepStart?.('jd_parsing');
-        await params.onStepComplete?.('jd_parsing', {
-          parsedJD: (step.data as { data?: { data?: { parsedJD?: unknown } } })?.data?.data?.parsedJD,
-        });
-      }
-      if (step.tool === 'runLegacyPipeline') {
-        const payload = (step.data as { data?: Record<string, unknown> })?.data ?? {};
-        await params.onStepStart?.('ats_scoring');
-        await params.onStepComplete?.('ats_scoring', payload);
-      }
-    },
-  });
-
-  if (agentResult.success) {
-    return agentResult.data;
-  }
-
   return generateSmartResumePipeline(params.jobDescription, {
     fallbackResumeData: params.fallbackResumeData,
     focusAreas: params.focusAreas,
