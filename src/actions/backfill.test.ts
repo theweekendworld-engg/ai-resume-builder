@@ -14,7 +14,8 @@
  *     index that makes the abandon histogram usable
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import { prisma } from '@/lib/prisma';
 import { __testing as aiTesting } from '@/lib/ai/structured';
 import { __testing as draftTesting } from '@/services/winDrafting';
@@ -26,10 +27,7 @@ import {
 } from '@/services/winFixtures.test-utils';
 import { BACKFILL_ENTRY_POINTS, BACKFILL_EXTRACT_SYSTEM } from '@/agents/backfillAgent';
 
-let currentUserId: string | null = null;
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-}));
+const clerk = installClerkMock();
 
 const backfill = await import('@/actions/backfill');
 
@@ -64,7 +62,7 @@ async function allowUser(userId: string): Promise<void> {
 async function signIn(label: string, { allow = true } = {}): Promise<string> {
     const id = newTestUserId(`backfill-action-${label}`);
     users.push(id);
-    currentUserId = id;
+    clerk.signIn(id);
     if (allow) await allowUser(id);
     return id;
 }
@@ -133,7 +131,7 @@ afterAll(async () => {
 });
 
 afterEach(() => {
-    currentUserId = null;
+    clerk.signOut();
 });
 
 async function start(userId: string, label = 'Acme') {
@@ -152,7 +150,7 @@ async function start(userId: string, label = 'Acme') {
 
 describe('auth and flag gating', () => {
     test('an unauthenticated call returns a value, it does not throw', async () => {
-        currentUserId = null;
+        clerk.signOut();
         const result = await backfill.startBackfillSession({
             subjectType: 'employer',
             subjectLabel: 'Acme',

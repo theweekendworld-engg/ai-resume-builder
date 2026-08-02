@@ -9,18 +9,14 @@
  */
 
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import { Channel, WinStatus } from '@prisma/client';
 
-let currentUserId: string | null = null;
 
 // `mock.module` is process-global in Bun, so the stub has to carry every named
 // export another test file in the same run might import — otherwise those files
 // fail to link and their tests silently stop being collected.
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-    currentUser: async () => ({ emailAddresses: [{ emailAddress: 'test@example.com' }] }),
-    clerkClient: async () => ({ users: { getUser: async () => ({ id: currentUserId }) } }),
-}));
+const clerk = installClerkMock();
 
 // `revalidatePath` needs a request-scoped store that only exists inside a real
 // Next render. Stubbed, not removed: the action should keep calling it.
@@ -36,12 +32,12 @@ const users: string[] = [];
 function newUser(label: string): string {
     const id = newTestUserId(label);
     users.push(id);
-    currentUserId = id;
+    clerk.signIn(id);
     return id;
 }
 
 afterEach(async () => {
-    currentUserId = null;
+    clerk.signOut();
     if (users.length > 0) {
         await prisma.weeklyDigest.deleteMany({ where: { userId: { in: users } } });
         await prisma.emailPreference.deleteMany({ where: { userId: { in: users } } });
@@ -69,7 +65,7 @@ describe('getNotificationSettings', () => {
     });
 
     test('refuses without a session', async () => {
-        currentUserId = null;
+        clerk.signOut();
         const result = await getNotificationSettings();
         expect(result.success).toBe(false);
         expect(!result.success && result.code).toBe('unauthenticated');
@@ -134,7 +130,7 @@ describe('updateNotificationSettings', () => {
     });
 
     test('cannot be called without a session', async () => {
-        currentUserId = null;
+        clerk.signOut();
         const result = await updateNotificationSettings({ digestHour: 9 });
         expect(!result.success && result.code).toBe('unauthenticated');
     });
@@ -160,7 +156,7 @@ describe('undoFromDigestLink', () => {
         await applyDigestAction(resolved.resolved, { surface: 'email' });
 
         // The undo happens from the landing page, where there is no Clerk user.
-        currentUserId = null;
+        clerk.signOut();
         expect(await undoFromDigestLink(token)).toEqual({ status: 'undone' });
 
         const after = await prisma.win.findUnique({ where: { id: win.id }, select: { status: true } });
@@ -186,7 +182,7 @@ describe('undoFromDigestLink', () => {
         });
         const token = mintWinToken({ root: digest.token, winId: win.id, action: 'confirm' })!;
 
-        currentUserId = null;
+        clerk.signOut();
         expect(await undoFromDigestLink(token)).toEqual({ status: 'nothing_to_undo' });
     });
 });

@@ -3,7 +3,27 @@ import { Prisma } from '@prisma/client';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
 
-const openai = new OpenAI({ apiKey: config.openai.apiKey });
+const realOpenAI = new OpenAI({ apiKey: config.openai.apiKey });
+let openai: OpenAI = realOpenAI;
+
+/**
+ * Test seam. This module constructs its own OpenAI client, so it is the
+ * boundary the embedding and chat mocks have to be injected at.
+ *
+ * Swapping the client rather than the `tracked*` functions is deliberate: the
+ * usage-limit check, the cost calculation and the `ApiUsageLog` write are the
+ * reason these wrappers exist, and mocking at the function level would skip
+ * every one of them. Production behaviour is unchanged — the default is the
+ * client this module has always built.
+ */
+export const __testing = {
+  setOpenAIClient(client: OpenAI | null) {
+    openai = client ?? realOpenAI;
+  },
+  reset() {
+    openai = realOpenAI;
+  },
+};
 
 type OpenAiPrice = {
   inputPer1M: number;

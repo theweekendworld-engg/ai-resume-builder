@@ -7,18 +7,16 @@
  * actually gets written.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import { WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { __testing as aiTesting } from '@/lib/ai/structured';
 import { __testing as draftTesting } from '@/services/winDrafting';
 import { cleanupTestUser, newTestUserId, rememberWin } from '@/services/winFixtures.test-utils';
 
-let currentUserId: string | null = null;
 
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-}));
+const clerk = installClerkMock();
 
 const wins = await import('@/actions/wins');
 
@@ -27,7 +25,7 @@ const users: string[] = [];
 function signIn(label: string): string {
     const id = newTestUserId(label);
     users.push(id);
-    currentUserId = id;
+    clerk.signIn(id);
     return id;
 }
 
@@ -38,7 +36,7 @@ function signIn(label: string): string {
  */
 async function createWin(input: Parameters<typeof wins.createWinFromText>[0]) {
     const result = await wins.createWinFromText(input);
-    if (result.success && currentUserId) rememberWin(currentUserId, result.data.id);
+    if (result.success && clerk.userId) rememberWin(clerk.userId, result.data.id);
     return result;
 }
 
@@ -78,7 +76,7 @@ beforeAll(() => {
 afterAll(() => {
     aiTesting.reset();
     draftTesting.reset();
-    currentUserId = null;
+    clerk.signOut();
 });
 
 afterEach(async () => {
@@ -86,12 +84,12 @@ afterEach(async () => {
         const id = users.pop();
         if (id) await cleanupTestUser(id);
     }
-    currentUserId = null;
+    clerk.signOut();
 });
 
 describe('auth is a value, never a throw', () => {
     test('every action returns unauthenticated when there is no session', async () => {
-        currentUserId = null;
+        clerk.signOut();
         const results = await Promise.all([
             wins.createWinFromText({ text: 'hi' }),
             wins.confirmWin('w1'),
@@ -351,7 +349,7 @@ describe('the capture round trip through the actions', () => {
         expect(stolen.success).toBe(false);
         if (!stolen.success) expect(stolen.code).toBe('not_found');
 
-        currentUserId = owner;
+        clerk.signIn(owner);
         const stillDraft = await prisma.win.findUniqueOrThrow({ where: { id: created.data.id } });
         expect(stillDraft.status).toBe(WinStatus.draft);
     });

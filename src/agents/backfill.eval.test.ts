@@ -20,7 +20,8 @@
  * is real.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import { InterviewStatus, WinSensitivity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { extractQuantities, flattenQuantities, isQuantitySupported } from '@/lib/ai/guard';
@@ -49,10 +50,7 @@ import {
 // `createWinFromText` resolves its user from Clerk. Everything else in the
 // agent takes an explicit userId, which is why only this one hop needs faking.
 
-let currentUserId: string | null = null;
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-}));
+const clerk = installClerkMock();
 
 // ─────────────────────────────────────────────────────────── the scripted model
 
@@ -154,7 +152,7 @@ async function runTranscript(entry: EvalTranscript): Promise<RunOutcome> {
 
     const userId = newTestUserId(`eval-${entry.id}`);
     users.push(userId);
-    currentUserId = userId;
+    clerk.signIn(userId);
 
     const experience = await makeExperience({
         userId,
@@ -420,7 +418,7 @@ describe('a dropped session loses nothing', () => {
 
         const userId = newTestUserId('eval-persistence');
         users.push(userId);
-        currentUserId = userId;
+        clerk.signIn(userId);
 
         const experience = await makeExperience({
             userId,
@@ -480,7 +478,7 @@ describe('a dropped session loses nothing', () => {
 
         const userId = newTestUserId('eval-dating');
         users.push(userId);
-        currentUserId = userId;
+        clerk.signIn(userId);
 
         const experience = await makeExperience({
             userId,

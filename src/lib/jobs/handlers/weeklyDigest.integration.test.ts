@@ -14,71 +14,44 @@
  *   4. The buttons in the email actually work: a token minted by the composer
  *      resolves and confirms the Win it names.
  *
- * `sendEmail` is stubbed, but the stub renders the REAL template through the
- * real registry and writes the real `EmailSend` row — so every assertion about
- * subject, copy, links and bookkeeping is an assertion about what would
- * actually be delivered. Only the provider call is fake.
+ * Both outbound channels are mocked at the PROVIDER, not at the module that
+ * talks to it. `sendEmail` and `sendTelegramMessage` both run for real, so the
+ * preference lookup, the suppression rules, the plain-text part, the RFC 8058
+ * `List-Unsubscribe` headers, the `EmailSend` bookkeeping and the Bot API
+ * request bodies are all exercised. Only the network call is replaced.
  *
- * (It has to be stubbed at this level rather than at the Resend SDK: Bun's
- * `mock.module` is process-global, and a sibling handler test already replaces
- * `@/lib/email/send` for the whole run.)
+ * This file used to replace `@/lib/email/send` and `@/lib/telegram` outright,
+ * which meant every one of those was skipped and the suite could only assert
+ * that a function had been called with some arguments.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Channel, WinStatus } from '@prisma/client';
-import { prisma as db } from '@/lib/prisma';
-import {
-    getTransactionalTemplate,
-    type TransactionalTemplateData,
-    type TransactionalTemplateKey,
-} from '@/lib/email/templates/transactional';
+import { installMocks, resetMocks, uninstallMocks } from '@/__mocks__';
 
 const APP_URL = 'http://localhost:3000';
 
-type SentEmail = { userId: string; to: string; template: string; subject: string; html: string; text: string };
-const sent: SentEmail[] = [];
-let providerFails = false;
+// Only the two boundaries this suite actually uses. Bun shares one process
+// across test files and these seams are module bindings, so installing a
+// boundary this file does not need would reach into another suite's.
+const mocks = installMocks({ only: ['email', 'telegram'] });
 
-mock.module('@/lib/email/send', () => ({
-    getAppUrl: () => APP_URL,
-    generateUnsubscribeToken: () => `unsub-${Math.random().toString(36).slice(2)}`,
-    sendEmail: async <K extends TransactionalTemplateKey>(input: {
-        userId: string;
-        to: string;
-        template: K;
-        data: TransactionalTemplateData[K];
-    }) => {
-        if (providerFails) return { status: 'failed', emailSendId: null, error: 'provider down' };
+/** The rendered emails that reached the provider. */
+const sent = mocks.email.sent;
 
-        const rendered = getTransactionalTemplate(input.template).render(input.data, {
-            unsubscribeUrl: `${APP_URL}/api/email/unsubscribe?token=t&c=weeklyDigest`,
-            preferencesUrl: `${APP_URL}/settings/notifications`,
-            appUrl: APP_URL,
-        });
-        sent.push({ userId: input.userId, to: input.to, template: input.template, ...rendered });
+const ENV = {
+    key: process.env.RESEND_API_KEY,
+    from: process.env.EMAIL_FROM,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
+    telegram: process.env.TELEGRAM_BOT_TOKEN,
+};
 
-        const row = await db.emailSend.create({
-            data: { userId: input.userId, template: input.template, subject: rendered.subject, status: 'sent' },
-            select: { id: true },
-        });
-        return { status: 'sent', emailSendId: row.id, providerId: `re_${row.id}` };
-    },
-}));
-
-type TelegramSend = { chatId: string | number; text: string; replyMarkup?: unknown };
-type TelegramEdit = TelegramSend & { messageId: number };
-const tgSent: TelegramSend[] = [];
-const tgEdits: TelegramEdit[] = [];
-
-mock.module('@/lib/telegram', () => ({
-    sendTelegramMessage: async (input: TelegramSend) => {
-        tgSent.push(input);
-    },
-    editTelegramMessageText: async (input: TelegramEdit) => {
-        tgEdits.push(input);
-        return true;
-    },
-}));
+// `emailConfigured()` and `getTelegramBotToken()` are real gates on the paths
+// under test; without these the suite would assert on skip results.
+process.env.RESEND_API_KEY = 're_test_not_a_real_key';
+process.env.EMAIL_FROM = 'patronus@example.com';
+process.env.NEXT_PUBLIC_APP_URL = APP_URL;
+process.env.TELEGRAM_BOT_TOKEN = 'test-bot-token';
 
 const { prisma } = await import('@/lib/prisma');
 const { invalidateFlagCache } = await import('@/lib/flags');
@@ -173,10 +146,7 @@ async function send(userId: string, weekStart: Date = WEEK_START) {
 }
 
 beforeEach(() => {
-    sent.length = 0;
-    tgSent.length = 0;
-    tgEdits.length = 0;
-    providerFails = false;
+    resetMocks();
 });
 
 afterEach(async () => {
@@ -198,6 +168,16 @@ afterEach(async () => {
     users.length = 0;
     await prisma.featureFlag.deleteMany({ where: { key: 'weekly_digest' } });
     invalidateFlagCache();
+});
+
+afterAll(() => {
+    // Restore the real clients and the env this file changed: the next test
+    // file in this process must not inherit either.
+    uninstallMocks();
+    process.env.RESEND_API_KEY = ENV.key;
+    process.env.EMAIL_FROM = ENV.from;
+    process.env.NEXT_PUBLIC_APP_URL = ENV.appUrl;
+    process.env.TELEGRAM_BOT_TOKEN = ENV.telegram;
 });
 
 async function enableFlagFor(userIds: string[]): Promise<void> {
@@ -535,7 +515,7 @@ describe('delivery failure', () => {
     test('throws so the job retries, and leaves the week unsent', async () => {
         const userId = await seedUser('provider-down');
         await makeWin({ userId });
-        providerFails = true;
+        mocks.email.setOutcome({ kind: 'error', message: 'provider down' });
 
         await expect(send(userId)).rejects.toThrow(/delivery failed/);
 
@@ -543,7 +523,7 @@ describe('delivery failure', () => {
         expect(row?.sentAt).toBeNull();
 
         // The retry succeeds and reuses the same row and the same token root.
-        providerFails = false;
+        mocks.email.setOutcome({ kind: 'ok' });
         const retry = (await send(userId)) as Record<string, unknown>;
         expect(retry.winCount).toBe(1);
         expect(await prisma.weeklyDigest.count({ where: { userId } })).toBe(1);
@@ -640,11 +620,11 @@ describe('telegram', () => {
 
         expect(result.channel).toBe(Channel.telegram);
         expect(sent).toHaveLength(0);
-        expect(tgSent).toHaveLength(1);
-        const keyboard = tgSent[0].replyMarkup as { inline_keyboard: unknown[][] };
+        expect(mocks.telegram.sent).toHaveLength(1);
+        const keyboard = mocks.telegram.sent[0].replyMarkup as { inline_keyboard: unknown[][] };
         expect(keyboard.inline_keyboard).toHaveLength(1);
         // Zero navigation: no magic link in the message at all.
-        expect(tgSent[0].text).not.toContain('/w/');
+        expect(mocks.telegram.sent[0].text).not.toContain('/w/');
     });
 
     test('falls back to email when the bot was never linked', async () => {
@@ -654,7 +634,7 @@ describe('telegram', () => {
         const result = (await send(userId)) as Record<string, unknown>;
 
         expect(result.channel).toBe(Channel.email);
-        expect(tgSent).toHaveLength(0);
+        expect(mocks.telegram.sent).toHaveLength(0);
         expect(sent).toHaveLength(1);
         const row = await prisma.weeklyDigest.findFirst({ where: { userId } });
         expect(row?.channel).toBe(Channel.email);
@@ -679,11 +659,11 @@ describe('telegram', () => {
         expect(after?.status).toBe(WinStatus.confirmed);
 
         // Edited, not re-sent — one message per digest, however many taps.
-        expect(tgSent).toHaveLength(1);
-        expect(tgEdits).toHaveLength(1);
-        expect(tgEdits[0].messageId).toBe(42);
-        expect(tgEdits[0].text).toContain('✓');
-        expect((tgEdits[0].replyMarkup as { inline_keyboard: unknown[][] }).inline_keyboard).toHaveLength(0);
+        expect(mocks.telegram.sent).toHaveLength(1);
+        expect(mocks.telegram.edits).toHaveLength(1);
+        expect(mocks.telegram.edits[0].messageId).toBe(42);
+        expect(mocks.telegram.edits[0].text).toContain('✓');
+        expect((mocks.telegram.edits[0].replyMarkup as { inline_keyboard: unknown[][] }).inline_keyboard).toHaveLength(0);
     });
 
     test('a second tap on the same button changes nothing', async () => {

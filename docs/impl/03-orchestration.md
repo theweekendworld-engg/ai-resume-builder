@@ -168,7 +168,8 @@ grep -rn "gpt-[0-9]" src --include="*.ts" --include="*.tsx" \
 #     pattern missed generateText + aiOpenAI(), which is how resumeAgent.ts
 #     bypasses the numeric guard entirely.
 grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiOpenAI\(" src \
-  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts"
+  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts" \
+  | grep -vE ":[0-9]+:import type "
 
 # 3 · raw Tier enum in UI
 grep -rn "Tier\.\(free\|always_on\|pro\|team\)" src/components src/app | grep -v plans.ts

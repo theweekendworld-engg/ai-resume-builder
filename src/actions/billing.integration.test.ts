@@ -13,7 +13,8 @@
  * immediate cancel.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import {
   ApplicationStatus,
   EvidenceKind,
@@ -29,12 +30,8 @@ import { evaluateProactiveDowngrade, subscriptionRowKey } from '@/lib/entitlemen
 import { prisma } from '@/lib/prisma';
 import { __setStripeClientForTests } from '@/lib/stripe';
 
-let currentUserId: string | null = null;
 
-mock.module('@clerk/nextjs/server', () => ({
-  auth: async () => ({ userId: currentUserId }),
-  currentUser: async () => ({ emailAddresses: [{ emailAddress: 'test@example.com' }] }),
-}));
+const clerk = installClerkMock();
 
 const billing = await import('@/actions/billing');
 
@@ -90,7 +87,7 @@ afterAll(() => {
   process.env.STRIPE_SECRET_KEY = ORIGINAL_ENV.key;
   process.env.STRIPE_PRICE_CAREER_ANNUAL = ORIGINAL_ENV.career;
   process.env.STRIPE_PRICE_SEARCH_MONTHLY = ORIGINAL_ENV.search;
-  currentUserId = null;
+  clerk.signOut();
 });
 
 // ---------------------------------------------------------------------------
@@ -103,7 +100,7 @@ const users: string[] = [];
 function signIn(label: string): string {
   const id = `${RUN}-${label}`;
   users.push(id);
-  currentUserId = id;
+  clerk.signIn(id);
   return id;
 }
 
@@ -192,7 +189,7 @@ afterEach(async () => {
     await prisma.applicationWorkspace.deleteMany({ where: { userId } });
     await prisma.funnelEvent.deleteMany({ where: { userId } });
   }
-  currentUserId = null;
+  clerk.signOut();
 });
 
 /** The plan page read model for whoever is currently signed in. */
@@ -210,7 +207,7 @@ async function events(userId: string, type: string) {
 
 describe('checkout', () => {
   test('unauthenticated is a value, never a throw', async () => {
-    currentUserId = null;
+    clerk.signOut();
     const result = await billing.startCheckout('career_annual');
     expect(result.success).toBe(false);
     if (!result.success) expect(result.code).toBe('unauthenticated');

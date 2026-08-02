@@ -6,7 +6,8 @@
  * month that was composed but never emailed renders in full, paragraph included.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import { WinCategory, WinSource, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { __testing as aiTesting } from '@/lib/ai/structured';
@@ -17,10 +18,7 @@ import {
     persistMonthInReview,
 } from '@/services/monthInReview';
 
-let currentUserId: string | null = null;
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-}));
+const clerk = installClerkMock();
 
 const { getMonthInReview } = await import('@/actions/monthInReview');
 
@@ -47,7 +45,7 @@ async function seedJuly(label: string, count = 4): Promise<string> {
             data: { status: WinStatus.confirmed, confirmedAt: new Date(Date.UTC(2026, 6, 5 + index)) },
         });
     }
-    currentUserId = userId;
+    clerk.signIn(userId);
     return userId;
 }
 
@@ -62,7 +60,7 @@ beforeEach(() => {
 
 afterEach(async () => {
     aiTesting.reset();
-    currentUserId = null;
+    clerk.signOut();
     while (users.length > 0) {
         const id = users.pop();
         if (!id) continue;
@@ -88,7 +86,7 @@ describe('getMonthInReview', () => {
     });
 
     test('is signed-in only', async () => {
-        currentUserId = null;
+        clerk.signOut();
         const result = await getMonthInReview('2026-07');
         expect(result.success).toBe(false);
         if (!result.success) expect(result.code).toBe('unauthenticated');
@@ -180,7 +178,7 @@ describe('getMonthInReview', () => {
 
         const intruder = newTestUserId('intruder');
         users.push(intruder);
-        currentUserId = intruder;
+        clerk.signIn(intruder);
 
         const result = await getMonthInReview('2026-07');
         expect(result.success).toBe(false);

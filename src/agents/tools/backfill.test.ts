@@ -13,7 +13,8 @@
  * anyone's development data.
  */
 
-import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { installClerkMock } from '@/__mocks__/clerk';
 import {
     EvidenceKind,
     GroundState,
@@ -33,10 +34,7 @@ import {
     rememberWin,
 } from '@/services/winFixtures.test-utils';
 
-let currentUserId: string | null = null;
-mock.module('@clerk/nextjs/server', () => ({
-    auth: async () => ({ userId: currentUserId }),
-}));
+const clerk = installClerkMock();
 
 const tools = await import('@/agents/tools/backfill');
 
@@ -46,7 +44,7 @@ const sessionIds: string[] = [];
 function signIn(label: string): string {
     const id = newTestUserId(`backfill-${label}`);
     users.push(id);
-    currentUserId = id;
+    clerk.signIn(id);
     return id;
 }
 

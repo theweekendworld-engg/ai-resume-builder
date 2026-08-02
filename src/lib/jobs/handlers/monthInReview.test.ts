@@ -3,7 +3,14 @@
  *
  * Runs against the real local Postgres, with real `Job` rows written through
  * the real `enqueue`, because the property under test IS the unique constraint
- * on `Job.dedupeKey`. Only the model and the mail provider are faked.
+ * on `Job.dedupeKey`. Only the model and the mail PROVIDER are mocked.
+ *
+ * That distinction matters. This file used to replace `@/lib/email/send` — the
+ * module that owns the preference lookup, the suppression rules, the
+ * `EmailSend` bookkeeping and the `List-Unsubscribe` headers — which meant none
+ * of it ran, and the second idempotency layer was being satisfied by a row the
+ * stub wrote by hand. Now `MockResend` sits under the real `sendEmail`, so the
+ * row `alreadySent` reads is the row the production path actually writes.
  *
  * The idempotency tests are the point of this file. The handler deadline is
  * soft: the runner abandons a slow attempt and retries the same row, so a
@@ -11,45 +18,35 @@
  * twice is worse than one sent late.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { WinCategory, WinSource, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { __testing as aiTesting } from '@/lib/ai/structured';
 import { enqueue } from '@/lib/jobs/runner';
 import { cleanupTestUser, fakeJobContext, makeWin, newTestUserId } from '@/services/winFixtures.test-utils';
-import type { SendEmailInput, SendEmailResult } from '@/lib/email/send';
+import { installMocks, resetMocks, uninstallMocks } from '@/__mocks__';
 
 // ───────────────────────────────────────────────────── mail provider seam
 
-type SentEmail = SendEmailInput<'month_in_review'>;
+// `only: ['email']` on purpose. Bun shares one process across test files and
+// these seams are module bindings, so installing a boundary this suite does not
+// use would reach into somebody else's suite.
+const mocks = installMocks({ only: ['email'] });
 
-const sent: SentEmail[] = [];
-let sendOutcome: SendEmailResult = {
-    status: 'sent',
-    emailSendId: 'es_test',
-    providerId: 'prov_test',
+/** What the system handed the provider. The rendered email, not the input. */
+const sent = mocks.email.sent;
+
+const ENV = {
+    key: process.env.RESEND_API_KEY,
+    from: process.env.EMAIL_FROM,
+    appUrl: process.env.NEXT_PUBLIC_APP_URL,
 };
 
-mock.module('@/lib/email/send', () => ({
-    getAppUrl: () => 'https://app.example.com',
-    sendEmail: async (input: SentEmail): Promise<SendEmailResult> => {
-        sent.push(input);
-        // Mirror the real thing: a send is only visible to the second
-        // idempotency layer once it has written its EmailSend row.
-        if (sendOutcome.status === 'sent') {
-            await prisma.emailSend.create({
-                data: {
-                    userId: input.userId,
-                    template: 'month_in_review',
-                    subject: 'test',
-                    status: 'sent',
-                    providerId: `prov_${input.userId}_${sent.length}`,
-                },
-            });
-        }
-        return sendOutcome;
-    },
-}));
+// `emailConfigured()` is a real gate in `sendEmail`; without these the suite
+// would assert on a `skipped: not_configured` result and prove nothing.
+process.env.RESEND_API_KEY = 're_test_not_a_real_key';
+process.env.EMAIL_FROM = 'patronus@example.com';
+process.env.NEXT_PUBLIC_APP_URL = 'https://app.example.com';
 
 const handlerModule = await import('@/lib/jobs/handlers/monthInReview');
 const {
@@ -147,8 +144,7 @@ function realEnqueueContext() {
 }
 
 beforeEach(() => {
-    sent.length = 0;
-    sendOutcome = { status: 'sent', emailSendId: 'es_test', providerId: 'prov_test' };
+    resetMocks();
     aiTesting.setUsageLogger(async () => {});
     aiTesting.setObjectRunner(async () => ({
         object: { paragraph: 'The pricing lookup work took the path from 800ms to 180ms.' },
@@ -170,6 +166,12 @@ afterEach(async () => {
 
 afterAll(() => {
     handlerTesting.reset();
+    // Restore the real Resend client and the env this file changed: the next
+    // test file in this process must not inherit either.
+    uninstallMocks();
+    process.env.RESEND_API_KEY = ENV.key;
+    process.env.EMAIL_FROM = ENV.from;
+    process.env.NEXT_PUBLIC_APP_URL = ENV.appUrl;
 });
 
 // ═════════════════════════════════════════════════════════════ eligibility
@@ -290,13 +292,21 @@ describe('sending one review', () => {
 
         expect(result.status).toBe('sent');
         expect(sent).toHaveLength(1);
-        expect(sent[0].template).toBe('month_in_review');
-        expect(sent[0].to).toBe(`${userId}@example.com`);
+        // These are now assertions about the RENDERED email that would have
+        // left the building, not about the argument object handed to a stub.
+        expect(sent[0].tags).toContainEqual({ name: 'template', value: 'month_in_review' });
+        expect(sent[0].to).toEqual([`${userId}@example.com`]);
+        expect(sent[0].from).toBe('patronus@example.com');
         // Resend-side dedupe, keyed the same way as the job row.
         expect(sent[0].idempotencyKey).toBe(monthInReviewDedupeKey(userId, '2026-07'));
-        expect(sent[0].data.subject).toBe('July: 4 wins, 4 with numbers');
-        expect(sent[0].data.receipt).toContain('This review drew on 4 wins from July');
-        expect(sent[0].data.reviewUrl).toBe('https://app.example.com/log/review/2026-07');
+        expect(sent[0].subject).toBe('July: 4 wins, 4 with numbers');
+        expect(sent[0].text).toContain('This review drew on 4 wins from July');
+        expect(sent[0].text).toContain('https://app.example.com/log/review/2026-07');
+
+        // The part the old module-level stub skipped entirely: RFC 8058
+        // one-click unsubscribe, built from this user's real token.
+        expect(sent[0].headers['List-Unsubscribe']).toContain('/api/email/unsubscribe?token=tok-');
+        expect(sent[0].headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
 
         const stored = await loadPersistedReview(userId, '2026-07');
         expect(stored?.headline).toBe('4 wins, 4 with hard numbers');
@@ -415,7 +425,10 @@ describe('sending one review', () => {
 
     test('a provider failure throws so the runner retries with backoff', async () => {
         const userId = await seedUser({ label: 'fail', wins: 4 });
-        sendOutcome = { status: 'failed', emailSendId: null, error: 'provider down' };
+        // The provider answers with an error body. `sendEmail` must convert
+        // that into a `failed` result without throwing; the handler is what
+        // throws, so the runner retries.
+        mocks.email.setOutcome({ kind: 'error', message: 'provider down' });
 
         const { ctx } = realEnqueueContext();
         await expect(monthInReviewHandler({ userId, period: '2026-07' }, ctx)).rejects.toThrow(
@@ -450,9 +463,15 @@ describe('the MonthlyReview row', () => {
         // deliver: composed, persisted, never sent.
         handlerTesting.reset();
         await prisma.userProfile.create({ data: { userId, email: `${userId}@example.com` } });
-        sendOutcome = { status: 'skipped', reason: 'not_configured' };
+        // Unconfigured mail is the real condition being reproduced, so take the
+        // real path to it: `emailConfigured()` returns false without a sender.
+        const from = process.env.EMAIL_FROM;
+        delete process.env.EMAIL_FROM;
 
         await monthInReviewHandler({ userId, period: '2026-07' }, ctx);
+
+        process.env.EMAIL_FROM = from;
+        expect(sent).toHaveLength(0);
 
         const stored = await loadPersistedReview(userId, '2026-07');
         expect(stored).not.toBeNull();

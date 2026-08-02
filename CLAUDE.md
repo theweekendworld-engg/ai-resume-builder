@@ -35,7 +35,8 @@ That means **all** of these, not just the obvious one: `import OpenAI from 'open
 
 ```bash
 grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiOpenAI\(" src \
-  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts"
+  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts" \
+  | grep -vE ":[0-9]+:import type "
 ```
 
 **Known violations, all pre-dating the rule — do not copy these patterns:**
@@ -97,10 +98,17 @@ Four waves shipped with the tree unbuildable because `groundState.ts` and `claim
 
 ---
 
-## Current state (2026-08-01)
+## Current state (2026-08-02)
 
-R1 build in progress, Wave A. Two open blockers tracked in `docs/impl/BUILD-LOG.md`:
-- **Database unreachable** (Supabase paused). Migrations `20260704120000_v2_context_graph_billing` and `20260801120000_career_os_platform_and_work_log` are written but unapplied. DB-dependent tests are marked `describe.skip` with `// TODO(db):`.
-- **Dirty tree** on `browser-extension` — 16 modified files pending a land-or-park decision.
+**R1 is code-complete.** Waves A–D shipped: platform foundation, the Work Log, capture/packets/backfill/packaging, and the weekly ritual + Month in Review. Everything is behind feature flags, all seeded off.
 
-`prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned during the parallel build. Feature agents must not edit them.
+- **Database:** local Docker Postgres (`resume_builder`), fully migrated. `.env` still points at a paused Supabase and the Prisma CLI reads `.env`, so CLI commands need an inline `DATABASE_URL`/`DIRECT_URL` override. `bun test` reads `.env.test` and is pinned to local.
+- **Tests:** ~1225 pass, 0 fail. `bun run build` succeeds.
+- **Mocks:** `src/__mocks__/` doubles every external boundary, each typed against the real SDK. Install via `installMocks({ only: [...] })`; the `only` list matters, since seams are module bindings shared across the whole Bun process.
+
+**What is not proven, and cannot be from a sandbox** — see `docs/impl/04-test-strategy.md` §5 and the pre-launch checklist:
+- No email has been seen in a real client.
+- Rubric-parse accuracy, theme-grouping quality and backfill question quality are all validated against mocks, not live models.
+- The GitHub `repo`-scoped OAuth token path has never returned a real token.
+
+`prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned during parallel builds. Feature agents must not edit them.
