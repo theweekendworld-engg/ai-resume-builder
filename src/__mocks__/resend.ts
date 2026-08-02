@@ -65,8 +65,9 @@ function toTags(value: unknown): { name: string; value: string }[] {
 
 /**
  * The `emails` sub-resource. Only `send` is implemented — it is the only method
- * the app calls. See COVERAGE BOUNDARY in the mocks README section of the
- * report for everything on `Emails` that is deliberately absent.
+ * the app calls. See the COVERAGE BOUNDARY table in `src/__mocks__/README.md`
+ * for everything on `Emails` that is deliberately absent — including that
+ * delivery/bounce/complaint webhooks are not simulated at all.
  */
 export class MockResendEmails implements Pick<ResendEmails, 'send'> {
     private outcome: ResendOutcome = { kind: 'ok' };

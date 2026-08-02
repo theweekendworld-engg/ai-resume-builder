@@ -101,17 +101,53 @@ Four waves shipped with the tree unbuildable because `groundState.ts` and `claim
 
 ---
 
-## Current state (2026-08-02)
+## Current state (2026-08-03)
 
-**R1 is code-complete.** Waves A–D shipped: platform foundation, the Work Log, capture/packets/backfill/packaging, and the weekly ritual + Month in Review. Everything is behind feature flags, all seeded off.
+**R1 shipped, and R2's first two features are in.** Waves A–D covered the
+platform, the Work Log, capture/packets/backfill/packaging and the weekly
+ritual. Since then: **Career Radar** (PRD 04) and **Missions** (PRD 05), plus
+the Chrome extension. Everything is behind feature flags, all seeded off.
 
-- **Database:** local Docker Postgres (`resume_builder`), fully migrated. `.env` still points at a paused Supabase and the Prisma CLI reads `.env`, so CLI commands need an inline `DATABASE_URL`/`DIRECT_URL` override. `bun test` reads `.env.test` and is pinned to local.
-- **Tests:** ~1225 pass, 0 fail. `bun run build` succeeds.
-- **Mocks:** `src/__mocks__/` doubles every external boundary, each typed against the real SDK. Install via `installMocks({ only: [...] })`; the `only` list matters, since seams are module bindings shared across the whole Bun process.
+- **Database:** local Docker Postgres (`resume_builder`), fully migrated. `.env`
+  still points at a paused Supabase and the Prisma CLI reads `.env`, so CLI
+  commands need an inline `DATABASE_URL`/`DIRECT_URL` override. `bun test` reads
+  `.env.test` and is pinned to local.
+- **Tests:** ~1,730 pass, 0 fail, stable across repeated full runs. `bun run
+  lint` is at 0 errors — keep it there. `bun run build` succeeds.
+- **Mocks:** `src/__mocks__/README.md` is the map, including a COVERAGE
+  BOUNDARY table of what the doubles do NOT prove. Read it before trusting a
+  green suite about an external system.
 
-**What is not proven, and cannot be from a sandbox** — see `docs/impl/04-test-strategy.md` §5 and the pre-launch checklist:
+### Recently added, and the rules that came with them
+
+- **Career Radar** (`src/lib/radar/`, `src/actions/radar.ts`). No model produces
+  a number — bands are arithmetic over ranges employers published. Every figure
+  ships with `n`, its window and its geography. `MIN_OBSERVATIONS = 8` and a
+  180-day window; below either, the band is suppressed with a stated reason.
+- **Missions** (`src/lib/missions/`, `src/services/missions.ts`,
+  `src/actions/missions.ts`). The evaluator is **pure and idempotent** — never
+  increment progress in an event handler, always recompute. A threshold step
+  reopens if the evidence is deleted. Attested and skipped states are the
+  user's and are never recomputed away. Completion always asks for the outcome.
+- **The notification budget** (`src/lib/notifications/budget.ts`). Three
+  outbound messages per user per week, enforced inside `sendEmail` so no
+  feature can bypass it. `transactional` is exempt. If you add an email
+  category, give it a ceiling in `CATEGORY_CEILING` and a priority rank.
+- **A handler needs a scheduler.** `radar_snapshot` and `mission_nudge` both
+  had registered handlers and no way to fire; periodic dispatch now lives in
+  `src/lib/jobs/schedule.ts`. Adding a job kind means three places: the kind,
+  the handler, the schedule.
+
+**What is not proven, and cannot be from a sandbox** — see
+`docs/impl/04-test-strategy.md` §5, the pre-launch checklist, and the mocks
+README:
 - No email has been seen in a real client.
-- Rubric-parse accuracy, theme-grouping quality and backfill question quality are all validated against mocks, not live models.
+- Rubric-parse accuracy, theme-grouping quality and backfill question quality
+  are validated against fixtures, not live models.
 - The GitHub `repo`-scoped OAuth token path has never returned a real token.
+- **Stripe Prices for $5 Career / $2 Search do not exist yet.** `plans.ts`
+  carries the display numbers; nothing can be purchased until the Price objects
+  are created and their ids are in the environment. This blocks launch.
 
-`prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned during parallel builds. Feature agents must not edit them.
+`prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned
+during parallel builds. Feature agents must not edit them.
