@@ -17,7 +17,6 @@ import {
   evaluateProactiveDowngrade,
   getEntitlementSnapshot,
   getSubscriptionState,
-  subscriptionRowKey,
   type DowngradeTrigger,
   type SubscriptionSummary,
 } from '@/lib/entitlements';
@@ -83,7 +82,8 @@ function iso(date: Date | null | undefined): string | null {
  */
 async function ensureStripeCustomer(userId: string): Promise<string> {
   const existing = await prisma.subscription.findFirst({
-    where: { userId: { in: [userId, subscriptionRowKey(userId, 'search')] } },
+    // Either slot will do — both rows carry the same Stripe customer.
+    where: { userId, stripeCustomerId: { not: '' } },
     select: { stripeCustomerId: true },
   });
   if (existing?.stripeCustomerId) return existing.stripeCustomerId;
@@ -97,8 +97,8 @@ async function ensureStripeCustomer(userId: string): Promise<string> {
   // Seed the Career row so the customer id has a home. The webhook upgrades
   // tier/status once checkout completes.
   await prisma.subscription.upsert({
-    where: { userId },
-    create: { userId, stripeCustomerId: customer.id, status: 'incomplete' },
+    where: { userId_slot: { userId, slot: 'career' } },
+    create: { userId, slot: 'career', stripeCustomerId: customer.id, status: 'incomplete' },
     update: { stripeCustomerId: customer.id },
   });
 
@@ -197,7 +197,7 @@ export async function reconcileCheckout(sessionId: string): Promise<Result<{ pla
     const subscription = await stripe.subscriptions.retrieve(subId);
     const priceId = primaryPriceId(subscription);
     const tier = priceIdToTier(priceId);
-    const rowKey = subscriptionRowKey(userId, slotForStripePriceId(priceId));
+    const slot = slotForStripePriceId(priceId);
 
     const data = {
       stripeCustomerId: stripeCustomerId(subscription.customer),
@@ -207,8 +207,8 @@ export async function reconcileCheckout(sessionId: string): Promise<Result<{ pla
       currentPeriodEnd: resolvePeriodEnd(subscription),
     };
     await prisma.subscription.upsert({
-      where: { userId: rowKey },
-      create: { userId: rowKey, ...data },
+      where: { userId_slot: { userId, slot } },
+      create: { userId, slot, ...data },
       update: data,
     });
 
@@ -228,7 +228,7 @@ export async function createBillingPortalSession(): Promise<Result<Url>> {
   if (!stripeConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   const sub = await prisma.subscription.findFirst({
-    where: { userId: { in: [userId, subscriptionRowKey(userId, 'search')] } },
+    where: { userId, stripeCustomerId: { not: '' } },
     select: { stripeCustomerId: true },
   });
   if (!sub?.stripeCustomerId) return err('No billing account found.', 'no_customer');
@@ -387,7 +387,7 @@ export async function turnOffSearch(
   }
 
   await prisma.subscription.update({
-    where: { userId: subscriptionRowKey(userId, 'search') },
+    where: { userId_slot: { userId, slot: 'search' } },
     data: { status: 'canceling' },
   });
 
@@ -441,7 +441,7 @@ export async function reactivateSearch(): Promise<Result<{ url: string | null }>
       }
     }
     await prisma.subscription.update({
-      where: { userId: subscriptionRowKey(userId, 'search') },
+      where: { userId_slot: { userId, slot: 'search' } },
       data: { status: 'active' },
     });
     await track(userId, 'search_reactivated', { daysSinceOff, resumed: true });
@@ -512,7 +512,7 @@ export async function cancelPlan(input: {
   }
 
   await prisma.subscription.update({
-    where: { userId: subscriptionRowKey(userId, slot) },
+    where: { userId_slot: { userId, slot } },
     data: { status: 'canceling' },
   });
 
@@ -561,7 +561,7 @@ export async function requestRefund(): Promise<Result<{ refunded: boolean }>> {
     await stripe.refunds.create({ payment_intent: intentId });
     await stripe.subscriptions.cancel(career.stripeSubId);
     await prisma.subscription.update({
-      where: { userId },
+      where: { userId_slot: { userId, slot: 'career' } },
       data: { status: 'canceled', currentPeriodEnd: new Date() },
     });
     await track(userId, 'plan_changed', {

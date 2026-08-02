@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import {
-  GRACE_PERIOD_DAYS,
-  ownerOfRowKey,
-  slotOfRowKey,
-  subscriptionRowKey,
-} from '@/lib/entitlements';
+import { GRACE_PERIOD_DAYS } from '@/lib/entitlements';
 import { prisma } from '@/lib/prisma';
 import { planName } from '@/lib/plans';
 import {
@@ -25,16 +20,18 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Find the Patronus user behind a Stripe customer. Subscription rows are keyed
- * per slot (`userId` for Career, `userId::search` for Search), so the row key
- * has to be unwrapped before it means anything.
+ * Find the Patronus user behind a Stripe customer.
+ *
+ * Both of a user's slots carry the same customer id, so either row answers the
+ * question. This used to have to unwrap a `::search` suffix out of `userId`;
+ * now the column means what it says.
  */
 async function userIdForCustomer(customerId: string): Promise<string | undefined> {
   const row = await prisma.subscription.findFirst({
     where: { stripeCustomerId: customerId },
     select: { userId: true },
   });
-  return row ? ownerOfRowKey(row.userId) : undefined;
+  return row?.userId;
 }
 
 /** Upsert the Subscription row for a Stripe subscription, in its own slot. */
@@ -51,9 +48,8 @@ async function syncSubscription(subscription: Stripe.Subscription): Promise<void
   // Nothing we can attribute this to — safe to ignore.
   if (!userId) return;
 
-  const rowKey = subscriptionRowKey(userId, slot);
   const previous = await prisma.subscription.findUnique({
-    where: { userId: rowKey },
+    where: { userId_slot: { userId, slot } },
     select: { tier: true, status: true },
   });
 
@@ -66,8 +62,8 @@ async function syncSubscription(subscription: Stripe.Subscription): Promise<void
   };
 
   await prisma.subscription.upsert({
-    where: { userId: rowKey },
-    create: { userId: rowKey, ...data },
+    where: { userId_slot: { userId, slot } },
+    create: { userId, slot, ...data },
     update: data,
   });
 
@@ -107,19 +103,23 @@ async function applyPaymentFailure(invoice: Stripe.Invoice): Promise<void> {
     where: subscriptionId
       ? { stripeCustomerId: customerId, stripeSubId: subscriptionId }
       : { stripeCustomerId: customerId },
-    select: { userId: true, tier: true },
+    select: { id: true, userId: true, slot: true, tier: true },
   });
   if (rows.length === 0) return;
 
   const graceEnd = new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000);
+  // By row id, not by userId. Under the old `::search` keying those were the
+  // same thing; now a user's two slots share a userId, so `WHERE userId IN
+  // (...)` would put BOTH subscriptions into grace when only one card failed —
+  // handing out free Search on a failed Career payment.
   await prisma.subscription.updateMany({
-    where: { userId: { in: rows.map((r) => r.userId) } },
+    where: { id: { in: rows.map((r) => r.id) } },
     data: { status: 'past_due', currentPeriodEnd: graceEnd },
   });
 
   for (const row of rows) {
-    await track(ownerOfRowKey(row.userId), 'plan_changed', {
-      slot: slotOfRowKey(row.userId),
+    await track(row.userId, 'plan_changed', {
+      slot: row.slot,
       from: planName(row.tier),
       to: planName(row.tier),
       reason: 'failed_payment',

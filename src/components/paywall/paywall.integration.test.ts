@@ -13,7 +13,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { CaptureSourceKind, WinCategory, WinSource, WinStatus } from '@prisma/client';
 
-import { gateMeteredAction, subscriptionRowKey } from '@/lib/entitlements';
+import { gateMeteredAction } from '@/lib/entitlements';
 import { CAREER_PLAN, SEARCH_PLAN } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
 
@@ -48,7 +48,7 @@ afterEach(async () => {
     await prisma.usageQuota.deleteMany({ where: { userId } });
     await prisma.funnelEvent.deleteMany({ where: { userId } });
     await prisma.subscription.deleteMany({
-      where: { userId: { in: [userId, subscriptionRowKey(userId, 'search')] } },
+      where: { userId },
     });
   }
 });

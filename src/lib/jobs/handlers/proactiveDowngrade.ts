@@ -29,19 +29,23 @@ const DISPATCH_LIMIT = 2_000;
 const PayloadSchema = z.object({ userId: z.string().min(1).optional() });
 
 /**
- * Candidates are resolved by Stripe customer rows rather than by tier, because
- * `getSubscriptionState` is the only thing that understands the `::search`
- * slot convention. Cheap filter here, authoritative decision in the child.
+ * Candidates are resolved by live subscription rows rather than by tier. Cheap
+ * filter here, authoritative decision in the child.
+ *
+ * This used to strip a `::search` suffix out of `userId` by hand — the second
+ * implementation of a convention that was supposed to live behind helpers in
+ * `entitlements.ts`, and the reason `Subscription.slot` is now a real column.
+ * `distinct` does the de-duplication the string surgery was doing.
  */
 async function dispatch(enqueue: Parameters<JobHandler>[1]['enqueue']): Promise<JobResult> {
     const rows = await prisma.subscription.findMany({
         where: { status: { in: ['active', 'trialing'] } },
         select: { userId: true },
+        distinct: ['userId'],
         take: DISPATCH_LIMIT,
     });
 
-    // The `::search` row and the base row both map to the same real user.
-    const userIds = [...new Set(rows.map((r) => r.userId.split('::')[0]))];
+    const userIds = rows.map((row) => row.userId);
 
     const day = new Date().toISOString().slice(0, 10);
     let enqueued = 0;

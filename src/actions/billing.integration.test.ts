@@ -26,7 +26,7 @@ import {
 } from '@prisma/client';
 import type Stripe from 'stripe';
 
-import { evaluateProactiveDowngrade, subscriptionRowKey } from '@/lib/entitlements';
+import { evaluateProactiveDowngrade } from '@/lib/entitlements';
 import { prisma } from '@/lib/prisma';
 import { __setStripeClientForTests } from '@/lib/stripe';
 
@@ -115,11 +115,12 @@ async function seed(
   status = 'active',
   currentPeriodEnd: Date | null = future()
 ): Promise<void> {
-  const rowKey = subscriptionRowKey(userId, slot);
+
   await prisma.subscription.upsert({
-    where: { userId: rowKey },
+    where: { userId_slot: { userId, slot } },
     create: {
-      userId: rowKey,
+      userId,
+      slot,
       stripeCustomerId: `cus_${RUN}`,
       stripeSubId: `sub_${slot}_${RUN}`,
       tier,
@@ -179,7 +180,7 @@ afterEach(async () => {
     const userId = users.pop();
     if (!userId) continue;
     await prisma.subscription.deleteMany({
-      where: { userId: { in: [userId, subscriptionRowKey(userId, 'search')] } },
+      where: { userId },
     });
     await prisma.usageQuota.deleteMany({ where: { userId } });
     await prisma.claimLink.deleteMany({ where: { userId } });
@@ -270,13 +271,15 @@ describe('turning Search off leaves Career intact (PRD 06 §5.3)', () => {
     expect(callsTo('subscriptions.cancel')).toHaveLength(0);
 
     // The Career row was not touched.
-    const career = await prisma.subscription.findUnique({ where: { userId } });
+    const career = await prisma.subscription.findUnique({
+      where: { userId_slot: { userId, slot: 'career' } },
+    });
     expect(career?.tier).toBe(Tier.always_on);
     expect(career?.status).toBe('active');
 
     // And once the Search period lapses, they land on Career, not Free.
     await prisma.subscription.update({
-      where: { userId: subscriptionRowKey(userId, 'search') },
+      where: { userId_slot: { userId, slot: 'search' } },
       data: { currentPeriodEnd: new Date(Date.now() - 1000) },
     });
     const data = await planPageData();
@@ -427,7 +430,9 @@ describe('cancellation deletes nothing (PRD 06 §5.4, §9)', () => {
     expect(await prisma.reviewPacket.count({ where: { userId } })).toBe(1);
 
     // Nor is the subscription row deleted — it winds down.
-    const sub = await prisma.subscription.findUnique({ where: { userId } });
+    const sub = await prisma.subscription.findUnique({
+      where: { userId_slot: { userId, slot: 'career' } },
+    });
     expect(sub?.status).toBe('canceling');
   });
 
@@ -465,9 +470,11 @@ describe('cancellation deletes nothing (PRD 06 §5.4, §9)', () => {
 
     await billing.cancelPlan({ slot: 'search' });
 
-    const career = await prisma.subscription.findUnique({ where: { userId } });
+    const career = await prisma.subscription.findUnique({
+      where: { userId_slot: { userId, slot: 'career' } },
+    });
     const search = await prisma.subscription.findUnique({
-      where: { userId: subscriptionRowKey(userId, 'search') },
+      where: { userId_slot: { userId, slot: 'search' } },
     });
     expect(career?.status).toBe('active');
     expect(search?.status).toBe('canceling');

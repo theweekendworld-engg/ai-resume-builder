@@ -31,7 +31,7 @@ import { NextRequest } from 'next/server';
 import { GroundState, PacketStatus, PacketType, Tier, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { invalidateFlagCache } from '@/lib/flags';
-import { getSubscriptionState, subscriptionRowKey } from '@/lib/entitlements';
+import { getSubscriptionState } from '@/lib/entitlements';
 import { PLAN_CATALOG, planName } from '@/lib/plans';
 import {
     assertGrounded,
@@ -529,7 +529,7 @@ test('adding Search creates a second subscription and leaves Career alone', asyn
     expect(state.search?.stripeCustomerId).toBe(state.career?.stripeCustomerId ?? null);
     expect(
         await prisma.subscription.findUnique({
-            where: { userId: subscriptionRowKey(journey.userId, 'search') },
+            where: { userId_slot: { userId: journey.userId, slot: 'search' } },
             select: { tier: true },
         }),
     ).toMatchObject({ tier: Tier.pro });
@@ -579,7 +579,7 @@ test('turning Search off leaves Career intact rather than dropping to Free', asy
     // Switched off, not erased — the row survives so reactivation is one click.
     expect(
         await prisma.subscription.count({
-            where: { userId: subscriptionRowKey(journey.userId, 'search') },
+            where: { userId: journey.userId, slot: 'search' },
         }),
     ).toBe(1);
 

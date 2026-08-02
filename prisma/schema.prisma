@@ -610,17 +610,36 @@ model ImpactMetric {
 // Monetization & entitlements (v2 architecture §7)
 // =========================================================================
 
+/// Career and Search are two Stripe subscriptions and therefore two rows.
+///
+/// This used to be keyed by writing `${userId}::search` into `userId`, because
+/// the column was unique. That kept working right up until it did not: the
+/// convention was supposed to live behind helpers in `entitlements.ts`, and a
+/// second implementation of it had already appeared in the proactive-downgrade
+/// handler as `userId.split('::')[0]`. A column whose values are sometimes not
+/// what the column is named is a bug waiting for the next reader — an account
+/// deletion or a data export that filters `userId = $1` silently misses the
+/// Search row.
+enum SubscriptionSlot {
+  career
+  search
+}
+
 model Subscription {
-  id               String    @id @default(cuid())
-  userId           String    @unique
+  id               String           @id @default(cuid())
+  userId           String
+  slot             SubscriptionSlot @default(career)
   stripeCustomerId String
   stripeSubId      String?
-  tier             Tier      @default(free)
+  tier             Tier             @default(free)
   status           String // active | past_due | canceled | trialing | incomplete
   currentPeriodEnd DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
+  /// One row per slot per user. Replaces the `userId @unique` that forced the
+  /// `::search` suffix.
+  @@unique([userId, slot])
   @@index([stripeCustomerId])
 }
 

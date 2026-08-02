@@ -49,33 +49,21 @@ export { METERED_ACTIONS, METERED_ACTION_LABELS } from '@/lib/plans';
 // ---------------------------------------------------------------------------
 
 /**
- * Career and Search are two Stripe subscriptions, and therefore two rows.
- * `Subscription.userId` is unique, so the Search row is keyed with a suffix;
- * every read and write of that row goes through the helpers below so the
- * convention stays in exactly one file.
+ * Career and Search are two Stripe subscriptions, and therefore two rows,
+ * distinguished by `Subscription.slot`.
  *
- * (If a `slot` column is ever added to the schema, only this section changes.)
+ * They used to be distinguished by writing `${userId}::search` into `userId`,
+ * because that column was unique. The comment here promised the convention
+ * would stay in this one file behind helpers — and it did not: a second
+ * implementation had already appeared in the proactive-downgrade handler as
+ * `userId.split('::')[0]`. A column whose values are sometimes not what the
+ * column is named is a bug waiting for its next reader, and the obvious next
+ * reader is an account deletion or a data export filtering `userId = $1`,
+ * which would silently miss the Search row.
+ *
+ * `slot` is now a real column with a `@@unique([userId, slot])`. There is no
+ * key derivation left to get wrong.
  */
-const SEARCH_ROW_SUFFIX = '::search';
-
-export function subscriptionRowKey(userId: string, slot: SubscriptionSlot): string {
-  return slot === 'search' ? `${userId}${SEARCH_ROW_SUFFIX}` : userId;
-}
-
-/** The real user behind a subscription row key. */
-export function ownerOfRowKey(rowKey: string): string {
-  return rowKey.endsWith(SEARCH_ROW_SUFFIX)
-    ? rowKey.slice(0, -SEARCH_ROW_SUFFIX.length)
-    : rowKey;
-}
-
-export function slotOfRowKey(rowKey: string): SubscriptionSlot {
-  return rowKey.endsWith(SEARCH_ROW_SUFFIX) ? 'search' : 'career';
-}
-
-function rowKeysFor(userId: string): string[] {
-  return [subscriptionRowKey(userId, 'career'), subscriptionRowKey(userId, 'search')];
-}
 
 /**
  * Statuses that grant access. `canceling` is a subscription the user has turned
@@ -105,7 +93,7 @@ export interface SubscriptionSummary {
 
 function summarize(
   row: {
-    userId: string;
+    slot: SubscriptionSlot;
     tier: Tier;
     status: string;
     currentPeriodEnd: Date | null;
@@ -117,7 +105,7 @@ function summarize(
   const withinPeriod = !row.currentPeriodEnd || row.currentPeriodEnd.getTime() > now.getTime();
   const active = row.tier !== Tier.free && ACCESS_STATUSES.has(row.status) && withinPeriod;
   return {
-    slot: slotOfRowKey(row.userId),
+    slot: row.slot,
     tier: row.tier,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd,
@@ -149,9 +137,9 @@ export async function getSubscriptionState(
   now: Date = new Date()
 ): Promise<SubscriptionState> {
   const rows = await prisma.subscription.findMany({
-    where: { userId: { in: rowKeysFor(userId) } },
+    where: { userId },
     select: {
-      userId: true,
+      slot: true,
       tier: true,
       status: true,
       currentPeriodEnd: true,
@@ -708,4 +696,4 @@ export async function evaluateProactiveDowngrade(
 }
 
 /** Test seam: the epoch marker used for lifetime quotas. */
-export const __testing = { LIFETIME_PERIOD_START, SEARCH_ROW_SUFFIX };
+export const __testing = { LIFETIME_PERIOD_START };

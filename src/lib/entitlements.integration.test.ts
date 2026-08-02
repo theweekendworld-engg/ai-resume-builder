@@ -26,11 +26,8 @@ import {
   getUserTier,
   hasFeature,
   isEntitlementError,
-  ownerOfRowKey,
   refundMeteredAction,
   requireFeature,
-  slotOfRowKey,
-  subscriptionRowKey,
   __testing,
 } from './entitlements';
 import { METERED_ACTIONS } from './plans';
@@ -61,11 +58,11 @@ async function seedSubscription(
   status: string,
   currentPeriodEnd: Date | null
 ): Promise<void> {
-  const rowKey = subscriptionRowKey(userId, slot);
   await prisma.subscription.upsert({
-    where: { userId: rowKey },
+    where: { userId_slot: { userId, slot } },
     create: {
-      userId: rowKey,
+      userId,
+      slot,
       stripeCustomerId: `cus_${RUN}`,
       stripeSubId: `sub_${slot}_${RUN}`,
       tier,
@@ -80,9 +77,8 @@ afterEach(async () => {
   while (users.length > 0) {
     const userId = users.pop();
     if (!userId) continue;
-    await prisma.subscription.deleteMany({
-      where: { userId: { in: [userId, subscriptionRowKey(userId, 'search')] } },
-    });
+    // One filter now covers both slots — which is the point of the change.
+    await prisma.subscription.deleteMany({ where: { userId } });
     await prisma.usageQuota.deleteMany({ where: { userId } });
     await prisma.funnelEvent.deleteMany({ where: { userId } });
   }
@@ -140,12 +136,19 @@ describe('tier resolution across two subscriptions (PRD 06 §5.2)', () => {
     expect(state.career?.cancelAtPeriodEnd).toBe(true);
   });
 
-  test('row keys round-trip', () => {
-    const userId = 'user_abc';
-    expect(subscriptionRowKey(userId, 'career')).toBe(userId);
-    expect(ownerOfRowKey(subscriptionRowKey(userId, 'search'))).toBe(userId);
-    expect(slotOfRowKey(subscriptionRowKey(userId, 'search'))).toBe('search');
-    expect(slotOfRowKey(userId)).toBe('career');
+  test('both slots live under the real userId', async () => {
+    // The replacement for the old row-key round-trip test. What matters now is
+    // that a plain `userId` filter finds everything the user has — the exact
+    // query an account deletion or a data export would write, and the one the
+    // `::search` suffix used to silently half-answer.
+    const userId = newUser('slots');
+    await seedSubscription(userId, 'career', Tier.always_on, 'active', future(30));
+    await seedSubscription(userId, 'search', Tier.pro, 'active', future(30));
+
+    const rows = await prisma.subscription.findMany({ where: { userId } });
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.slot).sort()).toEqual(['career', 'search']);
+    expect(rows.every((row) => row.userId === userId)).toBe(true);
   });
 });
 
