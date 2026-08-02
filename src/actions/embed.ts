@@ -3,7 +3,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';
 import { config } from '@/lib/config';
-import { qdrantClient } from '@/lib/qdrantClient';
+import {
+  qdrantClient,
+  isCollectionEnsured,
+  markCollectionEnsured,
+} from '@/lib/qdrantClient';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
 const COLLECTION_NAME = 'knowledge_base';
@@ -14,10 +18,9 @@ const PROJECT_SNIPPET_LIMIT = 10;
 
 
 
-let collectionEnsured = false;
 
 export async function ensureKnowledgeBaseCollection() {
-  if (collectionEnsured) return;
+  if (isCollectionEnsured()) return;
 
   const collections = await qdrantClient.getCollections();
   const exists = collections.collections.some((collection) => collection.name === COLLECTION_NAME);
@@ -58,7 +61,7 @@ export async function ensureKnowledgeBaseCollection() {
     });
   }
 
-  collectionEnsured = true;
+  markCollectionEnsured();
 }
 
 export async function generateEmbedding(params: {

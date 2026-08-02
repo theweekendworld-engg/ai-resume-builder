@@ -53,6 +53,8 @@ export type Journey = {
 };
 
 let active: Journey | null = null;
+/** When each run began, so job cleanup can be scoped by time rather than key shape. */
+const runStartedAt = new Map<string, Date>();
 
 function uniqueRunId(prefix: string): string {
     // No Math.random: journeys must be reproducible. The pid keeps parallel
@@ -91,6 +93,7 @@ export function defineJourney(options: {
     } as Journey;
 
     beforeAll(() => {
+        runStartedAt.set(runId, new Date());
         installMocks({
             only: options.boundaries,
             embeddingSize: options.embeddingSize,
@@ -133,6 +136,7 @@ export function currentJourney(): Journey {
 export async function purge(runId: string): Promise<void> {
     const like = { contains: runId };
 
+
     await prisma.claimLink.deleteMany({ where: { userId: like } });
     await prisma.evidence.deleteMany({ where: { userId: like } });
     await prisma.impactMetric.deleteMany({ where: { userId: like } });
@@ -153,7 +157,21 @@ export async function purge(runId: string): Promise<void> {
     await prisma.funnelEvent.deleteMany({ where: { userId: like } });
     await prisma.userExperience.deleteMany({ where: { userId: like } });
     await prisma.userProfile.deleteMany({ where: { userId: like } });
-    await prisma.job.deleteMany({ where: { dedupeKey: like } });
+    // Jobs are scoped by TIME, not by key.
+    //
+    // Handlers mint child dedupe keys from row ids — `embed_win:<winId>:<ts>`,
+    // `draft_wins:<sourceId>:<captureRunId>` — so a run-id match misses every
+    // fan-out child. Chasing those fragments also fails once the owning row is
+    // gone, which is how a directory run accumulated 546 orphaned rows.
+    //
+    // A journey owns its database for the duration, so everything enqueued
+    // since it started is its own. Safe, and it cannot be defeated by a key
+    // shape nobody anticipated.
+    const startedAt = runStartedAt.get(runId);
+    await prisma.job.deleteMany({
+        where: startedAt ? { createdAt: { gte: startedAt } } : { dedupeKey: like },
+    });
+    runStartedAt.delete(runId);
 }
 
 /**
@@ -208,10 +226,17 @@ export async function drainJobs(maxPasses = 10): Promise<{ passes: number; succe
     );
 }
 
-/** Dead jobs are silent failures — a journey should never end with one. */
-export async function assertNoDeadJobs(runId: string): Promise<void> {
+/**
+ * Dead jobs are silent failures — a journey should never end with one.
+ *
+ * Checks the WHOLE queue rather than filtering by run id. Fan-out children are
+ * keyed from row ids, so a run-id filter silently exempts exactly the jobs most
+ * likely to die. A journey runs against its own database, so anything dead here
+ * is either this run's or was already broken — both worth failing on.
+ */
+export async function assertNoDeadJobs(_runId?: string): Promise<void> {
     const dead = await prisma.job.findMany({
-        where: { status: 'dead', dedupeKey: { contains: runId } },
+        where: { status: 'dead' },
         select: { kind: true, lastError: true },
     });
     if (dead.length > 0) {

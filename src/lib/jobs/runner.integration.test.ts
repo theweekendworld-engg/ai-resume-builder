@@ -13,12 +13,13 @@
  * prefix and deletes only what it created. Never assume an empty table.
  */
 
-import { afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { JobStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
     STUCK_AFTER_MS,
     claimJobs,
+    getHandler,
     createInstanceId,
     drain,
     enqueue,
@@ -48,8 +49,14 @@ async function cleanup(): Promise<void> {
     created.length = 0;
 }
 
+/**
+ * The registry is process-global and shared with every other test file, so
+ * overriding `noop` here would leak into anything that later asserts the real
+ * handler is wired up. Captured and restored.
+ */
+const originalNoop = getHandler('noop');
+
 beforeAll(() => {
-    // Handlers used below. Registration is idempotent.
     registerHandler('noop', async (payload) => {
         const p = (payload ?? {}) as { failWith?: string; sleepMs?: number; echo?: unknown };
         if (p.failWith) throw new Error(p.failWith);
@@ -59,6 +66,10 @@ beforeAll(() => {
 });
 
 afterEach(cleanup);
+
+afterAll(() => {
+    if (originalNoop) registerHandler('noop', originalNoop);
+});
 
 describe('enqueue — dedupe is a database guarantee', () => {
     test('duplicate dedupeKey returns deduped:true, same jobId, one row, no throw', async () => {

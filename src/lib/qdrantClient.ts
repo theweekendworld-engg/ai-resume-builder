@@ -25,13 +25,40 @@ function createClient(): QdrantClient {
 export let qdrantClient: QdrantClient = createClient();
 
 /**
- * Test seam. Typed as the real `QdrantClient`, so a fake that drifts from the
+ * Whether `ensureKnowledgeBaseCollection()` has already run for the CURRENT
+ * client.
+ *
+ * It lives here rather than in `embed.ts` because it describes the client, not
+ * the module: a cache that outlives the thing it caches is a bug waiting for a
+ * test to find it. Swapping in a mock, or resetting one whose store has been
+ * cleared, must invalidate it — otherwise `ensure` short-circuits while the
+ * collection no longer exists and the next read fails with "Collection doesn't
+ * exist".
+ */
+let collectionEnsured = false;
+
+export function isCollectionEnsured(): boolean {
+    return collectionEnsured;
+}
+
+export function markCollectionEnsured(): void {
+    collectionEnsured = true;
+}
+
+export function invalidateCollectionEnsured(): void {
+    collectionEnsured = false;
+}
+
+/**
+ * Test seam. Typed as the real `QdrantClient`, so a mock that drifts from the
  * SDK stops compiling rather than quietly diverging.
  */
 export function setQdrantClient(client: QdrantClient): void {
     qdrantClient = client;
+    collectionEnsured = false;
 }
 
 export function resetQdrantClient(): void {
     qdrantClient = createClient();
+    collectionEnsured = false;
 }

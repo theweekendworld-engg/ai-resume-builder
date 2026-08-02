@@ -30,7 +30,7 @@ import { __testing as emailTesting } from '@/lib/email/send';
 import { __testing as telegramTesting } from '@/lib/telegram';
 import { __testing as usageTesting } from '@/lib/usageTracker';
 import { __setStripeClientForTests } from '@/lib/stripe';
-import { resetQdrantClient, setQdrantClient } from '@/lib/qdrantClient';
+import { invalidateCollectionEnsured, resetQdrantClient, setQdrantClient } from '@/lib/qdrantClient';
 
 import { MockClerk, mockClerk } from './clerk';
 import { MockGithubApi } from './github';
@@ -157,6 +157,11 @@ export function resetMocks(): void {
     if (!current) return;
     current.email.reset();
     current.qdrant.reset();
+    // The store just lost its collections, so the module-level "already
+    // ensured" cache in the client is now a lie. Leaving it set makes
+    // `ensureKnowledgeBaseCollection()` short-circuit against a collection that
+    // no longer exists, and the next read fails with "Collection doesn't exist".
+    invalidateCollectionEnsured();
     current.openai.reset();
     current.stripe.reset();
     current.telegram.reset();
