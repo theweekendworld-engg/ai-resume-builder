@@ -375,7 +375,7 @@ export function LogScreen({ snapshot, now, initialWinId, initialCompose = false 
       className={className}
       summary={summary}
       now={now}
-      onGeneratePacket={() => router.push('/log/packet/new')}
+      onGeneratePacket={() => router.push('/packets/new')}
     />
   );
 

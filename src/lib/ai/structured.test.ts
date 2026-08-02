@@ -79,6 +79,64 @@ describe('generateStructured — model resolution', () => {
     });
 });
 
+// ────────────────────────────────────────────────────── reasoning effort
+//
+// Reasoning tokens are invisible in the output and dominate latency: quick
+// capture ran 15–18s in production before `winStructure` was pinned to `low`,
+// and ~8s after, with the extracted figures unchanged. The effort therefore
+// has to be resolved from the task map, the same way the model is — a call
+// site that could pass its own budget would drift the same way a call site
+// passing its own model id would.
+
+describe('generateStructured — reasoning effort', () => {
+    let efforts: Array<string | undefined> = [];
+
+    function useEffortRunner() {
+        efforts = [];
+        __testing.setObjectRunner(async ({ reasoningEffort }) => {
+            efforts.push(reasoningEffort);
+            return { object: { summary: 'ok', bullets: [] }, inputTokens: 10, outputTokens: 5 };
+        });
+    }
+
+    test('an extraction task carries its configured effort', async () => {
+        useEffortRunner();
+        await generateStructured({ ...base, task: 'winStructure' });
+        expect(efforts).toEqual(['low']);
+    });
+
+    test('a synthesis task is left at the provider default', async () => {
+        useEffortRunner();
+        await generateStructured({ ...base, task: 'packetCompose' });
+        expect(efforts).toEqual([undefined]);
+    });
+
+    test('an explicit override beats the task default', async () => {
+        useEffortRunner();
+        await generateStructured({ ...base, task: 'winStructure', reasoningEffort: 'high' });
+        expect(efforts).toEqual(['high']);
+    });
+
+    test('the effort persists across a corrective retry', async () => {
+        // A retry that silently dropped the budget would make the slow path
+        // slower than the first attempt, which is the opposite of the point.
+        efforts = [];
+        let call = 0;
+        __testing.setObjectRunner(async ({ reasoningEffort }) => {
+            efforts.push(reasoningEffort);
+            call += 1;
+            return {
+                object: call === 1 ? { wrong: true } : { summary: 'ok', bullets: [] },
+                inputTokens: 10,
+                outputTokens: 5,
+            };
+        });
+        await generateStructured({ ...base, task: 'winStructure' });
+        expect(efforts.length).toBeGreaterThan(1);
+        expect(new Set(efforts)).toEqual(new Set(['low']));
+    });
+});
+
 describe('generateStructured — validation and retry', () => {
     test('returns parsed data on a valid first response', async () => {
         useRunner([{ summary: 'clean', bullets: ['a'] }]);

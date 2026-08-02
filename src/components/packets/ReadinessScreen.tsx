@@ -186,22 +186,55 @@ export function ReadinessScreen({ report: initial, frameworks, locked }: Readine
 function CompetencyRow({ item, locked }: { item: CompetencyAssessment; locked: boolean }) {
     return (
         <li className="flex items-baseline gap-3">
-            <span className={cn('w-4 shrink-0 text-center', verdictTone(item.verdict))} aria-hidden>
+            {/*
+             * The glyph carries the verdict, so it has to be obscured with
+             * everything else. Left unblurred it leaked the real assessment
+             * through the paywall AND contradicted the teaser beside it — a
+             * red ✗ for "absent" sitting next to blurred text reading
+             * "strong · 6 wins".
+             */}
+            <span
+                className={cn(
+                    'w-4 shrink-0 text-center',
+                    locked ? 'select-none blur-[4px] text-muted-foreground' : verdictTone(item.verdict),
+                )}
+                aria-hidden
+            >
                 {VERDICT_GLYPH[item.verdict]}
             </span>
             <span className={cn(typeStyles.body, 'min-w-[150px] flex-1 text-foreground')}>{item.name}</span>
             <span className="shrink-0" aria-hidden>
                 <Dots filled={item.dots} locked={locked} />
             </span>
-            <span
-                className={cn(
-                    typeStyles.small,
-                    'num w-[190px] shrink-0 text-right',
-                    locked ? 'select-none blur-[5px]' : verdictTone(item.verdict),
-                )}
-            >
-                {locked ? 'strong · 6 wins' : `${VERDICT_LABEL[item.verdict]} · ${item.rationale}`}
-            </span>
+            {locked ? (
+                <>
+                    {/*
+                     * Placeholder text, not this user's data. A blur is a
+                     * visual treatment only: without `aria-hidden` a screen
+                     * reader announces "strong · 6 wins" for every competency
+                     * as though it were a real assessment. In a product that
+                     * sells never stating an unverified claim, that is the one
+                     * thing this screen must not do.
+                     */}
+                    <span
+                        className={cn(typeStyles.small, 'num w-[190px] shrink-0 select-none text-right blur-[5px]')}
+                        aria-hidden
+                    >
+                        strong · 6 wins
+                    </span>
+                    <span className="sr-only">Locked — upgrade to see this assessment.</span>
+                </>
+            ) : (
+                <span
+                    className={cn(
+                        typeStyles.small,
+                        'num w-[190px] shrink-0 text-right',
+                        verdictTone(item.verdict),
+                    )}
+                >
+                    {`${VERDICT_LABEL[item.verdict]} · ${item.rationale}`}
+                </span>
+            )}
         </li>
     );
 }

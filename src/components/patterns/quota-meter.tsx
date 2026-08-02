@@ -18,6 +18,24 @@ export interface QuotaMeterProps {
 }
 
 /**
+ * The meter's sentence, as a pure function so it can be tested without a DOM.
+ *
+ * Three rules, each learned from a wrong reading on the live plan page:
+ *
+ * 1. A lifetime allowance is not a period allowance. "0 of 1 lifetime this
+ *    period" contradicts itself, so only period-scoped quotas get the clause.
+ * 2. Going over is reachable. Limits are displayed before they are enforced,
+ *    and "Review packets — 3 of 1 lifetime" appeared verbatim in testing. On
+ *    its own that reads as arithmetic gone wrong rather than a deliberate
+ *    allowance, so the over-limit case says so.
+ * 3. It never claims to have blocked anything, because it has not.
+ */
+export function quotaSentence(used: number, limit: number, unit?: string): string {
+  const base = unit ? `${used} of ${limit} ${unit}` : `${used} of ${limit} this period`;
+  return used > limit ? `${base} · over your plan` : base;
+}
+
+/**
  * `QuotaMeter` — a thin bar and a sentence.
  *
  * Always visible on `/settings/plan`: nobody should discover a limit by
@@ -34,12 +52,7 @@ export function QuotaMeter({ used, limit, resetsOn, unit, className }: QuotaMete
   const textClass =
     tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-muted-foreground';
 
-  // A lifetime allowance is not a period allowance — "0 of 1 lifetime this
-  // period" contradicts itself and reads as a bug to anyone deciding whether
-  // to pay. Only period-scoped quotas get the period clause.
-  const sentence = unit
-    ? `${used} of ${limit} ${unit}`
-    : `${used} of ${limit} this period`;
+  const sentence = quotaSentence(used, limit, unit);
   const reset = resetsOn ? `resets ${formatWinDate(resetsOn)}` : null;
 
   return (

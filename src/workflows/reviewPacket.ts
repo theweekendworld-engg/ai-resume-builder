@@ -16,9 +16,21 @@ import {
  * one persists its result — a crash after theme grouping resumes at the
  * mapping, not at the beginning.
  */
-export async function handleReviewPacketWorkflow(packetId: string) {
-    'use workflow';
-
+/**
+ * The stage sequence, as a plain function.
+ *
+ * Extracted so there is exactly ONE ordering of these steps. The workflow
+ * wrapper below runs it durably in production; local development calls it
+ * directly, because `start()` has no runner outside Vercel and silently
+ * accepts a run that then never executes — a packet stuck on `generating`
+ * forever with no error anywhere.
+ *
+ * Two copies of this sequence is what the previous arrangement amounted to,
+ * and the dev copy was wrong (it called the workflow wrapper directly, which
+ * the SDK rejects). Keep the single definition: a stage added here is a stage
+ * both environments run.
+ */
+export async function runReviewPacketStages(packetId: string): Promise<void> {
     try {
         await readWinsStep(packetId);
         await groupThemesStep(packetId);
@@ -31,4 +43,10 @@ export async function handleReviewPacketWorkflow(packetId: string) {
             error instanceof Error ? error.message : 'Packet generation failed',
         );
     }
+}
+
+export async function handleReviewPacketWorkflow(packetId: string) {
+    'use workflow';
+
+    await runReviewPacketStages(packetId);
 }

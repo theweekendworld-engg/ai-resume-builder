@@ -356,6 +356,24 @@ function scaleFactor(letter: string | undefined, word: string | undefined): numb
     return SCALES[key] ?? 1;
 }
 
+/**
+ * Escape the regex SYNTAX characters in `s`, and only those.
+ *
+ * Escaping indiscriminately (`\\${s}` for every character) is the obvious
+ * version and it is wrong under the `u` flag: `\€` is an identity escape on a
+ * non-syntax character, which Annex B tolerates but Unicode mode forbids. The
+ * resulting pattern is a SyntaxError at construction.
+ *
+ * That distinction is invisible to this repo's test suite. Bun runs on
+ * JavaScriptCore, which accepts `\€`; the app runs on Node, whose V8 rejects
+ * it. So the broken form passed every unit test and then threw on the first
+ * real request — and because the numeric guard is fail-closed, it took every
+ * AI win path down with it. Keep this function; do not inline a `\\${...}`.
+ */
+function escapeRegExp(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+}
+
 function sticky(pattern: string): RegExp {
     return new RegExp(pattern, 'uy');
 }
@@ -417,7 +435,7 @@ const MATCHERS: Matcher[] = [
 
     // currency, symbol-prefixed: "$1.2m", "€ 450k", "$1,200,000"
     (text, index) => {
-        const symbols = Object.keys(CURRENCY_SYMBOLS).map((s) => `\\${s}`).join('|');
+        const symbols = Object.keys(CURRENCY_SYMBOLS).map(escapeRegExp).join('|');
         const re = sticky(String.raw`(${symbols})\s?(${NUM})${SCALE}(?![\p{L}\d])`);
         re.lastIndex = index;
         const m = re.exec(text);

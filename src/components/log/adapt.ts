@@ -87,14 +87,22 @@ export function toSourceRef(evidence: EvidenceView): SourceRef {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The chip shows the sharpest available figure. `delta` beats `result` beats
- * the bare metric name, because "−77%" lands and "p95 latency" does not.
+ * The chip shows the sharpest available figure. `delta` beats the `baseline →
+ * result` range beats a bare `result` beats the metric name, because "−77%"
+ * lands, "4.2s → 900ms" lands, and "p95 latency" does not.
+ *
+ * The range has to outrank a bare `result`: on its own, "900ms" is a state,
+ * not an achievement, and the reader cannot tell whether it is good news. Live
+ * capture makes this the common case rather than the edge one — the model
+ * reliably extracts baseline and result from a rough note but usually leaves
+ * `delta` null, so ranking `result` first sent the range to the hover tooltip
+ * and put the least informative number on the card.
  */
 export function toMetricValue(impact: ImpactView | null): ImpactMetricValue | null {
   if (!impact) return null;
-  const value = impact.delta ?? impact.result ?? impact.metric;
   const range =
     impact.baseline && impact.result ? `${impact.baseline} → ${impact.result}` : null;
+  const value = impact.delta ?? range ?? impact.result ?? impact.metric;
   const detail = [range, impact.metric, impact.scope, impact.timeframe]
     .filter((part): part is string => Boolean(part) && part !== value)
     .join(' · ');

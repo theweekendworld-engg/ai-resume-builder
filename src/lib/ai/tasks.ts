@@ -61,3 +61,42 @@ export function resolveTaskModel(task: TaskKey): string {
     }
     return model;
 }
+
+/**
+ * Per-task reasoning effort. Same discipline as the model map: a call site
+ * names a task, never a thinking budget.
+ *
+ * Reasoning tokens dominate latency on the gpt-5 family and are invisible in
+ * the output. Measured against a real capture note, one prompt ran 3.0s at
+ * `minimal`, 3.5s at `low` and 6.1s at `medium` — and all three extracted the
+ * same figures, because copying a number out of a sentence is not a reasoning
+ * problem.
+ *
+ * The split is by KIND OF WORK, not by importance:
+ *
+ * - **Extraction / classification** — the answer is present in the input and
+ *   the job is to find and shape it. Low effort. `winStructure` is also the
+ *   only task on the interactive path: a person is watching a spinner, so its
+ *   latency is felt directly in a way no background task's is.
+ * - **Synthesis / judgement** — grouping, mapping to a ladder, writing prose
+ *   that must hold together across many inputs. Left at the model default,
+ *   where the thinking is doing real work.
+ *
+ * Tasks absent from this map use the provider default. Do not add one without
+ * measuring; the numbers above are the standard of evidence.
+ */
+export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 'medium' | 'high'>> = {
+    // Extraction from a note the user just typed, while they wait.
+    winStructure: 'low',
+    // Pulling wins out of an interview answer — same shape of work.
+    interviewExtract: 'low',
+    // Parsing structured documents into fields.
+    resumeParse: 'low',
+    jdParse: 'low',
+};
+
+export function resolveTaskReasoningEffort(
+    task: TaskKey,
+): 'minimal' | 'low' | 'medium' | 'high' | undefined {
+    return TASK_REASONING_EFFORT[task];
+}

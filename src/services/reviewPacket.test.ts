@@ -22,6 +22,7 @@ import {
     countWords,
     groupWinsIntoThemes,
     guardSourceText,
+    hitCeiling,
     loadPacketWins,
     renderMarkdown,
     renderPlainText,
@@ -29,6 +30,7 @@ import {
     scorePacketWin,
     selectPacketWins,
     stripBanned,
+    trimToCompleteThought,
     writeHonestRead,
     writeWhatWouldCloseIt,
     type Composition,
@@ -42,6 +44,7 @@ import {
     newPacketUserId,
     packetWin,
 } from '@/services/packetFixtures.test-utils';
+import type { PacketWin } from '@/services/reviewPacket';
 
 const users: string[] = [];
 
@@ -362,6 +365,173 @@ describe('truthfulness pass', () => {
         const verified = runTruthfulnessPass({ packetId: 'p3', content, wins });
         expect(verified.themes[0].outcome.ground).toBe('grounded');
         expect(verified.warnings).toEqual([]);
+    });
+});
+
+// ═══════════════════════════════════════════════ length-ceiling truncation
+//
+// `maxLength` in a structured-output schema is enforced by the provider during
+// generation, not requested of the model: it stops mid-word. A real packet
+// shipped a theme outcome of exactly 300 characters ending "…with a
+// killwitch". Zod accepted it, the truthfulness pass called it grounded, and
+// the user got a severed sentence with no warning anywhere.
+
+describe('length-ceiling truncation', () => {
+    const CAP = 300;
+    const atCap = (tail: string) => 'x'.repeat(CAP - tail.length) + tail;
+
+    test('at the ceiling and mid-word is treated as truncated', () => {
+        expect(hitCeiling(atCap('with a killwitch'), CAP)).toBe(true);
+    });
+
+    test('at the ceiling but properly terminated is not', () => {
+        // A sentence is allowed to land exactly on the limit.
+        expect(hitCeiling(atCap('and it shipped.'), CAP)).toBe(false);
+        expect(hitCeiling(atCap('did it work?'), CAP)).toBe(false);
+    });
+
+    test('a closing quote or bracket after the stop still counts as finished', () => {
+        expect(hitCeiling(atCap('he said "done."'), CAP)).toBe(false);
+        expect(hitCeiling(atCap('(shipped it.)'), CAP)).toBe(false);
+    });
+
+    test('short unterminated text is left alone — only the ceiling implicates it', () => {
+        // Fragments well under the cap are a style choice, not a failure.
+        expect(hitCeiling('a short fragment', CAP)).toBe(false);
+    });
+
+    test('trailing whitespace does not hide a truncation', () => {
+        expect(hitCeiling(`${atCap('with a killwitch')}   `, CAP)).toBe(true);
+    });
+
+    describe('salvage', () => {
+        test('keeps whole sentences and drops the severed tail', () => {
+            expect(trimToCompleteThought('It shipped. Then it was cut off mid-wor')).toBe(
+                'It shipped.',
+            );
+        });
+
+        test('falls back to the last clause when there is no full stop', () => {
+            // The observed real case: one long semicolon-joined chain.
+            expect(
+                trimToCompleteThought('shipped the flow; cut p95 to 180ms; led the migration in four wav'),
+            ).toBe('shipped the flow; cut p95 to 180ms.');
+        });
+
+        test('returns nothing when there is no complete thought to keep', () => {
+            expect(trimToCompleteThought('one long unpunctuated fragment cut off')).toBe('');
+        });
+
+        test('only ever removes text, so it cannot add a claim', () => {
+            const input = 'It shipped. Then 91% of something unsupported got cut of';
+            const out = trimToCompleteThought(input);
+            expect(input.startsWith(out)).toBe(true);
+            expect(out).not.toContain('91%');
+        });
+    });
+});
+
+// ═══════════════════════════════════════ spliced-capital normalization
+//
+// A real gpt-5-mini packet read "…migrating off the legacy queue in Four
+// waves…" because the source narrative was "Four waves with a kill switch at
+// each one." Composition quotes evidence verbatim, which is what keeps it
+// grounded, so the sentence-initial capital travels with the fragment.
+//
+// The rule is evidence-driven: demote a mid-sentence capital only when the
+// source capitalizes that word at a sentence start and NOWHERE else. Proper
+// nouns appear mid-sentence in the corpus, so they can never qualify.
+
+describe('spliced-capital normalization', () => {
+    /** Build a packet whose theme outcome is `text`, over the given wins. */
+    function verify(text: string, wins: PacketWin[]) {
+        const grouping: ThemeGrouping = {
+            themes: [
+                {
+                    title: 'A theme',
+                    outcomeSentence: text,
+                    winIds: wins.map((w) => w.id),
+                    scope: null,
+                    strength: 'headline',
+                },
+            ],
+            unthemed: [],
+            coherenceNote: null,
+            fellBack: false,
+            costUsd: 0,
+        };
+        const content = assemblePacket({
+            type: 'performance_review',
+            audience: 'manager',
+            periodStart: new Date('2026-02-01T00:00:00.000Z'),
+            periodEnd: new Date('2026-07-31T00:00:00.000Z'),
+            employerName: null,
+            framework: null,
+            targetLevel: null,
+            wins,
+            grouping,
+            composition: null,
+            assessments: [],
+            omittedWinCount: 0,
+        });
+        return runTruthfulnessPass({ packetId: 'case', content, wins });
+    }
+
+    const fourWaves = [
+        packetWin({
+            id: 'v1',
+            title: 'Led the payments migration off the legacy queue',
+            narrative: 'Four waves with a kill switch at each one. No rollback needed.',
+        }),
+    ];
+
+    test('demotes a capital the source only uses to start a sentence', () => {
+        const out = verify('I migrated off the legacy queue in Four waves.', fourWaves);
+        expect(out.themes[0].outcome.text).toContain('in four waves');
+    });
+
+    test('leaves a proper noun alone — it appears mid-sentence in the source', () => {
+        const wins = [
+            packetWin({
+                id: 'v2',
+                title: 'Rebuilt billing',
+                narrative: 'We moved billing to Stripe. Stripe handled the retries.',
+            }),
+        ];
+        // "Stripe" both starts a sentence AND appears mid-sentence, so it is
+        // disqualified — exactly the protection that makes this safe.
+        const out = verify('I rebuilt billing on Stripe last spring.', wins);
+        expect(out.themes[0].outcome.text).toContain('on Stripe');
+    });
+
+    test('never demotes the first word of a sentence', () => {
+        const out = verify('Four waves shipped. Four more followed.', fourWaves);
+        expect(out.themes[0].outcome.text.startsWith('Four waves shipped.')).toBe(true);
+        expect(out.themes[0].outcome.text).toContain('. Four more');
+    });
+
+    test('an employer name that only ever starts a field is still safe', () => {
+        // Titles are their own line, so "Acme" is sentence-initial in one and
+        // mid-sentence in another — the mid-sentence use protects it.
+        const wins = [
+            packetWin({ id: 'v3', title: 'Acme migration finished', narrative: 'Shipped the Acme migration.' }),
+        ];
+        const out = verify('I finished the Acme migration.', wins);
+        expect(out.themes[0].outcome.text).toContain('the Acme migration');
+    });
+
+    test('normalization does not disturb grounding or warnings', () => {
+        const out = verify('I migrated off the legacy queue in Four waves.', fourWaves);
+        expect(out.themes[0].outcome.ground).toBe('grounded');
+        expect(out.warnings).toEqual([]);
+    });
+
+    test('bullets keep the user\'s own capitalization', () => {
+        const out = verify('I migrated off the legacy queue in Four waves.', fourWaves);
+        // The bullet is the win title verbatim; nothing here may rewrite it.
+        expect(out.themes[0].bullets[0].text).toContain(
+            'Led the payments migration off the legacy queue',
+        );
     });
 });
 

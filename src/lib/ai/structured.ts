@@ -2,7 +2,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { aiOpenAI } from '@/lib/aiProvider';
 import { calculateOpenAiCostUsd, logUsageEvent } from '@/lib/usageTracker';
-import { resolveTaskModel, type TaskKey } from '@/lib/ai/tasks';
+import { resolveTaskModel, resolveTaskReasoningEffort, type TaskKey } from '@/lib/ai/tasks';
 import type { FeatureTag } from '@/lib/ai/features';
 import {
     buildCorrectionPrompt,
@@ -45,6 +45,8 @@ export type GenerateStructuredOptions<T extends z.ZodType> = {
     guard?: NumericGuard;
     sessionId?: string;
     temperature?: number;
+    /** Override the per-task default in {@link TASK_REASONING_EFFORT}. */
+    reasoningEffort?: ReasoningEffort;
 };
 
 export type GenerateStructuredResult<T> = {
@@ -62,12 +64,25 @@ export type GenerateStructuredResult<T> = {
 // make real model calls in a unit test, so both are swappable. Production code
 // must not touch these.
 
+/**
+ * How much the model is allowed to think before answering.
+ *
+ * Reasoning tokens are the dominant term in both latency and cost on the gpt-5
+ * family, and they are invisible in the response — measured on a real capture
+ * note, the same prompt took 3.0s at `minimal`, 3.5s at `low` and 6.1s at
+ * `medium`, all three extracting the identical figures. Extraction tasks that
+ * copy from a source do not benefit from the extra thinking; synthesis tasks
+ * do. See {@link TASK_REASONING_EFFORT}.
+ */
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+
 type ObjectRunnerArgs = {
     model: string;
     schema: z.ZodType;
     system: string;
     prompt: string;
     temperature?: number;
+    reasoningEffort?: ReasoningEffort;
 };
 
 type ObjectRunnerResult = {
@@ -78,13 +93,23 @@ type ObjectRunnerResult = {
 
 export type ObjectRunner = (args: ObjectRunnerArgs) => Promise<ObjectRunnerResult>;
 
-const defaultObjectRunner: ObjectRunner = async ({ model, schema, system, prompt, temperature }) => {
+const defaultObjectRunner: ObjectRunner = async ({
+    model,
+    schema,
+    system,
+    prompt,
+    temperature,
+    reasoningEffort,
+}) => {
     const result = await generateObject({
         model: aiOpenAI(model),
         schema,
         system,
         prompt,
         ...(temperature === undefined ? {} : { temperature }),
+        ...(reasoningEffort === undefined
+            ? {}
+            : { providerOptions: { openai: { reasoningEffort } } }),
     });
     return {
         object: result.object,
@@ -143,6 +168,9 @@ export async function generateStructured<T extends z.ZodType>(
 ): Promise<GenerateStructuredResult<z.infer<T>>> {
     const { task, feature, userId, schema, system, guard } = opts;
     const model = resolveTaskModel(task);
+    // Explicit override wins; otherwise the per-task default, which is the
+    // same discipline as the model map — no thinking budget at a call site.
+    const reasoningEffort = opts.reasoningEffort ?? resolveTaskReasoningEffort(task);
     const maxRetries = Math.max(0, opts.maxRetries ?? 1);
 
     const startedAt = Date.now();
@@ -166,6 +194,7 @@ export async function generateStructured<T extends z.ZodType>(
             system,
             prompt,
             temperature: opts.temperature,
+            reasoningEffort,
         });
         calls += 1;
         inputTokens += result.inputTokens ?? 0;

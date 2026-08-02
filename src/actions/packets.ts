@@ -173,14 +173,33 @@ export async function getPacketScope(range: {
 
 // ═══════════════════════════════════════════════════════════ 2. generate
 
-/** Dev runs the pipeline inline; production hands it to the workflow runtime. */
+/**
+ * Production hands the run to the workflow runtime; local development runs the
+ * same stages in-process.
+ *
+ * `start()` only has a runner on Vercel. Locally it accepts the call and
+ * returns, and nothing ever executes — which is indistinguishable from success
+ * at the call site and leaves the packet on `generating` forever.
+ *
+ * The previous dev branch tried to cover that by importing
+ * `handleReviewPacketWorkflow` and awaiting it, which the SDK explicitly
+ * forbids ("You attempted to execute workflow … directly"). The rejection went
+ * into a `.catch()` that only logged, so packet generation had in fact never
+ * worked outside production and nothing said so. Both halves now drive
+ * {@link runReviewPacketStages}, so the only difference between environments
+ * is durability, not behaviour.
+ */
 function shouldUseLocalInlineRun(): boolean {
     return process.env.NODE_ENV !== 'production';
 }
 
 async function runPacketInline(packetId: string): Promise<void> {
-    const { handleReviewPacketWorkflow: run } = await import('@/workflows/reviewPacket');
-    void run(packetId).catch((error: unknown) => {
+    const { runReviewPacketStages } = await import('@/workflows/reviewPacket');
+
+    // Detached deliberately: the caller is a server action and the user is
+    // watching the progress screen, which polls. Failures inside the stages
+    // already mark the packet `failed` via `failPacketStep`.
+    void runReviewPacketStages(packetId).catch((error: unknown) => {
         console.error('[actions/packets] inline packet run failed', {
             packetId,
             error: error instanceof Error ? error.message : String(error),

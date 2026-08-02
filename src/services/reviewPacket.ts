@@ -585,17 +585,85 @@ export async function groupWinsIntoThemes(params: {
 
 // ═══════════════════════════════════════════════════════════ composition
 
+/**
+ * Field ceilings. Named because the truncation check needs the same numbers —
+ * a literal repeated in two places would drift and silently disable the check.
+ */
+const COMPOSE_MAX = {
+    summary: 1_400,
+    outcomeSentence: 300,
+    impact: 240,
+    growth: 1_400,
+} as const;
+
 const ComposeResponseSchema = z.object({
-    summary: z.string().min(1).max(1_400),
+    summary: z.string().min(1).max(COMPOSE_MAX.summary),
     themeOutcomes: z.array(
         z.object({
             index: z.number().int().min(0).max(4),
-            outcomeSentence: z.string().min(1).max(300),
-            impact: z.string().max(240).nullable(),
+            outcomeSentence: z.string().min(1).max(COMPOSE_MAX.outcomeSentence),
+            impact: z.string().max(COMPOSE_MAX.impact).nullable(),
         }),
     ),
-    growth: z.string().max(1_400),
+    growth: z.string().max(COMPOSE_MAX.growth),
 });
+
+/**
+ * Did the model run out of room rather than finish its sentence?
+ *
+ * A `maxLength` in a structured-output schema is not a request the model tries
+ * to honour — the provider enforces it during generation and simply stops. A
+ * real packet shipped a theme reading "…in four waves with a killwitch",
+ * exactly 300 characters long, cut off mid-word. Zod saw a valid string, the
+ * truthfulness pass saw grounded text, and the user got a sentence that ends
+ * in a non-word.
+ *
+ * Both conditions are required. At the ceiling alone is not proof (a sentence
+ * can legitimately land on 300), and missing punctuation alone is not either
+ * (a fragment may be intentional). Together they are as close to certain as
+ * this can get without a second call.
+ */
+export function hitCeiling(text: string, max: number): boolean {
+    const trimmed = text.trimEnd();
+    return trimmed.length >= max && !/[.!?]["')\]]?$/.test(trimmed);
+}
+
+/**
+ * Salvage a truncated field by cutting back to its last complete thought.
+ *
+ * Discarding the whole paragraph is too blunt. Composition is expensive and
+ * mostly good — the failure is confined to the tail — and the deterministic
+ * fallback can be far worse: the first packet to hit this dropped 300
+ * characters of usable prose in favour of a grouping sentence reading "no
+ * rollback."
+ *
+ * Preference order is longest-safe-first:
+ *   1. the last sentence terminator, keeping whole sentences;
+ *   2. failing that, the last clause boundary (`;` or `—`), because these
+ *      sentences are typically one long semicolon-joined chain with no
+ *      internal full stop, and a clause is still a complete thought;
+ *   3. nothing, leaving the caller to fall back.
+ *
+ * Only ever removes text, so it cannot introduce an unsupported claim; the
+ * truthfulness pass still runs afterwards on whatever survives.
+ */
+export function trimToCompleteThought(text: string): string {
+    const trimmed = text.trimEnd();
+
+    const lastStop = Math.max(
+        trimmed.lastIndexOf('.'),
+        trimmed.lastIndexOf('!'),
+        trimmed.lastIndexOf('?'),
+    );
+    if (lastStop > 0) return trimmed.slice(0, lastStop + 1);
+
+    // No full stop anywhere: fall back to the last clause boundary and
+    // terminate it ourselves.
+    const lastClause = Math.max(trimmed.lastIndexOf(';'), trimmed.lastIndexOf(' — '));
+    if (lastClause > 0) return `${trimmed.slice(0, lastClause).trimEnd()}.`;
+
+    return '';
+}
 
 const BANNED_TOKENS = [
     'exceptional',
@@ -700,15 +768,38 @@ export async function composePacketProse(params: {
         guard: { sourceText, fields: ['summary', 'growth', 'themeOutcomes'] },
     });
 
+    // Drop any field the provider cut off at its ceiling. Assembly already
+    // falls back to the deterministic sentence when a composed one is empty
+    // (`composed?.outcomeSentence || theme.outcomeSentence`), so discarding
+    // here yields the user's own words instead of a severed one — the same
+    // fail-closed trade the numeric guard makes.
+    const keep = (text: string, max: number): string => {
+        if (!hitCeiling(text, max)) return stripBanned(text);
+
+        const salvaged = trimToCompleteThought(text);
+        console.warn('[reviewPacket] composed field hit its length ceiling', {
+            max,
+            ending: text.trimEnd().slice(-40),
+            action: salvaged ? 'trimmed to the last complete thought' : 'dropped; using the fallback',
+        });
+        return salvaged ? stripBanned(salvaged) : '';
+    };
+
     return {
-        summary: stripBanned(result.data.summary),
+        summary: keep(result.data.summary, COMPOSE_MAX.summary),
         themeOutcomes: new Map(
             result.data.themeOutcomes.map((entry) => [
                 entry.index,
-                { outcomeSentence: stripBanned(entry.outcomeSentence), impact: entry.impact },
+                {
+                    outcomeSentence: keep(entry.outcomeSentence, COMPOSE_MAX.outcomeSentence),
+                    impact:
+                        entry.impact && hitCeiling(entry.impact, COMPOSE_MAX.impact)
+                            ? null
+                            : entry.impact,
+                },
             ]),
         ),
-        growth: stripBanned(result.data.growth),
+        growth: keep(result.data.growth, COMPOSE_MAX.growth),
         degraded: result.degraded,
         costUsd: result.usage.costUsd,
     };
@@ -936,6 +1027,80 @@ export function collectBlocks(content: PacketContent): PacketBlock[] {
     return blocks.filter((block) => block.text.trim().length > 0);
 }
 
+/**
+ * Words the source corpus only ever capitalizes because they START a sentence.
+ *
+ * Composition lifts evidence verbatim, which is what keeps it grounded, but a
+ * fragment that began a sentence in the note keeps its capital when the model
+ * drops it mid-sentence. A real packet read "…migrating off the legacy queue
+ * in Four waves…", because the source narrative was "Four waves with a kill
+ * switch at each one." It happened twice in 389 words, so it is systematic for
+ * anyone whose notes start with a capitalized common word.
+ *
+ * The rule is evidence-driven rather than lexical, because a dictionary cannot
+ * tell "Four" from "Acme". A word is demoted only when the source both
+ * capitalizes it at a sentence start AND never capitalizes it anywhere else.
+ * "Acme" and "Stripe" appear mid-sentence in the corpus, so they can never
+ * qualify — no proper-noun list to maintain and no way for one to leak in.
+ */
+function sentenceInitialOnlyWords(wins: readonly PacketWin[]): Set<string> {
+    // Deliberately NOT `verificationSourceText`: that joins a win's fields with
+    // spaces, which is fine for pulling quantities out but destroys the
+    // boundaries this analysis depends on. Concatenated, the narrative "Four
+    // waves…" lands mid-line after the title and looks like a mid-sentence
+    // capital — the exact word we need to classify gets disqualified. Each
+    // field is its own line here, so a field-initial word is sentence-initial.
+    const corpus = wins
+        .flatMap((win) => [win.title, win.narrative, win.metric ?? '', win.evidenceLabel ?? ''])
+        .filter(Boolean)
+        .join('\n');
+
+    const initial = new Set<string>();
+    const elsewhere = new Set<string>();
+
+    // A sentence starts at the beginning of a line or after .!?; anything else
+    // that is capitalized mid-sentence is a genuine proper noun or acronym.
+    const WORD = /([A-Z][a-z]+)/g;
+    for (const line of corpus.split('\n')) {
+        for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+            const trimmed = sentence.trim();
+            if (!trimmed) continue;
+            let first = true;
+            for (const match of trimmed.matchAll(WORD)) {
+                const word = match[1];
+                // Only the leading word of the sentence counts as initial, and
+                // only when the sentence literally begins with it.
+                if (first && match.index === 0) initial.add(word);
+                else elsewhere.add(word);
+                first = false;
+            }
+        }
+    }
+
+    for (const word of elsewhere) initial.delete(word);
+    return initial;
+}
+
+/** Lowercase demotable words wherever they appear mid-sentence in `text`. */
+function normalizeSplicedCase(text: string, demotable: ReadonlySet<string>): string {
+    if (!text || demotable.size === 0) return text;
+
+    let sentenceStart = true;
+    return text.replace(/([A-Za-z][A-Za-z-]*)|([.!?]+\s*)|(\s+)|([^\sA-Za-z]+)/g, (token, word, stop) => {
+        if (stop !== undefined) {
+            sentenceStart = true;
+            return token;
+        }
+        if (word === undefined) return token;
+
+        const atStart = sentenceStart;
+        sentenceStart = false;
+        // Never touch the first word of a sentence — there the capital is correct.
+        if (atStart) return token;
+        return demotable.has(word) ? word[0].toLowerCase() + word.slice(1) : token;
+    });
+}
+
 export function runTruthfulnessPass(params: {
     packetId: string;
     content: PacketContent;
@@ -958,14 +1123,28 @@ export function runTruthfulnessPass(params: {
         return { ...block, ground: verdict.ground, warning: verdict.warning };
     };
 
+    /**
+     * Case-normalize model-composed prose only.
+     *
+     * Bullets are win titles reproduced verbatim, so their capitalization is
+     * the user's own and must not be touched. Grounding is computed before
+     * this runs and is unaffected: demoting a letter changes no quantity, no
+     * entity and no word.
+     */
+    const demotable = sentenceInitialOnlyWords(params.wins);
+    const applyProse = (block: PacketBlock): PacketBlock => {
+        const verified = apply(block);
+        return { ...verified, text: normalizeSplicedCase(verified.text, demotable) };
+    };
+
     const content: PacketContent = {
         ...params.content,
-        summary: apply(params.content.summary),
-        growth: apply(params.content.growth),
+        summary: applyProse(params.content.summary),
+        growth: applyProse(params.content.growth),
         themes: params.content.themes.map((theme) => ({
             ...theme,
-            outcome: apply(theme.outcome),
-            impact: theme.impact ? apply(theme.impact) : null,
+            outcome: applyProse(theme.outcome),
+            impact: theme.impact ? applyProse(theme.impact) : null,
             bullets: theme.bullets.map(apply),
         })),
         warnings: [...verdicts.values()]
@@ -1118,7 +1297,7 @@ export function renderMarkdown(
                 lines.push(`- ${locked ? '🔒 ' : ''}${bullet.text}`);
             }
             lines.push('');
-            if (theme.impact?.text.trim()) lines.push(`**Impact:** ${theme.impact.text.trim()}`, '');
+            if (theme.impact?.text.trim()) lines.push(`**Scope:** ${theme.impact.text.trim()}`, '');
         }
     }
 

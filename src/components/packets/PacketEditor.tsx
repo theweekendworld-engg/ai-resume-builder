@@ -245,7 +245,15 @@ export function PacketEditor({ packet }: PacketEditorProps) {
                                     </ul>
                                     {theme.impact?.text ? (
                                         <p className={cn(typeStyles.small, 'mt-2 text-muted-foreground')}>
-                                            <span className="font-medium text-foreground">Impact: </span>
+                                            {/*
+                                              * "Scope", not "Impact". The field is specified as
+                                              * "who or what was affected" and falls back to
+                                              * `theme.scope`, so it holds things like "38 accounts;
+                                              * payments team". Under an "Impact:" label that reads
+                                              * as a broken impact statement; under "Scope:" it is
+                                              * exactly right.
+                                              */}
+                                            <span className="font-medium text-foreground">Scope: </span>
                                             {theme.impact.text}
                                         </p>
                                     ) : null}
