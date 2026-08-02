@@ -31,6 +31,8 @@ import { deterministicVector, fingerprint, seededRandom } from './deterministic'
 import type { OpenAiRecord, Recorder } from './recorder';
 
 type Embeddings = OpenAI['embeddings'];
+type Completions = OpenAI['chat']['completions'];
+type ChatCreateParams = OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
 type EmbeddingCreateParams = Parameters<Embeddings['create']>[0];
 type EmbeddingRequestOptions = Parameters<Embeddings['create']>[1];
 type EmbeddingResult = ReturnType<Embeddings['create']>;
@@ -47,6 +49,78 @@ function normalizeInput(input: EmbeddingCreateParams['input']): string[] {
 /** Cheap, stable token estimate. Never a random number — cost assertions depend on it. */
 function estimateTokens(texts: string[]): number {
     return texts.reduce((total, text) => total + Math.max(1, Math.ceil(text.length / 4)), 0);
+}
+
+// ───────────────────────────────────────────────────────── chat completions
+
+/**
+ * `chat.completions.create`, for the legacy resume pipeline.
+ *
+ * Everything written since the AI rules landed goes through
+ * `generateStructured`, which this file doubles at the object-runner seam. The
+ * original resume pipeline predates that and still calls
+ * `trackedChatCompletion` → `openai.chat.completions.create` directly, which
+ * is why J6 could not exist until this was here.
+ *
+ * The response is deterministic and content-addressed, like everything else in
+ * the layer, and it deliberately contains NO numbers unless a test scripts
+ * them. That default is the useful one: it means the no-fabrication assertion
+ * in J6 fails loudly the day the pipeline starts inventing figures, rather
+ * than passing because the mock happened to echo the source back.
+ */
+export class MockOpenAIChatCompletions {
+    private script: Array<{ match: RegExp; content: string }> = [];
+
+    constructor(private readonly recorder: Recorder) {}
+
+    /** Script a reply for prompts matching `match`. First registered wins. */
+    onChat(match: RegExp, content: string): void {
+        this.script.push({ match, content });
+    }
+
+    resetScript(): void {
+        this.script = [];
+    }
+
+    async create(params: ChatCreateParams): Promise<unknown> {
+        const prompt = params.messages
+            .map((message) => (typeof message.content === 'string' ? message.content : ''))
+            .join('\n');
+        const model = String(params.model);
+
+        this.recorder.openai.push({
+            kind: 'object',
+            model,
+            system: '',
+            prompt,
+            temperature: params.temperature ?? null,
+            fingerprint: fingerprint(model, prompt),
+        });
+
+        const scripted = this.script.find((entry) => entry.match.test(prompt));
+        const wantsJson =
+            scripted === undefined &&
+            (params.response_format as { type?: string } | undefined)?.type === 'json_object';
+
+        const content = scripted?.content ?? (wantsJson ? '{}' : 'Backend engineer.');
+        const promptTokens = estimateTokens([prompt]);
+        const completionTokens = estimateTokens([content]);
+
+        return {
+            id: `chatcmpl_${fingerprint(model, prompt)}`,
+            object: 'chat.completion',
+            created: 0,
+            model,
+            choices: [
+                { index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' },
+            ],
+            usage: {
+                prompt_tokens: promptTokens,
+                completion_tokens: completionTokens,
+                total_tokens: promptTokens + completionTokens,
+            },
+        };
+    }
 }
 
 // ───────────────────────────────────────────────────────────── embeddings
@@ -242,6 +316,8 @@ type ScriptEntry = {
 
 export class MockOpenAI {
     readonly embeddings: MockOpenAIEmbeddings;
+    /** Shaped like the SDK: `openai.chat.completions.create`. */
+    readonly chat: { completions: MockOpenAIChatCompletions };
 
     private readonly script: ScriptEntry[] = [];
     private failNext: Error | null = null;
@@ -251,6 +327,12 @@ export class MockOpenAI {
         size: number = DEFAULT_EMBEDDING_SIZE,
     ) {
         this.embeddings = new MockOpenAIEmbeddings(recorder, size);
+        this.chat = { completions: new MockOpenAIChatCompletions(recorder) };
+    }
+
+    /** Script a `chat.completions` reply. See MockOpenAIChatCompletions. */
+    onChat(match: RegExp, content: string): void {
+        this.chat.completions.onChat(match, content);
     }
 
     /** Every model call this run — embeddings and structured drafts alike. */
@@ -357,10 +439,11 @@ export class MockOpenAI {
     reset(): void {
         this.script.length = 0;
         this.failNext = null;
+        this.chat.completions.resetScript();
         this.recorder.openai.length = 0;
     }
 
-    /** The single cast in the embeddings path. */
+    /** The single cast. Both sub-resources above are structurally correct. */
     asOpenAI(): OpenAI {
         return this as unknown as OpenAI;
     }

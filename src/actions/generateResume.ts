@@ -909,13 +909,23 @@ export async function generateSmartResumePipeline(
       });
 
       if (thinSections.includes('summary')) {
+        // The skills clause is omitted rather than left empty. With no skills
+        // extracted this produced "hands-on experience in  and a track record"
+        // — a visible double space and a dangling preposition, on the first
+        // line of a document going to an employer. Found by J6.
+        const role = parsedJD.role || improved.personalInfo.title || 'professional';
+        const topSkills = improved.skills.slice(0, 4).filter(Boolean);
+        const fallbackSummary = topSkills.length > 0
+          ? `Results-focused ${role} with hands-on experience in ${topSkills.join(', ')} and a track record of delivering measurable outcomes.`
+          : `Results-focused ${role} with a track record of delivering measurable outcomes.`;
+
         improved = {
           ...improved,
           personalInfo: {
             ...improved.personalInfo,
             summary: improved.personalInfo.summary.trim().length >= 80
               ? improved.personalInfo.summary
-              : `Results-focused ${parsedJD.role || improved.personalInfo.title || 'professional'} with hands-on experience in ${improved.skills.slice(0, 4).join(', ')} and a track record of delivering measurable outcomes.`,
+              : fallbackSummary,
           },
         };
       }
