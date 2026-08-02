@@ -34,7 +34,12 @@ export function QuotaMeter({ used, limit, resetsOn, unit, className }: QuotaMete
   const textClass =
     tone === 'danger' ? 'text-danger' : tone === 'warning' ? 'text-warning' : 'text-muted-foreground';
 
-  const sentence = `${used} of ${limit}${unit ? ` ${unit}` : ''} this period`;
+  // A lifetime allowance is not a period allowance — "0 of 1 lifetime this
+  // period" contradicts itself and reads as a bug to anyone deciding whether
+  // to pay. Only period-scoped quotas get the period clause.
+  const sentence = unit
+    ? `${used} of ${limit} ${unit}`
+    : `${used} of ${limit} this period`;
   const reset = resetsOn ? `resets ${formatWinDate(resetsOn)}` : null;
 
   return (

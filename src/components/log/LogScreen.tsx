@@ -117,7 +117,26 @@ export function LogScreen({ snapshot, now, initialWinId, initialCompose = false 
   }, [openWinId]);
 
   /* --- derived ------------------------------------------------------------ */
-  const visible = React.useMemo(() => applyFilters(wins, filters), [wins, filters]);
+  /**
+   * The review queue already renders these drafts at the top of the page, so
+   * the month list must not render them again — the default view otherwise
+   * shows the same Win twice, and confirming it in the queue leaves the
+   * duplicate sitting below.
+   *
+   * Scoped to the default segment on purpose: the explicit `Drafts` segment is
+   * how you see drafts as a list, and a filtered view has no queue above it to
+   * collide with.
+   */
+  const queuedIds = React.useMemo(
+    () => new Set(queueItems.map((item) => item.id)),
+    [queueItems],
+  );
+
+  const visible = React.useMemo(() => {
+    const filtered = applyFilters(wins, filters);
+    if (filters.segment !== 'all' || queuedIds.size === 0) return filtered;
+    return filtered.filter((win) => !queuedIds.has(win.id));
+  }, [wins, filters, queuedIds]);
   const years = React.useMemo(() => yearOptions(wins), [wins]);
   const openWin = React.useMemo(
     () => wins.find((win) => win.id === openWinId) ?? null,
