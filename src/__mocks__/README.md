@@ -1,6 +1,6 @@
 # The mock layer — and what it does not prove
 
-Seven doubles, one per external boundary, each typed against the real SDK so a
+Eight doubles, one per external boundary, each typed against the real SDK so a
 version bump that changes a signature breaks the build rather than producing a
 mock that quietly describes an API the provider no longer has.
 
