@@ -546,6 +546,67 @@ on('TAILOR_STATUS', async (msg) => {
     }
 });
 
+/**
+ * Track the application on this tab.
+ *
+ * Until now `ApplicationSession.workspaceId` was always null from the
+ * extension: BIND_WORKSPACE existed and worked, but nothing in the UI could
+ * call it and there was no way to create a workspace for a job the user had
+ * not already saved on the web. Every application filled through the extension
+ * was therefore orphaned from the tracker that is supposed to follow it.
+ *
+ * Safe to press twice — `upsertExtensionWorkspace` matches an existing
+ * workspace by id, then source URL, then company+role before creating one, and
+ * reports which happened via `matchedBy`.
+ */
+on('TRACK_APPLICATION', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+
+    const pageModel = getPageModel(msg.tabId);
+    if (!pageModel) return { ok: false, error: 'no_page_context' };
+
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/workspaces/upsert`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                sourceUrl: pageModel.url,
+                sourcePlatform: pageModel.classification.platform,
+                companyName: pageModel.metadata?.['companyName'] as string | undefined,
+                roleTitle:
+                    (pageModel.metadata?.['roleTitle'] as string | undefined) ?? pageModel.heading,
+                location: pageModel.metadata?.['location'] as string | undefined,
+                jobDescription: pageModel.jobDescription?.text,
+            }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            workspace?: { id: string };
+            matchedBy?: string;
+            error?: string;
+        };
+        if (!res.ok || !json.workspace?.id) {
+            return { ok: false, error: json.error ?? `track_failed_${res.status}` };
+        }
+
+        // Bind locally so the rest of the session carries the workspace, and
+        // reuse the existing upsync inside bindWorkspace's caller path.
+        const session = await bindWorkspace(msg.tabId, json.workspace.id);
+        return {
+            ok: true,
+            data: { workspaceId: json.workspace.id, matchedBy: json.matchedBy, session },
+        };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'track_error' };
+    }
+});
+
 chrome.runtime.onInstalled.addListener(() => {
     chrome.sidePanel
         .setPanelBehavior({ openPanelOnActionClick: false })

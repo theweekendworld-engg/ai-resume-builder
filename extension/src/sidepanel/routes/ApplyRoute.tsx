@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Loader2, FileSearch, Sparkles, Layers } from 'lucide-react';
+import { Loader2, FileSearch, Sparkles, Layers, BookmarkCheck, BookmarkPlus } from 'lucide-react';
 import { cn } from '@/shared/ui/cn';
+import { request } from '@/background/messageBus';
 import { usePageContext } from '../hooks/usePageContext';
 import { useSession } from '../hooks/useSession';
 import { useFillPlan } from '../hooks/useFillPlan';
@@ -28,6 +29,10 @@ export function ApplyRoute() {
     const completeness = useProfileCompleteness();
     const { state: fillState, apply, undo } = useFillPlan();
     const [filledIds, setFilledIds] = useState<Set<string>>(new Set());
+    const [tracking, setTracking] = useState(false);
+    const [trackError, setTrackError] = useState<string | null>(null);
+    /** Set locally on success so the row updates without waiting for a session refresh. */
+    const [trackedNow, setTrackedNow] = useState(false);
     const [lastApplied, setLastApplied] = useState<{ count: number; key: string } | null>(null);
     const [applying, setApplying] = useState(false);
 
@@ -122,6 +127,38 @@ export function ApplyRoute() {
         setLastApplied(null);
     };
 
+    /**
+     * Bind this tab's session to a workspace, creating one if the job is new.
+     *
+     * Without this, `ApplicationSession.workspaceId` stayed null for every
+     * application filled through the extension, so nothing the user did here
+     * ever reached the tracker on the web.
+     */
+    const handleTrack = async () => {
+        if (state.status !== 'ready') return;
+        setTracking(true);
+        setTrackError(null);
+
+        const res = await request<{ workspaceId?: string; matchedBy?: string }>({
+            type: 'TRACK_APPLICATION',
+            tabId: state.tabId,
+        });
+        setTracking(false);
+
+        if (!res.ok) {
+            setTrackError(
+                res.error === 'not_authenticated'
+                    ? 'Connect your account in Settings to track applications.'
+                    : 'Could not track this application.',
+            );
+            return;
+        }
+        setTrackedNow(true);
+        trackExtensionEvent('workspace.saved', { matchedBy: res.data?.matchedBy ?? 'unknown' });
+    };
+
+    const isTracked = Boolean(session?.workspaceId) || trackedNow;
+
     return (
         <div className="space-y-3">
             <ProfileCompletenessBanner appBase={appBase} />
@@ -148,6 +185,32 @@ export function ApplyRoute() {
                         <span className="text-muted-foreground">{jd.text.length} chars</span>
                     </div>
                 ) : null}
+
+                <div className="mt-3 border-t pt-2">
+                    {isTracked ? (
+                        <p className="flex items-center gap-1.5 text-xs text-success">
+                            <BookmarkCheck className="h-3.5 w-3.5" />
+                            Tracked — this application is in your tracker
+                        </p>
+                    ) : (
+                        <button
+                            type="button"
+                            className="btn btn-outline w-full gap-1 text-xs"
+                            disabled={tracking}
+                            onClick={() => void handleTrack()}
+                        >
+                            {tracking ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <BookmarkPlus className="h-3.5 w-3.5" />
+                            )}
+                            {tracking ? 'Tracking…' : 'Track this application'}
+                        </button>
+                    )}
+                    {trackError ? (
+                        <p className="mt-1 text-xs text-destructive">{trackError}</p>
+                    ) : null}
+                </div>
                 {session ? (
                     <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                         <Layers className="h-3.5 w-3.5" />

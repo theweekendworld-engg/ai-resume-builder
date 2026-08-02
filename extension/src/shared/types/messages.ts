@@ -196,6 +196,13 @@ export type Message =
     | { type: 'TELEMETRY_BATCH'; events: TelemetryEvent[] }
     | { type: 'GET_SESSION'; tabId: number }
     | { type: 'BIND_WORKSPACE'; tabId: number; workspaceId: string }
+    /**
+     * Start tracking the job on this tab: create-or-match a workspace from the
+     * page, then bind the tab's session to it. One message rather than an
+     * upsert followed by a bind, so the panel cannot leave a workspace created
+     * but unbound if the second call fails.
+     */
+    | { type: 'TRACK_APPLICATION'; tabId: number }
     | { type: 'GET_PROFILE' }
     | { type: 'LIST_WORKSPACES' }
     | {
