@@ -46,7 +46,11 @@ const KIND_FALLBACK: Record<EvidenceView['kind'], string> = {
   document: 'Document',
   url: 'Link',
   interview_assertion: 'You said this',
-  metric_confirmed: 'Confirmed metric',
+  // Not "Confirmed metric": the kind means the USER confirmed an assertion,
+  // and `winGraph` maps every `manual` and `ambient` Win to it. So a hand-
+  // logged Win with no ImpactMetric was claiming a metric while the drawer
+  // sat directly beneath it asking "How much better, roughly?".
+  metric_confirmed: 'You confirmed this',
   import: 'Import',
 };
 

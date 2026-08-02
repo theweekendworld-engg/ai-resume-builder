@@ -33,7 +33,10 @@ const KIND_LABEL: Record<EvidenceKindValue, string> = {
   document: 'Document',
   url: 'Link',
   interview_assertion: 'Something you said',
-  metric_confirmed: 'Confirmed metric',
+  // Kept in step with the same map in `winGraph.ts` and `adapt.ts`. The kind
+  // means the user confirmed an assertion, not that a metric exists — three
+  // copies of this string is itself the smell; one owner would be better.
+  metric_confirmed: 'You confirmed this',
   import: 'Import',
 };
 

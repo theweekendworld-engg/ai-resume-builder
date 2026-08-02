@@ -301,7 +301,11 @@ const EVIDENCE_KIND_LABEL: Record<EvidenceKind, string> = {
     [EvidenceKind.document]: 'Document',
     [EvidenceKind.url]: 'Link',
     [EvidenceKind.interview_assertion]: 'You said this',
-    [EvidenceKind.metric_confirmed]: 'Confirmed metric',
+    // Not "Confirmed metric": the kind means the USER confirmed an assertion,
+    // and `winGraph` maps every `manual` and `ambient` Win to it. So a hand-
+    // logged Win with no ImpactMetric was claiming a metric while the drawer
+    // sat directly beneath it asking "How much better, roughly?".
+    [EvidenceKind.metric_confirmed]: 'You confirmed this',
     [EvidenceKind.import]: 'Import',
 };
 
