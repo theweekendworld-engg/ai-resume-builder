@@ -799,17 +799,68 @@ export function buildComposePrompt(input: {
     return lines.join('\n');
 }
 
+/**
+ * Praise the data cannot earn, plus the punctuation that always signals it.
+ *
+ * Mirrors `BANNED_TOKENS` in `reviewPacket.ts` and extends it with the
+ * congratulation vocabulary specific to this surface. Product rule from
+ * PRD 08 §8.3 and design/00 §2: congratulate outcomes, never usage. The
+ * counter is the reward.
+ */
+const BANNED_TONE = [
+    'exceptional', 'world-class', 'world class', 'rockstar', 'ninja',
+    'unparalleled', 'best-in-class', 'best in class', 'incredible', 'amazing',
+    'great job', 'great month', 'great work', 'well done', 'nice work',
+    'nice going', 'congratulations', 'congrats', 'fantastic', 'awesome',
+    'impressive', 'keep it up', 'keep up the', 'proud of', 'crushed it',
+    'smashed it', 'killing it', 'stellar', 'phenomenal', 'outstanding',
+];
+
+/**
+ * PRD 08 §8.3 — no exclamation marks, no congratulating usage.
+ *
+ * This existed only as prompt rule 3 until a journey test proved a compliant-
+ * looking paragraph could carry it straight through: the entity and digit
+ * checks look at facts, not at tone, so "You had a great month! ..." passed
+ * both and would have been emailed verbatim. The packet path enforces its
+ * equivalent in code; this is the missing counterpart.
+ *
+ * Fail-closed like the others: a paragraph that trips this is dropped, not
+ * edited. Rewriting model output to sound acceptable is how a tone rule turns
+ * into a tone illusion.
+ */
+export function checkTone(output: string): GroundingCheck {
+    const haystack = output.toLowerCase();
+    const unsupported: string[] = [];
+
+    if (output.includes('!')) unsupported.push('!');
+    for (const token of BANNED_TONE) {
+        if (haystack.includes(token)) unsupported.push(token);
+    }
+
+    return { ok: unsupported.length === 0, unsupported };
+}
+
 /** Why a paragraph was withheld. Grouped by this in the drop-rate query. */
-export type ParagraphDropReason = 'entity' | 'digit' | 'entity_and_digit' | 'guard_stripped';
+export type ParagraphDropReason =
+    | 'entity'
+    | 'digit'
+    | 'entity_and_digit'
+    | 'tone'
+    | 'guard_stripped';
 
 export function dropReason(input: {
     entityCheck: GroundingCheck;
     digitCheck: GroundingCheck;
+    toneCheck?: GroundingCheck;
     paragraph: string;
 }): ParagraphDropReason {
     if (!input.entityCheck.ok && !input.digitCheck.ok) return 'entity_and_digit';
     if (!input.entityCheck.ok) return 'entity';
     if (!input.digitCheck.ok) return 'digit';
+    // After the factual checks: a paragraph can be entirely true and still
+    // wrong in tone, and that is a different failure worth counting apart.
+    if (input.toneCheck && !input.toneCheck.ok) return 'tone';
     // Both checks pass on an empty string: the numeric guard already blanked it.
     return 'guard_stripped';
 }
@@ -822,6 +873,7 @@ export type ComposeResult = {
     dropped: ParagraphDropReason | null;
     entityCheck: GroundingCheck;
     digitCheck: GroundingCheck;
+    toneCheck: GroundingCheck;
     usage: StructuredUsage | null;
 };
 
@@ -865,19 +917,22 @@ export async function composeMonthInReview(input: {
     const paragraph = result.data.paragraph.trim();
     const entityCheck = checkEntityGrounding(paragraph, sourceText);
     const digitCheck = checkDigitGrounding(paragraph, sourceText);
-    const grounded = entityCheck.ok && digitCheck.ok && paragraph.length > 0;
+    const toneCheck = checkTone(paragraph);
+    const grounded =
+        entityCheck.ok && digitCheck.ok && toneCheck.ok && paragraph.length > 0;
 
     if (!grounded) {
         // The one place this feature can quietly degrade: everything else still
         // renders, so a dropped paragraph looks like a thin month rather than a
         // failure. It has to be countable from day one, not inferred later.
-        const reason = dropReason({ entityCheck, digitCheck, paragraph });
+        const reason = dropReason({ entityCheck, digitCheck, toneCheck, paragraph });
         console.warn('[monthInReview] paragraph dropped: ungrounded', {
             userId: input.userId,
             period: formatPeriodKey(input.period),
             reason,
             entities: entityCheck.unsupported,
             digits: digitCheck.unsupported,
+            tone: toneCheck.unsupported,
         });
         await track(input.userId, 'ai_guard_violation', {
             feature: 'month_in_review',
@@ -888,15 +943,17 @@ export async function composeMonthInReview(input: {
             // Bounded: these are model output, and this row is read by humans.
             unsupportedEntities: entityCheck.unsupported.slice(0, 10),
             unsupportedDigits: digitCheck.unsupported.slice(0, 10),
+            unsupportedTone: toneCheck.unsupported.slice(0, 10),
         });
     }
 
     return {
         paragraph: grounded ? paragraph : null,
         degraded: !grounded || result.degraded,
-        dropped: grounded ? null : dropReason({ entityCheck, digitCheck, paragraph }),
+        dropped: grounded ? null : dropReason({ entityCheck, digitCheck, toneCheck, paragraph }),
         entityCheck,
         digitCheck,
+        toneCheck,
         usage: result.usage,
     };
 }

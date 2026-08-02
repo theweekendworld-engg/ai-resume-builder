@@ -697,6 +697,13 @@ export async function writeWinDraftTool(input: unknown): Promise<Result<WriteWin
         sensitivity: draft.sensitivity,
         source: WinSource.backfill,
         sourceRef: `${BACKFILL_SOURCE_PREFIX}${sessionId}`,
+        // The session knows its subject; inference does not, and returns null
+        // on overlapping employments. Declared in this tool's own schema and
+        // previously dropped on the floor here.
+        ...(parsed.data.employerId !== undefined
+            ? { employerId: parsed.data.employerId }
+            : {}),
+        ...(parsed.data.projectId !== undefined ? { projectId: parsed.data.projectId } : {}),
     });
 
     if (!created.success) {
@@ -1057,7 +1064,19 @@ export function formatMetricLabel(
 ): string | null {
     if (!impact) return null;
     if (impact.baseline && impact.result) return `${impact.baseline} → ${impact.result}`;
-    return impact.delta ?? impact.result ?? impact.metric ?? null;
+
+    // Truthiness, not nullish coalescing. The numeric guard blanks a violating
+    // field to '' rather than null, and '' is not nullish — so `?? ` returned
+    // the empty string and the rail rendered a ⚡ chip with no label beside it.
+    // That is precisely the metric-shaped hole this must never produce.
+    return firstNonEmpty(impact.delta, impact.result, impact.metric);
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+    for (const value of values) {
+        if (typeof value === 'string' && value.trim().length > 0) return value;
+    }
+    return null;
 }
 
 async function metricLabelFor(userId: string, winId: string): Promise<string | null> {

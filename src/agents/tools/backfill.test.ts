@@ -15,6 +15,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { installClerkMock } from '@/__mocks__/clerk';
+import { formatMetricLabel } from './backfill';
 import {
     EvidenceKind,
     GroundState,
@@ -600,5 +601,37 @@ describe('json codecs', () => {
         ).toBe('800ms → 180ms');
         expect(tools.formatMetricLabel({ metric: 'tickets', delta: '-30%' })).toBe('-30%');
         expect(tools.formatMetricLabel(null)).toBeNull();
+    });
+});
+
+describe('formatMetricLabel never renders an empty chip', () => {
+    test('a guard-blanked delta falls through instead of returning an empty string', () => {
+        // The guard writes '' rather than null when it strips a field, and ''
+        // is not nullish — so `??` used to return it verbatim.
+        expect(
+            formatMetricLabel({ metric: 'p95 latency', baseline: '800ms', result: null, delta: '' }),
+        ).toBe('p95 latency');
+    });
+
+    test('whitespace is treated as empty too', () => {
+        expect(
+            formatMetricLabel({ metric: 'tickets', baseline: '30', result: null, delta: '   ' }),
+        ).toBe('tickets');
+    });
+
+    test('a real delta still wins', () => {
+        expect(
+            formatMetricLabel({ metric: 'p95 latency', baseline: '800ms', result: null, delta: '-77%' }),
+        ).toBe('-77%');
+    });
+
+    test('baseline and result together still render the arrow', () => {
+        expect(
+            formatMetricLabel({ metric: 'p95', baseline: '800ms', result: '180ms', delta: '' }),
+        ).toBe('800ms → 180ms');
+    });
+
+    test('everything blank yields null, not an empty label', () => {
+        expect(formatMetricLabel({ metric: '', baseline: '', result: '', delta: '' })).toBeNull();
     });
 });

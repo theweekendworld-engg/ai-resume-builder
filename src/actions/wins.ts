@@ -105,6 +105,8 @@ const CreateWinSchema = z
         source: z.enum(WinSource).optional(),
         sourceRef: z.string().max(2_000).optional(),
         signalId: z.string().max(64).optional(),
+        employerId: z.string().max(64).nullable().optional(),
+        projectId: z.string().max(64).nullable().optional(),
     })
     // A Win needs words from somewhere: either raw text to structure, or a
     // structured title the user has already seen and approved.
@@ -256,6 +258,14 @@ export async function createWinFromText(input: CreateWinInput): Promise<Result<W
             sensitivity: fields.sensitivity,
             source,
             sourceRef: sourceRef ?? null,
+            // Passing `undefined` keeps date-based inference; an explicit value
+            // (including null) is honoured as stated.
+            ...(parsed.data.employerId !== undefined
+                ? { employerId: parsed.data.employerId }
+                : {}),
+            ...(parsed.data.projectId !== undefined
+                ? { projectId: parsed.data.projectId }
+                : {}),
             signalId: signalId ?? null,
             skills: fields.skills,
             collaborators: fields.collaborators,

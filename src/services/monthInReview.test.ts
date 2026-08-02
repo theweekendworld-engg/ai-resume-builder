@@ -29,6 +29,7 @@ import {
     buildSourceText,
     buildSubject,
     checkDigitGrounding,
+    checkTone,
     checkEntityGrounding,
     composeMonthInReview,
     countByCategory,
@@ -917,5 +918,72 @@ describe('paragraph drops are visible, not inferred', () => {
         expect(
             await prisma.funnelEvent.count({ where: { userId, type: 'ai_guard_violation' } }),
         ).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Tone enforcement.
+//
+// Added after a journey test proved the rule was prompt-only: the entity and
+// digit checks reason about facts, not about tone, so a paragraph could be
+// entirely true and still congratulate the user — and be emailed verbatim.
+// ---------------------------------------------------------------------------
+
+describe('checkTone', () => {
+    test('the exact paragraph that used to slip through is now caught', () => {
+        // Verbatim from the journey report. Both grounding checks pass on it.
+        const paragraph = 'You had a great month! The checkout lookup went from 800ms to 180ms.';
+        const result = checkTone(paragraph);
+
+        expect(result.ok).toBe(false);
+        expect(result.unsupported).toContain('!');
+        expect(result.unsupported).toContain('great month');
+    });
+
+    test('praise mid-sentence is caught, not only at the start', () => {
+        // The accidental defence was the entity check rejecting a capitalised
+        // opener it did not recognise. That never fired mid-sentence.
+        expect(checkTone('The migration landed and that is impressive work.').ok).toBe(false);
+        expect(checkTone('Shipped it, congrats to you.').ok).toBe(false);
+    });
+
+    test('an exclamation mark alone is enough', () => {
+        expect(checkTone('You shipped the checkout rewrite!').ok).toBe(false);
+    });
+
+    test('plain declarative prose passes', () => {
+        const paragraph =
+            'July was your reliability month. The checkout latency work took p95 from 800ms ' +
+            'to 180ms, and the payments design review changed how that team handles retries.';
+        expect(checkTone(paragraph)).toEqual({ ok: true, unsupported: [] });
+    });
+
+    test('a factual word that merely contains a banned substring is not a false positive', () => {
+        // "outstanding" is banned; "outstanding tickets" is a real status word.
+        // Documents current behaviour: substring matching flags it. Fail-closed
+        // costs a paragraph here, which is the direction we want to err.
+        expect(checkTone('Cleared the outstanding tickets.').ok).toBe(false);
+    });
+});
+
+describe('dropReason ranks tone below the factual checks', () => {
+    const ok = { ok: true, unsupported: [] };
+    const bad = { ok: false, unsupported: ['x'] };
+
+    test('a factual failure outranks a tone failure', () => {
+        expect(dropReason({ entityCheck: bad, digitCheck: ok, toneCheck: bad, paragraph: 'p' }))
+            .toBe('entity');
+        expect(dropReason({ entityCheck: ok, digitCheck: bad, toneCheck: bad, paragraph: 'p' }))
+            .toBe('digit');
+    });
+
+    test('tone is reported when the facts are sound', () => {
+        expect(dropReason({ entityCheck: ok, digitCheck: ok, toneCheck: bad, paragraph: 'p' }))
+            .toBe('tone');
+    });
+
+    test('an empty paragraph is still guard_stripped', () => {
+        expect(dropReason({ entityCheck: ok, digitCheck: ok, toneCheck: ok, paragraph: '' }))
+            .toBe('guard_stripped');
     });
 });

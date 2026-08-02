@@ -144,6 +144,17 @@ export type CreateWinInput = {
     sourceRef?: string;
     /** Set by capture connectors; enforces one Win per signal. */
     signalId?: string;
+    /**
+     * Explicit attribution, overriding date-based inference.
+     *
+     * The backfill interview knows which employer it is asking about, and
+     * inference cannot: `resolveEmployerIdFrom` returns null on overlapping
+     * experiences (a contractor who went full-time), so a session scoped to one
+     * employer could produce Wins with no employer at all — which then fall out
+     * of the interview's own employer-scoped context query. Omit to infer.
+     */
+    employerId?: string | null;
+    projectId?: string | null;
 };
 
 /** For the filter bar and the drawer's employer picker. */
