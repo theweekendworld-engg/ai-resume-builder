@@ -1,4 +1,5 @@
 import { ApplicationStatus, Prisma } from '@prisma/client';
+import { registerBoardFromUrl } from '@/lib/radar/discovery';
 import { prisma } from '@/lib/prisma';
 import type {
   ExtensionWorkspaceResponse,
@@ -128,6 +129,17 @@ export async function upsertExtensionWorkspace(params: {
   userId: string;
   input: ExtensionWorkspaceUpsertRequest;
 }): Promise<ExtensionWorkspaceResponse> {
+  // Every tracked application is a board sighting. This is the compounding
+  // discovery channel from PRD 04 §3.1 — the extension is a network of probes
+  // we already deployed — and it is fire-and-forget: discovery failing must
+  // never break the thing the user actually asked for.
+  void registerBoardFromUrl({
+    url: params.input.sourceUrl,
+    companyName: params.input.companyName,
+    discoveredVia: 'extension',
+    discoveredByUserId: params.userId,
+  });
+
   const match = await findMatchingWorkspace(params.userId, params.input);
 
   if (match) {

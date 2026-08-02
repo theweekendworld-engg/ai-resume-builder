@@ -36,6 +36,7 @@ import {
 } from '@/lib/radar/boards';
 import { normalizeRole } from '@/lib/radar/role';
 import { normalizeGeo } from '@/lib/radar/geo';
+import { extractSkills } from '@/lib/radar/skills';
 
 export const INGEST_BOARD_JOB_KIND = 'ingest_board' as const;
 
@@ -133,7 +134,11 @@ function hourBucket(atMs: number): string {
  * deleted — a closed posting is still evidence a role was advertised, and the
  * band windows read `postedAt`, not liveness.
  */
-async function storePostings(sourceId: string, postings: RawPosting[]): Promise<{
+async function storePostings(
+    sourceId: string,
+    companyName: string | null,
+    postings: RawPosting[],
+): Promise<{
     upserted: number;
     closed: number;
     withComp: number;
@@ -173,7 +178,9 @@ async function storePostings(sourceId: string, postings: RawPosting[]): Promise<
             compLabel: comp?.label ?? null,
             compBandEligible: comp?.bandEligible ?? false,
             compRejectReason: comp?.rejectReason ?? null,
-            skills: [] as string[],
+            // Company name excluded: on its own board it appears in every
+            // posting's boilerplate and would read as a universal requirement.
+            skills: extractSkills(posting.description, { companyName }),
             roleFamily: role.family,
             seniority: role.seniority,
             bandKey: role.bandKey,
@@ -208,7 +215,7 @@ function hashOf(text: string): string {
 async function ingestOne(sourceId: string): Promise<JobResultObject> {
     const source = await prisma.jobSource.findUnique({
         where: { id: sourceId },
-        select: { id: true, provider: true, boardToken: true, etag: true, lastModified: true, notFoundStreak: true },
+        select: { id: true, provider: true, boardToken: true, companyName: true, etag: true, lastModified: true, notFoundStreak: true },
     });
     if (!source) return { mode: 'ingest', skipped: 'source_missing' };
 
@@ -264,7 +271,7 @@ async function ingestOne(sourceId: string): Promise<JobResultObject> {
             throw new Error(`ingest_board(${source.boardToken}): ${outcome.message}`);
 
         case 'ok': {
-            const stored = await storePostings(sourceId, outcome.postings);
+            const stored = await storePostings(sourceId, source.companyName, outcome.postings);
             await prisma.jobSource.update({
                 where: { id: sourceId },
                 data: {
