@@ -325,6 +325,122 @@ Suite stayed at **499 pass / 0 fail** throughout — the outstanding errors are 
 
 ---
 
+## Wave C — capture, packets, backfill, packaging
+
+Four agents, four disjoint subtrees. Orchestrator pre-landed the schema (`20260802090000`) and the `review_packet` / `rubric_upload` metered actions, so no agent had to edit `entitlements.ts` or `schema.prisma` to unblock itself.
+
+### C2 · review packet, rubric, readiness — **accepted** (verified)
+
+~20 files. Scope clean; nothing outside its subtree touched. Suite **839 pass, 0 fail**, verified stable across three consecutive runs.
+
+**Zero-fabrication gate: PASS, 0 violations across 20 packets** — and the corpus is genuinely adversarial. Every scenario's mocked model *actively tries* to fabricate: invents percentages, totals two source figures, rounds, promotes an unstated scope, invents currency/headcount/duration/multiplier, and one plants a figure in the growth section. Each runs the real grouping → composition → guard → strip → truthfulness pass.
+
+**The audit is a separate implementation from the guard.** C2's reasoning, which is exactly right: *"a gate sharing code with the thing it gates proves nothing."* Second time an agent has independently reached for this; it should be the house rule for any safety check.
+
+**Design decisions worth keeping:**
+| Decision | Why it's right |
+|---|---|
+| **The honest read and per-competency rationale are deterministic, not generated** | Tone is a product constraint (PRD 03 §4.3 — it must be willing to say "your case is not ready"). A template that can only restate real counts and quote the framework verbatim *cannot* drift into flattery. Also removes a model call and a fabrication surface from a year-round surface. |
+| **Bullets built verbatim from Win fields, never generated** | The structural reason the zero-fabrication result holds rather than merely passing today: numbers live in bullets, and bullets are copied, not written. |
+| **Two source texts** — `guardSourceText` (what the model may draw numbers from) vs `verificationSourceText` (adds evidence labels) | A "PR #482" in a bullet is a fact from the log, not a model invention. The wider text is never in the generation prompt, so it cannot loosen the model. Subtle and correct. |
+| Progress via server-action poll over `ReviewPacket.content.progress` | `src/app/api/**` was outside its subtree. Durable, and a mid-run refresh resumes exactly — arguably better than the SSE route it replaced. |
+
+**Honest caveat C2 volunteered, and it matters:** the 97.7% rubric-parse accuracy (128/131 fields, 15 rubrics) is against a **mocked** extractor deliberately reproducing real failure modes. It validates the normalization/dedupe/ordering layer C2 owns — **not model quality.** Real accuracy needs one run of that 15-document set through the live model before launch. Same for theme-grouping quality: whether the model produces outcome-framed titles ("Made checkout reliable at peak") rather than activity-framed ones is the feature's highest-value behaviour and is untestable offline. The structural guarantees (3–5 themes, in-scope, no duplicates, no fabricated numbers) all hold regardless.
+
+**Known gaps:** per-section `[↻]` regenerate with an instruction (whole-packet keep-edits/start-fresh is done) · no PDF export (the existing path is coupled to `ResumeData`) · free-tier competency blur is CSS with real values still in the payload — strip server-side if that matters commercially.
+
+**Needs from the orchestrator:** four telemetry events (`packet_section_regenerated`, `packet_block_edited`, `framework_uploaded|parsed|corrected`, `readiness_capture_prompt_clicked`). Deferred until C4 finishes — it is concurrently editing `track.ts`. `readiness_capture_prompt_clicked` is the loop-closing metric and is currently unmeasurable.
+
+### C3 · backfill interview — **accepted** (verified)
+
+16 files. Scope clean. `tsc` clean, lint clean on its paths. Its own suite **153 pass / 0 fail**, all against the live local Postgres.
+
+**Both hard gates pass, and the method is better than asked for:**
+- **Zero leading questions**, 16 scripted transcripts driven end to end through the real agent and real DB. Crucially, each persisted agent turn is re-checked against **only what the user had said at the time it was asked** — a later answer cannot retroactively justify an earlier question. Five of the sixteen script models actively misbehave (lead numbers, flatter, ask two things) and roughly half never self-correct, so the scripted-fallback floor is exercised rather than just the retry path.
+- **Zero fabricated `ImpactMetric` figures.** Every row is queried back from Postgres and every quantity checked against the concatenated user answers. An invented metric yields a Win with **no** `ImpactMetric` rather than a partial one, and a `-70%` derived from a real `40 min → 12 min` is dropped while both real figures survive. **Enforced at the write in `impactIsGrounded`, not merely asserted** — the guard is the first net, the write is the second.
+
+**The most valuable deviation — and it exposed a gap in my own enforcement.** C3 declined to copy `resumeAgent.ts`'s `generateText` + `aiOpenAI(...)` pattern because it violates CLAUDE.md rules 1 and 2. **Verified: it does.** That file has no numeric guard, no per-feature cost tag, and no retry policy — and **grep gate 2 had been passing clean through two full waves** because it only looked for `generateObject` and `from 'openai'`.
+
+Gate widened to catch `generateText`, `streamText` and `aiOpenAI(` as well; CLAUDE.md now names the three known violations explicitly and points new agents at `src/agents/tools/backfill.ts` as the pattern to copy instead. *A gate that only checks the pattern you thought of is a gate that reports success.*
+
+C3's alternative is also just better design: **code owns strategy, the model owns language.** The next topic is chosen deterministically from the graph; the model writes only an acknowledgement and one question. That makes "8–12 questions, one at a time, wind down before 20" a property of the system rather than of a prompt — which is precisely why its eval can assert *zero* violations instead of a rate.
+
+**Other deviations accepted:** backfilled Wins dated to the middle of the employer's period, not today (dating them today would sort recovered 2023 work above this week's real work and break the log's premise) · the rail fed by SSE so cards land while the agent is still composing, meeting the 2s bar by ordering rather than luck · the anchor question reworded because "the two or three things" is itself the agent supplying a number.
+
+**Blocking dependency on C4:** `PLAN_METERED_LIMITS` currently has `context_interview: period(0)` on **both Free and Career**. PRD 07 §6 wants `lifetime(1)` free / `period(4)` Career. Under soft enforcement it works; **flip `ENTITLEMENTS_ENFORCE=true` before C4 lands the limits and the best demo the product has returns a paywall.** The `lifetime` scope C4 built for the brag doc expresses the free case exactly.
+
+**Carried risks:** model quality untested by construction — the eval proves the *system* holds when the model misbehaves, not that a real `interviewTurn` writes questions worth answering; that needs the 20-user test and the ≥60% completion target is unmeasured · `createWinFromText` runs a near-duplicate embedding per captured Win, real latency and cost on the capture path that the $0.60/session budget does not account for · transcript deletion blanks Evidence excerpts, correct for privacy but it silently weakens grounding for any Win later confirmed from that session — worth a product decision · no entry point is wired, so the feature is URL-only until the six owning surfaces link to it.
+
+### C4 · packaging, entitlements, paywalls — **accepted** (verified)
+
+~15 files. `tsc` clean, lint clean on owned paths, **95 new tests**. Verified independently: `billing.integration.test.ts` 23 pass, `entitlements.integration.test.ts` 29 pass.
+
+**It found and fixed a security hole mid-build.** `loadPlanPageData(userId)` and `evaluateProactiveDowngrade(userId)` were briefly exported from a `'use server'` module — which makes them **public endpoints that leak any user's plan to anyone who calls them with a guessed id.** Now `getPlanPageData()` takes no argument and derives identity from the session. Confirmed at `billing.ts:280`. This is the single most valuable thing any Wave C agent did.
+
+**The headline test passes:** cancellation deletes no Win, Evidence, ClaimLink or packet. That invariant is the difference between a product people trust with their career record and one they don't.
+
+**Deviations accepted:**
+| # | Deviation | Verdict |
+|---|---|---|
+| 1 | Search as a second `Subscription` row keyed `${userId}::search`, because `userId` is `@unique` and schema was forbidden | Correct given the constraint, and fully encapsulated in three helpers. **Wants a `slot` column + `@@unique([userId, slot])` when schema next opens** — only that one section changes. |
+| 3 | `cancel_at_period_end` stored as local status `'canceling'`; grace expiry rides the existing period check | No cron needed for the 14-day grace. Simpler than the spec. |
+| 4 | Touched `clarify.ts` and `lib/extension/resume.ts` outside its list | **Justified scope break.** A user currently loses a quota unit when a generation fails on "job description too short". Reported rather than done silently. |
+| 8 | Export built as a JSON-bundle server action (it did not exist) | Required by §5.4's "export reachable in ≤2 clicks from the cancel flow". |
+
+**Orchestrator fixes applied after the report:**
+- **C3's blocker resolved.** `context_interview` was `period(0)` on **both** Free and Career, which would have made backfill — the product's best demo — return a paywall the moment enforcement flipped on. Now `lifetime(1)` Free / `period(4)` Career per PRD 07 §6, using the `lifetime` scope C4 built for the brag doc. Verified: free tier resolves to limit 1, allowed.
+- **Gate 3 violation in C2's file.** `log/readiness/page.tsx:43` compared `tier === Tier.free`. Replaced with `!hasFeature(tier, 'rubric_mapping')` — gate on the capability, not the tier name, or it breaks silently the moment a plan is added. Gate 3 now clean.
+- **Telemetry union completed** with C2's four packet/framework events and C3's seven backfill events, including `readiness_capture_prompt_clicked` (the loop-closing metric, previously unmeasurable). C3's local cast and its now-unused import removed.
+
+**Carried:** §5.7 price grandfathering not built (no `Subscription.metadata` column) · no scheduled trigger for the proactive downgrade — `evaluateProactiveDowngrade` is exported and ready, but `src/lib/jobs/**` was forbidden, so it fires on `/settings/plan` load rather than within 24h of an `offer` · `winGraph.ts:98` keeps a duplicate `WIN_HISTORY_DAYS_BY_TIER` with a `TODO(plans)`; values match today but it is a second source of truth · the enforcement-flip runbook (reset `UsageQuota.used` on flip day) is still manual.
+
+### C1 · connector framework + GitHub — **accepted** (verified)
+
+~35 files. Scope clean — nothing outside its subtree. `tsc` clean, lint clean, all gates clean.
+
+**Both hard gates pass:**
+- **Bot drafts: 0** across a 119-case labelled corpus it wrote itself.
+- **Fabricated quantities: 0** — and the gate can actually fail. The stub drafter has an adversarial mode that invents the four figures real models genuinely invent: a percentage derived from two source numbers, the diff size quoted as an outcome, "millions of users", a round dollar amount. **Both paths are exercised** — corrective retry (0 fabrications, 57 drafts) and a model that refuses to correct (0 fabrications, 27 drafts, 27 degraded by the strip path, the rest rejected outright because *a Win with a poisoned title is not a degraded Win*).
+
+**The sharpest design decision:** the grounding source is deliberately narrower than the prompt. File, addition and deletion counts are given to the model *for judgement* but are not admissible evidence — so "across 47 files" is a fabrication **by construction**, not by detection. That is the same instinct as C2's two-source-text split, arrived at independently.
+
+**Accept-rate proxy: 94.7%** against a 60% target, recall 92.5% on labelled wins. C1 qualified this without being asked, and the qualification is the valuable part: `acceptable` is a judgement about whether the *artefact* was a real accomplishment, labelled before measuring. It says nothing about draft prose quality. **Read it as "the pipeline is not drafting garbage", not as a prediction of the live confirm rate**, which is `confirmed/drafted` and will be lower.
+
+**Deviations accepted:** `isNoise` returns a `NoiseVerdict` rather than a boolean, because the schema has a `noiseRule` column and a boolean discards the one thing that column exists for · layer 1 drops before storage but user-config verdicts are *stored* flagged, so a user can see what their own rule did · the weekly cap is a **selection**, not a drafting cap — §6.5's "+7 more in your log" is only true if the 7 exist · `repo_created` not pulled (2 extra requests/repo for the ≥3-commits test, lowest value of the five kinds).
+
+**Carried risks:** the Clerk OAuth token path is untested against the real provider — it typechecks and degrades to public-only, but nobody has watched it return a `repo`-scoped token, so **first live connect is the test** · Search-API-only pull means a very high-volume user's first 90-day backfill is partial and completes next cycle · four corpus cases are labelled acceptable but filtered, the known precision cost of layer-1 title/branch rules (a real win lost to a `build:` prefix or a `hotfix/` branch) — revisit after live accept-rate data, not before · the `revert-of-own-PR` rule drops incident rollbacks.
+
+**Orchestrator edits applied:** registered `capture_sync` and `draft_wins` in `registry.ts` (without which enqueued jobs go straight to `dead`) · added `source_connect_started` / `source_connect_abandoned` to the telemetry union · added the `winDraftLarge` task key so C1 can switch on §4.2 escalation for multi-PR groups in one line — the cost delta is ~$0.14/user/month against draft accept rate, which is the R1 north-star input, so quality wins.
+
+## Wave C integration gate — **PASSED** (2026-08-02)
+
+| Check | Result |
+|---|---|
+| `bunx tsc --noEmit` | **0 errors** |
+| `bun test` | **950 pass, 24 skip, 0 fail** — stable across three consecutive runs |
+| `bunx eslint src --quiet` | 0 errors |
+| G1 model ids · G3 raw Tier · G4 blur · G5 focus ring | clean |
+| G2 unguarded model calls (widened) | only the three known pre-existing violations |
+| Ownership audit | no agent touched a path outside its map |
+
+**Four features, four subtrees, zero merge conflicts.** Wave C was ~28 engineer-days of independent work and the parallelism held — the same mechanism as before: schema and shared tables landed centrally *before* spawn, so nothing the agents wanted was contended.
+
+**What the wave found that the specs didn't:**
+- A `'use server'` export taking a `userId` — a public endpoint leaking any user's plan (C4, self-caught)
+- `resumeAgent.ts` bypassing the numeric guard entirely, and **grep gate 2 missing it for two full waves** (C3)
+- `context_interview` locked to zero on both Free and Career, which would have paywalled the product's best demo the moment enforcement flipped (C3 → C4's table)
+- A raw `Tier` enum comparison in a UI file (gate 3, C2's file)
+
+Three of those four are cross-agent findings — an agent catching a problem in code it did not write. That only happens because each one reads the shared rules before starting.
+
+### Orchestration hazard found: shared test database
+
+One full-suite run reported a single failure that did not reproduce across three subsequent runs. Cause: **four agents running their own integration suites concurrently against one local Postgres.** Per-run unique prefixes stop agents corrupting each other's rows, but any test that counts globally, or tears down broadly, can still collide.
+
+Not worth solving at this scale — but if Wave D runs agents in parallel again, either give each a database (`resume_builder_c1`, …) or accept that a lone failure in a concurrent run must be re-run before it is believed.
+
+---
+
 ## Open blockers
 
 | # | Blocker | Since | Impact |

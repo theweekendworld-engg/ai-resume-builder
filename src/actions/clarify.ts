@@ -4,6 +4,12 @@ import { auth } from '@clerk/nextjs/server';
 import { GenerationStatus, KnowledgeType, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { generateSmartResumeFromArtifacts, generateSmartResumePipeline } from '@/actions/generateResume';
+import {
+  gateMeteredAction,
+  isEntitlementError,
+  refundMeteredAction,
+  type EntitlementDecision,
+} from '@/lib/entitlements';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ResumeData } from '@/types/resume';
@@ -116,6 +122,7 @@ export async function startClarificationSession(input: unknown): Promise<{
   resume?: ResumeData;
   atsEstimate?: number;
   error?: string;
+  paywall?: EntitlementDecision;
 }> {
   const parsed = StartClarificationSchema.safeParse(input ?? {});
   if (!parsed.success) {
@@ -124,6 +131,19 @@ export async function startClarificationSession(input: unknown): Promise<{
 
   const { userId } = await auth();
   if (!userId) return { success: false, error: 'Not authenticated' };
+
+  // Entitlement gate: consume one tailored-generation unit per user-initiated
+  // generation. Gated here (before the pipeline runs) rather than at session
+  // creation because the pipeline runs first; the clarification continuation
+  // reuses the same session and does NOT re-consume.
+  try {
+    await gateMeteredAction(userId, 'tailored_generation');
+  } catch (error: unknown) {
+    if (isEntitlementError(error)) {
+      return { success: false, error: error.message, paywall: error.decision };
+    }
+    throw error;
+  }
 
   try {
     const smart = await generateSmartResumePipeline(parsed.data.jobDescription, {
@@ -185,6 +205,9 @@ export async function startClarificationSession(input: unknown): Promise<{
       questions,
     };
   } catch (error: unknown) {
+    // Terminal failure: the user got nothing, so give the quota unit back
+    // (PRD 06 §8). Consumed at entry, refunded here — never silently burned.
+    await refundMeteredAction(userId, 'tailored_generation');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to start clarification session',

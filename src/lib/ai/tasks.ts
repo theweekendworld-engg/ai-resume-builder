@@ -18,6 +18,7 @@ export const TASK_KEYS = [
     'resumeParse',
     // R1 (P0.4)
     'winDraft',
+    'winDraftLarge',
     'winStructure',
     'digestCompose',
     'monthReview',

@@ -157,13 +157,30 @@ RISKS             what the orchestrator should look at closely in review
 6. Update `BUILD-LOG.md` and the task list.
 7. Only then spawn the next wave.
 
-**The four grep gates**, run at every integration:
+**The grep gates**, run at every integration. Quote the `--include` globs — zsh eats them unquoted and the gate silently reports nothing:
+
 ```bash
-grep -rn "gpt-[0-9]" src/ --include=*.ts --include=*.tsx | grep -v "lib/config.ts\|lib/usageTracker.ts"   # model ids at call sites
-grep -rn "from 'openai'\|generateObject" src/ | grep -v "src/lib/ai/"                                      # unguarded AI calls
-grep -rn "Tier\.\(free\|always_on\|pro\|team\)" src/components src/app | grep -v plans.ts                  # raw enum in UI
-grep -rn "backdrop-blur" src/components/patterns/                                                          # blur on work surfaces
+# 1 · model ids at call sites
+grep -rn "gpt-[0-9]" src --include="*.ts" --include="*.tsx" \
+  | grep -v "lib/config.ts\|lib/usageTracker.ts\|lib/ai/tasks.ts\|test"
+
+# 2 · ANY unguarded model call. Widened after C3 found that the original
+#     pattern missed generateText + aiOpenAI(), which is how resumeAgent.ts
+#     bypasses the numeric guard entirely.
+grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiOpenAI\(" src \
+  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts"
+
+# 3 · raw Tier enum in UI
+grep -rn "Tier\.\(free\|always_on\|pro\|team\)" src/components src/app | grep -v plans.ts
+
+# 4 · blur on work surfaces
+grep -rn "backdrop-blur" src/components/patterns src/components/log
+
+# 5 · ring-based focus on .surface-work (silently erased — a11y failure)
+grep -rn "surface-work" src/components | grep -E "ring-2|ring-ring"
 ```
+
+**Gate 2's history is the lesson:** it passed clean through two full waves while `resumeAgent.ts` sat there calling the model directly. A gate that only checks the pattern you happened to think of is a gate that reports success. When an agent reports a rule violation the gate missed, widen the gate in the same pass.
 
 ---
 

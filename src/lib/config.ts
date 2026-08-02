@@ -31,6 +31,10 @@ export const config = {
             // every one of these is reachable only through `TaskKey` in src/lib/ai/tasks.ts.
             // Cheap tasks default to the small model; anything a human reads defaults to the large one.
             winDraft: process.env.OPENAI_MODEL_WIN_DRAFT || process.env.OPENAI_MODEL || "gpt-5-mini",
+            // Escalation tier: multi-PR groups and contexts over ~2k chars
+            // (PRD 02 §4.2). Draft accept rate is the R1 north-star input and
+            // the cost delta is ~$0.14/user/month, so quality wins here.
+            winDraftLarge: process.env.OPENAI_MODEL_WIN_DRAFT_LARGE || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
             winStructure: process.env.OPENAI_MODEL_WIN_STRUCTURE || process.env.OPENAI_MODEL || "gpt-5-mini",
             digestCompose: process.env.OPENAI_MODEL_DIGEST_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
             monthReview: process.env.OPENAI_MODEL_MONTH_REVIEW || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",

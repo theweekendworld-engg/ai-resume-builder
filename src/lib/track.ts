@@ -40,7 +40,9 @@ export const SERVER_EVENTS = [
     'digest_action',
 
     // Capture — PRD 02 §10
+    'source_connect_started',
     'source_connect_completed',
+    'source_connect_abandoned',
     'source_repo_selection_saved',
     'capture_run_finished',
     'source_error',
@@ -51,12 +53,47 @@ export const SERVER_EVENTS = [
     'packet_started',
     'packet_completed',
     'packet_exported',
+    'packet_section_regenerated',
+    /** High edit rates tell us which section we generate worst. */
+    'packet_block_edited',
+    'framework_uploaded',
+    'framework_parsed',
+    'framework_corrected',
     'readiness_viewed',
+    /**
+     * The loop-closing metric: a gap report that finds evidence the user
+     * already has but hasn't logged, converting diagnosis into capture.
+     */
+    'readiness_capture_prompt_clicked',
+
+    // Backfill — PRD 07 §7
+    'backfill_started',
+    'backfill_question_answered',
+    'backfill_win_captured',
+    'backfill_abandoned',
+    /** Target >60%. Below 45% the conversation is too long or too dull. */
+    'backfill_completed',
+    'backfill_wins_confirmed',
+    'backfill_resumed',
 
     // Entitlements — PRD 06 §7
     'paywall_shown',
+    'paywall_cta_clicked',
     'quota_exhausted',
     'entitlement_soft_allowed',
+    'checkout_started',
+    'checkout_completed',
+    'plan_changed',
+    // The trust-building downgrade (PRD 06 §5.3). `search_reactivated` is the
+    // thesis metric: if volunteering the downgrade does not increase lifetime
+    // revenue, this is the number that tells us.
+    'proactive_downgrade_offered',
+    'proactive_downgrade_accepted',
+    'proactive_downgrade_declined',
+    'search_reactivated',
+    'cancel_flow_entered',
+    'cancel_flow_completed',
+    'data_exported',
 
     // AI safety — PRD 08 §5
     'ai_guard_violation',

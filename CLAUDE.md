@@ -29,7 +29,18 @@ These get violated by default. They are enforced by grep gates at every integrat
 
 **1. No model IDs at call sites.** Every model resolves from the per-task map in `src/lib/config.ts`. `generateStructured({task: 'winDraft'})`, never `model: 'gpt-5'`.
 
-**2. No direct AI provider imports outside `src/lib/ai/`.** Every model call goes through `generateStructured()` so that validation, retry, cost logging, and the numeric guard happen once, consistently. An ESLint rule enforces this.
+**2. No direct model calls outside `src/lib/ai/`.** Every model call goes through `generateStructured()` so that validation, retry, cost logging, and the numeric guard happen once, consistently.
+
+That means **all** of these, not just the obvious one: `import OpenAI from 'openai'`, `generateObject`, `streamObject`, `generateText`, `streamText`, and calling `aiOpenAI(...)` at a call site. The ESLint rule covers the first three; the gate below covers the rest.
+
+```bash
+grep -rnE "from 'openai'|generateObject|streamObject|generateText|streamText|aiOpenAI\(" src \
+  --include="*.ts" --include="*.tsx" | grep -v "^src/lib/ai/" | grep -v "^src/lib/aiProvider.ts"
+```
+
+**Known violations, all pre-dating the rule — do not copy these patterns:**
+- `src/agents/resumeAgent.ts` — uses `generateText` + `aiOpenAI(config.openai.models.general)`. **No numeric guard, no per-feature cost tag, no retry policy.** Any new agent must follow `src/agents/tools/backfill.ts` instead, which keeps the module shape but routes generation through `generateStructured`.
+- `src/lib/usageTracker.ts`, `src/lib/anonScore.ts` — grandfathered `openai` imports.
 
 **3. Sensitivity is a query concern, never a prompt concern.** Any retrieval feeding an external artifact (resume, cover letter, apply answer) filters `sensitivity = 'shareable'` **in the database query**. Never instruct a model to skip confidential content — use `src/lib/graph/visibility.ts`. Tests assert the filter, not the output.
 

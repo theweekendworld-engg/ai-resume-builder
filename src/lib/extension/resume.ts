@@ -1,5 +1,6 @@
 import { Channel, GenerationStatus, PipelineStep } from '@prisma/client';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
+import { gateMeteredAction, refundMeteredAction } from '@/lib/entitlements';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
@@ -164,6 +165,10 @@ export async function startExtensionResumeGeneration(params: {
   userId: string;
   input: ExtensionResumeGenerateRequest;
 }): Promise<ExtensionResumeGenerateResponse> {
+  // Entitlement gate: one tailored-generation unit per initiated generation.
+  // Throws EntitlementError (→ 402) when over quota and enforcement is on.
+  await gateMeteredAction(params.userId, 'tailored_generation');
+
   const workspace = params.input.workspaceId
     ? await loadWorkspace({
       userId: params.userId,
@@ -171,7 +176,11 @@ export async function startExtensionResumeGeneration(params: {
     })
     : null;
 
+  // Every terminal failure below refunds the unit consumed above (PRD 06 §8):
+  // the gate runs at entry by convention, and a request that produces no
+  // resume must not cost the user one of their generations.
   if (params.input.workspaceId && !workspace) {
+    await refundMeteredAction(params.userId, 'tailored_generation');
     throw new Error('Application workspace not found');
   }
 
@@ -179,6 +188,7 @@ export async function startExtensionResumeGeneration(params: {
     || workspace?.jobDescription?.trim()
     || '';
   if (jobDescription.length < 20) {
+    await refundMeteredAction(params.userId, 'tailored_generation');
     throw new Error('A saved or parsed job description is required before generating a tailored resume.');
   }
 
@@ -231,6 +241,7 @@ export async function startExtensionResumeGeneration(params: {
         errorMessage: error instanceof Error ? error.message : 'Failed to enqueue resume generation',
       },
     });
+    await refundMeteredAction(params.userId, 'tailored_generation');
     throw error;
   }
 
