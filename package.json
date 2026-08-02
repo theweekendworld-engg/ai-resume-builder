@@ -14,7 +14,8 @@
     "ext:dev": "cd extension && bun run dev",
     "ext:build": "cd extension && bun run build",
     "ext:type-check": "cd extension && bun run type-check",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "screenshot": "bun run scripts/screenshot.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.41",
@@ -77,6 +78,7 @@
     "eslint-config-next": "^16.0.7",
     "happy-dom": "^20.9.0",
     "jimp": "^1.6.0",
+    "puppeteer-core": "^25.4.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

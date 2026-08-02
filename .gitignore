@@ -58,3 +58,5 @@ bun-debug.log*
 next-env.d.ts
 
 .cursor/*
+# Local visual-review output
+screenshots/

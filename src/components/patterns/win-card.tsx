@@ -461,10 +461,15 @@ export function WinCard({
     </h3>
   );
 
+  // The review variant promotes the first source into its own "From:" line, so
+  // repeating it inline shows the same chip twice on the same card — visible in
+  // the gallery as `From: Q3 retro.md` directly above a `Q3 retro.md` chip.
+  const inlineSources = isReview ? (win.sources ?? []).slice(1) : (win.sources ?? []);
+
   const evidenceRow = (
     <div className="flex flex-wrap items-center gap-1.5">
-      {win.sources && win.sources.length > 0 ? (
-        <SourceChipGroup sources={win.sources} static={isPreview} />
+      {inlineSources.length > 0 ? (
+        <SourceChipGroup sources={inlineSources} static={isPreview} />
       ) : null}
       {win.metric ? <MetricChip metric={win.metric} /> : null}
       {win.skills && win.skills.length > 0 ? <SkillTags skills={win.skills} /> : null}
