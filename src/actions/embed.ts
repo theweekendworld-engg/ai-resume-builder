@@ -1,9 +1,9 @@
 'use server';
 
-import { QdrantClient } from '@qdrant/js-client-rest';
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';
 import { config } from '@/lib/config';
+import { qdrantClient } from '@/lib/qdrantClient';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
 const COLLECTION_NAME = 'knowledge_base';
@@ -12,10 +12,7 @@ const PROJECT_EMBED_MAX_CHARS = 12000;
 const EXPERIENCE_EMBED_CHARS = 4000;
 const PROJECT_SNIPPET_LIMIT = 10;
 
-const qdrantClient = new QdrantClient({
-  url: config.qdrant.url || 'http://localhost:6333',
-  ...(config.qdrant.apiKey && { apiKey: config.qdrant.apiKey }),
-});
+
 
 let collectionEnsured = false;
 

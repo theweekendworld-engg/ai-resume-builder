@@ -45,6 +45,21 @@ export function emailConfigured(): boolean {
 
 let resendClient: Resend | null = null;
 
+/**
+ * Test seam. Fakes belong at the PROVIDER boundary, never at the boundary of
+ * the module under test — mocking `sendEmail` itself would skip the preference
+ * checks, suppression rules, plain-text generation and List-Unsubscribe
+ * headers, which is precisely the logic most worth testing.
+ */
+export const __testing = {
+    setResendClient(client: Resend | null) {
+        resendClient = client;
+    },
+    reset() {
+        resendClient = null;
+    },
+};
+
 function getResend(): Resend {
     const apiKey = env('RESEND_API_KEY');
     if (!apiKey) throw new Error('RESEND_API_KEY is not configured');

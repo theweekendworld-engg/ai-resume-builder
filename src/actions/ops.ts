@@ -11,18 +11,7 @@
 import { JobStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
-
-/** Per-feature cost ceilings from PRD 08 §4.3. Exceeding one signals a defect. */
-export const COST_TRIPWIRES_USD: Record<string, number> = {
-    work_log: 0.02,
-    capture: 0.02,
-    digest: 0.02,
-    month_review: 0.05,
-    review_packet: 0.25,
-    backfill: 0.5,
-    radar: 0.03,
-    tailoring: 0.2,
-};
+import { COST_TRIPWIRES_USD } from '@/lib/costBudgets';
 
 export type JobHealthRow = {
     kind: string;
