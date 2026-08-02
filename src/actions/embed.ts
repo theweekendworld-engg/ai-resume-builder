@@ -93,6 +93,44 @@ export async function generateEmbedding(params: {
   return response.data[0].embedding;
 }
 
+/**
+ * Page through points of one payload `type`, returning their `sourceId`s.
+ *
+ * Exists for the reconciliation sweep: finding a vector whose row is gone can
+ * only be done from the Qdrant side. Scrolls with `with_vector: false` — we
+ * need identity, not embeddings, and pulling 1024 floats per point to compare
+ * ids would make the sweep cost more than the drift it repairs.
+ */
+export async function scrollPointSourceIds(params: {
+  type: string;
+  limit?: number;
+}): Promise<{ pointId: string; sourceId: string }[]> {
+  const pageSize = 256;
+  const max = params.limit ?? 5_000;
+  const out: { pointId: string; sourceId: string }[] = [];
+  let offset: string | number | undefined | null = undefined;
+
+  while (out.length < max) {
+    const page = await qdrantClient.scroll(COLLECTION_NAME, {
+      filter: { must: [{ key: 'type', match: { value: params.type } }] },
+      limit: Math.min(pageSize, max - out.length),
+      offset: offset ?? undefined,
+      with_payload: { include: ['sourceId'] },
+      with_vector: false,
+    });
+
+    for (const point of page.points) {
+      const sourceId = (point.payload as { sourceId?: unknown } | null)?.sourceId;
+      if (typeof sourceId === 'string') out.push({ pointId: String(point.id), sourceId });
+    }
+
+    offset = page.next_page_offset as string | number | null | undefined;
+    if (!offset || page.points.length === 0) break;
+  }
+
+  return out;
+}
+
 export async function deleteFromQdrant(pointId: string) {
   if (!pointId) return;
 

@@ -16,6 +16,7 @@ import { draftWinsHandler } from './handlers/draftWins';
 import { proactiveDowngradeHandler } from './handlers/proactiveDowngrade';
 import { monthInReviewHandler } from './handlers/monthInReview';
 import { weeklyDigestHandler } from './handlers/weeklyDigest';
+import { reconcileGraphHandler } from './handlers/reconcileGraph';
 
 let registered = false;
 
@@ -30,6 +31,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('proactive_downgrade', proactiveDowngradeHandler);
     registerHandler('month_in_review', monthInReviewHandler);
     registerHandler('weekly_digest', weeklyDigestHandler);
+    registerHandler('reconcile_qdrant', reconcileGraphHandler);
     // Later: email_send
     // Phase 4+: radar_snapshot, reconcile_qdrant
 

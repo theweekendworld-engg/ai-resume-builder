@@ -28,6 +28,7 @@ describe('registry', () => {
             'proactive_downgrade',
             'month_in_review',
             'weekly_digest',
+            'reconcile_qdrant',
         ];
         for (const kind of wired) {
             expect(getHandler(kind)).toBeDefined();
