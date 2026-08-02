@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isEntitlementError } from '@/lib/entitlements';
 import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { startExtensionResumeGeneration } from '@/lib/extension/resume';
 import { ExtensionResumeGenerateRequestSchema, normalizeExtensionRequestBody } from '@/lib/extension/schemas';
@@ -28,6 +29,12 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     if (isExtensionAuthError(error)) {
       return NextResponse.json({ success: false, error: error.message }, { status: 401 });
+    }
+    if (isEntitlementError(error)) {
+      return NextResponse.json(
+        { success: false, error: error.message, paywall: error.decision },
+        { status: error.httpStatus }
+      );
     }
     return NextResponse.json(
       {

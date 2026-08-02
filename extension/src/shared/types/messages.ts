@@ -121,6 +121,24 @@ export type FillPlanWire = {
 
 export type ConnectStartResult = { connectUrl: string };
 
+export type WorkspaceListItemWire = {
+    id: string;
+    sourceUrl: string;
+    sourcePlatform: string | null;
+    companyName: string | null;
+    roleTitle: string | null;
+    location: string | null;
+    applicationStatus: string;
+    fitScore: number | null;
+    questionCount: number;
+    answeredQuestionCount: number;
+    selectedResumeId: string | null;
+    updatedAt: string;
+    createdAt: string;
+};
+
+export type WorkspaceListResult = { workspaces: WorkspaceListItemWire[] };
+
 export type Message =
     | { type: 'PING' }
     | { type: 'AUTH_GET' }
@@ -136,6 +154,7 @@ export type Message =
     | { type: 'GET_SESSION'; tabId: number }
     | { type: 'BIND_WORKSPACE'; tabId: number; workspaceId: string }
     | { type: 'GET_PROFILE' }
+    | { type: 'LIST_WORKSPACES' }
     | { type: 'GET_FILL_PLAN'; tabId: number }
     | { type: 'APPLY_FILLS'; tabId: number; actionIds?: string[] }
     | { type: 'UNDO_FILLS'; tabId: number }

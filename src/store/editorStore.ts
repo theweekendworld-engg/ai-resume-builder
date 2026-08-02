@@ -12,6 +12,7 @@ export type EditorPanelId =
   | 'section-order'
   | 'score-improve'
   | 'fix-checklist'
+  | 'truthfulness'
   | 'latex'
   | 'settings';
 
@@ -32,6 +33,7 @@ function normalizeActivePanel(panel: unknown): EditorPanelId {
     'section-order',
     'score-improve',
     'fix-checklist',
+    'truthfulness',
     'latex',
     'settings',
   ];

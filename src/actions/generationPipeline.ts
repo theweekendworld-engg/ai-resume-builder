@@ -7,6 +7,7 @@ import { compileLatex } from '@/actions/ai';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
 import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
+import { persistClaimGroundings } from '@/lib/claimGroundingStore';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
@@ -640,6 +641,21 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         resumeId: session.sourceResumeId ?? options.sourceResumeId,
         ...extractParsedJDTarget(pipelineResult?.artifacts.parsedJD ?? session.parsedJD),
       });
+
+    // Backfill truthfulness chips (Tier 0/1). Best-effort: chip grounding must
+    // never fail a generation. Skipped on the reuse path (no fresh validation).
+    if (pipelineResult?.validation) {
+      try {
+        await persistClaimGroundings({
+          userId: options.userId,
+          resumeId,
+          resume: finalResume,
+          validation: pipelineResult.validation,
+        });
+      } catch (error: unknown) {
+        console.error('[claim-grounding] persist failed', error);
+      }
+    }
 
     activeStep = PipelineStep.pdf_generation;
     await prisma.generationSession.update({

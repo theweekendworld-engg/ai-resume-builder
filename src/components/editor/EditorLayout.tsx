@@ -26,6 +26,7 @@ import { SectionOrderEditor } from '@/components/editor/sections/SectionOrderEdi
 import { JobTargetPanel } from '@/components/editor/tools/JobTargetPanel';
 import { ScoreImprovePanel } from '@/components/editor/tools/ScoreImprovePanel';
 import { FixChecklistPanel } from '@/components/editor/tools/FixChecklistPanel';
+import { TruthfulnessPanel } from '@/components/editor/tools/TruthfulnessPanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { DesignPanel } from '@/components/editor/tools/DesignPanel';
@@ -47,6 +48,7 @@ const mobilePanelOptions = [
   { id: 'design', label: 'Design' },
   { id: 'score-improve', label: 'Score & Improve' },
   { id: 'fix-checklist', label: 'Fix Checklist' },
+  { id: 'truthfulness', label: 'Truthfulness' },
   { id: 'settings', label: 'Settings' },
 ] as const;
 
@@ -288,6 +290,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         return <ScoreImprovePanel />;
       case 'fix-checklist':
         return <FixChecklistPanel />;
+      case 'truthfulness':
+        return <TruthfulnessPanel resumeId={resumeId} />;
       case 'latex':
         return (
           <LaTeXPanel

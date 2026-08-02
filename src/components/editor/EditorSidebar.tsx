@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Palette,
   ListChecks,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface EditorSidebarProps {
@@ -45,6 +46,7 @@ const designItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[]
 const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
   { id: 'score-improve', label: 'Review & Improve', icon: <TrendingUp className="h-4 w-4" /> },
   { id: 'fix-checklist', label: 'Fix Checklist', icon: <ListChecks className="h-4 w-4" /> },
+  { id: 'truthfulness', label: 'Truthfulness', icon: <ShieldCheck className="h-4 w-4" /> },
 ];
 
 const utilityItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [

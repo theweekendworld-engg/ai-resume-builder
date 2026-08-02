@@ -12,6 +12,7 @@ import { reconcileSessionOnPageUpdate, getSession, bindWorkspace } from './sessi
 import { startConnectFlow, cancelConnectFlow, pollConnectOnce } from './connect';
 import { buildFillPlan } from '@/fill/planner';
 import type { ResolvedProfileBundle } from '@/fill/valueResolver';
+import type { WorkspaceListItemWire } from '@/shared/types/messages';
 
 type ProfileBackendBundle = {
     profile?: {
@@ -105,6 +106,23 @@ on('GET_SESSION', async (msg) => ({
     ok: true,
     data: await getSession(msg.tabId),
 }));
+
+on('LIST_WORKSPACES', async () => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/workspaces`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return { ok: false, error: `list_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; workspaces?: WorkspaceListItemWire[] };
+        return { ok: true, data: { workspaces: json.workspaces ?? [] } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'list_error' };
+    }
+});
 
 on('BIND_WORKSPACE', async (msg) => {
     const session = await bindWorkspace(msg.tabId, msg.workspaceId);

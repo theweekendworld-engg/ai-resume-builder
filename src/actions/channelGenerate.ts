@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { parseJobDescription } from '@/actions/generateResume';
+import { gateMeteredAction, isEntitlementError } from '@/lib/entitlements';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
@@ -237,6 +238,16 @@ async function startNewSession(params: {
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
+  // Entitlement gate: one tailored-generation unit per initiated generation.
+  try {
+    await gateMeteredAction(params.userId, 'tailored_generation');
+  } catch (error: unknown) {
+    if (isEntitlementError(error)) {
+      return { success: false, error: error.message };
+    }
+    throw error;
+  }
+
   const [parsedJD, context] = await Promise.all([
     parseJobDescription({
       jobDescription: params.message,
