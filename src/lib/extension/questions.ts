@@ -10,6 +10,7 @@ import type {
   ExtensionProfileBundle,
   ExtensionQuestionSaveRequest,
   ExtensionQuestionSaveResponse,
+  ExtensionSavedAnswer,
   ExtensionQuestionSuggestRequest,
   ExtensionQuestionSuggestResponse,
   ExtensionQuestionTone,
@@ -811,4 +812,117 @@ export async function saveExtensionQuestionAnswer(params: {
     reusableAnswerSaved,
     reusableAnswerId,
   };
+}
+
+// ────────────────────────────────────────────────── the saved-answer library
+//
+// `ReusableAnswer` rows are written by `saveExtensionQuestionAnswer` and read
+// back during suggestion, where a fingerprint match can auto-fill a question.
+// Until these functions existed there was no way to LIST them: a user could
+// build a library and never see it, and could not tell why an answer had
+// fired on a question they did not remember saving.
+
+/** Shape the library view needs. Never leaks `questionFingerprint` — it is an
+ *  internal matching key and means nothing to a user. */
+function toSavedAnswer(row: {
+  id: string;
+  canonicalQuestion: string;
+  answerText: string;
+  questionType: string | null;
+  answerMode: string | null;
+  usageCount: number;
+  autoUse: boolean;
+  lastUsedAt: Date | null;
+  updatedAt: Date;
+}): ExtensionSavedAnswer {
+  return {
+    id: row.id,
+    canonicalQuestion: row.canonicalQuestion,
+    answerText: row.answerText,
+    questionType: row.questionType,
+    answerMode: row.answerMode,
+    usageCount: row.usageCount,
+    autoUse: row.autoUse,
+    lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+const SAVED_ANSWER_SELECT = {
+  id: true,
+  canonicalQuestion: true,
+  answerText: true,
+  questionType: true,
+  answerMode: true,
+  usageCount: true,
+  autoUse: true,
+  lastUsedAt: true,
+  updatedAt: true,
+} as const;
+
+/**
+ * The user's saved answers.
+ *
+ * Ordered auto-use first, then by how much work each has actually saved
+ * (`usageCount`), then recency. The answers that fire automatically are the
+ * ones a user most needs to be able to find and correct, so they sort to the
+ * top rather than being buried under whatever was edited last.
+ */
+export async function listReusableAnswers(params: {
+  userId: string;
+  limit?: number;
+}): Promise<ExtensionSavedAnswer[]> {
+  const rows = await prisma.reusableAnswer.findMany({
+    where: { userId: params.userId },
+    orderBy: [{ autoUse: 'desc' }, { usageCount: 'desc' }, { updatedAt: 'desc' }],
+    take: Math.min(Math.max(params.limit ?? 100, 1), 200),
+    select: SAVED_ANSWER_SELECT,
+  });
+  return rows.map(toSavedAnswer);
+}
+
+/**
+ * Edit an answer's text or its auto-use flag.
+ *
+ * Scoped by `userId` in the WHERE rather than fetched-then-checked, so another
+ * user's id cannot be updated even momentarily. `updateMany` returns a count
+ * instead of throwing, which lets a missing row be reported as not-found
+ * rather than surfacing as a 500.
+ */
+export async function updateReusableAnswer(params: {
+  userId: string;
+  answerId: string;
+  patch: { answerText?: string; autoUse?: boolean };
+}): Promise<ExtensionSavedAnswer | null> {
+  const result = await prisma.reusableAnswer.updateMany({
+    where: { id: params.answerId, userId: params.userId },
+    data: {
+      ...(params.patch.answerText === undefined ? {} : { answerText: params.patch.answerText }),
+      ...(params.patch.autoUse === undefined ? {} : { autoUse: params.patch.autoUse }),
+    },
+  });
+  if (result.count === 0) return null;
+
+  const row = await prisma.reusableAnswer.findFirst({
+    where: { id: params.answerId, userId: params.userId },
+    select: SAVED_ANSWER_SELECT,
+  });
+  return row ? toSavedAnswer(row) : null;
+}
+
+/**
+ * Remove an answer from the library.
+ *
+ * Deletes only the reusable copy. The `ApplicationQuestion` rows that produced
+ * it are untouched — a user pruning their library is not asking to rewrite the
+ * history of applications they already sent.
+ */
+export async function deleteReusableAnswer(params: {
+  userId: string;
+  answerId: string;
+}): Promise<boolean> {
+  const result = await prisma.reusableAnswer.deleteMany({
+    where: { id: params.answerId, userId: params.userId },
+  });
+  return result.count > 0;
 }

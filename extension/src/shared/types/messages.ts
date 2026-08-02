@@ -139,6 +139,25 @@ export type WorkspaceListItemWire = {
 
 export type WorkspaceListResult = { workspaces: WorkspaceListItemWire[] };
 
+/**
+ * One row of the saved-answer library, as it crosses the wire.
+ *
+ * Mirrors `ExtensionSavedAnswer` on the server. `questionFingerprint` is
+ * deliberately absent: it is the internal matching key and means nothing to a
+ * user looking at their own library.
+ */
+export type SavedAnswerWire = {
+    id: string;
+    canonicalQuestion: string;
+    answerText: string;
+    questionType: string | null;
+    answerMode: string | null;
+    usageCount: number;
+    autoUse: boolean;
+    lastUsedAt: string | null;
+    updatedAt: string;
+};
+
 export type Message =
     | { type: 'PING' }
     | { type: 'AUTH_GET' }
@@ -155,6 +174,9 @@ export type Message =
     | { type: 'BIND_WORKSPACE'; tabId: number; workspaceId: string }
     | { type: 'GET_PROFILE' }
     | { type: 'LIST_WORKSPACES' }
+    | { type: 'LIST_ANSWERS' }
+    | { type: 'UPDATE_ANSWER'; answerId: string; answerText?: string; autoUse?: boolean }
+    | { type: 'DELETE_ANSWER'; answerId: string }
     | { type: 'GET_FILL_PLAN'; tabId: number }
     | { type: 'APPLY_FILLS'; tabId: number; actionIds?: string[] }
     | { type: 'UNDO_FILLS'; tabId: number }

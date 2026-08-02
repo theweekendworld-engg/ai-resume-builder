@@ -12,7 +12,7 @@ import { reconcileSessionOnPageUpdate, getSession, bindWorkspace } from './sessi
 import { startConnectFlow, cancelConnectFlow, pollConnectOnce } from './connect';
 import { buildFillPlan } from '@/fill/planner';
 import type { ResolvedProfileBundle } from '@/fill/valueResolver';
-import type { WorkspaceListItemWire } from '@/shared/types/messages';
+import type { SavedAnswerWire, WorkspaceListItemWire } from '@/shared/types/messages';
 
 type ProfileBackendBundle = {
     profile?: {
@@ -404,6 +404,76 @@ on('TELEMETRY_BATCH', async (msg) => {
 
 // Default to opening the side panel on action click for tabs where it's not
 // already wired (chromium quirk: per-tab setOptions is needed in some flows).
+// ────────────────────────────────────────────── the saved-answer library
+//
+// These three round-trip to /api/extension/answers. They exist so the library
+// the extension has been WRITING since day one (via questions/save) is finally
+// readable: before this, an answer could fire automatically on a form and the
+// user had no surface on which to find it, correct it, or turn it off.
+
+/** Shared preamble: every library call needs a token and a base URL. */
+async function answersEndpoint(path = ''): Promise<{ url: string; token: string } | null> {
+    const token = await getToken();
+    if (!token) return null;
+    const base = await getAppBaseUrl();
+    return { url: `${base}/api/extension/answers${path}`, token };
+}
+
+on('LIST_ANSWERS', async () => {
+    const ctx = await answersEndpoint();
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${ctx.token}` },
+        });
+        if (!res.ok) return { ok: false, error: `list_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; answers?: SavedAnswerWire[] };
+        return { ok: true, data: { answers: json.answers ?? [] } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'list_error' };
+    }
+});
+
+on('UPDATE_ANSWER', async (msg) => {
+    const ctx = await answersEndpoint(`/${encodeURIComponent(msg.answerId)}`);
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bearer ${ctx.token}`,
+                'Content-Type': 'application/json',
+            },
+            // Only send what changed, so a text edit cannot silently clear autoUse.
+            body: JSON.stringify({
+                ...(msg.answerText === undefined ? {} : { answerText: msg.answerText }),
+                ...(msg.autoUse === undefined ? {} : { autoUse: msg.autoUse }),
+            }),
+        });
+        if (!res.ok) return { ok: false, error: `update_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; answer?: SavedAnswerWire };
+        return { ok: true, data: { answer: json.answer } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'update_error' };
+    }
+});
+
+on('DELETE_ANSWER', async (msg) => {
+    const ctx = await answersEndpoint(`/${encodeURIComponent(msg.answerId)}`);
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${ctx.token}` },
+        });
+        if (!res.ok) return { ok: false, error: `delete_failed_${res.status}` };
+        return { ok: true, data: { deletedId: msg.answerId } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'delete_error' };
+    }
+});
+
 chrome.runtime.onInstalled.addListener(() => {
     chrome.sidePanel
         .setPanelBehavior({ openPanelOnActionClick: false })

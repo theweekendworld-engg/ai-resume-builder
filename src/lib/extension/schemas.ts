@@ -401,6 +401,54 @@ export const ExtensionQuestionSaveResponseSchema = z.object({
   reusableAnswerId: z.string().optional(),
 });
 
+/**
+ * The saved-answer library (`ReusableAnswer`).
+ *
+ * These answers are matched to new questions by `questionFingerprint`, not by
+ * exact text, which is what lets one saved answer serve "Why do you want to
+ * work here?" and "What draws you to this role?". The library view therefore
+ * has to show the CANONICAL question the answer was saved against, or a user
+ * cannot reason about why it fired somewhere unexpected.
+ */
+export const ExtensionSavedAnswerSchema = z.object({
+  id: z.string(),
+  canonicalQuestion: z.string(),
+  answerText: z.string(),
+  questionType: z.string().nullable(),
+  answerMode: z.string().nullable(),
+  /** How many applications this answer has served. The trust signal. */
+  usageCount: z.number().int().min(0),
+  /** When true this answer is applied automatically to matching questions. */
+  autoUse: z.boolean(),
+  lastUsedAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime(),
+});
+
+export const ExtensionSavedAnswerListResponseSchema = z.object({
+  success: z.literal(true),
+  answers: z.array(ExtensionSavedAnswerSchema),
+});
+
+/** Every field optional: the UI edits one thing at a time. */
+export const ExtensionSavedAnswerUpdateRequestSchema = z
+  .object({
+    answerText: z.string().min(1).max(5000).optional(),
+    autoUse: z.boolean().optional(),
+  })
+  .refine((v) => v.answerText !== undefined || v.autoUse !== undefined, {
+    message: 'Provide answerText or autoUse',
+  });
+
+export const ExtensionSavedAnswerUpdateResponseSchema = z.object({
+  success: z.literal(true),
+  answer: ExtensionSavedAnswerSchema,
+});
+
+export const ExtensionSavedAnswerDeleteResponseSchema = z.object({
+  success: z.literal(true),
+  deletedId: z.string(),
+});
+
 export const ExtensionWorkspaceStatusSchema = z.enum([
   'discovered',
   'analyzed',
@@ -571,3 +619,8 @@ export type ExtensionResumeGenerateRequest = z.infer<typeof ExtensionResumeGener
 export type ExtensionResumeGenerateResponse = z.infer<typeof ExtensionResumeGenerateResponseSchema>;
 export type ExtensionCompanyInsightRequest = z.infer<typeof ExtensionCompanyInsightRequestSchema>;
 export type ExtensionCompanyInsightResponse = z.infer<typeof ExtensionCompanyInsightResponseSchema>;
+export type ExtensionSavedAnswer = z.infer<typeof ExtensionSavedAnswerSchema>;
+export type ExtensionSavedAnswerListResponse = z.infer<typeof ExtensionSavedAnswerListResponseSchema>;
+export type ExtensionSavedAnswerUpdateRequest = z.infer<typeof ExtensionSavedAnswerUpdateRequestSchema>;
+export type ExtensionSavedAnswerUpdateResponse = z.infer<typeof ExtensionSavedAnswerUpdateResponseSchema>;
+export type ExtensionSavedAnswerDeleteResponse = z.infer<typeof ExtensionSavedAnswerDeleteResponseSchema>;

@@ -17,7 +17,14 @@ export type ExtensionEventType =
     | 'session.bound'
     | 'session.step.advanced'
     | 'session.resumed'
-    | 'workspace.saved';
+    | 'workspace.saved'
+    // The saved-answer library. `auto_use_toggled` is the one that matters:
+    // it measures whether people trust an answer enough to let it fill itself
+    // in unattended, which is the whole thesis of the feature.
+    | 'answers.opened'
+    | 'answers.auto_use_toggled'
+    | 'answers.edited'
+    | 'answers.deleted';
 
 type EventEnvelope = {
     type: ExtensionEventType;
