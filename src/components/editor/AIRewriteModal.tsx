@@ -142,7 +142,7 @@ export function AIRewriteModal({
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <Wand2 className="w-5 h-5 text-indigo-400" />
+                        <Wand2 className="w-5 h-5 text-primary" />
                         <span>Smart Rewrite</span>
                     </DialogTitle>
                     <DialogDescription>

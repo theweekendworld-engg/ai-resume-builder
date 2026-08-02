@@ -348,9 +348,11 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-400';
-    if (score >= 60) return 'text-yellow-400';
-    return 'text-red-400';
+    // Semantic tokens: a raw 400 shade is a dark-mode weight and drops to
+    // roughly 1.8:1 on the light card this now renders on.
+    if (score >= 80) return 'text-success';
+    if (score >= 60) return 'text-warning';
+    return 'text-destructive';
   };
 
   const isBusy = isPending || isGenerating;
@@ -495,7 +497,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
             </div>
           )}
           {success && (
-            <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-400">
+            <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 p-3 text-sm text-success">
               <CheckCircle2 className="h-4 w-4 flex-shrink-0" />
               {success}
             </div>

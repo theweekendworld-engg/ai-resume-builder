@@ -320,7 +320,7 @@ function ProjectsList({
                   {!project.embedded && (
                     <Badge
                       variant="outline"
-                      className="text-xs border-yellow-400 text-yellow-600"
+                      className="text-xs border-warning/40 text-warning"
                     >
                       Not embedded
                     </Badge>

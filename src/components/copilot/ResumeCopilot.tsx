@@ -245,7 +245,7 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                                             key={log.id} 
                                             className={cn(
                                                 "flex items-start gap-2 text-xs",
-                                                log.type === 'success' && "text-green-400",
+                                                log.type === 'success' && "text-success",
                                                 log.type === 'error' && "text-destructive",
                                                 log.type === 'info' && "text-muted-foreground"
                                             )}
