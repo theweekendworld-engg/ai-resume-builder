@@ -23,6 +23,7 @@ import {
 } from '@/lib/jobs/runner';
 import { registerAllHandlers } from '@/lib/jobs/registry';
 import { scheduleDigestWork } from '@/lib/jobs/handlers/weeklyDigest';
+import { schedulePeriodicWork } from '@/lib/jobs/schedule';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -85,6 +86,7 @@ async function handleTick(req: NextRequest): Promise<NextResponse> {
     // Enqueued before the drain on purpose, so this invocation drains what it
     // just scheduled instead of leaving the digest an hour late.
     let scheduled: Awaited<ReturnType<typeof scheduleDigestWork>> | null = null;
+    let periodic: Awaited<ReturnType<typeof schedulePeriodicWork>> | null = null;
     if (depth === 0) {
         try {
             scheduled = await scheduleDigestWork();
@@ -92,6 +94,14 @@ async function handleTick(req: NextRequest): Promise<NextResponse> {
             // Scheduling is additive. A failure here must not stop the drain,
             // which is what recovers stuck jobs and retries dead letters.
             console.error('[cron/tick] digest scheduling failed', error);
+        }
+        // Mission nudges and the monthly Radar snapshot. Both handlers existed
+        // with nothing to fire them — a handler with no scheduler is as dead as
+        // a job kind with no handler, and harder to spot because it looks done.
+        try {
+            periodic = await schedulePeriodicWork();
+        } catch (error: unknown) {
+            console.error('[cron/tick] periodic scheduling failed', error);
         }
     }
 
@@ -115,6 +125,7 @@ async function handleTick(req: NextRequest): Promise<NextResponse> {
         maxDepth: MAX_CHAIN_DEPTH,
         retriggered,
         scheduled,
+        periodic,
         ...result,
     });
 }

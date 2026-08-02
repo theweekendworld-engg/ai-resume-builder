@@ -45,6 +45,15 @@ const samples: { [K in TransactionalTemplateKey]: TransactionalTemplateData[K] }
         replyUrl: 'https://app.example.com/log?compose=1&src=nudge',
         sourcesUrl: 'https://app.example.com/settings/sources',
     },
+    mission_nudge: {
+        missionTitle: 'Staff by March',
+        stepTitle: 'Close the gap',
+        stepHint: 'Log evidence against the competency the report called thin.',
+        progress: { current: 1, target: 3 },
+        weeksRemaining: 6,
+        missionUrl: 'https://app.example.com/home',
+        logUrl: 'https://app.example.com/log?compose=1&src=mission',
+    },
     radar_digest: {
         monthLabel: 'August',
         roleLabel: 'Senior · software engineering',

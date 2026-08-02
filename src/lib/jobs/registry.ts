@@ -11,6 +11,7 @@ import { registerHandler, registeredKinds } from './runner';
 import { ingestBoardHandler } from './handlers/ingestBoard';
 import { skillRollupHandler } from './handlers/skillRollup';
 import { radarSnapshotHandler } from './handlers/radarSnapshot';
+import { missionNudgeHandler } from './handlers/missionNudge';
 import type { JobKind } from './types';
 import { noopHandler } from './handlers/noop';
 import { embedWinHandler } from './handlers/embedWin';
@@ -37,9 +38,10 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('ingest_board', ingestBoardHandler);
     registerHandler('skill_rollup', skillRollupHandler);
     registerHandler('radar_snapshot', radarSnapshotHandler);
+    registerHandler('mission_nudge', missionNudgeHandler);
     registerHandler('reconcile_qdrant', reconcileGraphHandler);
-    // Later: email_send
-    // Phase 4+: radar_snapshot, reconcile_qdrant
+    // `email_send` stays deliberately unregistered — mail is sent inline by
+    // the handler that composes it, and registry.test.ts asserts the absence.
 
     registered = true;
     return registeredKinds();

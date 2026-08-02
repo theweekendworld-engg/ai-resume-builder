@@ -18,12 +18,14 @@ import { prisma } from '@/lib/prisma';
 import {
     PREFERENCE_FIELD_BY_CATEGORY,
     getTransactionalTemplate,
+    transactionalTemplates,
     type EmailCategory,
     type RenderedEmail,
     type TemplateContext,
     type TransactionalTemplateData,
     type TransactionalTemplateKey,
 } from './templates/transactional';
+import { decideSend, isExemptFromBudget, weekStart } from '@/lib/notifications/budget';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -85,7 +87,9 @@ export type SkipReason =
     | 'unsubscribed_all'
     | 'category_opt_out'
     | 'not_configured'
-    | 'invalid_recipient';
+    | 'invalid_recipient'
+    /** PRD 05 §7 — the week's three outbound messages are already spent. */
+    | 'budget_exhausted';
 
 /**
  * The single place that decides whether an email is allowed out.
@@ -207,6 +211,43 @@ export async function sendEmail<K extends TransactionalTemplateKey>(
         return { status: 'skipped', reason: skipReason };
     }
 
+    // 1b. The global notification budget (PRD 05 §7).
+    //
+    // Enforced HERE rather than at each call site, because a budget every
+    // feature has to remember to check is one the next feature forgets — and
+    // the failure is invisible: nothing errors, the user just quietly receives
+    // too much mail and stops opening any of it. Three crons that each believe
+    // their message is the important one is exactly the situation §7 describes.
+    //
+    // Fails OPEN. If the count cannot be read, the message goes: losing a
+    // weekly digest to a transient database error is a worse outcome than
+    // occasionally allowing a fourth email.
+    if (!isExemptFromBudget(template.category)) {
+        let spentThisWeek = 0;
+        try {
+            spentThisWeek = await countNotificationsThisWeek(input.userId, new Date());
+        } catch (error: unknown) {
+            console.warn('[email] budget lookup failed; allowing send', {
+                template: template.key,
+                error: error instanceof Error ? error.message : 'unknown error',
+            });
+        }
+
+        const decision = decideSend({ category: template.category, spentThisWeek });
+        if (!decision.allowed) {
+            // "Drop the lowest priority silently" (§7) — silent to the USER.
+            // Loud in the logs, because a category that is always dropped is a
+            // cadence problem, not a budget success.
+            console.info('[email] skipped: weekly notification budget spent', {
+                template: template.key,
+                category: template.category,
+                userId: input.userId,
+                spent: decision.spent,
+            });
+            return { status: 'skipped', reason: 'budget_exhausted' };
+        }
+    }
+
     // 2 + 3. Render both parts and build the one-click unsubscribe headers.
     const unsubscribeUrl = buildUnsubscribeUrl(prefs.unsubscribeToken, template.category);
     const ctx: TemplateContext = {
@@ -304,6 +345,39 @@ export async function ensureEmailPreference(
 }
 
 /** Best-effort. A logging failure must not stop the email. */
+/**
+ * Non-exempt messages already sent to this user this week.
+ *
+ * Counts `EmailSend` rows, which exist because the send path writes one BEFORE
+ * the network call — so a message that was attempted and failed at the
+ * provider still consumes budget. That is the right way round: the alternative
+ * is a provider outage silently converting into a burst of four or five
+ * messages the moment it recovers.
+ *
+ * `queued` is included for the same reason. Only rows we know never left
+ * (there are none today) would be worth excluding.
+ */
+export async function countNotificationsThisWeek(userId: string, now: Date): Promise<number> {
+    const exempt = Object.entries(PREFERENCE_FIELD_BY_CATEGORY)
+        .filter(([, field]) => field === null)
+        .map(([category]) => category);
+
+    // Template keys, not categories — EmailSend records the template. Built
+    // from the registry so a new transactional template is exempt the day it
+    // is added rather than the day someone remembers this function exists.
+    const exemptTemplates = Object.values(transactionalTemplates)
+        .filter((template) => exempt.includes(template.category))
+        .map((template) => template.key);
+
+    return prisma.emailSend.count({
+        where: {
+            userId,
+            createdAt: { gte: weekStart(now) },
+            template: { notIn: exemptTemplates },
+        },
+    });
+}
+
 async function createEmailSendRow(input: {
     userId: string;
     template: string;

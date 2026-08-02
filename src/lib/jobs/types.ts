@@ -23,6 +23,7 @@ export type JobKind =
     | 'ingest_board'
     | 'skill_rollup'
     | 'radar_snapshot'
+    | 'mission_nudge'
     | 'reconcile_qdrant'
     | 'proactive_downgrade'
     | 'email_send';
@@ -37,6 +38,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'ingest_board',
     'skill_rollup',
     'radar_snapshot',
+    'mission_nudge',
     'reconcile_qdrant',
     'proactive_downgrade',
     'email_send',
