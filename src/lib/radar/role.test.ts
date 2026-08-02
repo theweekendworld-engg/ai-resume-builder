@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { classifyFamily, classifySeniority, isBandableSeniority, normalizeRole } from './role';
+import { classifyFamily, classifySeniority, isBandableSeniority, normalizeRole, sameLadder } from './role';
 import type { RoleFamily, Seniority } from './role';
 
 describe('seniority — the management/IC split', () => {
@@ -65,20 +65,31 @@ describe('seniority — IC ladder', () => {
 });
 
 describe('seniority — the regression itself', () => {
-    test('an unlevelled IC title resolves to mid, the industry baseline', () => {
-        // Safe only because the management guards run first — this line is
-        // reached having already ruled out director/manager/staff/senior.
-        expect(classifySeniority('Software Engineer')).toBe('mid');
-        expect(classifySeniority('Product Designer')).toBe('mid');
-        expect(classifySeniority('Account Executive, Enterprise')).toBe('mid');
+    test('an unlevelled title gets its own bucket, not mid', () => {
+        // Calling these "mid" produced SF software engineering at mid $308k
+        // (n=186) against senior $196k (n=45), because unlevelled frontier-lab
+        // roles paying $380–555k all landed in mid.
+        expect(classifySeniority('Software Engineer')).toBe('unlevelled');
+        expect(classifySeniority('Product Designer')).toBe('unlevelled');
+        expect(classifySeniority('Account Executive, Enterprise')).toBe('unlevelled');
+    });
+
+    test('mid means the title SAID mid', () => {
+        expect(classifySeniority('Mid-Level Software Engineer')).toBe('mid');
+        expect(classifySeniority('Software Engineer II')).toBe('mid');
+    });
+
+    test('unlevelled is still banded — it is data, not an error', () => {
+        expect(isBandableSeniority('unlevelled')).toBe(true);
+        expect(normalizeRole('Software Engineer', 'nyc').bandKey)
+            .toBe('software_engineering::unlevelled::nyc');
     });
 
     test('but a MANAGEMENT title never reaches that default', () => {
-        // The regression the default was originally blamed for. The guard,
-        // not the default, is what prevents it.
-        expect(classifySeniority('Director of Engineering')).not.toBe('mid');
-        expect(classifySeniority('Engineering Manager - Backend')).not.toBe('mid');
-        expect(classifySeniority('Head of Design')).not.toBe('mid');
+        // The guard, not the default, is what prevents the original bug.
+        expect(classifySeniority('Director of Engineering')).toBe('director_plus');
+        expect(classifySeniority('Engineering Manager - Backend')).toBe('manager');
+        expect(classifySeniority('Head of Design')).toBe('director_plus');
     });
 
     test('unknown is excluded from bands', () => {
@@ -90,9 +101,10 @@ describe('seniority — the regression itself', () => {
     });
 
     test('every classified non-intern seniority is bandable', () => {
-        (['junior', 'mid', 'senior', 'staff_plus', 'manager', 'director_plus'] as const).forEach((s) => {
-            expect(isBandableSeniority(s)).toBe(true);
-        });
+        (['junior', 'mid', 'senior', 'staff_plus', 'manager', 'director_plus', 'unlevelled'] as const)
+            .forEach((s) => {
+                expect(isBandableSeniority(s)).toBe(true);
+            });
     });
 });
 
@@ -130,9 +142,8 @@ describe('normalizeRole — the band key', () => {
     });
 
     test('an unlevelled but recognisable role does get a key', () => {
-        // Two readable signals — family and (defaulted) seniority — is the bar.
         expect(normalizeRole('Software Engineer', 'us_remote').bandKey)
-            .toBe('software_engineering::mid::us_remote');
+            .toBe('software_engineering::unlevelled::us_remote');
     });
 
     test('an intern posting still yields no key — different pay instrument', () => {
@@ -151,5 +162,25 @@ describe('normalizeRole — the band key', () => {
         const ic = normalizeRole('Senior Software Engineer', 'nyc').bandKey;
         const mgr = normalizeRole('Engineering Manager, Backend', 'nyc').bandKey;
         expect(ic).not.toBe(mgr);
+    });
+});
+
+describe('IC and management are parallel ladders', () => {
+    test('levels on the same ladder are comparable', () => {
+        expect(sameLadder('senior', 'staff_plus')).toBe(true);
+        expect(sameLadder('manager', 'director_plus')).toBe(true);
+    });
+
+    test('an IC level and a management level are NOT comparable', () => {
+        // Measured on real postings, a first-line Engineering Manager often
+        // earns less than a Staff engineer. Ranking them manufactures an
+        // inversion out of a correct observation.
+        expect(sameLadder('staff_plus', 'manager')).toBe(false);
+        expect(sameLadder('senior', 'director_plus')).toBe(false);
+    });
+
+    test('unlevelled belongs to neither, so it is compared with nothing', () => {
+        expect(sameLadder('unlevelled', 'senior')).toBe(false);
+        expect(sameLadder('unlevelled', 'manager')).toBe(false);
     });
 });

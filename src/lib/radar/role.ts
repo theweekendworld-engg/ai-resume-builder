@@ -5,27 +5,48 @@
  * indistinguishable from getting the arithmetic wrong — the number is
  * confident and false either way.
  *
- * ── The trap this module exists for ──────────────────────────────────────
+ * ── Three things real data forced, none of them obvious ──────────────────
  *
- * The obvious implementation defaults an unrecognised seniority to "mid",
- * because most postings without a seniority word are mid-level. Run against
- * real boards, that default silently swept up:
+ * 1. A MANAGEMENT title must never fall through to an IC default.
+ *    "Director of Engineering" and "Engineering Manager - Backend" say
+ *    neither "senior" nor "staff", so a naive default swept them into mid and
+ *    published a mid median above senior. Hence the guards that run first.
  *
- *     Director of Engineering · Director, Field Engineering ·
- *     Engineering Manager - Backend · Engineering Manager, Serverless Compute
+ * 2. IC and management are PARALLEL ladders, not one scale. Measured across
+ *    real postings, a first-line Engineering Manager frequently earns less
+ *    than a Staff engineer. Ranking the two against each other manufactures
+ *    an inversion out of a correct observation — see {@link sameLadder}.
  *
- * none of which say "senior" or "staff". The result was a published
- * "Mid · Software Engineering" band with a median of $298k against a
- * "Senior · Software Engineering" median of $229k — mid paid more than
- * senior, which is nonsense a reader would catch instantly and never trust us
- * again after.
+ * 3. An UNLEVELLED title is not evidence of a level. Treating it as mid
+ *    produced San Francisco software engineering at mid $308k (n=186) against
+ *    senior $196k (n=45), because unlevelled frontier-lab roles paying
+ *    $380–555k all landed in mid. It gets its own bucket instead.
  *
- * So: an unrecognised seniority is `unknown`, never `mid`, and `unknown` is
- * excluded from published bands by {@link isBandableSeniority}. Refusing to
- * classify is free; classifying wrongly is not.
+ * The through-line: a cell key is only as trustworthy as its least certain
+ * component, and inventing certainty is worse than admitting its absence.
  */
 
-export type Seniority = 'intern' | 'junior' | 'mid' | 'senior' | 'staff_plus' | 'manager' | 'director_plus' | 'unknown';
+export type Seniority =
+    | 'intern'
+    | 'junior'
+    | 'mid'
+    | 'senior'
+    | 'staff_plus'
+    /** People-management ladder. A PARALLEL track, not a rung above staff. */
+    | 'manager'
+    | 'director_plus'
+    /** A real role whose title states no level. Its own bucket — see below. */
+    | 'unlevelled'
+    /** Not classifiable at all. Excluded from bands. */
+    | 'unknown';
+
+/**
+ * The IC ladder, in pay order. Comparisons are only meaningful within a track.
+ */
+export const IC_LADDER: readonly Seniority[] = ['junior', 'mid', 'senior', 'staff_plus'];
+
+/** The management ladder, in pay order. */
+export const MANAGEMENT_LADDER: readonly Seniority[] = ['manager', 'director_plus'];
 
 export type RoleFamily =
     | 'software_engineering'
@@ -67,7 +88,12 @@ const MANAGER = /\b(manager|mgr\.?)\b/i;
 
 const STAFF_PLUS = /\b(staff|principal|distinguished|fellow|architect)\b/i;
 const SENIOR = /\b(senior|sr\.?|lead|iii|l[5-9])\b/i;
-const JUNIOR = /\b(junior|jr\.?|associate|new ?grad|entry.?level|graduate|apprentice|i{1,2}\b|l[12])\b/i;
+/**
+ * `i\b` matches a single roman numeral only. `i{1,2}` also matched "II",
+ * which is a MID level (L3/L4) — so "Software Engineer II" classified as
+ * junior and would have pulled the junior band upward while thinning mid.
+ */
+const JUNIOR = /\b(junior|jr\.?|associate|new ?grad|entry.?level|graduate|apprentice|i\b|l[12])\b/i;
 const INTERN = /\b(intern|internship|co.?op|working student|placement)\b/i;
 
 /**
@@ -103,27 +129,27 @@ export function classifySeniority(title: string): Seniority {
     if (EXPLICIT_MID.test(t)) return 'mid';
 
     /*
-     * Nothing matched. This is the case the module comment warns about, and
-     * the resolution is narrower than it first appears.
+     * Nothing matched: the title states no level.
      *
-     * The original danger was management titles landing in the mid bucket —
-     * "Director of Engineering" and "Engineering Manager" say neither "senior"
-     * nor "staff", so a blanket default swept them in and published a mid
-     * median above the senior one. That danger is now handled ABOVE, by
-     * DIRECTOR_PLUS and MANAGER, which run before this line is ever reached.
+     * This rule has been wrong twice, each time for a reason only real data
+     * showed, and the history is worth keeping because both wrong answers look
+     * reasonable.
      *
-     * What is left here is a title carrying no level word at all — "Product
-     * Designer", "Account Executive", "Data Scientist". In industry naming an
-     * unmodified title IS the baseline level, so treating it as unknown is not
-     * caution, it is discarding evidence: it excluded 62% of real postings,
-     * including plenty of ordinary mid-level roles.
+     *   Returning `unknown` and excluding the posting dropped 62% of real
+     *   postings, including ordinary roles like "Product Designer".
      *
-     * So an unlevelled title resolves to `mid`, and `unknown` is reserved for
-     * the case where we cannot even name the role family (handled in
-     * `normalizeRole`, which requires BOTH a family and a seniority). Two
-     * independent signals must be readable before a posting enters a band.
+     *   Returning `mid` then corrupted the mid band. In San Francisco software
+     *   engineering it produced mid $308k (n=186) against senior $196k (n=45).
+     *   The cause: every high-paid unlevelled title at a frontier lab —
+     *   "Software Engineer, Collective Communication" at $380–555k — landed in
+     *   `mid` and dragged the median above senior.
+     *
+     * The resolution is that an unlevelled title is not evidence of a level at
+     * all. It is its own bucket: still banded, still counted, never pooled with
+     * roles that DID state a level. A band labelled "level not stated" is a
+     * true statement; a mid band containing $555k roles is not.
      */
-    return 'mid';
+    return 'unlevelled';
 }
 
 export function classifyFamily(title: string): RoleFamily {
@@ -143,6 +169,21 @@ export function classifyFamily(title: string): RoleFamily {
  */
 export function isBandableSeniority(seniority: Seniority): boolean {
     return seniority !== 'unknown' && seniority !== 'intern';
+}
+
+/**
+ * Are two levels comparable?
+ *
+ * IC and management are parallel ladders, not one scale. Measured on real
+ * postings a first-line Engineering Manager frequently earns LESS than a
+ * Staff engineer — that is how the two tracks are actually paid, not a defect.
+ * Ranking them against each other would manufacture an inversion out of a
+ * correct observation, so callers that compare levels must check this first.
+ */
+export function sameLadder(a: Seniority, b: Seniority): boolean {
+    const ic = (s: Seniority) => IC_LADDER.includes(s);
+    const mgmt = (s: Seniority) => MANAGEMENT_LADDER.includes(s);
+    return (ic(a) && ic(b)) || (mgmt(a) && mgmt(b));
 }
 
 /**
