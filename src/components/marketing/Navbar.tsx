@@ -38,8 +38,8 @@ export function Navbar() {
                 Sign in
               </Button>
             </SignInButton>
-            <Link href="/sign-up?redirect_url=/build">
-              <Button size="sm" className="text-[13px]">Build a resume</Button>
+            <Link href="/sign-up?redirect_url=/log">
+              <Button size="sm" className="text-[13px]">Start free</Button>
             </Link>
           </SignedOut>
           <SignedIn>

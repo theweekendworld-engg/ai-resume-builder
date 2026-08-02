@@ -19,8 +19,8 @@ import {
  *
  * Required env for live billing:
  *   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
- *   STRIPE_PRICE_CAREER_ANNUAL     ($99/year  → Tier.always_on, "Career")
- *   STRIPE_PRICE_CAREER_MONTHLY    ($15/month → Tier.always_on, "Career")
+ *   STRIPE_PRICE_CAREER_ANNUAL     ($30/year  → Tier.always_on, "Career")
+ *   STRIPE_PRICE_CAREER_MONTHLY    ($5/month  → Tier.always_on, "Career")
  *   STRIPE_PRICE_SEARCH_MONTHLY    ($29/month → Tier.pro,       "Search")
  *
  * Career and Search are two *separate subscriptions* on the same customer, not

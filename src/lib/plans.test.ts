@@ -76,15 +76,15 @@ describe('display names (CLAUDE.md rule 4)', () => {
 
 describe('prices', () => {
   test('the PRD numbers, exactly', () => {
-    expect(priceFor('career_annual').amountCents).toBe(9900);
-    expect(priceFor('career_monthly').amountCents).toBe(1500);
+    expect(priceFor('career_annual').amountCents).toBe(3000);
+    expect(priceFor('career_monthly').amountCents).toBe(500);
     expect(priceFor('search_monthly').amountCents).toBe(2900);
   });
 
   test('labels are derived from the amounts, so they cannot drift', () => {
-    expect(formatUsd(9900)).toBe('$99');
+    expect(formatUsd(3000)).toBe('$30');
     expect(formatUsd(1550)).toBe('$15.50');
-    expect(priceFor('career_annual').label).toContain(formatUsd(9900));
+    expect(priceFor('career_annual').label).toContain(formatUsd(3000));
   });
 
   test('annual is the steered choice on Career', () => {

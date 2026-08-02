@@ -41,7 +41,7 @@ export interface PaywallContent {
   tone: 'inline' | 'banner';
 }
 
-const CAREER = headlinePrice(CAREER_PLAN.tier)?.label ?? '$99/year';
+const CAREER = headlinePrice(CAREER_PLAN.tier)?.label ?? '$30/year';
 const SEARCH = priceFor('search_monthly').label;
 
 // ---------------------------------------------------------------------------

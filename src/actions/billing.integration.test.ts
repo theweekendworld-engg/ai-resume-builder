@@ -504,7 +504,7 @@ describe('the plan page read model', () => {
 
     const data = await planPageData();
     expect(data.planName).toBe('Career');
-    expect(data.priceLabel).toBe('$99/year');
+    expect(data.priceLabel).toBe('$30/year');
     expect(data.usage.length).toBeGreaterThan(0);
     expect(data.career?.planName).toBe('Career');
     expect(data.canAddSearch).toBe(true);

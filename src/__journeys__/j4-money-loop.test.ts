@@ -442,7 +442,7 @@ test('checkout alone grants nothing; a signed webhook is what changes the tier',
         where: { userId: journey.userId, type: 'checkout_started' },
     });
     const checkoutPayload = checkoutStarted?.payload as Record<string, unknown>;
-    expect(checkoutPayload?.amount).toBe(9900);
+    expect(checkoutPayload?.amount).toBe(3000);
     record('checkout_started.tier', checkoutPayload?.tier as string);
 
     const checkoutId = new URL(started.data.url).pathname.replace(/^\//, '');

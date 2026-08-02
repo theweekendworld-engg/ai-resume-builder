@@ -1,70 +1,90 @@
-import { FileSearch, Sparkles, Download, SendHorizonal } from 'lucide-react';
+import { Check, GitBranch, Pencil } from 'lucide-react';
 
-const steps = [
-  {
-    icon: FileSearch,
-    title: 'Check your score',
-    description:
-      'Drop in your current resume and get an instant ATS and quality score with a prioritized fix list — no account needed.',
-  },
-  {
-    icon: Sparkles,
-    title: 'Build & tailor with AI',
-    description:
-      'Fix every flagged issue in the editor. Paste a job description and let AI tailor each bullet to the role.',
-  },
-  {
-    icon: Download,
-    title: 'Export a polished PDF',
-    description:
-      'Pick a template, tune the design, and download a clean, ATS-safe PDF you’re proud to send.',
-  },
-  {
-    icon: SendHorizonal,
-    title: 'Apply & track',
-    description:
-      'Auto-fill applications with the browser extension and keep every one organized in your workspace.',
-  },
+/**
+ * The mechanism, and why it survives contact with a busy week.
+ *
+ * The whole design bet (strategy v3 §2) is that capture must be *confirming*,
+ * never *writing*. Anything that asks a person to compose prose about
+ * themselves on a Tuesday is a habit that dies in three weeks. So the steps
+ * are ordered by how little they ask: the machine drafts, you tap ✓, and
+ * writing is the fallback rather than the mechanism.
+ *
+ * Numbered because this genuinely is a sequence — the draft has to exist
+ * before there is anything to confirm.
+ */
+
+const STEPS = [
+    {
+        n: '01',
+        icon: GitBranch,
+        title: 'It drafts from your actual work',
+        body: 'Connect GitHub and merged pull requests become candidate wins — title, metric, and a link to the PR, already filled in.',
+        note: 'GitHub today. More sources as they earn their place.',
+    },
+    {
+        n: '02',
+        icon: Check,
+        title: 'You confirm in seconds',
+        body: 'A short weekly review: keep, edit, or dismiss. Confirming is one tap, and it is the only step the habit depends on.',
+        note: 'The whole ritual is built to take about 90 seconds.',
+    },
+    {
+        n: '03',
+        icon: Pencil,
+        title: 'You add what code cannot see',
+        body: 'The mentoring, the design review you turned around, the incident you ran. Type a rough note and it comes back structured — your numbers untouched.',
+        note: 'Nothing is invented. Figures are copied, never generated.',
+    },
 ];
 
 export function HowItWorks() {
-  return (
-    <section id="how-it-works" className="relative mx-auto w-full max-w-5xl px-4 py-20 sm:px-6 sm:py-28">
-      <div className="text-center">
-        <p className="text-xs font-medium uppercase tracking-widest text-primary/80">
-          How it works
-        </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-          From score to submitted, in one place
-        </h2>
-        <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
-          One account carries you across the whole journey — no re-uploading, no
-          re-onboarding.
-        </p>
-      </div>
+    return (
+        <section id="how-it-works" className="border-b border-border/40">
+            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
+                <div className="max-w-2xl">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
+                        How it works
+                    </p>
+                    <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+                        You confirm. You don’t write.
+                    </h2>
+                    <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                        Every brag-doc tool fails the same way: it asks you to sit down and compose.
+                        This one does the drafting and leaves you the part that takes a moment.
+                    </p>
+                </div>
 
-      <div className="mt-14 grid gap-8 sm:gap-6 md:grid-cols-4">
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          return (
-            <article
-              key={step.title}
-              className="group relative rounded-2xl border border-border/60 bg-card/50 p-6 transition-colors hover:border-primary/30 hover:bg-card/80"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
-              </div>
-              <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                Step {index + 1}
-              </p>
-              <h3 className="mt-3 text-base font-semibold leading-snug">{step.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {step.description}
-              </p>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
+                <ol className="mt-12 grid gap-6 lg:grid-cols-3">
+                    {STEPS.map((step) => {
+                        const Icon = step.icon;
+                        return (
+                            <li
+                                key={step.n}
+                                className="relative rounded-xl border border-border/50 bg-card/30 p-6"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <Icon className="h-4 w-4" strokeWidth={1.75} />
+                                    </span>
+                                    <span className="font-heading text-xs tabular-nums text-muted-foreground/60">
+                                        {step.n}
+                                    </span>
+                                </div>
+
+                                <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
+                                    {step.title}
+                                </h3>
+                                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                                    {step.body}
+                                </p>
+                                <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground/70">
+                                    {step.note}
+                                </p>
+                            </li>
+                        );
+                    })}
+                </ol>
+            </div>
+        </section>
+    );
 }

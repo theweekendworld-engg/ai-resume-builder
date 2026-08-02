@@ -39,9 +39,23 @@ export type BillingInterval = 'month' | 'year';
 export interface PlanPrice {
   key: PriceKey;
   interval: BillingInterval;
-  /** Display amount in cents. The source of truth for what the UI says. */
+  /**
+   * Display amount in cents — the source of truth for what the UI SAYS, and
+   * nothing more.
+   *
+   * What a customer is actually CHARGED comes from the Stripe Price object
+   * behind {@link PlanPrice.envVar}: checkout passes `line_items: [{ price }]`
+   * and Stripe bills whatever that object says. The two are independent, so
+   * editing this number alone changes the label on the pricing page and leaves
+   * the charge untouched — a customer would read $30 and be billed the old
+   * amount.
+   *
+   * Changing a price therefore takes both halves: a NEW Stripe Price object
+   * (they are immutable, so amounts cannot be edited in place), the env var
+   * repointed at its id, and this figure updated to match.
+   */
   amountCents: number;
-  /** "$99/year" — precomputed so no call site does currency maths. */
+  /** "$30/year" — precomputed so no call site does currency maths. */
   label: string;
   /** "billed annually" */
   cadence: string;
@@ -106,8 +120,8 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
       {
         key: 'career_annual',
         interval: 'year',
-        amountCents: 9900,
-        label: '$99/year',
+        amountCents: 3000,
+        label: '$30/year',
         cadence: 'billed annually',
         envVar: 'STRIPE_PRICE_CAREER_ANNUAL',
         recommended: true,
@@ -115,8 +129,8 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
       {
         key: 'career_monthly',
         interval: 'month',
-        amountCents: 1500,
-        label: '$15/month',
+        amountCents: 500,
+        label: '$5/month',
         cadence: 'billed monthly',
         envVar: 'STRIPE_PRICE_CAREER_MONTHLY',
       },
@@ -251,7 +265,7 @@ export function isAtLeast(tier: Tier, required: Tier): boolean {
   return planOrder(tier) >= planOrder(required);
 }
 
-/** `9900` → `"$99"`, `1550` → `"$15.50"`. */
+/** `3000` → `"$30"`, `1550` → `"$15.50"`. */
 export function formatUsd(amountCents: number): string {
   const dollars = amountCents / 100;
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;

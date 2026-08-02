@@ -1,141 +1,114 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import {
-  Target,
-  BotMessageSquare,
-  Github,
-  FileText,
-  MousePointerClick,
-  LayoutDashboard,
-  ArrowRight,
-} from 'lucide-react';
+import { ArrowRight, BarChart3, Chrome, FileText, ListChecks, Repeat2 } from 'lucide-react';
 
-const features = [
-  {
-    icon: Target,
-    title: 'Know your odds before you apply',
-    description:
-      'Instant ATS and quality scoring shows exactly which keywords and sections are holding you back — so you fix the right things first.',
-  },
-  {
-    icon: BotMessageSquare,
-    title: 'Write stronger bullets in seconds',
-    description:
-      'The AI copilot rewrites weak lines into metric-driven impact statements, with clear rationale you can accept in one click.',
-  },
-  {
-    icon: Github,
-    title: 'Turn your work into proof',
-    description:
-      'Import your GitHub projects and let AI turn real commits and repos into polished, recruiter-ready bullet points.',
-  },
-  {
-    icon: FileText,
-    title: 'Export a PDF you’re proud of',
-    description:
-      'Pick a template, tune the look, and download a print-ready, ATS-safe PDF — no formatting headaches.',
-  },
+/**
+ * What the log turns into.
+ *
+ * Every item here is shipped and verifiable in the product today. Career Radar
+ * and Missions are named in the strategy doc and in our own entitlement flags,
+ * but they have no implementation — so they are deliberately absent. Promising
+ * them on the page a user reads *before* paying would be the same category of
+ * mistake this product exists to eliminate from a resume.
+ *
+ * Ordered by how soon a new user actually reaches the payoff, which is not the
+ * order of how impressive each one is.
+ */
+
+const PAYOFFS = [
+    {
+        icon: FileText,
+        title: 'Review and promotion packets',
+        body: 'Six or twelve months of confirmed wins, grouped into themes and written into a document you can hand to a manager. Every line traces back to a win you confirmed.',
+        proof: 'Free plan includes a brag doc; paid plans add performance-review and promotion formats.',
+    },
+    {
+        icon: ListChecks,
+        title: 'Level readiness',
+        body: 'Upload your company’s leveling rubric and see your wins mapped against it — including the competencies where the evidence is thin.',
+        proof: '“One instance of cross-team influence in eight months” is a more useful sentence than a score.',
+    },
+    {
+        icon: Repeat2,
+        title: 'A weekly ritual that maintains itself',
+        body: 'A short digest of what we noticed, and a monthly review written only from what you confirmed. If a paragraph cannot be grounded in the log, it is dropped rather than padded.',
+        proof: 'Nothing is generated about a month you did not log.',
+    },
+    {
+        icon: BarChart3,
+        title: 'A resume assembled from evidence',
+        body: 'When you do search, the resume is built from dated, evidence-linked wins instead of a blank page and your memory — then scored for ATS parsing before you send it.',
+        proof: 'Tools that only show up at search time start from nothing.',
+    },
+    {
+        icon: Chrome,
+        title: 'Apply without retyping',
+        body: 'The browser extension fills applications from your profile, drafts the long-form answers, and remembers them — so the second time a form asks why you want to work somewhere, it is already answered.',
+        proof: 'Saved answers match by meaning, not exact wording.',
+    },
 ];
 
 export function Features() {
-  return (
-    <section id="features" className="mx-auto w-full max-w-5xl px-4 py-20 sm:px-6 sm:py-28">
-      {/* Differentiator: the build -> apply -> track story */}
-      <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-card/50 p-8 sm:p-12">
-        <div
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_0%,hsl(var(--primary)/0.08),transparent)]"
-          aria-hidden
-        />
-        <div className="relative text-center">
-          <p className="text-xs font-medium uppercase tracking-widest text-primary/80">
-            The part other tools skip
-          </p>
-          <h2 className="mx-auto mt-2 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">
-            Most resume tools stop at the PDF.{' '}
-            <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              We take you all the way to applied.
-            </span>
-          </h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-            A polished resume is only half the job. Patronus carries your data
-            from the builder straight into the application — and keeps every one
-            organized in a single place.
-          </p>
-        </div>
+    return (
+        <section id="features" className="border-b border-border/40 bg-card/20">
+            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
+                <div className="flex flex-wrap items-end justify-between gap-6">
+                    <div className="max-w-2xl">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
+                            What the log becomes
+                        </p>
+                        <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+                            One record. Every conversation about your career.
+                        </h2>
+                        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                            The log is not the product — it is the input. Everything below is
+                            generated from the same confirmed evidence, which is why the numbers
+                            agree with each other.
+                        </p>
+                    </div>
+                </div>
 
-        <div className="relative mt-10 grid gap-4 sm:grid-cols-2">
-          <article className="flex gap-4 rounded-2xl border border-border/60 bg-background/40 p-6">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <MousePointerClick className="h-5 w-5" strokeWidth={1.5} />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">Auto-fill real applications</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                The browser extension reads the job description and fills
-                multi-page application forms on Workday, Greenhouse, Lever, and
-                LinkedIn — you review and click submit. We never auto-submit.
-              </p>
-            </div>
-          </article>
-          <article className="flex gap-4 rounded-2xl border border-border/60 bg-background/40 p-6">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <LayoutDashboard className="h-5 w-5" strokeWidth={1.5} />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold">Track every application</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                Each application lands in your workspace with the role, the
-                tailored resume, and its status — so you always know what you
-                sent where, and what to follow up on.
-              </p>
-            </div>
-          </article>
-        </div>
+                <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                    {PAYOFFS.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                            <article
+                                key={item.title}
+                                className="flex flex-col rounded-xl border border-border/50 bg-background/50 p-6"
+                            >
+                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
+                                </span>
+                                <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
+                                    {item.title}
+                                </h3>
+                                <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
+                                    {item.body}
+                                </p>
+                                <p className="mt-4 border-t border-border/40 pt-3 text-xs leading-relaxed text-muted-foreground/70">
+                                    {item.proof}
+                                </p>
+                            </article>
+                        );
+                    })}
 
-        <div className="relative mt-8 flex justify-center">
-          <Link href="/sign-up?redirect_url=/build">
-            <Button size="lg" className="group gap-2 px-6">
-              Build &amp; apply with Patronus
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Button>
-          </Link>
-        </div>
-      </div>
-
-      {/* Benefit-framed capabilities */}
-      <div className="mt-20 text-center">
-        <p className="text-xs font-medium uppercase tracking-widest text-primary/80">
-          What you get
-        </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
-          From a rough draft to your next interview
-        </h2>
-        <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Every tool here exists to get you in front of a recruiter faster.
-        </p>
-      </div>
-
-      <div className="mt-14 grid gap-6 sm:grid-cols-2">
-        {features.map((feature) => {
-          const Icon = feature.icon;
-          return (
-            <article
-              key={feature.title}
-              className="group flex gap-4 rounded-2xl border border-border/60 bg-card/50 p-6 transition-colors hover:border-primary/30 hover:bg-card/80"
-            >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold">{feature.title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                  {feature.description}
-                </p>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
+                    <div className="flex flex-col justify-center rounded-xl border border-dashed border-border/50 p-6">
+                        <p className="font-heading text-base font-semibold leading-snug">
+                            Start with the record.
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            Keeping a log is free, permanently. The payoffs are there when you need
+                            them.
+                        </p>
+                        <Link href="/sign-up?redirect_url=/log" className="mt-4">
+                            <Button className="group w-full gap-2">
+                                Start your work log
+                                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                            </Button>
+                        </Link>
+                    </div>
+                </div>
+            </div>
+        </section>
+    );
 }
