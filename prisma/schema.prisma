@@ -1,96 +1,96 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider  = "postgresql"
-    url       = env("DATABASE_URL")
-    directUrl = env("DIRECT_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum ProjectSource {
-    github
-    manual
-    pdf_resume
+  github
+  manual
+  pdf_resume
 }
 
 enum KnowledgeType {
-    achievement
-    oss_contribution
-    certification
-    award
-    publication
-    custom
+  achievement
+  oss_contribution
+  certification
+  award
+  publication
+  custom
 }
 
 enum GenerationStatus {
-    pending
-    awaiting_clarification
-    generating
-    completed
-    failed
+  pending
+  awaiting_clarification
+  generating
+  completed
+  failed
 }
 
 enum ResumeImportStatus {
-    pending
-    processing
-    ready
-    completed
-    failed
+  pending
+  processing
+  ready
+  completed
+  failed
 }
 
 enum Channel {
-    web
-    telegram
-    whatsapp
-    email
+  web
+  telegram
+  whatsapp
+  email
 }
 
 enum PipelineStep {
-    reuse_check
-    jd_parsing
-    semantic_search
-    static_data_load
-    awaiting_clarification
-    paraphrasing
-    resume_assembly
-    claim_validation
-    ats_scoring
-    pdf_generation
-    completed
+  reuse_check
+  jd_parsing
+  semantic_search
+  static_data_load
+  awaiting_clarification
+  paraphrasing
+  resume_assembly
+  claim_validation
+  ats_scoring
+  pdf_generation
+  completed
 }
 
 enum ResumeImportStep {
-    upload_received
-    pdf_text_extract
-    pdf_link_extract
-    ai_parse
-    ready
-    failed
+  upload_received
+  pdf_text_extract
+  pdf_link_extract
+  ai_parse
+  ready
+  failed
 }
 
 // --- Career Context Graph: evidence + grounding (v2 architecture §3) ---
 enum EvidenceKind {
-    repo
-    metric_confirmed
-    document
-    url
-    interview_assertion
-    import
+  repo
+  metric_confirmed
+  document
+  url
+  interview_assertion
+  import
 }
 
 enum GroundState {
-    grounded
-    needs_confirmation
-    unsupported
+  grounded
+  needs_confirmation
+  unsupported
 }
 
 // --- Monetization & entitlements (v2 architecture §7) ---
 enum Tier {
-    free
-    always_on
-    pro
-    team
+  free
+  always_on
+  pro
+  team
 }
 
 // --- Application lifecycle (v2 architecture §5) ---
@@ -100,456 +100,456 @@ enum Tier {
 // the extension nor future web UI breaks. `applied` and `submitted` overlap by
 // design during the transition; dedupe is a follow-up.
 enum ApplicationStatus {
-    discovered
-    analyzed
-    drafting
-    in_progress
-    submitted
-    applied
-    in_review
-    interview
-    offer
-    rejected
-    ghosted
-    archived
+  discovered
+  analyzed
+  drafting
+  in_progress
+  submitted
+  applied
+  in_review
+  interview
+  offer
+  rejected
+  ghosted
+  archived
 }
 
 model Resume {
-    id        String   @id @default(cuid())
-    userId    String // Clerk User ID
-    title     String   @default("My Resume")
-    targetRole    String?
-    targetCompany String?
-    atsScore      Int?
-    atsSummary    String?
-    content   Json?
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String // Clerk User ID
+  title         String   @default("My Resume")
+  targetRole    String?
+  targetCompany String?
+  atsScore      Int?
+  atsSummary    String?
+  content       Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-    @@index([userId, updatedAt])
+  @@index([userId, updatedAt])
 }
 
 model JobTarget {
-    id          String   @id @default(cuid())
-    userId      String
-    resumeId    String?
-    company     String   @default("")
-    role        String   @default("")
-    description String
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  resumeId    String?
+  company     String   @default("")
+  role        String   @default("")
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-    @@index([userId, resumeId, updatedAt])
-    @@index([userId, updatedAt])
+  @@index([userId, resumeId, updatedAt])
+  @@index([userId, updatedAt])
 }
 
 model UserProfile {
-    id                  String   @id @default(cuid())
-    userId              String   @unique
-    fullName            String   @default("")
-    email               String   @default("")
-    phone               String   @default("")
-    location            String   @default("")
-    website             String   @default("")
-    linkedin            String   @default("")
-    github              String   @default("")
-    defaultTitle        String   @default("")
-    defaultSummary      String   @default("")
-    yearsExperience     String   @default("")
-    preferences         Json?
-    onboardingComplete  Boolean  @default(false)
-    createdAt           DateTime @default(now())
-    updatedAt           DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  fullName           String   @default("")
+  email              String   @default("")
+  phone              String   @default("")
+  location           String   @default("")
+  website            String   @default("")
+  linkedin           String   @default("")
+  github             String   @default("")
+  defaultTitle       String   @default("")
+  defaultSummary     String   @default("")
+  yearsExperience    String   @default("")
+  preferences        Json?
+  onboardingComplete Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model UserProject {
-    id            String        @id @default(cuid())
-    userId        String
-    name          String
-    description   String        @default("")
-    url           String        @default("")
-    githubUrl     String?
-    technologies  Json          @default("[]")
-    readme        String        @default("")
-    source        ProjectSource @default(manual)
-    qdrantPointId String?
-    embedded      Boolean       @default(false)
-    createdAt     DateTime      @default(now())
-    updatedAt     DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  userId        String
+  name          String
+  description   String        @default("")
+  url           String        @default("")
+  githubUrl     String?
+  technologies  Json          @default("[]")
+  readme        String        @default("")
+  source        ProjectSource @default(manual)
+  qdrantPointId String?
+  embedded      Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-    @@unique([userId, githubUrl])
-    @@index([userId, updatedAt])
+  @@unique([userId, githubUrl])
+  @@index([userId, updatedAt])
 }
 
 model UserExperience {
-    id          String   @id @default(cuid())
-    userId      String
-    company     String
-    role        String
-    startDate   String
-    endDate     String   @default("")
-    current     Boolean  @default(false)
-    location    String   @default("")
-    description String   @default("")
-    highlights  Json     @default("[]")
-    qdrantPointId String?
-    embedded    Boolean  @default(false)
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String
+  company       String
+  role          String
+  startDate     String
+  endDate       String   @default("")
+  current       Boolean  @default(false)
+  location      String   @default("")
+  description   String   @default("")
+  highlights    Json     @default("[]")
+  qdrantPointId String?
+  embedded      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-    @@index([userId, updatedAt])
+  @@index([userId, updatedAt])
 }
 
 model UserEducation {
-    id           String   @id @default(cuid())
-    userId       String
-    institution  String
-    degree       String
-    fieldOfStudy String   @default("")
-    startDate    String
-    endDate      String   @default("")
-    current      Boolean  @default(false)
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
+  id           String   @id @default(cuid())
+  userId       String
+  institution  String
+  degree       String
+  fieldOfStudy String   @default("")
+  startDate    String
+  endDate      String   @default("")
+  current      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-    @@index([userId])
+  @@index([userId])
 }
 
 model KnowledgeItem {
-    id            String        @id @default(cuid())
-    userId        String
-    type          KnowledgeType
-    title         String
-    content       String
-    metadata      Json?
-    qdrantPointId String?
-    embedded      Boolean       @default(false)
-    createdAt     DateTime      @default(now())
-    updatedAt     DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  userId        String
+  type          KnowledgeType
+  title         String
+  content       String
+  metadata      Json?
+  qdrantPointId String?
+  embedded      Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-    @@index([userId, type])
+  @@index([userId, type])
 }
 
 model GenerationSession {
-    id             String           @id @default(cuid())
-    userId         String
-    sourceResumeId String?
-    jobTargetId    String?
-    jobDescription String
-    channel        Channel          @default(web)
-    currentStep    PipelineStep     @default(reuse_check)
-    parsedJD       Json?
-    matchedItems   Json?
-    matchedProjects Json?
-    matchedAchievements Json?
-    staticData     Json?
-    fallbackResume Json?
-    paraphrasedContent Json?
-    draftResume    Json?
-    validationResult Json?
-    atsScore       Int?
-    pdfBlobKey     String?
-    pdfUrl         String?
-    clarifications Json?
-    status         GenerationStatus @default(pending)
-    resultResumeId String?
-    errorMessage   String?
-    errorStep      PipelineStep?
-    workflowRunId  String?
-    stepStartedAt  DateTime?
-    lastNotifiedState String?
-    retryCount     Int              @default(0)
-    startedAt      DateTime         @default(now())
-    completedAt    DateTime?
-    totalLatencyMs Int?
-    totalTokensUsed Int?
-    totalCostUsd   Float?
-    createdAt      DateTime         @default(now())
-    updatedAt      DateTime         @updatedAt
+  id                  String           @id @default(cuid())
+  userId              String
+  sourceResumeId      String?
+  jobTargetId         String?
+  jobDescription      String
+  channel             Channel          @default(web)
+  currentStep         PipelineStep     @default(reuse_check)
+  parsedJD            Json?
+  matchedItems        Json?
+  matchedProjects     Json?
+  matchedAchievements Json?
+  staticData          Json?
+  fallbackResume      Json?
+  paraphrasedContent  Json?
+  draftResume         Json?
+  validationResult    Json?
+  atsScore            Int?
+  pdfBlobKey          String?
+  pdfUrl              String?
+  clarifications      Json?
+  status              GenerationStatus @default(pending)
+  resultResumeId      String?
+  errorMessage        String?
+  errorStep           PipelineStep?
+  workflowRunId       String?
+  stepStartedAt       DateTime?
+  lastNotifiedState   String?
+  retryCount          Int              @default(0)
+  startedAt           DateTime         @default(now())
+  completedAt         DateTime?
+  totalLatencyMs      Int?
+  totalTokensUsed     Int?
+  totalCostUsd        Float?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-    @@index([userId, updatedAt])
-    @@index([status, updatedAt])
-    @@index([status])
+  @@index([userId, updatedAt])
+  @@index([status, updatedAt])
+  @@index([status])
 }
 
 model ResumeImportSession {
-    id             String             @id @default(cuid())
-    userId         String
-    status         ResumeImportStatus @default(pending)
-    currentStep    ResumeImportStep   @default(upload_received)
-    workflowRunId  String?
-    blobKey        String
-    blobUrl        String
-    fileName       String
-    parsedData     Json?
-    errorMessage   String?
-    stepStartedAt  DateTime?
-    startedAt      DateTime           @default(now())
-    completedAt    DateTime?
-    createdAt      DateTime           @default(now())
-    updatedAt      DateTime           @updatedAt
+  id            String             @id @default(cuid())
+  userId        String
+  status        ResumeImportStatus @default(pending)
+  currentStep   ResumeImportStep   @default(upload_received)
+  workflowRunId String?
+  blobKey       String
+  blobUrl       String
+  fileName      String
+  parsedData    Json?
+  errorMessage  String?
+  stepStartedAt DateTime?
+  startedAt     DateTime           @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 
-    @@index([userId, updatedAt])
-    @@index([status, updatedAt])
+  @@index([userId, updatedAt])
+  @@index([status, updatedAt])
 }
 
 model TelegramUpdateReceipt {
-    id         String   @id @default(cuid())
-    updateId    String   @unique
-    createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  updateId  String   @unique
+  createdAt DateTime @default(now())
 }
 
 model GeneratedPdf {
-    id            String   @id @default(cuid())
-    userId        String
-    resumeId      String
-    sessionId     String?
-    blobKey       String
-    blobUrl       String
-    fileSizeBytes Int
-    template      String   @default("ats-simple")
-    createdAt     DateTime @default(now())
-    expiresAt     DateTime?
+  id            String    @id @default(cuid())
+  userId        String
+  resumeId      String
+  sessionId     String?
+  blobKey       String
+  blobUrl       String
+  fileSizeBytes Int
+  template      String    @default("ats-simple")
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime?
 
-    @@index([userId, createdAt])
-    @@index([resumeId])
-    @@index([sessionId])
+  @@index([userId, createdAt])
+  @@index([resumeId])
+  @@index([sessionId])
 }
 
 model ChannelIdentity {
-    id         String   @id @default(cuid())
-    userId     String
-    channel    Channel
-    externalId String
-    verified   Boolean  @default(false)
-    createdAt  DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  channel    Channel
+  externalId String
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
 
-    @@unique([channel, externalId])
-    @@index([userId])
+  @@unique([channel, externalId])
+  @@index([userId])
 }
 
 model ChannelLinkToken {
-    id         String   @id @default(cuid())
-    userId     String
-    channel    Channel
-    token      String   @unique
-    expiresAt  DateTime
-    consumedAt DateTime?
-    createdAt  DateTime @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  channel    Channel
+  token      String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
 
-    @@index([userId, channel, createdAt])
-    @@index([channel, token])
+  @@index([userId, channel, createdAt])
+  @@index([channel, token])
 }
 
 model ApiUsageLog {
-    id           String   @id @default(cuid())
-    userId       String
-    sessionId    String?
-    operation    String
-    provider     String
-    model        String
-    inputTokens  Int      @default(0)
-    outputTokens Int      @default(0)
-    totalTokens  Int      @default(0)
-    costUsd      Float    @default(0)
-    latencyMs    Int      @default(0)
-    status       String   @default("success")
-    metadata     Json?
-    createdAt    DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  sessionId    String?
+  operation    String
+  provider     String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  totalTokens  Int      @default(0)
+  costUsd      Float    @default(0)
+  latencyMs    Int      @default(0)
+  status       String   @default("success")
+  metadata     Json?
+  createdAt    DateTime @default(now())
 
-    @@index([userId, createdAt])
-    @@index([sessionId])
-    @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([sessionId])
+  @@index([createdAt])
 }
 
 model UserUsageSummary {
-    id               String   @id @default(cuid())
-    userId           String
-    periodStart      DateTime
-    periodEnd        DateTime
-    totalTokens      Int      @default(0)
-    totalCostUsd     Float    @default(0)
-    totalGenerations Int      @default(0)
-    totalPdfs        Int      @default(0)
-    breakdown        Json?
-    createdAt        DateTime @default(now())
+  id               String   @id @default(cuid())
+  userId           String
+  periodStart      DateTime
+  periodEnd        DateTime
+  totalTokens      Int      @default(0)
+  totalCostUsd     Float    @default(0)
+  totalGenerations Int      @default(0)
+  totalPdfs        Int      @default(0)
+  breakdown        Json?
+  createdAt        DateTime @default(now())
 
-    @@unique([userId, periodStart])
-    @@index([userId])
+  @@unique([userId, periodStart])
+  @@index([userId])
 }
 
 model ParsedJDCache {
-    id        String   @id @default(cuid())
-    jdHash    String   @unique
-    parsedJD  Json
-    createdAt DateTime @default(now())
-    expiresAt DateTime
+  id        String   @id @default(cuid())
+  jdHash    String   @unique
+  parsedJD  Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
 
-    @@index([jdHash])
-    @@index([expiresAt])
+  @@index([jdHash])
+  @@index([expiresAt])
 }
 
 model ApplicationWorkspace {
-    id                   String   @id @default(cuid())
-    userId               String
-    sourcePlatform       String?
-    sourceUrl            String
-    companyName          String?
-    roleTitle            String?
-    location             String?
-    employmentType       String?
-    compensationText     String?
-    jobDescription       String?
-    applicationStatus    ApplicationStatus @default(discovered)
-    fitScore             Int?
-    fitSummary           String?
-    companySnapshot      Json?
-    linkedJobTargetId    String?
-    latestGenerationSessionId String?
-    selectedResumeId     String?
-    selectedGeneratedPdfId String?
-    lastViewedAt         DateTime?
-    // Multi-step orchestration (Phase 1 slice 3): mirrors the per-tab session
-    // held in the extension's background worker, so the user can leave / come
-    // back and pick up where they left off.
-    activeSessionId      String?
-    sessionState         Json?
-    currentStepIndex     Int?
-    totalSteps           Int?
-    currentStepLabel     String?
-    stepHistory          Json     @default("[]")
-    createdAt            DateTime @default(now())
-    updatedAt            DateTime @updatedAt
-    questions            ApplicationQuestion[]
+  id                        String                @id @default(cuid())
+  userId                    String
+  sourcePlatform            String?
+  sourceUrl                 String
+  companyName               String?
+  roleTitle                 String?
+  location                  String?
+  employmentType            String?
+  compensationText          String?
+  jobDescription            String?
+  applicationStatus         ApplicationStatus     @default(discovered)
+  fitScore                  Int?
+  fitSummary                String?
+  companySnapshot           Json?
+  linkedJobTargetId         String?
+  latestGenerationSessionId String?
+  selectedResumeId          String?
+  selectedGeneratedPdfId    String?
+  lastViewedAt              DateTime?
+  // Multi-step orchestration (Phase 1 slice 3): mirrors the per-tab session
+  // held in the extension's background worker, so the user can leave / come
+  // back and pick up where they left off.
+  activeSessionId           String?
+  sessionState              Json?
+  currentStepIndex          Int?
+  totalSteps                Int?
+  currentStepLabel          String?
+  stepHistory               Json                  @default("[]")
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  questions                 ApplicationQuestion[]
 
-    @@unique([userId, sourceUrl])
-    @@index([userId, updatedAt])
-    @@index([userId, companyName, roleTitle, updatedAt])
+  @@unique([userId, sourceUrl])
+  @@index([userId, updatedAt])
+  @@index([userId, companyName, roleTitle, updatedAt])
 }
 
 model ApplicationQuestion {
-    id           String   @id @default(cuid())
-    userId       String
-    workspaceId  String?
-    sourceUrl    String?
-    platform     String?
-    companyName  String?
-    roleTitle    String?
-    questionText String
-    questionType String
-    answerMode   String?
-    helperText   Json?
-    draftAnswers Json?
-    sourceFacts  Json?
-    warnings     Json?
-    finalAnswer  String?
-    selectedTone String?
-    confidence   Float?
-    createdAt    DateTime @default(now())
-    updatedAt    DateTime @updatedAt
-    workspace    ApplicationWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  id           String                @id @default(cuid())
+  userId       String
+  workspaceId  String?
+  sourceUrl    String?
+  platform     String?
+  companyName  String?
+  roleTitle    String?
+  questionText String
+  questionType String
+  answerMode   String?
+  helperText   Json?
+  draftAnswers Json?
+  sourceFacts  Json?
+  warnings     Json?
+  finalAnswer  String?
+  selectedTone String?
+  confidence   Float?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  workspace    ApplicationWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
-    @@index([userId, updatedAt])
-    @@index([userId, sourceUrl, updatedAt])
-    @@index([workspaceId, updatedAt])
+  @@index([userId, updatedAt])
+  @@index([userId, sourceUrl, updatedAt])
+  @@index([workspaceId, updatedAt])
 }
 
 model ReusableAnswer {
-    id                 String   @id @default(cuid())
-    userId             String
-    questionFingerprint String
-    canonicalQuestion  String
-    questionType       String?
-    answerMode         String?
-    answerText         String
-    usageCount         Int      @default(0)
-    autoUse            Boolean  @default(false)
-    sourceQuestionId   String?
-    metadata           Json?
-    lastUsedAt         DateTime?
-    createdAt          DateTime @default(now())
-    updatedAt          DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  userId              String
+  questionFingerprint String
+  canonicalQuestion   String
+  questionType        String?
+  answerMode          String?
+  answerText          String
+  usageCount          Int       @default(0)
+  autoUse             Boolean   @default(false)
+  sourceQuestionId    String?
+  metadata            Json?
+  lastUsedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-    @@unique([userId, questionFingerprint])
-    @@index([userId, updatedAt])
-    @@index([userId, autoUse, updatedAt])
+  @@unique([userId, questionFingerprint])
+  @@index([userId, updatedAt])
+  @@index([userId, autoUse, updatedAt])
 }
 
 model CompanyInsight {
-    id                  String   @id @default(cuid())
-    normalizedCompanyName String
-    website             String?
-    employeeCount       Int?
-    fundingTotal        String?
-    revenueEstimateText String?
-    reviewSummary       String?
-    engineeringSummary  String?
-    alumniSignalSummary String?
-    confidence          Float    @default(0)
-    freshnessLabel      String?
-    rawData             Json?
-    createdAt           DateTime @default(now())
-    updatedAt           DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  normalizedCompanyName String
+  website               String?
+  employeeCount         Int?
+  fundingTotal          String?
+  revenueEstimateText   String?
+  reviewSummary         String?
+  engineeringSummary    String?
+  alumniSignalSummary   String?
+  confidence            Float    @default(0)
+  freshnessLabel        String?
+  rawData               Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-    @@unique([normalizedCompanyName, website])
-    @@index([normalizedCompanyName, updatedAt])
-    @@index([updatedAt])
+  @@unique([normalizedCompanyName, website])
+  @@index([normalizedCompanyName, updatedAt])
+  @@index([updatedAt])
 }
 
 model ExtensionAccessToken {
-    id         String   @id @default(cuid())
-    userId     String
-    client     String   @default("chrome_extension")
-    tokenHash  String   @unique
-    expiresAt  DateTime
-    lastUsedAt DateTime?
-    revokedAt  DateTime?
-    createdAt  DateTime @default(now())
-    updatedAt  DateTime @updatedAt
+  id         String    @id @default(cuid())
+  userId     String
+  client     String    @default("chrome_extension")
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-    @@index([userId, client, revokedAt, expiresAt])
-    @@index([expiresAt])
+  @@index([userId, client, revokedAt, expiresAt])
+  @@index([expiresAt])
 }
 
 model ExtensionConnectGrant {
-    id             String   @id @default(cuid())
-    client         String   @default("chrome_extension")
-    verifierHash   String   @unique
-    approvedUserId String?
-    approvedAt     DateTime?
-    consumedAt     DateTime?
-    expiresAt      DateTime
-    createdAt      DateTime @default(now())
-    updatedAt      DateTime @updatedAt
+  id             String    @id @default(cuid())
+  client         String    @default("chrome_extension")
+  verifierHash   String    @unique
+  approvedUserId String?
+  approvedAt     DateTime?
+  consumedAt     DateTime?
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-    @@index([expiresAt])
-    @@index([approvedUserId, createdAt])
+  @@index([expiresAt])
+  @@index([approvedUserId, createdAt])
 }
 
 model FunnelEvent {
-    id         String   @id @default(cuid())
-    sessionId  String
-    userId     String?
-    type       String
-    payload    Json     @default("{}")
-    ipHash     String?
-    occurredAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  sessionId  String
+  userId     String?
+  type       String
+  payload    Json     @default("{}")
+  ipHash     String?
+  occurredAt DateTime @default(now())
 
-    @@index([type, occurredAt])
-    @@index([sessionId])
-    @@index([userId, occurredAt])
+  @@index([type, occurredAt])
+  @@index([sessionId])
+  @@index([userId, occurredAt])
 }
 
 model ExtensionEvent {
-    id         String   @id @default(cuid())
-    userId     String
-    type       String
-    payload    Json     @default("{}")
-    extVersion String?
-    occurredAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  userId     String
+  type       String
+  payload    Json     @default("{}")
+  extVersion String?
+  occurredAt DateTime @default(now())
 
-    @@index([userId, occurredAt])
-    @@index([type, occurredAt])
+  @@index([userId, occurredAt])
+  @@index([type, occurredAt])
 }
 
 // =========================================================================
@@ -558,52 +558,52 @@ model ExtensionEvent {
 // =========================================================================
 
 model Evidence {
-    id              String       @id @default(cuid())
-    userId          String
-    kind            EvidenceKind
-    sourceRef       String // github repo id, blob key, URL, ResumeImportSession id, ...
-    excerpt         String // the supporting text/snippet
-    confidence      Float        @default(1.0)
-    confirmedByUser Boolean      @default(false)
-    createdAt       DateTime     @default(now())
-    claimLinks      ClaimLink[]
+  id              String       @id @default(cuid())
+  userId          String
+  kind            EvidenceKind
+  sourceRef       String // github repo id, blob key, URL, ResumeImportSession id, ...
+  excerpt         String // the supporting text/snippet
+  confidence      Float        @default(1.0)
+  confirmedByUser Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  claimLinks      ClaimLink[]
 
-    @@index([userId, kind])
+  @@index([userId, kind])
 }
 
 model ClaimLink {
-    id          String      @id @default(cuid())
-    userId      String
-    claimType   String // experience_highlight | project_bullet | impact_metric | skill
-    claimRefId  String // points at UserExperience/UserProject/ImpactMetric/Resume claim
-    evidenceId  String
-    groundState GroundState @default(needs_confirmation)
-    createdAt   DateTime    @default(now())
-    evidence    Evidence    @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  id          String      @id @default(cuid())
+  userId      String
+  claimType   String // experience_highlight | project_bullet | impact_metric | skill
+  claimRefId  String // points at UserExperience/UserProject/ImpactMetric/Resume claim
+  evidenceId  String
+  groundState GroundState @default(needs_confirmation)
+  createdAt   DateTime    @default(now())
+  evidence    Evidence    @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
 
-    @@index([userId, claimType, claimRefId])
-    @@index([evidenceId])
+  @@index([userId, claimType, claimRefId])
+  @@index([evidenceId])
 }
 
 model ImpactMetric {
-    id            String   @id @default(cuid())
-    userId        String
-    subjectType   String // experience | project
-    subjectId     String
-    statement     String // "cut p95 latency"
-    metric        String // "p95 latency"
-    baseline      String? // "800ms"
-    result        String? // "180ms"
-    delta         String? // "-77%"
-    timeframe     String? // "Q2 2025, 6 weeks"
-    scope         String? // "checkout service, 2M req/day"
-    source        String // interview | import | github | manual
-    embedded      Boolean  @default(false)
-    qdrantPointId String?
-    createdAt     DateTime @default(now())
-    updatedAt     DateTime @updatedAt
+  id            String   @id @default(cuid())
+  userId        String
+  subjectType   String // experience | project
+  subjectId     String
+  statement     String // "cut p95 latency"
+  metric        String // "p95 latency"
+  baseline      String? // "800ms"
+  result        String? // "180ms"
+  delta         String? // "-77%"
+  timeframe     String? // "Q2 2025, 6 weeks"
+  scope         String? // "checkout service, 2M req/day"
+  source        String // interview | import | github | manual
+  embedded      Boolean  @default(false)
+  qdrantPointId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-    @@index([userId, subjectType, subjectId])
+  @@index([userId, subjectType, subjectId])
 }
 
 // =========================================================================
@@ -611,31 +611,31 @@ model ImpactMetric {
 // =========================================================================
 
 model Subscription {
-    id               String    @id @default(cuid())
-    userId           String    @unique
-    stripeCustomerId String
-    stripeSubId      String?
-    tier             Tier      @default(free)
-    status           String // active | past_due | canceled | trialing | incomplete
-    currentPeriodEnd DateTime?
-    createdAt        DateTime  @default(now())
-    updatedAt        DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  stripeCustomerId String
+  stripeSubId      String?
+  tier             Tier      @default(free)
+  status           String // active | past_due | canceled | trialing | incomplete
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-    @@index([stripeCustomerId])
+  @@index([stripeCustomerId])
 }
 
 model UsageQuota {
-    id          String   @id @default(cuid())
-    userId      String
-    periodStart DateTime
-    action      String // tailored_generation | auto_apply | context_interview | tier2_grounding
-    used        Int      @default(0)
-    limit       Int
-    createdAt   DateTime @default(now())
-    updatedAt   DateTime @updatedAt
+  id          String   @id @default(cuid())
+  userId      String
+  periodStart DateTime
+  action      String // tailored_generation | auto_apply | context_interview | tier2_grounding
+  used        Int      @default(0)
+  limit       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-    @@unique([userId, periodStart, action])
-    @@index([userId, action])
+  @@unique([userId, periodStart, action])
+  @@index([userId, action])
 }
 
 // =========================================================================
@@ -644,88 +644,88 @@ model UsageQuota {
 // =========================================================================
 
 enum JobStatus {
-    pending
-    running
-    succeeded
-    failed
-    dead
+  pending
+  running
+  succeeded
+  failed
+  dead
 }
 
 /// Postgres-as-queue. Drained by the single hourly cron (ADR-2) under a time
 /// budget. Handlers fan out rather than loop — see impl/00 §P-2.
 model Job {
-    id          String    @id @default(cuid())
-    kind        String
-    payload     Json      @default("{}")
-    /// Unique idempotency key. A duplicate enqueue is a silent no-op, not an error.
-    dedupeKey   String?   @unique
-    status      JobStatus @default(pending)
-    priority    Int       @default(100)
-    runAt       DateTime  @default(now())
-    attempts    Int       @default(0)
-    maxAttempts Int       @default(3)
-    lockedAt    DateTime?
-    lockedBy    String?
-    lastError   String?
-    result      Json?
-    durationMs  Int?
-    costUsd     Float     @default(0)
-    createdAt   DateTime  @default(now())
-    finishedAt  DateTime?
+  id          String    @id @default(cuid())
+  kind        String
+  payload     Json      @default("{}")
+  /// Unique idempotency key. A duplicate enqueue is a silent no-op, not an error.
+  dedupeKey   String?   @unique
+  status      JobStatus @default(pending)
+  priority    Int       @default(100)
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  result      Json?
+  durationMs  Int?
+  costUsd     Float     @default(0)
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
 
-    @@index([status, runAt, priority])
-    @@index([kind, createdAt])
-    @@index([status, lockedAt])
+  @@index([status, runAt, priority])
+  @@index([kind, createdAt])
+  @@index([status, lockedAt])
 }
 
 model EmailSend {
-    id         String    @id @default(cuid())
-    userId     String
-    template   String
-    subject    String
-    providerId String?
-    status     String    @default("queued") // queued|sent|delivered|bounced|complained|failed
-    openedAt   DateTime?
-    clickedAt  DateTime?
-    error      String?
-    createdAt  DateTime  @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  template   String
+  subject    String
+  providerId String?
+  status     String    @default("queued") // queued|sent|delivered|bounced|complained|failed
+  openedAt   DateTime?
+  clickedAt  DateTime?
+  error      String?
+  createdAt  DateTime  @default(now())
 
-    @@index([userId, createdAt])
-    @@index([template, createdAt])
-    /// Unique so the provider webhook resolves a send exactly, rather than
-    /// findFirst-by-recency. Provider ids are already unique upstream.
-    @@unique([providerId])
+  /// Unique so the provider webhook resolves a send exactly, rather than
+  /// findFirst-by-recency. Provider ids are already unique upstream.
+  @@unique([providerId])
+  @@index([userId, createdAt])
+  @@index([template, createdAt])
 }
 
 /// Notification preferences + the derived weekly-digest schedule (ADR-3).
 /// Timezone and digest slot live here, not in UserProfile.preferences JSON, so
 /// the "who is due this hour" query is indexable.
 model EmailPreference {
-    userId           String   @id
-    weeklyDigest     Boolean  @default(true)
-    monthlyReview    Boolean  @default(true)
-    radarDigest      Boolean  @default(true)
-    missionNudges    Boolean  @default(true)
-    productUpdates   Boolean  @default(true)
-    unsubscribedAll  Boolean  @default(false)
-    unsubscribeToken String   @unique
-    timezone         String   @default("Etc/UTC")
-    digestDay        Int      @default(5) // 1=Mon … 7=Sun
-    digestHour       Int      @default(16)
-    digestChannel    Channel  @default(email)
-    createdAt        DateTime @default(now())
-    updatedAt        DateTime @updatedAt
+  userId           String   @id
+  weeklyDigest     Boolean  @default(true)
+  monthlyReview    Boolean  @default(true)
+  radarDigest      Boolean  @default(true)
+  missionNudges    Boolean  @default(true)
+  productUpdates   Boolean  @default(true)
+  unsubscribedAll  Boolean  @default(false)
+  unsubscribeToken String   @unique
+  timezone         String   @default("Etc/UTC")
+  digestDay        Int      @default(5) // 1=Mon … 7=Sun
+  digestHour       Int      @default(16)
+  digestChannel    Channel  @default(email)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-    @@index([weeklyDigest, digestDay, digestHour])
+  @@index([weeklyDigest, digestDay, digestHour])
 }
 
 model FeatureFlag {
-    key            String   @id
-    enabled        Boolean  @default(false)
-    allowUserIds   Json     @default("[]")
-    rolloutPercent Int      @default(0)
-    description    String   @default("")
-    updatedAt      DateTime @updatedAt
+  key            String   @id
+  enabled        Boolean  @default(false)
+  allowUserIds   Json     @default("[]")
+  rolloutPercent Int      @default(0)
+  description    String   @default("")
+  updatedAt      DateTime @updatedAt
 }
 
 // =========================================================================
@@ -735,96 +735,96 @@ model FeatureFlag {
 // =========================================================================
 
 enum WinStatus {
-    draft
-    confirmed
-    dismissed
-    archived
+  draft
+  confirmed
+  dismissed
+  archived
 }
 
 enum WinCategory {
-    shipped
-    improved
-    fixed
-    led
-    influenced
-    grew
-    learned
-    saved
+  shipped
+  improved
+  fixed
+  led
+  influenced
+  grew
+  learned
+  saved
 }
 
 enum WinSensitivity {
-    shareable
-    internal_only
-    confidential
+  shareable
+  internal_only
+  confidential
 }
 
 enum WinSource {
-    manual
-    github
-    calendar
-    linear
-    jira
-    ambient
-    backfill
-    import
+  manual
+  github
+  calendar
+  linear
+  jira
+  ambient
+  backfill
+  import
 }
 
 model Win {
-    id              String         @id @default(cuid())
-    userId          String
-    title           String // <= 120 chars, enforced in the app layer
-    narrative       String         @default("")
-    /// The date the work happened — never the date it was logged.
-    occurredAt      DateTime
-    periodEnd       DateTime? // multi-week efforts; occurredAt is the start
-    category        WinCategory
-    status          WinStatus      @default(draft)
-    /// Enforced at the QUERY layer, never the prompt layer. See lib/graph/visibility.
-    sensitivity     WinSensitivity @default(shareable)
-    source          WinSource
-    sourceRef       String? // PR url, calendar event id, telegram msg id
-    /// One Win per capture signal. Populated in Wave C; unique prevents double-draft.
-    signalId        String?        @unique
-    employerId      String? // -> UserExperience.id
-    projectId       String? // -> UserProject.id
-    skills          Json           @default("[]")
-    collaborators   Json           @default("[]")
-    impactMetricId  String? // -> ImpactMetric.id
-    confidence      Float          @default(0.5)
-    dismissedReason String? // not_a_win | noise | duplicate | expired | user
-    confirmedAt     DateTime?
-    embedded        Boolean        @default(false)
-    qdrantPointId   String?
-    createdAt       DateTime       @default(now())
-    updatedAt       DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  userId          String
+  title           String // <= 120 chars, enforced in the app layer
+  narrative       String         @default("")
+  /// The date the work happened — never the date it was logged.
+  occurredAt      DateTime
+  periodEnd       DateTime? // multi-week efforts; occurredAt is the start
+  category        WinCategory
+  status          WinStatus      @default(draft)
+  /// Enforced at the QUERY layer, never the prompt layer. See lib/graph/visibility.
+  sensitivity     WinSensitivity @default(shareable)
+  source          WinSource
+  sourceRef       String? // PR url, calendar event id, telegram msg id
+  /// One Win per capture signal. Populated in Wave C; unique prevents double-draft.
+  signalId        String?        @unique
+  employerId      String? // -> UserExperience.id
+  projectId       String? // -> UserProject.id
+  skills          Json           @default("[]")
+  collaborators   Json           @default("[]")
+  impactMetricId  String? // -> ImpactMetric.id
+  confidence      Float          @default(0.5)
+  dismissedReason String? // not_a_win | noise | duplicate | expired | user
+  confirmedAt     DateTime?
+  embedded        Boolean        @default(false)
+  qdrantPointId   String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-    @@index([userId, occurredAt(sort: Desc)])
-    @@index([userId, status, createdAt])
-    @@index([userId, employerId, occurredAt])
-    @@index([userId, category, occurredAt])
-    @@index([userId, sensitivity])
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([userId, status, createdAt])
+  @@index([userId, employerId, occurredAt])
+  @@index([userId, category, occurredAt])
+  @@index([userId, sensitivity])
 }
 
 model WeeklyDigest {
-    id             String    @id @default(cuid())
-    userId         String
-    /// Monday 00:00 in the user's timezone, stored UTC.
-    weekStart      DateTime
-    channel        Channel
-    winIds         Json      @default("[]")
-    /// Root of the signed single-use action tokens embedded in the email.
-    token          String    @unique
-    sentAt         DateTime?
-    openedAt       DateTime?
-    firstActionAt  DateTime?
-    confirmedCount Int       @default(0)
-    dismissedCount Int       @default(0)
-    /// True when an empty signal week intentionally produced no send.
-    skipped        Boolean   @default(false)
-    createdAt      DateTime  @default(now())
+  id             String    @id @default(cuid())
+  userId         String
+  /// Monday 00:00 in the user's timezone, stored UTC.
+  weekStart      DateTime
+  channel        Channel
+  winIds         Json      @default("[]")
+  /// Root of the signed single-use action tokens embedded in the email.
+  token          String    @unique
+  sentAt         DateTime?
+  openedAt       DateTime?
+  firstActionAt  DateTime?
+  confirmedCount Int       @default(0)
+  dismissedCount Int       @default(0)
+  /// True when an empty signal week intentionally produced no send.
+  skipped        Boolean   @default(false)
+  createdAt      DateTime  @default(now())
 
-    @@unique([userId, weekStart])
-    @@index([userId, sentAt])
+  @@unique([userId, weekStart])
+  @@index([userId, sentAt])
 }
 
 // =========================================================================
@@ -833,111 +833,111 @@ model WeeklyDigest {
 // =========================================================================
 
 enum CaptureSourceKind {
-    github
-    calendar
-    linear
-    jira
+  github
+  calendar
+  linear
+  jira
 }
 
 enum CaptureSourceStatus {
-    active
-    paused
-    error
-    revoked
+  active
+  paused
+  error
+  revoked
 }
 
 enum CaptureRunStatus {
-    running
-    success
-    degraded
-    failed
+  running
+  success
+  degraded
+  failed
 }
 
 model CaptureSource {
-    id                 String              @id @default(cuid())
-    userId             String
-    kind               CaptureSourceKind
-    status             CaptureSourceStatus @default(active)
-    externalAccountId  String // gh login/id, google sub, ...
-    scopes             Json                @default("[]")
-    /// includedRepos[], excludedKeywords[], calendars[] — adapter-specific.
-    config             Json                @default("{}")
-    /// ISO timestamp of the last processed item. Deliberately not a page token:
-    /// timestamps survive provider API changes, page tokens do not.
-    cursor             String?
-    consentGrantedAt   DateTime
-    /// Which consent copy the user agreed to. We must be able to answer
-    /// "what exactly did this user consent to, and when".
-    consentCopyVersion String
-    lastSyncedAt       DateTime?
-    lastSuccessAt      DateTime?
-    errorCount         Int                 @default(0)
-    lastError          String?
-    revokedAt          DateTime?
-    createdAt          DateTime            @default(now())
-    updatedAt          DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  userId             String
+  kind               CaptureSourceKind
+  status             CaptureSourceStatus @default(active)
+  externalAccountId  String // gh login/id, google sub, ...
+  scopes             Json                @default("[]")
+  /// includedRepos[], excludedKeywords[], calendars[] — adapter-specific.
+  config             Json                @default("{}")
+  /// ISO timestamp of the last processed item. Deliberately not a page token:
+  /// timestamps survive provider API changes, page tokens do not.
+  cursor             String?
+  consentGrantedAt   DateTime
+  /// Which consent copy the user agreed to. We must be able to answer
+  /// "what exactly did this user consent to, and when".
+  consentCopyVersion String
+  lastSyncedAt       DateTime?
+  lastSuccessAt      DateTime?
+  errorCount         Int                 @default(0)
+  lastError          String?
+  revokedAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
-    runs    CaptureRun[]
-    signals CaptureSignal[]
+  runs    CaptureRun[]
+  signals CaptureSignal[]
 
-    /// One source per kind per user in R1. Relaxing this to include
-    /// externalAccountId is what enables two GitHub accounts (PRD 02 §11).
-    @@unique([userId, kind])
-    @@index([status, lastSyncedAt])
+  /// One source per kind per user in R1. Relaxing this to include
+  /// externalAccountId is what enables two GitHub accounts (PRD 02 §11).
+  @@unique([userId, kind])
+  @@index([status, lastSyncedAt])
 }
 
 model CaptureSignal {
-    id          String    @id @default(cuid())
-    userId      String
-    sourceId    String
-    /// Provider-stable id — GitHub node ID, never the PR number, which is
-    /// per-repo and reused after transfers.
-    externalId  String
-    kind        String // pr_merged | pr_reviewed | issue_closed | release_published | repo_created
-    occurredAt  DateTime
-    title       String
-    body        String    @default("")
-    url         String?
-    metadata    Json      @default("{}")
-    /// Set when several signals collapse into one candidate (PRD 02 §4.1).
-    groupKey    String?
-    isNoise     Boolean   @default(false)
-    noiseRule   String?
-    processedAt DateTime?
-    winId       String?
-    createdAt   DateTime  @default(now())
+  id          String    @id @default(cuid())
+  userId      String
+  sourceId    String
+  /// Provider-stable id — GitHub node ID, never the PR number, which is
+  /// per-repo and reused after transfers.
+  externalId  String
+  kind        String // pr_merged | pr_reviewed | issue_closed | release_published | repo_created
+  occurredAt  DateTime
+  title       String
+  body        String    @default("")
+  url         String?
+  metadata    Json      @default("{}")
+  /// Set when several signals collapse into one candidate (PRD 02 §4.1).
+  groupKey    String?
+  isNoise     Boolean   @default(false)
+  noiseRule   String?
+  processedAt DateTime?
+  winId       String?
+  createdAt   DateTime  @default(now())
 
-    source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
-    /// THE idempotency guarantee. Makes re-syncing safe, makes a duplicated
-    /// cron harmless, and guarantees one Win per signal. Do not drop this.
-    @@unique([sourceId, externalId])
-    @@index([userId, occurredAt])
-    @@index([sourceId, processedAt])
-    @@index([groupKey])
+  /// THE idempotency guarantee. Makes re-syncing safe, makes a duplicated
+  /// cron harmless, and guarantees one Win per signal. Do not drop this.
+  @@unique([sourceId, externalId])
+  @@index([userId, occurredAt])
+  @@index([sourceId, processedAt])
+  @@index([groupKey])
 }
 
 model CaptureRun {
-    id           String           @id @default(cuid())
-    userId       String
-    sourceId     String
-    status       CaptureRunStatus @default(running)
-    trigger      String // initial | scheduled | manual
-    windowStart  DateTime?
-    windowEnd    DateTime?
-    itemsScanned Int              @default(0)
-    itemsNoise   Int              @default(0)
-    candidates   Int              @default(0)
-    winsDrafted  Int              @default(0)
-    costUsd      Float            @default(0)
-    error        String?
-    startedAt    DateTime         @default(now())
-    finishedAt   DateTime?
+  id           String           @id @default(cuid())
+  userId       String
+  sourceId     String
+  status       CaptureRunStatus @default(running)
+  trigger      String // initial | scheduled | manual
+  windowStart  DateTime?
+  windowEnd    DateTime?
+  itemsScanned Int              @default(0)
+  itemsNoise   Int              @default(0)
+  candidates   Int              @default(0)
+  winsDrafted  Int              @default(0)
+  costUsd      Float            @default(0)
+  error        String?
+  startedAt    DateTime         @default(now())
+  finishedAt   DateTime?
 
-    source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source CaptureSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
-    @@index([userId, startedAt])
-    @@index([sourceId, startedAt])
+  @@index([userId, startedAt])
+  @@index([sourceId, startedAt])
 }
 
 // =========================================================================
@@ -945,73 +945,73 @@ model CaptureRun {
 // =========================================================================
 
 enum FrameworkSource {
-    uploaded
-    template
-    default
+  uploaded
+  template
+  default
 }
 
 enum PacketType {
-    performance_review
-    promotion_case
-    self_appraisal
-    brag_doc
+  performance_review
+  promotion_case
+  self_appraisal
+  brag_doc
 }
 
 enum PacketStatus {
-    generating
-    ready
-    failed
+  generating
+  ready
+  failed
 }
 
 model CompetencyFramework {
-    id           String          @id @default(cuid())
-    /// Null for system-owned public templates (Google, Meta, ... ).
-    userId       String?
-    name         String
-    sourceType   FrameworkSource
-    companyName  String?
-    /// [{key,name,order,summary}]
-    levels       Json            @default("[]")
-    /// [{key,name,description,levelExpectations:{levelKey:string}}]
-    competencies Json            @default("[]")
-    rawSourceRef String? // blob key of the uploaded document
-    /// An internal leveling rubric is confidential by default: user-scoped,
-    /// never shared across users, never training data.
-    isConfidential Boolean       @default(true)
-    createdAt    DateTime        @default(now())
-    updatedAt    DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  /// Null for system-owned public templates (Google, Meta, ... ).
+  userId         String?
+  name           String
+  sourceType     FrameworkSource
+  companyName    String?
+  /// [{key,name,order,summary}]
+  levels         Json            @default("[]")
+  /// [{key,name,description,levelExpectations:{levelKey:string}}]
+  competencies   Json            @default("[]")
+  rawSourceRef   String? // blob key of the uploaded document
+  /// An internal leveling rubric is confidential by default: user-scoped,
+  /// never shared across users, never training data.
+  isConfidential Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-    @@index([userId])
-    @@index([sourceType, companyName])
+  @@index([userId])
+  @@index([sourceType, companyName])
 }
 
 model ReviewPacket {
-    id           String       @id @default(cuid())
-    userId       String
-    type         PacketType
-    status       PacketStatus @default(generating)
-    periodStart  DateTime
-    periodEnd    DateTime
-    employerId   String?
-    frameworkId  String?
-    targetLevel  String?
-    audience     String       @default("manager")
-    /// Exact inputs, so a packet is reproducible.
-    winIds       Json         @default("[]")
-    /// {summary, themes[], competencies[], growth, appendix}
-    content      Json?
-    /// Block-keyed overrides that survive regeneration.
-    userEdits    Json         @default("{}")
-    gaps         Json         @default("[]")
-    wordCount    Int          @default(0)
-    exports      Json         @default("[]")
-    generationMs Int?
-    costUsd      Float        @default(0)
-    createdAt    DateTime     @default(now())
-    updatedAt    DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  userId       String
+  type         PacketType
+  status       PacketStatus @default(generating)
+  periodStart  DateTime
+  periodEnd    DateTime
+  employerId   String?
+  frameworkId  String?
+  targetLevel  String?
+  audience     String       @default("manager")
+  /// Exact inputs, so a packet is reproducible.
+  winIds       Json         @default("[]")
+  /// {summary, themes[], competencies[], growth, appendix}
+  content      Json?
+  /// Block-keyed overrides that survive regeneration.
+  userEdits    Json         @default("{}")
+  gaps         Json         @default("[]")
+  wordCount    Int          @default(0)
+  exports      Json         @default("[]")
+  generationMs Int?
+  costUsd      Float        @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-    @@index([userId, createdAt])
-    @@index([userId, periodEnd])
+  @@index([userId, createdAt])
+  @@index([userId, periodEnd])
 }
 
 // =========================================================================
@@ -1019,42 +1019,42 @@ model ReviewPacket {
 // =========================================================================
 
 enum InterviewStatus {
-    active
-    paused
-    completed
-    abandoned
+  active
+  paused
+  completed
+  abandoned
 }
 
 enum InterviewSubject {
-    employer
-    project
-    competency
-    period
+  employer
+  project
+  competency
+  period
 }
 
 model InterviewSession {
-    id            String           @id @default(cuid())
-    userId        String
-    subjectType   InterviewSubject
-    subjectId     String?
-    subjectLabel  String
-    status        InterviewStatus  @default(active)
-    /// [{role, content, at}] — sensitive PII. People disclose conflicts and
-    /// failures here. Never embedded for external output; deletable
-    /// independently of the Wins it produced.
-    transcript    Json             @default("[]")
-    /// Prevents repeating a topic across a resumed session.
-    askedTopics   Json             @default("[]")
-    winIds        Json             @default("[]")
-    questionCount Int              @default(0)
-    costUsd       Float            @default(0)
-    startedAt     DateTime         @default(now())
-    lastActiveAt  DateTime         @updatedAt
-    completedAt   DateTime?
-    expiresAt     DateTime
+  id            String           @id @default(cuid())
+  userId        String
+  subjectType   InterviewSubject
+  subjectId     String?
+  subjectLabel  String
+  status        InterviewStatus  @default(active)
+  /// [{role, content, at}] — sensitive PII. People disclose conflicts and
+  /// failures here. Never embedded for external output; deletable
+  /// independently of the Wins it produced.
+  transcript    Json             @default("[]")
+  /// Prevents repeating a topic across a resumed session.
+  askedTopics   Json             @default("[]")
+  winIds        Json             @default("[]")
+  questionCount Int              @default(0)
+  costUsd       Float            @default(0)
+  startedAt     DateTime         @default(now())
+  lastActiveAt  DateTime         @updatedAt
+  completedAt   DateTime?
+  expiresAt     DateTime
 
-    @@index([userId, status, lastActiveAt])
-    @@index([expiresAt])
+  @@index([userId, status, lastActiveAt])
+  @@index([expiresAt])
 }
 
 // =========================================================================
@@ -1070,28 +1070,207 @@ model InterviewSession {
 // =========================================================================
 
 model MonthlyReview {
-    id          String    @id @default(cuid())
-    userId      String
-    /// `yyyy-mm` of the month being reviewed, in the user's timezone.
-    period      String
-    headline    String
-    /// The one generated block. Null when composition was dropped by the
-    /// entity or digit check — fail closed; every other block is computed.
-    paragraph   String?
-    /// Deterministic, from real counts. Null when no rule fired; the spec
-    /// forbids falling back to generic encouragement.
-    observation String?
-    mixSentence String?
-    receipt     String
-    winIds      Json      @default("[]")
-    winCount    Int       @default(0)
-    quantifiedCount Int   @default(0)
-    /// Null until the email actually goes out. The web view renders either way.
-    sentAt      DateTime?
-    degraded    Boolean   @default(false)
-    createdAt   DateTime  @default(now())
-    updatedAt   DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  /// `yyyy-mm` of the month being reviewed, in the user's timezone.
+  period          String
+  headline        String
+  /// The one generated block. Null when composition was dropped by the
+  /// entity or digit check — fail closed; every other block is computed.
+  paragraph       String?
+  /// Deterministic, from real counts. Null when no rule fired; the spec
+  /// forbids falling back to generic encouragement.
+  observation     String?
+  mixSentence     String?
+  receipt         String
+  winIds          Json      @default("[]")
+  winCount        Int       @default(0)
+  quantifiedCount Int       @default(0)
+  /// Null until the email actually goes out. The web view renders either way.
+  sentAt          DateTime?
+  degraded        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-    @@unique([userId, period])
-    @@index([userId, createdAt])
+  @@unique([userId, period])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────── Career Radar
+//
+// PRD 04. The one rule that shapes every model here: a language model may
+// never produce a compensation number. Bands are arithmetic over ranges we
+// read verbatim out of public postings, so the raw evidence has to be stored,
+// attributable, and re-checkable — hence `sourceUrl` and `rawRange` on every
+// posting rather than just a computed band.
+
+enum JobBoardProvider {
+  greenhouse
+  lever
+  ashby
+}
+
+enum JobSourceStatus {
+  active
+  /// Five consecutive 404s (PRD 04 §3.1). Kept, not deleted — boards come back.
+  inactive
+  /// Repeated 429/5xx. Distinct from `inactive` so we can retry sooner.
+  throttled
+}
+
+/// A public job board we are allowed to poll. Discovery, not fetching, is the
+/// real work (§3.1): seeded from CompanyInsight/ApplicationWorkspace, a curated
+/// launch list, and — the compounding one — extension sightings.
+model JobSource {
+  id          String           @id @default(cuid())
+  provider    JobBoardProvider
+  /// Board identifier in the provider's namespace: the `stripe` in
+  /// boards-api.greenhouse.io/v1/boards/stripe/jobs.
+  boardToken  String
+  companyName String
+  status      JobSourceStatus  @default(active)
+
+  /// How this board entered the system, for coverage analysis.
+  discoveredVia      String  @default("seed")
+  /// Set when a user's extension found it, so we can measure that channel.
+  discoveredByUserId String?
+
+  /// Conditional-request cache. Sending these is the politeness contract as
+  /// much as the rate limit is.
+  etag         String?
+  lastModified String?
+
+  lastFetchedAt  DateTime?
+  lastSuccessAt  DateTime?
+  /// Consecutive 404s; at 5 the board flips to `inactive`.
+  notFoundStreak Int       @default(0)
+  errorCount     Int       @default(0)
+  lastError      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  postings JobPosting[]
+
+  /// One row per board per provider. Re-registering a known board is a no-op,
+  /// which is what makes extension-driven discovery safe to fire repeatedly.
+  @@unique([provider, boardToken])
+  @@index([status, lastFetchedAt])
+}
+
+/// One posting, with its compensation range stored exactly as disclosed.
+model JobPosting {
+  id         String @id @default(cuid())
+  sourceId   String
+  /// The provider's own id, so re-fetching updates rather than duplicates.
+  externalId String
+
+  title       String
+  /// Raw location string; normalisation lives in `geoBucket`.
+  location    String?
+  /// Coarse bucket the band is keyed on. Postings carry their own zoning
+  /// ("Zone 1 pay range", "Local pay range"), which we keep rather than
+  /// re-derive.
+  geoBucket   String?
+  department  String?
+  absoluteUrl String
+  /// Kept so an extraction bug can be re-run over history without re-fetching.
+  contentHash String
+
+  postedAt        DateTime?
+  updatedAtSource DateTime?
+  /// Null while live; set when the posting leaves the board.
+  closedAt        DateTime?
+
+  // ── compensation, exactly as disclosed ──
+  /// Null when the posting disclosed nothing, which is the common case.
+  compLow          Int?
+  compHigh         Int?
+  /// ISO-4217. Never converted — a stale FX rate silently corrupts every
+  /// band built on it (§3.1).
+  compCurrency     String?
+  compPeriod       String?
+  /// Period-normalised for comparison; the original stays in compLow/High.
+  compAnnualLow    Int?
+  compAnnualHigh   Int?
+  /// `structured` (the board tagged it) or `prose` (we matched it).
+  compSource       String?
+  /// The posting's own label, e.g. "Zone 1 pay range".
+  compLabel        String?
+  /// False when disclosed but unfit to pool: degenerate, implausibly wide,
+  /// unknown currency. Stored rather than dropped, because "disclosed but
+  /// unusable" is a real coverage metric.
+  compBandEligible Boolean @default(false)
+  compRejectReason String?
+
+  /// Normalised skill slugs from the requirements, for SkillSignal rollup.
+  skills Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  source JobSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, externalId])
+  /// The band query: eligible rows for a geo, recent first.
+  @@index([compBandEligible, geoBucket, postedAt])
+  @@index([sourceId, closedAt])
+}
+
+/// Nightly rollup over the last 90/365 days (§3.2). Trend is only rendered
+/// above `postingCount >= 50` in both windows — below that it is noise, and
+/// charting noise is lying with a chart.
+model SkillSignal {
+  id        String @id @default(cuid())
+  /// Curated alias map output: postgres/postgresql/psql -> postgresql.
+  skillNorm String
+  /// `90d` or `365d`.
+  window    String
+  geoBucket String
+
+  postingCount Int
+  /// Median of disclosed ranges requiring this skill, in `currency`.
+  medianLow    Int?
+  medianHigh   Int?
+  currency     String?
+  /// Percent change vs. the previous equivalent window. Null when either
+  /// window is under the display threshold.
+  trendPercent Float?
+  /// Distribution across seniority, as { junior: n, mid: n, senior: n, ... }.
+  seniorityMix Json    @default("{}")
+
+  computedAt DateTime @default(now())
+
+  @@unique([skillNorm, window, geoBucket])
+  @@index([geoBucket, postingCount])
+}
+
+/// A real offer a user chose to share (§3.3) — the slow-compounding asset no
+/// competitor can copy. Aggregate-only in output, minimum n=8 before it moves
+/// a band, and never displayable in a way that identifies company+level+person.
+model OfferDataPoint {
+  id     String @id @default(cuid())
+  /// Retained for deletion requests and dedupe. Never emitted in output.
+  userId String
+
+  roleTitle   String
+  level       String?
+  geoBucket   String
+  companyName String?
+
+  baseAmount       Int
+  currency         String
+  /// Captured separately and never folded into base (§3.1).
+  equityAnnualized Int?
+  bonusAmount      Int?
+
+  offeredAt DateTime
+  createdAt DateTime @default(now())
+
+  /// One shared offer per workspace, so re-answering edits rather than
+  /// double-counts.
+  workspaceId String? @unique
+
+  @@index([roleTitle, geoBucket, offeredAt])
+  @@index([userId])
 }
