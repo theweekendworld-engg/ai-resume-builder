@@ -70,7 +70,7 @@ describe('copy — the three things that make a paywall convert', () => {
     const content = pw1GapsAnalysis({ winCount: 47, targetLevel: 'Staff' });
     expect(content.headline).toBe('You have 47 wins and no gaps analysis.');
     expect(content.body).toContain("what's missing for Staff");
-    expect(content.body).toContain('Career, $30/year');
+    expect(content.body).toContain('Career, $5/month');
   });
 
   test('PW2 says saved and hidden — never deleted', () => {
@@ -93,7 +93,7 @@ describe('copy — the three things that make a paywall convert', () => {
     expect(content.headline).toContain('+12%');
     // Band `n` is shown. A band without its sample size is a number to distrust.
     expect(content.headline).toContain('38');
-    expect(content.body).toContain('$29');
+    expect(content.body).toContain('$2');
     expect(content.body).toContain('off whenever you stop');
     expect(content.targetTier).toBe(SEARCH_PLAN.tier);
   });

@@ -71,13 +71,13 @@ const stripeStub = {
 
 const ORIGINAL_ENV = {
   key: process.env.STRIPE_SECRET_KEY,
-  career: process.env.STRIPE_PRICE_CAREER_ANNUAL,
+  career: process.env.STRIPE_PRICE_CAREER_MONTHLY,
   search: process.env.STRIPE_PRICE_SEARCH_MONTHLY,
 };
 
 beforeAll(() => {
   process.env.STRIPE_SECRET_KEY = 'sk_test_not_a_real_key';
-  process.env.STRIPE_PRICE_CAREER_ANNUAL = 'price_career_annual_test';
+  process.env.STRIPE_PRICE_CAREER_MONTHLY = 'price_career_monthly_test';
   process.env.STRIPE_PRICE_SEARCH_MONTHLY = 'price_search_monthly_test';
   __setStripeClientForTests(stripeStub as unknown as Stripe);
 });
@@ -85,7 +85,7 @@ beforeAll(() => {
 afterAll(() => {
   __setStripeClientForTests(null);
   process.env.STRIPE_SECRET_KEY = ORIGINAL_ENV.key;
-  process.env.STRIPE_PRICE_CAREER_ANNUAL = ORIGINAL_ENV.career;
+  process.env.STRIPE_PRICE_CAREER_MONTHLY = ORIGINAL_ENV.career;
   process.env.STRIPE_PRICE_SEARCH_MONTHLY = ORIGINAL_ENV.search;
   clerk.signOut();
 });
@@ -208,14 +208,14 @@ async function events(userId: string, type: string) {
 describe('checkout', () => {
   test('unauthenticated is a value, never a throw', async () => {
     clerk.signOut();
-    const result = await billing.startCheckout('career_annual');
+    const result = await billing.startCheckout('career_monthly');
     expect(result.success).toBe(false);
     if (!result.success) expect(result.code).toBe('unauthenticated');
   });
 
   test('creates a session, carries an idempotency key, and records the funnel', async () => {
     const userId = signIn('checkout');
-    const result = await billing.startCheckout('career_annual', { paywallCode: 'PW1' });
+    const result = await billing.startCheckout('career_monthly', { paywallCode: 'PW1' });
 
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.url).toContain('stripe.test');
@@ -223,7 +223,7 @@ describe('checkout', () => {
     const [call] = callsTo('checkout.sessions.create');
     const [params, options] = call.args as [Stripe.Checkout.SessionCreateParams, { idempotencyKey: string }];
     expect(params.mode).toBe('subscription');
-    expect(params.line_items?.[0].price).toBe('price_career_annual_test');
+    expect(params.line_items?.[0].price).toBe('price_career_monthly_test');
     expect(options.idempotencyKey).toContain(userId);
 
     const started = await events(userId, 'checkout_started');
@@ -504,7 +504,7 @@ describe('the plan page read model', () => {
 
     const data = await planPageData();
     expect(data.planName).toBe('Career');
-    expect(data.priceLabel).toBe('$30/year');
+    expect(data.priceLabel).toBe('$5/month');
     expect(data.usage.length).toBeGreaterThan(0);
     expect(data.career?.planName).toBe('Career');
     expect(data.canAddSearch).toBe(true);

@@ -45,7 +45,6 @@ import {
 const WEBHOOK_SECRET = 'whsec_journey_d4';
 
 const PRICE_IDS = {
-    STRIPE_PRICE_CAREER_ANNUAL: 'price_j4_career_annual',
     STRIPE_PRICE_CAREER_MONTHLY: 'price_j4_career_monthly',
     STRIPE_PRICE_SEARCH_MONTHLY: 'price_j4_search_monthly',
 } as const;
@@ -190,7 +189,7 @@ async function postWebhook(
  * `checkout.session.completed` Stripe would send. Returns the ids so a later
  * hop can drive the same subscription.
  */
-async function checkoutAndSettle(price: 'career_annual' | 'search_monthly') {
+async function checkoutAndSettle(price: 'career_monthly' | 'search_monthly') {
     const started = await billing.startCheckout(price, { paywallCode: 'PW1' });
     expect(started).toMatchObject({ success: true });
     if (!started.success) throw new Error('checkout did not start');
@@ -209,7 +208,7 @@ async function checkoutAndSettle(price: 'career_annual' | 'search_monthly') {
     const seed: Seed = {
         id: session.subscription,
         customer: session.customer,
-        priceId: PRICE_IDS[price === 'career_annual' ? 'STRIPE_PRICE_CAREER_ANNUAL' : 'STRIPE_PRICE_SEARCH_MONTHLY'],
+        priceId: PRICE_IDS[price === 'career_monthly' ? 'STRIPE_PRICE_CAREER_MONTHLY' : 'STRIPE_PRICE_SEARCH_MONTHLY'],
         metadata: { userId: journey.userId },
     };
     stripeSeeds.push(seed);
@@ -217,7 +216,7 @@ async function checkoutAndSettle(price: 'career_annual' | 'search_monthly') {
 
     const delivered = await postWebhook('checkout.session.completed', {
         ...session,
-        amount_total: PLAN_CATALOG[price === 'career_annual' ? Tier.always_on : Tier.pro].prices[0]
+        amount_total: PLAN_CATALOG[price === 'career_monthly' ? Tier.always_on : Tier.pro].prices[0]
             .amountCents,
     });
     expect(delivered).toEqual({ status: 200, body: { received: true } });
@@ -431,7 +430,7 @@ test('the next call is refused, with the numbers from their own record', async (
 // ═════════════════════════════════ 4. checkout, then the webhook flips the tier
 
 test('checkout alone grants nothing; a signed webhook is what changes the tier', async () => {
-    const started = await billing.startCheckout('career_annual', { paywallCode: 'PW1' });
+    const started = await billing.startCheckout('career_monthly', { paywallCode: 'PW1' });
     expect(started).toMatchObject({ success: true });
     if (!started.success) return;
 
@@ -442,7 +441,7 @@ test('checkout alone grants nothing; a signed webhook is what changes the tier',
         where: { userId: journey.userId, type: 'checkout_started' },
     });
     const checkoutPayload = checkoutStarted?.payload as Record<string, unknown>;
-    expect(checkoutPayload?.amount).toBe(3000);
+    expect(checkoutPayload?.amount).toBe(500);
     record('checkout_started.tier', checkoutPayload?.tier as string);
 
     const checkoutId = new URL(started.data.url).pathname.replace(/^\//, '');
@@ -454,7 +453,7 @@ test('checkout alone grants nothing; a signed webhook is what changes the tier',
     stripeSeeds.push({
         id: careerSubscriptionId,
         customer: session.customer,
-        priceId: PRICE_IDS.STRIPE_PRICE_CAREER_ANNUAL,
+        priceId: PRICE_IDS.STRIPE_PRICE_CAREER_MONTHLY,
         metadata: { userId: journey.userId },
     });
     reseedStripe();
@@ -676,7 +675,7 @@ test('cancelling keeps every row the user ever made', async () => {
     const ended = journey.m.stripe.seedSubscription({
         id: careerSubscriptionId,
         customer: (await getSubscriptionState(journey.userId)).career?.stripeCustomerId ?? 'cus_j4',
-        priceId: PRICE_IDS.STRIPE_PRICE_CAREER_ANNUAL,
+        priceId: PRICE_IDS.STRIPE_PRICE_CAREER_MONTHLY,
         status: 'canceled',
         currentPeriodEnd: PERIOD_END_SECONDS,
         metadata: { userId: journey.userId },

@@ -19,9 +19,10 @@ import {
  *
  * Required env for live billing:
  *   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
- *   STRIPE_PRICE_CAREER_ANNUAL     ($30/year  → Tier.always_on, "Career")
- *   STRIPE_PRICE_CAREER_MONTHLY    ($5/month  → Tier.always_on, "Career")
- *   STRIPE_PRICE_SEARCH_MONTHLY    ($29/month → Tier.pro,       "Search")
+ *   STRIPE_PRICE_CAREER_MONTHLY    ($5/month → Tier.always_on, "Career")
+ *   STRIPE_PRICE_SEARCH_MONTHLY    ($2/month → Tier.pro,       "Search" add-on)
+ *
+ * Annual billing was retired; STRIPE_PRICE_CAREER_ANNUAL is no longer read.
  *
  * Career and Search are two *separate subscriptions* on the same customer, not
  * two items on one (PRD 06 §5.2). Proration stays simple, and turning Search
@@ -34,7 +35,8 @@ export type BillingPlan = PriceKey | 'always_on' | 'pro_monthly' | 'pro_annual';
 const LEGACY_PLAN_ALIASES: Record<'always_on' | 'pro_monthly' | 'pro_annual', PriceKey> = {
   always_on: 'career_monthly',
   pro_monthly: 'search_monthly',
-  pro_annual: 'career_annual',
+  // The annual price is retired; an old caller lands on the monthly plan.
+  pro_annual: 'career_monthly',
 };
 
 /** Normalize a legacy plan string onto the catalog's price keys. */

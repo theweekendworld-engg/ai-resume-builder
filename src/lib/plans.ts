@@ -32,7 +32,13 @@ import type { Tier } from '@prisma/client';
 // Prices
 // ---------------------------------------------------------------------------
 
-export type PriceKey = 'career_annual' | 'career_monthly' | 'search_monthly';
+/**
+ * Annual billing was retired when pricing moved to $5 Career + $2 Search,
+ * monthly only. `career_annual` is intentionally absent: subscriptions bought
+ * on the old annual Stripe price still exist, so resolvers must return null
+ * for it rather than pretend it is current.
+ */
+export type PriceKey = 'career_monthly' | 'search_monthly';
 
 export type BillingInterval = 'month' | 'year';
 
@@ -55,7 +61,7 @@ export interface PlanPrice {
    * repointed at its id, and this figure updated to match.
    */
   amountCents: number;
-  /** "$30/year" — precomputed so no call site does currency maths. */
+  /** "$5/month" — precomputed so no call site does currency maths. */
   label: string;
   /** "billed annually" */
   cadence: string;
@@ -118,21 +124,13 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
     audience: 'For people with a job and a review coming',
     prices: [
       {
-        key: 'career_annual',
-        interval: 'year',
-        amountCents: 3000,
-        label: '$30/year',
-        cadence: 'billed annually',
-        envVar: 'STRIPE_PRICE_CAREER_ANNUAL',
-        recommended: true,
-      },
-      {
         key: 'career_monthly',
         interval: 'month',
         amountCents: 500,
         label: '$5/month',
-        cadence: 'billed monthly',
+        cadence: 'billed monthly, cancel any time',
         envVar: 'STRIPE_PRICE_CAREER_MONTHLY',
+        recommended: true,
       },
     ],
     purchasable: true,
@@ -148,8 +146,8 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
       {
         key: 'search_monthly',
         interval: 'month',
-        amountCents: 2900,
-        label: '$29/month',
+        amountCents: 200,
+        label: '$2/month',
         cadence: 'billed monthly, cancel any time',
         envVar: 'STRIPE_PRICE_SEARCH_MONTHLY',
       },

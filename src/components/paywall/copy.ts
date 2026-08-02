@@ -41,7 +41,7 @@ export interface PaywallContent {
   tone: 'inline' | 'banner';
 }
 
-const CAREER = headlinePrice(CAREER_PLAN.tier)?.label ?? '$30/year';
+const CAREER = headlinePrice(CAREER_PLAN.tier)?.label ?? '$5/month';
 const SEARCH = priceFor('search_monthly').label;
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ export function pw1GapsAnalysis(input: {
       : `See what's missing for your next level — ${CAREER_PLAN.name}, ${CAREER}.`,
     ctaLabel: `Get ${CAREER_PLAN.name}`,
     targetTier: CAREER_PLAN.tier,
-    priceKey: 'career_annual',
+    priceKey: 'career_monthly',
     hasOwnData: input.winCount > 0,
     tone: 'inline',
   };
@@ -84,7 +84,7 @@ export function pw2HiddenHistory(input: { hiddenWinCount: number }): PaywallCont
     body: `Unlock your full record — ${CAREER_PLAN.name}, ${CAREER}.`,
     ctaLabel: 'Unlock your full record',
     targetTier: CAREER_PLAN.tier,
-    priceKey: 'career_annual',
+    priceKey: 'career_monthly',
     hasOwnData: input.hiddenWinCount > 0,
     tone: 'inline',
   };
@@ -101,7 +101,7 @@ export function pw3TailoredExhausted(input: { limit: number; used: number }): Pa
     body: `The next role you actually care about — let's make it perfect. ${CAREER_PLAN.name}, ${CAREER}.`,
     ctaLabel: `Get ${CAREER_PLAN.name}`,
     targetTier: CAREER_PLAN.tier,
-    priceKey: 'career_annual',
+    priceKey: 'career_monthly',
     hasOwnData: input.used > 0,
     tone: 'inline',
   };
@@ -177,7 +177,7 @@ export function pw6ReviewNudge(input: {
       : 'Here is the one gap worth working on.',
     ctaLabel: 'See it',
     targetTier: CAREER_PLAN.tier,
-    priceKey: 'career_annual',
+    priceKey: 'career_monthly',
     hasOwnData: Boolean(input.gap),
     tone: 'inline',
   };
@@ -197,7 +197,7 @@ export function pw7SourceLimit(input: {
     body: `${CAREER_PLAN.name} connects up to ${input.careerSourceLimit} sources — GitHub, calendar, and your tracker. ${CAREER}.`,
     ctaLabel: `Get ${CAREER_PLAN.name}`,
     targetTier: CAREER_PLAN.tier,
-    priceKey: 'career_annual',
+    priceKey: 'career_monthly',
     hasOwnData: input.connectedSources > 0,
     tone: 'inline',
   };

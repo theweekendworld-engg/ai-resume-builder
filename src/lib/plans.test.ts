@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Tier } from '@prisma/client';
 
+import type { PriceKey } from '@/lib/plans';
 import {
   CAREER_PLAN,
   COMPARISON_PLANS,
@@ -18,6 +19,7 @@ import {
   PLAN_CATALOG,
   PLAN_COMPARISON,
   PLAN_FEATURES,
+  PRICES,
   SEARCH_PLAN,
   formatUsd,
   headlinePrice,
@@ -75,43 +77,65 @@ describe('display names (CLAUDE.md rule 4)', () => {
 });
 
 describe('prices', () => {
-  test('the PRD numbers, exactly', () => {
-    expect(priceFor('career_annual').amountCents).toBe(3000);
+  test('the current numbers, exactly', () => {
     expect(priceFor('career_monthly').amountCents).toBe(500);
-    expect(priceFor('search_monthly').amountCents).toBe(2900);
+    expect(priceFor('search_monthly').amountCents).toBe(200);
+  });
+
+  test('every price is monthly — annual billing was retired', () => {
+    for (const key of Object.keys(PRICES) as PriceKey[]) {
+      expect(priceFor(key).interval).toBe('month');
+    }
+  });
+
+  test('the retired annual key no longer resolves', () => {
+    // Subscriptions on the old annual price still exist in the wild, so this
+    // has to be a clean `false` rather than a stale price.
+    expect(isPriceKey('career_annual')).toBe(false);
   });
 
   test('labels are derived from the amounts, so they cannot drift', () => {
-    expect(formatUsd(3000)).toBe('$30');
+    expect(formatUsd(500)).toBe('$5');
     expect(formatUsd(1550)).toBe('$15.50');
-    expect(priceFor('career_annual').label).toContain(formatUsd(3000));
+    expect(priceFor('career_monthly').label).toContain(formatUsd(500));
   });
 
-  test('annual is the steered choice on Career', () => {
-    expect(headlinePrice(Tier.always_on)?.key).toBe('career_annual');
+  test('each plan steers to its only price', () => {
+    expect(headlinePrice(Tier.always_on)?.key).toBe('career_monthly');
+    expect(headlinePrice(Tier.pro)?.key).toBe('search_monthly');
     expect(headlinePrice(Tier.free)).toBeNull();
+  });
+
+  /**
+   * Search is an ADD-ON bought on top of Career (PRD 06 §5.2), not a rung
+   * above it, so it is priced below the base rather than above. Asserted
+   * because "the cheaper plan grants more" would be a real inversion if the
+   * two ever became alternatives.
+   */
+  test('Search is priced as an add-on, under the base it sits on', () => {
+    expect(priceFor('search_monthly').amountCents).toBeLessThan(
+      priceFor('career_monthly').amountCents
+    );
   });
 
   test('Search is its own subscription slot', () => {
     expect(slotForPriceKey('search_monthly')).toBe('search');
-    expect(slotForPriceKey('career_annual')).toBe('career');
     expect(slotForPriceKey('career_monthly')).toBe('career');
   });
 
   test('price keys map to the tier they grant', () => {
-    expect(tierForPriceKey('career_annual')).toBe(Tier.always_on);
     expect(tierForPriceKey('career_monthly')).toBe(Tier.always_on);
     expect(tierForPriceKey('search_monthly')).toBe(Tier.pro);
-    expect(isPriceKey('career_annual')).toBe(true);
+    expect(isPriceKey('career_monthly')).toBe(true);
     expect(isPriceKey('nonsense')).toBe(false);
   });
 
   test('stripe ids come from env, with the pre-rename var as a fallback', () => {
-    expect(stripePriceId('career_annual')).toBeUndefined();
+    expect(stripePriceId('search_monthly')).toBeUndefined();
 
-    process.env.STRIPE_PRICE_CAREER_ANNUAL = 'price_annual_123';
-    expect(stripePriceId('career_annual')).toBe('price_annual_123');
-    expect(priceKeyForStripeId('price_annual_123')).toBe('career_annual');
+    process.env.STRIPE_PRICE_SEARCH_MONTHLY = 'price_search_123';
+    expect(stripePriceId('search_monthly')).toBe('price_search_123');
+    expect(priceKeyForStripeId('price_search_123')).toBe('search_monthly');
     expect(priceKeyForStripeId('price_unknown')).toBeNull();
     expect(priceKeyForStripeId(null)).toBeNull();
 
