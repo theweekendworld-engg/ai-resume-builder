@@ -18,7 +18,18 @@ describe('registry', () => {
         const { ctx } = makeContext();
         const viaRegistry = await handler!({}, ctx);
         const direct = await noopHandler({}, makeContext().ctx);
-        expect(viaRegistry).toEqual(direct);
+
+        // `ranAt` is `new Date()` inside the handler, so the two calls agree
+        // only when they land in the same millisecond. Comparing the whole
+        // object failed roughly one full-suite run in six — a red build that
+        // said nothing about the registry. Compare the parts that are a
+        // guarantee, and assert `ranAt` for what it actually is.
+        const { ranAt: viaRanAt, ...viaRest } = viaRegistry as Record<string, unknown>;
+        const { ranAt: directRanAt, ...directRest } = direct as Record<string, unknown>;
+        expect(viaRest).toEqual(directRest);
+        expect(typeof viaRanAt).toBe('string');
+        expect(Number.isNaN(Date.parse(viaRanAt as string))).toBe(false);
+        expect(typeof directRanAt).toBe('string');
     });
 
     test('registerAllHandlers is idempotent', () => {

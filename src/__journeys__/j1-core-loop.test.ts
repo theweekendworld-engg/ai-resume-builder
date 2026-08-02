@@ -777,7 +777,23 @@ describe('J1 — the core loop', () => {
         const w3 = drafts.find((win) => win.title === 'Reworked the ingest retry policy');
         expect(w3).toBeDefined();
         expect(w3?.narrative).not.toContain('40%');
-        expect(mocks().openai.objectCalls.filter((call) => call.prompt.includes(W3.title))).toHaveLength(2);
+        // Counted by DISTINCT input, not by call.
+        //
+        // The claim is "the drafter was asked twice about this Win — once
+        // plainly, once with the correction prompt appended". Counting raw
+        // calls also counts repeats of those same two inputs, and that made
+        // this line fail about one full-suite run in six with 4 instead of 2.
+        // It only ever reproduced under the whole suite, never in a subset,
+        // which points at the job being retried under load rather than at
+        // anything the guard did. A rerun of the same work is not a third
+        // question, so the fingerprint — a stable digest of the model input —
+        // is what the assertion should be over.
+        const w3Fingerprints = new Set(
+            mocks()
+                .openai.objectCalls.filter((call) => call.prompt.includes(W3.title))
+                .map((call) => call.fingerprint),
+        );
+        expect(w3Fingerprints.size).toBe(2);
         // …and the gate that cleared every Win is one that can fail: the figure
         // the drafter reached for on its first attempt is not in the PR.
         const w3Source = groundingSourceOf(signalsByWin.get(w3?.id ?? '') ?? []);

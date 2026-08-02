@@ -356,3 +356,67 @@ h1, h2, h3, h4, h5, h6 {
 .cl-profileSection__connectedAccounts .cl-profileSectionPrimaryButton {
   color: hsl(var(--primary)) !important;
 }
+
+/* ───────────────────────────────────────────────────────────── print
+ *
+ * Used by `/packets/[id]/print`, which is how a review packet becomes a PDF
+ * (see PacketPrintDocument for why the browser does this and not a server).
+ *
+ * The load-bearing rule is the first one. This app is theme-aware and the user
+ * may well be in dark mode when they hit Save as PDF — which without an
+ * override prints a black page with white text, wasting a cartridge and
+ * looking broken on a document going to a manager. Paper is paper: the tokens
+ * are forced to their light values inside the print context, so the output is
+ * identical whichever theme the author happens to be sitting in.
+ */
+@media print {
+  :root,
+  .dark {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --muted: 0 0% 100%;
+    --muted-foreground: 0 0% 32%;
+    --border: 0 0% 80%;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* App chrome never prints. Anything that is navigation, status or an action
+     is noise on paper — and a "Regenerate" button rendered onto a PDF is worse
+     than noise, because it implies the document is interactive. */
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  @page {
+    /* 18mm reads as a document rather than a screenshot, and leaves room for a
+       staple without eating the measure. */
+    margin: 18mm 16mm;
+  }
+
+  /* Never strand a heading at the foot of a page from the evidence under it. */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid-page;
+  }
+
+  /* A single orphaned line of a paragraph across a page break reads as a
+     printing fault rather than a layout choice. */
+  p,
+  li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .packet-print {
+    max-width: none;
+    padding: 0;
+  }
+}

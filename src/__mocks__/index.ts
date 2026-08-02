@@ -132,10 +132,38 @@ function wire(mocks: Mocks, options: InstallOptions): void {
  * Calling twice returns the same instance and re-wires it, so a `beforeEach`
  * that calls `installMocks()` does not silently orphan the handles a suite
  * captured at module scope.
+ *
+ * ── Why installing clears the recorder ──────────────────────────────────────
+ *
+ * `current` is module state, and Bun shares module bindings across the whole
+ * process, so every test FILE in a run gets the same instance. Reusing the
+ * instance is correct. Inheriting its recorded history is not, and it made J1
+ * fail roughly one run in four:
+ *
+ *   J1 asserts that the numeric guard fired on one Win — "two model round
+ *   trips, not one" — by counting `objectCalls` whose prompt contains that
+ *   PR's title. The capture and backfill eval suites read the SAME GitHub
+ *   fixture corpus, so their prompts contain that title too. Whenever Bun
+ *   scheduled one of those files first, their calls were still in the recorder
+ *   when J1's `beforeAll` ran, and the count came out 4 instead of 2.
+ *
+ * The old code only reset in the journey harness's `afterEach`, which a file
+ * that never uses the harness never runs. Clearing on install makes the
+ * guarantee belong to the boundary that can actually make it. Leftover
+ * SCRIPTED responses are the same hazard in a quieter form — a script
+ * registered by a previous file silently satisfying a later test's call is a
+ * green test that proves nothing — and this clears those too.
  */
 export function installMocks(options: InstallOptions = {}): Mocks {
     installedFor = options;
-    if (!current) current = build(options);
+    if (current) {
+        // Rewires as a side effect, hence the wire() below being unconditional
+        // rather than in an else.
+        resetMocks();
+    } else {
+        current = build(options);
+    }
+    // After the reset: `openai.reset()` restores the default embedding size.
     if (options.embeddingSize) current.openai.setEmbeddingSize(options.embeddingSize);
     wire(current, options);
     return current;

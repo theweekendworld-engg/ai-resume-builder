@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, Copy, Download, Lock, RotateCcw } from 'lucide-react';
+import { Check, ChevronDown, Copy, Download, FileText, Lock, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -62,13 +62,33 @@ export function PacketEditor({ packet }: PacketEditorProps) {
 
     const warningCount = content.warnings.length;
 
+    /**
+     * §3.3 — the confidential question, asked the same way whatever the format.
+     * PDF used to be the odd one out simply because it did not exist; letting
+     * it skip the prompt would have made the safest-looking export the one
+     * that leaks.
+     */
+    const askIncludeConfidential = () =>
+        content.confidentialWinIds.length === 0
+            ? true
+            : window.confirm(
+                `${content.confidentialWinIds.length} win${content.confidentialWinIds.length === 1 ? ' is' : 's are'} marked confidential. Include them? Your manager can see these; a recruiter shouldn't.`,
+            );
+
+    const onPrint = () => {
+        const includeConfidential = askIncludeConfidential();
+        // A new tab, not this one. The print dialog blocks the page it opens
+        // over, and the user is mid-edit here — sending them away and back
+        // would discard scroll position and any open block editor.
+        window.open(
+            `/packets/${packet.id}/print?confidential=${includeConfidential ? '1' : '0'}`,
+            '_blank',
+            'noopener,noreferrer',
+        );
+    };
+
     const onExport = async (format: 'markdown' | 'text', mode: 'copy' | 'download') => {
-        const includeConfidential =
-            content.confidentialWinIds.length === 0
-                ? true
-                : window.confirm(
-                    `${content.confidentialWinIds.length} win${content.confidentialWinIds.length === 1 ? ' is' : 's are'} marked confidential. Include them? Your manager can see these; a recruiter shouldn't.`,
-                );
+        const includeConfidential = askIncludeConfidential();
 
         const result = await exportPacket(packet.id, format, { includeConfidential });
         if (!result.success) {
@@ -132,6 +152,9 @@ export function PacketEditor({ packet }: PacketEditorProps) {
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => void onExport('text', 'copy')}>
                                 <Copy className="mr-2 size-3.5" aria-hidden /> Copy as plain text
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={onPrint}>
+                                <FileText className="mr-2 size-3.5" aria-hidden /> Save as PDF
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

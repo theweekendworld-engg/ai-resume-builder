@@ -624,6 +624,62 @@ export async function exportPacket(
     return ok({ format: parsed.data.format, body, filename });
 }
 
+/**
+ * Record a PDF export.
+ *
+ * PDF does not go through `exportPacket` because it has no body to return —
+ * the browser makes the file from the print route, so there is nothing for a
+ * server action to hand back. What there still is, is the audit trail: §3.3
+ * remembers the confidential choice per packet, and a packet that went to a
+ * manager as a PDF should be as visible in `exports` as one that went as
+ * markdown. Without this the history would quietly under-report.
+ *
+ * Idempotency is deliberately NOT enforced. Re-opening the print view is a
+ * second export — the user is producing another copy, possibly with a
+ * different confidential setting, and that is worth a second row.
+ */
+export async function recordPdfExport(
+    packetId: string,
+    includeConfidential: boolean,
+): Promise<Result<void>> {
+    const access = await requireAccess();
+    if (!access.ok) return err(access.error, access.code);
+
+    const parsed = z
+        .object({ packetId: IdSchema, includeConfidential: z.boolean() })
+        .safeParse({ packetId, includeConfidential });
+    if (!parsed.success) return err(invalidInput(parsed.error), 'invalid_input');
+
+    const row = await prisma.reviewPacket.findFirst({
+        where: { id: parsed.data.packetId, userId: access.userId },
+        select: { exports: true },
+    });
+    if (!row) return err('Packet not found', 'not_found');
+
+    const history = Array.isArray(row.exports) ? row.exports : [];
+    await prisma.reviewPacket.updateMany({
+        where: { id: parsed.data.packetId, userId: access.userId },
+        data: {
+            exports: [
+                ...history,
+                {
+                    format: 'pdf',
+                    at: new Date().toISOString(),
+                    includeConfidential: parsed.data.includeConfidential,
+                },
+            ].slice(-20) as unknown as Prisma.InputJsonValue,
+        },
+    });
+
+    await track(access.userId, 'packet_exported', {
+        ...FEATURE,
+        format: 'pdf',
+        includedConfidential: parsed.data.includeConfidential,
+    });
+
+    return ok(undefined);
+}
+
 // ═══════════════════════════════════════════════════════════ 6. rubrics
 
 export type FrameworkDraft = {
