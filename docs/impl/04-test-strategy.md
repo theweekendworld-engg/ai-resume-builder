@@ -1,15 +1,15 @@
-# Implementation 04 — Fakes & End-to-End Verification
+# Implementation 04 — Mocks & End-to-End Verification
 
 > **Status:** `Active` · **Date:** 2026-08-02
-> **Goal:** prove the internal system is correct with every external dependency faked, such that swapping in a real client is a configuration change and not a discovery.
+> **Goal:** prove the internal system is correct with every external dependency mocked, such that swapping in a real client is a configuration change and not a discovery.
 
 ---
 
 ## 1. The two things this must achieve
 
-**A. The internals are provably correct.** Every loop that spans features — capture → draft → digest → confirm → ground → packet — runs end to end against fakes, on a real database, with no network.
+**A. The internals are provably correct.** Every loop that spans features — capture → draft → digest → confirm → ground → packet — runs end to end against mocks, on a real database, with no network.
 
-**B. The swap is provable, not hopeful.** A fake that drifts from the real API is worse than no fake: it turns a green suite into false confidence. So every fake is **typed against the real SDK's own interface**. If Resend changes `emails.send`, the fake stops compiling. TypeScript, not vigilance, is what keeps them honest.
+**B. The swap is provable, not hopeful.** A mock that drifts from the real API is worse than no mock: it turns a green suite into false confidence. So every mock is **typed against the real SDK's own interface**. If Resend changes `emails.send`, the mock stops compiling. TypeScript, not vigilance, is what keeps them honest.
 
 ---
 
@@ -28,7 +28,7 @@
 
 ### Two problems that more tests would not fix
 
-**Email is faked at the wrong layer.** Two suites mock `@/lib/email/send` — the module under test. So its preference checks, suppression rules, plain-text generation and `List-Unsubscribe` headers never run in those tests. **The most breakable logic is the part being stubbed out.** Fakes belong at the *provider* boundary, never at the boundary of the thing you are testing.
+**Email is mocked at the wrong layer.** Two suites mock `@/lib/email/send` — the module under test. So its preference checks, suppression rules, plain-text generation and `List-Unsubscribe` headers never run in those tests. **The most breakable logic is the part being stubbed out.** Mocks belong at the *provider* boundary, never at the boundary of the thing you are testing.
 
 **`mock.module` is process-global in Bun.** Seven files replacing `@clerk/nextjs/server` works today only because each registers before its own dynamic imports. That is an ordering accident, not a design. D1 flagged it; the eighth file to do it will break something unrelated.
 
@@ -38,13 +38,13 @@
 
 ## 3. Design
 
-### 3.1 One fake per boundary, typed against the real thing
+### 3.1 One mock per boundary, typed against the real thing
 
 ```
-src/__fakes__/
-  index.ts        installFakes() / resetFakes() / the recorder
+src/__mocks__/
+  index.ts        installMocks() / resetMocks() / the recorder
   clerk.ts        replaces 7 ad hoc stubs
-  resend.ts       FakeResend, typed against the Resend SDK
+  resend.ts       MockResend, typed against the Resend SDK
   qdrant.ts       in-memory vector store with real filter semantics
   openai.ts       embeddings + chat, deterministic
   stripe.ts       checkout, subscriptions, webhook event construction
@@ -53,27 +53,27 @@ src/__fakes__/
   recorder.ts     every outbound call, assertable
 ```
 
-**The fidelity rule:** each fake declares itself against the real type.
+**The fidelity rule:** each mock declares itself against the real type.
 
 ```ts
 // If the SDK's signature moves, this stops compiling. That is the point.
-export class FakeResend implements Pick<Resend, 'emails'> { ... }
-export class FakeGithubApi implements GithubApi { ... }
+export class MockResend implements Pick<Resend, 'emails'> { ... }
+export class MockGithubApi implements GithubApi { ... }
 ```
 
-A fake that merely *looks* like the API proves nothing. A fake the compiler checks against the API proves the swap.
+A mock that merely *looks* like the API proves nothing. A mock the compiler checks against the API proves the swap.
 
 ### 3.2 Seams over `mock.module`
 
 Add `__testing.setClient(...)` where a module owns a client. Reserve `mock.module` for Clerk alone, where auth is genuinely resolved at import time — and do it in **one** place so there is one stub shape, not seven.
 
-### 3.3 Fake at the provider, never at the feature
+### 3.3 Mock at the provider, never at the feature
 
-`sendEmail` must run for real, with a `FakeResend` underneath. Same for grounding, drafting, embedding. **The rule: if the module under test is the module being mocked, the test is measuring nothing.**
+`sendEmail` must run for real, with a `MockResend` underneath. Same for grounding, drafting, embedding. **The rule: if the module under test is the module being mocked, the test is measuring nothing.**
 
 ### 3.4 Deterministic by construction
 
-No `Math.random`, no wall-clock in fakes. Model responses are keyed by prompt fingerprint so the same input always yields the same output, and a test that changes a prompt sees its fake response change too — surfacing the coupling rather than hiding it.
+No `Math.random`, no wall-clock in mocks. Model responses are keyed by prompt fingerprint so the same input always yields the same output, and a test that changes a prompt sees its mocked response change too — surfacing the coupling rather than hiding it.
 
 ---
 
@@ -101,8 +101,8 @@ Five loops. Each spans features that no existing test crosses.
 
 Stated so the green suite is not over-read:
 
-- **Real API shapes.** A typed fake proves the *call* is right, not that the provider behaves as documented. Live smoke tests against sandbox credentials remain on the pre-launch list.
-- **Model quality.** Fakes prove the pipeline holds when the model misbehaves. Whether a real model writes a good question, or an outcome-framed theme title, needs a live eval.
-- **Email rendering.** No fake tells you the digest looks right in Outlook.
+- **Real API shapes.** A typed mock proves the *call* is right, not that the provider behaves as documented. Live smoke tests against sandbox credentials remain on the pre-launch list.
+- **Model quality.** Mocks prove the pipeline holds when the model misbehaves. Whether a real model writes a good question, or an outcome-framed theme title, needs a live eval.
+- **Email rendering.** No mock tells you the digest looks right in Outlook.
 
 Those three are exactly the pre-launch checklist. This work makes everything *except* them provable.
