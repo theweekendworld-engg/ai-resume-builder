@@ -45,6 +45,15 @@ export const config = {
             interviewExtract: process.env.OPENAI_MODEL_INTERVIEW_EXTRACT || process.env.OPENAI_MODEL || "gpt-5-mini",
             radarNormalize: process.env.OPENAI_MODEL_RADAR_NORMALIZE || process.env.OPENAI_MODEL || "gpt-5-mini",
             radarReason: process.env.OPENAI_MODEL_RADAR_REASON || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
+            // Resume generation v2. All three default to the quality tier: this
+            // is the artifact a candidate sends to an employer, and the audit
+            // of 7 Aug showed the mini model silently dropping the two
+            // strongest lines on the page. Cost is ~$0.06 per resume against a
+            // $5/month subscription — roughly 87 generations before the model
+            // bill reaches the price, and nobody tailors 87 resumes a month.
+            postingRead: process.env.OPENAI_MODEL_POSTING_READ || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
+            bulletSelect: process.env.OPENAI_MODEL_BULLET_SELECT || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
+            bulletWrite: process.env.OPENAI_MODEL_BULLET_WRITE || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
         },
         embedding: {
             model: embeddingModel,
@@ -57,6 +66,12 @@ export const config = {
     qdrant: {
         url: process.env.QDRANT_URL as string,
         apiKey: process.env.QDRANT_API_KEY || undefined,
+    },
+    // Resume generation v2 (src/lib/resume). ON by default: v1 is the path the
+    // 7 Aug audit caught fabricating skills and dropping evidence, so this is a
+    // kill switch for the NEW path, not an opt-in to it.
+    resumeV2: {
+        enabled: process.env.RESUME_V2_ENABLED !== "false",
     },
     resumeReuse: {
         enabled: process.env.RESUME_REUSE_ENABLED !== "false",

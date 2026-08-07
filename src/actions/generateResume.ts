@@ -8,6 +8,8 @@ import { calculateATSScore } from '@/actions/ai';
 import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
+import { tailorResume } from '@/lib/resume/tailor';
+import type { CoverageReport } from '@/lib/resume/coverage';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { trackedChatCompletion } from '@/lib/usageTracker';
@@ -219,6 +221,14 @@ type SmartResumeResult = {
   sources: SourceMap;
   atsEstimate: number;
   validation: ClaimValidation;
+  /** v2 only. Which of the posting's requirements the resume answers. */
+  coverage?: CoverageReport;
+  /** v2 only. Plain sentences naming what is missing. */
+  advice?: string[];
+  /** v2 only. Wanted by the posting, unevidenced, therefore left off. */
+  skillGaps?: string[];
+  /** v2 only. Lines that did not make the page, offered back as swaps. */
+  droppedBullets?: Array<{ id: string; text: string; reason: 'cap' | 'weak' }>;
 };
 
 type SmartResumePipelineArtifacts = {
@@ -771,6 +781,155 @@ export async function generateSmartResumePipeline(
         education,
       },
     });
+  }
+
+  // ── Resume generation v2 (src/lib/resume) ─────────────────────────────────
+  //
+  // Replaces the paraphrase → assemble → validate → ATS-improve block below
+  // with the sequence a person actually works in: read the posting as discrete
+  // requirements, score every BULLET against them, decide what earns space,
+  // write the survivors, gate skills on evidence, then score by what the
+  // document answers rather than by keyword overlap.
+  //
+  // The v1 block is kept underneath as a fallback. It is the path the 7 Aug
+  // audit caught fabricating a skills section and dropping the candidate's two
+  // strongest lines, so falling back to it is a degradation — but a degradation
+  // beats a failed generation, and `RESUME_V2_ENABLED=false` is the switch if
+  // v2 ever misbehaves in production.
+  if (config.resumeV2.enabled) {
+    try {
+      const tailored = await tailorResume({
+        jobDescription: trimmedJobDescription,
+        profile: {
+          fullName: profile?.fullName || fallback.personalInfo.fullName,
+          title: profile?.defaultTitle || fallback.personalInfo.title,
+          email: profile?.email || fallback.personalInfo.email,
+          phone: profile?.phone || fallback.personalInfo.phone,
+          location: profile?.location || fallback.personalInfo.location,
+          website: profile?.website || fallback.personalInfo.website,
+          linkedin: profile?.linkedin || fallback.personalInfo.linkedin,
+          github: profile?.github || fallback.personalInfo.github,
+          summary: baseSummary,
+        },
+        experiences: selectedExperiences,
+        projects: selectedProjects,
+        education,
+        candidateSkills: uniqueStrings([
+          ...selectedProjects.flatMap((project) => project.technologies ?? []),
+          ...fallback.skills,
+        ]),
+        sectionOrder: preferences.defaultSectionOrder,
+        caps: {
+          maxBulletsPerRole: 4,
+          maxRoles: lengthConstraints.maxExperiences,
+          maxSkills: lengthConstraints.maxSkills,
+        },
+        userId,
+        sessionId,
+      });
+
+      await onStepComplete?.('paraphrasing', {
+        paraphrasedContent: {
+          summary: tailored.resume.personalInfo.summary,
+          experience: tailored.resume.experience.map((item) => ({
+            id: item.id,
+            description: item.description,
+          })),
+          projects: tailored.resume.projects.map((item) => ({
+            id: item.id,
+            description: item.description,
+          })),
+          skills: tailored.resume.skills,
+        },
+      });
+      await onStepStart?.('resume_assembly');
+      await onStepComplete?.('resume_assembly', { draftResume: tailored.resume });
+
+      // The grounding check still runs. v2 gates skills at construction and
+      // guards every figure at the point of writing, but this is the check the
+      // three thesis tests assert on and it must not quietly disappear.
+      await onStepStart?.('claim_validation');
+      const v2Sources = [
+        ...sourceExperiences.map((entry) => ({ id: `experience:${entry.id}`, text: entry.description })),
+        ...rankedProjects.map(({ project }) => ({ id: `project:${project.id}`, text: getProjectText(project) })),
+        ...rankedKnowledge.map(({ item }) => ({ id: `knowledge:${item.id}`, text: getKnowledgeText(item) })),
+      ];
+      const v2Validation = validateClaimsService(tailored.resume, v2Sources);
+      await onStepComplete?.('claim_validation', {
+        validationResult: v2Validation,
+        draftResume: tailored.resume,
+      });
+
+      // Requirement coverage replaces the keyword score. Null means the posting
+      // yielded no requirements to score against — fall back to the
+      // deterministic estimate rather than reporting a confident 0.
+      await onStepStart?.('ats_scoring');
+      const v2Score = tailored.coverage.score ?? computeAtsEstimateService(tailored.resume, parsedJD);
+      await onStepComplete?.('ats_scoring', {
+        atsScore: v2Score,
+        validationResult: v2Validation,
+        draftResume: tailored.resume,
+        coverage: tailored.coverage,
+        advice: tailored.advice,
+      });
+
+      return {
+        resume: tailored.resume,
+        sources: {
+          projects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+          knowledgeItems: rankedKnowledge.map((entry) => ({ id: entry.item.id, score: Number(entry.score.toFixed(4)) })),
+          parsedJD,
+        },
+        atsEstimate: v2Score,
+        validation: v2Validation,
+        coverage: tailored.coverage,
+        advice: tailored.advice,
+        skillGaps: tailored.skillGaps,
+        droppedBullets: tailored.dropped,
+        artifacts: {
+          parsedJD,
+          matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+          matchedAchievements: rankedKnowledge.map((entry) => ({
+            id: entry.item.id,
+            score: Number(entry.score.toFixed(4)),
+            type: entry.item.type,
+          })),
+          staticData: {
+            profile: profile
+              ? {
+                fullName: profile.fullName,
+                email: profile.email,
+                phone: profile.phone,
+                location: profile.location,
+                website: profile.website,
+                linkedin: profile.linkedin,
+                github: profile.github,
+                defaultTitle: profile.defaultTitle,
+                defaultSummary: profile.defaultSummary,
+              }
+              : null,
+            experiences: sourceExperiences,
+            education,
+          },
+          paraphrasedContent: {
+            summary: tailored.resume.personalInfo.summary,
+            experience: tailored.resume.experience.map((item) => ({ id: item.id, description: item.description })),
+            projects: tailored.resume.projects.map((item) => ({ id: item.id, description: item.description })),
+            skills: tailored.resume.skills,
+          },
+          draftResume: tailored.resume,
+          validationResult: v2Validation,
+        },
+      };
+    } catch (error: unknown) {
+      // Loud, because a silent fallback to the path with known defects is
+      // exactly the kind of quiet degradation this codebase has been bitten by.
+      console.error('[resume] v2 failed; falling back to v1', {
+        userId,
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   await onStepStart?.('paraphrasing');

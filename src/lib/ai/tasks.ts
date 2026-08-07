@@ -29,6 +29,11 @@ export const TASK_KEYS = [
     'interviewExtract',
     'radarNormalize',
     'radarReason',
+    // R3 — resume generation v2. Each is a distinct judgement, so each is its
+    // own task rather than one call that does the whole document.
+    'postingRead',
+    'bulletSelect',
+    'bulletWrite',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];

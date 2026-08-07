@@ -52,6 +52,15 @@ const SKILL_ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
     ['docker', ['docker', 'containerization', 'containerisation']],
     ['terraform', ['terraform', 'hashicorp terraform']],
     ['aws', ['aws', 'amazon web services']],
+    // Named AWS services. Real technologies that appear in postings by name,
+    // and the ones a resume names when someone describes what they actually
+    // operated. Added when the resume skills section came out with two
+    // entries for a candidate whose history says "migrated 9 services from
+    // EC2 to Kubernetes" — EC2 was simply not in the vocabulary.
+    ['ec2', ['ec2', 'amazon ec2']],
+    ['s3', ['s3', 'amazon s3']],
+    ['lambda', ['aws lambda']],
+    ['rds', ['rds', 'amazon rds']],
     ['gcp', ['gcp', 'google cloud', 'google cloud platform']],
     ['azure', ['azure', 'microsoft azure']],
     ['kafka', ['kafka', 'apache kafka']],
