@@ -115,16 +115,24 @@ enum ApplicationStatus {
 }
 
 model Resume {
-  id            String   @id @default(cuid())
-  userId        String // Clerk User ID
-  title         String   @default("My Resume")
-  targetRole    String?
-  targetCompany String?
-  atsScore      Int?
-  atsSummary    String?
-  content       Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  userId         String // Clerk User ID
+  title          String   @default("My Resume")
+  targetRole     String?
+  targetCompany  String?
+  atsScore       Int?
+  atsSummary     String?
+  content        Json?
+  /// How this resume answers the posting it was tailored to — the requirement
+  /// coverage, the gaps, and the lines that did not make the page.
+  ///
+  /// Lives on the Resume rather than the GenerationSession because it is a
+  /// fact about THIS document against THAT job, and it has to survive the
+  /// session that produced it: the editor is where a candidate acts on it.
+  /// Shape: `ResumeCoverage` in `src/lib/resume/report.ts`.
+  coverageReport Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([userId, updatedAt])
 }

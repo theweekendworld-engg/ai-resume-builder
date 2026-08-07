@@ -27,6 +27,7 @@ import { JobTargetPanel } from '@/components/editor/tools/JobTargetPanel';
 import { ScoreImprovePanel } from '@/components/editor/tools/ScoreImprovePanel';
 import { FixChecklistPanel } from '@/components/editor/tools/FixChecklistPanel';
 import { TruthfulnessPanel } from '@/components/editor/tools/TruthfulnessPanel';
+import { JobMatchPanel } from '@/components/editor/tools/JobMatchPanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { DesignPanel } from '@/components/editor/tools/DesignPanel';
@@ -286,6 +287,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         return <DesignPanel />;
       case 'section-order':
         return <SectionOrderEditor />;
+      case 'job-match':
+        return <JobMatchPanel resumeId={resumeId} />;
       case 'score-improve':
         return <ScoreImprovePanel />;
       case 'fix-checklist':

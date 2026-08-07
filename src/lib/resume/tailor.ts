@@ -63,8 +63,20 @@ export type TailorResult = {
     skillGaps: string[];
     /** Plain sentences for the editor. Empty when nothing is missing. */
     advice: string[];
-    /** Lines that did not make the page, with why. Offered as swaps. */
-    dropped: Array<{ id: string; text: string; reason: 'cap' | 'weak' }>;
+    /**
+     * Lines that did not make the page, with why — and WHERE they came from,
+     * so the editor can offer to put one back rather than only mourn it.
+     * `targetId` is the real experience/project row id, not the internal
+     * group index.
+     */
+    dropped: Array<{
+        id: string;
+        text: string;
+        reason: 'cap' | 'weak';
+        targetId: string;
+        targetKind: 'experience' | 'project';
+        targetLabel: string;
+    }>;
 };
 
 const DEFAULT_CAPS = { maxBulletsPerRole: 4, maxRoles: 4 };
@@ -109,17 +121,24 @@ export async function tailorResume(input: TailorInput): Promise<TailorResult> {
     });
 
     // ── 2. every line the candidate has, as individual claims
-    const groups = new Map<string, { label: string; kind: 'experience' | 'project'; index: number }>();
+    const groups = new Map<
+        string,
+        { label: string; kind: 'experience' | 'project'; rowId: string }
+    >();
     const bullets: SourceBullet[] = [];
 
     input.experiences.forEach((item, index) => {
         const groupId = `e${index}`;
-        groups.set(groupId, { label: `${item.role} at ${item.company}`, kind: 'experience', index });
+        groups.set(groupId, {
+            label: `${item.role} at ${item.company}`,
+            kind: 'experience',
+            rowId: item.id,
+        });
         bullets.push(...toBullets(item.description, groupId));
     });
     input.projects.forEach((item, index) => {
         const groupId = `p${index}`;
-        groups.set(groupId, { label: `the ${item.name} project`, kind: 'project', index });
+        groups.set(groupId, { label: item.name, kind: 'project', rowId: item.id });
         bullets.push(...toBullets(item.description, groupId));
     });
 
@@ -224,10 +243,16 @@ export async function tailorResume(input: TailorInput): Promise<TailorResult> {
         advice: gapAdvice(coverage, skillGaps),
         // Surfaced so the editor can offer a swap. A line the candidate wrote
         // and we chose not to use is information they are entitled to.
-        dropped: selection.dropped.map(({ bullet, reason }) => ({
-            id: bullet.id,
-            text: bullet.text,
-            reason,
-        })),
+        dropped: selection.dropped.map(({ bullet, reason }) => {
+            const group = groups.get(bullet.groupId);
+            return {
+                id: bullet.id,
+                text: bullet.text,
+                reason,
+                targetId: group?.rowId ?? '',
+                targetKind: group?.kind ?? 'experience',
+                targetLabel: group?.label ?? '',
+            };
+        }),
     };
 }

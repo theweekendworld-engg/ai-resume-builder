@@ -8,7 +8,7 @@ import { calculateATSScore } from '@/actions/ai';
 import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
-import { tailorResume } from '@/lib/resume/tailor';
+import { tailorResume, type TailorResult } from '@/lib/resume/tailor';
 import type { CoverageReport } from '@/lib/resume/coverage';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
@@ -228,7 +228,16 @@ type SmartResumeResult = {
   /** v2 only. Wanted by the posting, unevidenced, therefore left off. */
   skillGaps?: string[];
   /** v2 only. Lines that did not make the page, offered back as swaps. */
-  droppedBullets?: Array<{ id: string; text: string; reason: 'cap' | 'weak' }>;
+  droppedBullets?: TailorResult['dropped'];
+  /**
+   * v2 only. How v2 read the posting.
+   *
+   * Carried separately from `artifacts.parsedJD` because the two disagree, and
+   * v2's is the one a human should see: v1's role for the Stripe posting was
+   * "Senior Backend Engineer Payments Infrastructure" — the headline with its
+   * punctuation stripped — which then showed up as the gap report's title.
+   */
+  brief?: TailorResult['brief'];
 };
 
 type SmartResumePipelineArtifacts = {
@@ -886,6 +895,7 @@ export async function generateSmartResumePipeline(
         advice: tailored.advice,
         skillGaps: tailored.skillGaps,
         droppedBullets: tailored.dropped,
+        brief: tailored.brief,
         artifacts: {
           parsedJD,
           matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),

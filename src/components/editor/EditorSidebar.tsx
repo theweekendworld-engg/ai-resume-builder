@@ -10,6 +10,7 @@ import {
   GraduationCap,
   PanelLeft,
   Target,
+  ClipboardCheck,
   User,
   Wrench,
   Brain,
@@ -44,6 +45,9 @@ const designItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[]
 ];
 
 const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+  // First in the section on purpose: "does this answer the job?" is the
+  // question someone opens the editor with.
+  { id: 'job-match', label: 'Job Match', icon: <ClipboardCheck className="h-4 w-4" /> },
   { id: 'score-improve', label: 'Review & Improve', icon: <TrendingUp className="h-4 w-4" /> },
   { id: 'fix-checklist', label: 'Fix Checklist', icon: <ListChecks className="h-4 w-4" /> },
   { id: 'truthfulness', label: 'Truthfulness', icon: <ShieldCheck className="h-4 w-4" /> },

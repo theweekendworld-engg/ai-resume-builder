@@ -10,6 +10,7 @@ export type EditorPanelId =
   | 'skills'
   | 'design'
   | 'section-order'
+  | 'job-match'
   | 'score-improve'
   | 'fix-checklist'
   | 'truthfulness'

@@ -19,6 +19,7 @@ import {
 import { generateLatexFromResume, type LatexTemplateType } from '@/templates/latex';
 import { logUsageEvent } from '@/lib/usageTracker';
 import { track } from '@/lib/track';
+import { buildReport, type ResumeCoverage } from '@/lib/resume/report';
 import type { ResumeData } from '@/types/resume';
 
 type RunGenerationOptions = {
@@ -143,6 +144,8 @@ async function saveGeneratedResumeForUser(params: {
   resumeId?: string;
   targetRole?: string | null;
   targetCompany?: string | null;
+  /** v2 only. Null clears a stale report from an earlier generation. */
+  coverageReport?: ResumeCoverage | null;
 }): Promise<string> {
   const fallbackTitle = getFallbackResumeTitle(params.resume.personalInfo.fullName, 'Generated Resume');
   const payload = params.resume as unknown as object;
@@ -183,6 +186,11 @@ async function saveGeneratedResumeForUser(params: {
         targetCompany: metadata.targetCompany,
         atsScore: metadata.atsScore,
         atsSummary: metadata.atsSummary,
+        // Overwritten on every generation, including with null. A report from
+        // a previous, different posting is worse than none: it would tell the
+        // candidate they are missing requirements from a job they are no
+        // longer applying for.
+        coverageReport: (params.coverageReport ?? Prisma.DbNull) as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });
@@ -648,6 +656,23 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         resume: finalResume,
         atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
         resumeId: session.sourceResumeId ?? options.sourceResumeId,
+        // The gap report, so the editor can show what this resume does not
+        // answer. Absent on the reuse path and on the v1 fallback, both of
+        // which produce no coverage — the panel hides rather than inventing.
+        coverageReport: pipelineResult?.coverage
+          ? buildReport({
+            coverage: pipelineResult.coverage,
+            skillGaps: pipelineResult.skillGaps ?? [],
+            advice: pipelineResult.advice ?? [],
+            dropped: pipelineResult.droppedBullets ?? [],
+            // v2's own reading, not `artifacts.parsedJD` — see the note on
+            // SmartResumeResult.brief. The two disagree and v1's is mangled.
+            brief: {
+              role: pipelineResult.brief?.role ?? '',
+              company: pipelineResult.brief?.company ?? '',
+            },
+          })
+          : null,
         ...extractParsedJDTarget(pipelineResult?.artifacts.parsedJD ?? session.parsedJD),
       });
 
