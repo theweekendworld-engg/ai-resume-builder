@@ -24,7 +24,7 @@
 
 import { z } from 'zod';
 
-import type { CoverageReport } from './coverage';
+import { reconcileSkillGaps, type CoverageReport } from './coverage';
 import type { PostingBrief } from './posting';
 import type { TailorResult } from './tailor';
 
@@ -69,34 +69,6 @@ export type ResumeCoverage = z.infer<typeof ResumeCoverageSchema>;
 export type CoverageItem = z.infer<typeof CoverageItemSchema>;
 export type DroppedLine = z.infer<typeof DroppedLineSchema>;
 
-/**
- * Does this answered requirement already vouch for that skill?
- *
- * The first live run showed "Experience with cloud infrastructure (AWS)" in
- * ANSWERED and "AWS" in ASKED FOR, LEFT OFF at the same time. Both are
- * individually defensible — a bullet about migrating off EC2 answers the
- * requirement, while the literal word "AWS" is nowhere in the candidate's
- * text — but a panel that says both looks broken, and the user is right to
- * think so.
- *
- * The requirement is the stronger signal: it is a judgement about the
- * candidate's actual work, where the skill check is a string match. So when
- * they disagree, the gap is dropped.
- */
-function contradicted(skill: string, answered: readonly CoverageItem[]): boolean {
-    const needle = skill.trim().toLowerCase();
-    if (!needle) return true;
-    const escaped = needle.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
-    const pattern = new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, 'i');
-    return answered.some((item) => pattern.test(item.text));
-}
-
-/** Already stated, in full, as its own unanswered requirement row. */
-function duplicated(skill: string, unanswered: readonly CoverageItem[]): boolean {
-    const needle = skill.trim().toLowerCase();
-    return unanswered.some((item) => item.text.trim().toLowerCase() === needle);
-}
-
 export function buildReport(
     result: Pick<TailorResult, 'coverage' | 'skillGaps' | 'advice' | 'dropped'> & {
         brief: Pick<PostingBrief, 'role' | 'company'>;
@@ -125,12 +97,8 @@ export function buildReport(
         mustScore: result.coverage.mustScore,
         answered,
         unanswered,
-        // Only the gaps that add something. A skill contradicted by an
-        // answered requirement, or already spelled out as its own unanswered
-        // row, is noise at best and self-contradiction at worst.
-        skillGaps: result.skillGaps.filter(
-            (skill) => !contradicted(skill, answered) && !duplicated(skill, unanswered),
-        ),
+        // Only the gaps that add something — see `reconcileSkillGaps`.
+        skillGaps: reconcileSkillGaps(result.skillGaps, [...answered, ...unanswered]),
         dropped: result.dropped.map((line) => ({
             text: line.text,
             reason: line.reason,

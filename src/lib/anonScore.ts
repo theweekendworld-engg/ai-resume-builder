@@ -37,11 +37,13 @@
 
 import { generateStructured } from '@/lib/ai/structured';
 import type { NumericGuard } from '@/lib/ai/guard';
+import { analyzeAgainstPosting } from '@/lib/resume/analyze';
 import {
     AnonScoreModelSchema,
     deriveBand,
     MAX_FIXES,
     type AnonScoreReport,
+    type JobMatch,
     type ScoreFix,
 } from '@/lib/anonScoreSchema';
 
@@ -73,19 +75,23 @@ function buildPrompt(resumeText: string, jobDescription?: string): string {
     const trimmedResume = resumeText.slice(0, MAX_RESUME_CHARS);
     const jd = jobDescription?.trim().slice(0, MAX_JD_CHARS);
 
-    const jobMatchInstruction = jd
-        ? `A target JOB DESCRIPTION was provided. Score keyword/skills alignment against it, and you MUST include a "jobMatch" object with:
-- "matchedKeywords": important keywords/skills present in BOTH the job description and resume.
-- "missingKeywords": important keywords/skills in the job description that are MISSING from the resume.
+    // The job description is shown for CONTEXT only. How well the resume
+    // answers it is computed by `analyzeAgainstPosting`, not asked for here:
+    // the model's opinion of "match" was two keyword lists, which is the
+    // thinking the 7 Aug audit found scoring a fabricated resume 95/100.
+    const jobContext = jd
+        ? `The candidate is targeting this job. Use it only to judge whether the
+resume is written for this reader — do NOT score the match, and do not list
+matched or missing keywords. That is measured separately.
 
-JOB DESCRIPTION:
+TARGET JOB:
 ${jd}
 `
-        : `No job description was provided. Score general resume quality and ATS-readiness. Do NOT include a "jobMatch" field.`;
+        : `No target job was provided. Judge general resume quality and ATS-readiness.`;
 
     return `Analyze the following resume (extracted from a PDF; spacing may be imperfect).
 
-${jobMatchInstruction}
+${jobContext}
 
 RESUME TEXT:
 """
@@ -156,6 +162,54 @@ function isIntact(fix: ScoreFix): boolean {
     return fix.suggestion.trim().length > 0;
 }
 
+/**
+ * Turn the shared analysis into the shape the marketing report renders.
+ *
+ * Deliberately the SAME requirement coverage a signed-in user sees in the Job
+ * Match panel. Someone who drops a PDF here and then signs up should meet a
+ * better version of the analysis they were just shown, not a different one.
+ */
+async function matchAgainst(
+    resumeText: string,
+    jobDescription: string,
+): Promise<JobMatch | undefined> {
+    try {
+        const analysis = await analyzeAgainstPosting({
+            resumeText,
+            jobDescription,
+            userId: ANON_USER_ID,
+        });
+
+        const toItem = (item: { text: string; kind: 'must' | 'nice' }, byDates: boolean) => ({
+            text: item.text,
+            kind: item.kind,
+            byDates,
+        });
+
+        return {
+            score: analysis.coverage.score,
+            mustScore: analysis.coverage.mustScore,
+            role: analysis.brief.role,
+            company: analysis.brief.company,
+            answered: analysis.coverage.answered.map((entry) =>
+                // No bullet ids means the document's dates carry it.
+                toItem(entry.requirement, entry.bulletIds.length === 0),
+            ),
+            unanswered: analysis.coverage.unanswered.map((item) => toItem(item, false)),
+            skillsMatched: analysis.skillsMatched,
+            skillGaps: analysis.skillGaps,
+        };
+    } catch (error: unknown) {
+        // The quality score is still worth returning on its own. A failed
+        // match degrades the report; it must not fail the request on the one
+        // surface a stranger judges the product by.
+        console.warn('[anonScore] job match failed; returning quality only', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+    }
+}
+
 export async function scoreResumeText(
     resumeText: string,
     jobDescription?: string
@@ -164,27 +218,31 @@ export async function scoreResumeText(
         throw new Error('Resume text is too short to score. The PDF may be image-only or empty.');
     }
 
-    const { data } = await generateStructured({
-        task: 'atsScore',
-        feature: 'resume',
-        userId: ANON_USER_ID,
-        schema: AnonScoreModelSchema,
-        system: SYSTEM_PROMPT,
-        prompt: buildPrompt(resumeText, jobDescription),
-        guard: buildGuard(resumeText, jobDescription),
-    });
+    const targetJob = jobDescription?.trim();
+
+    // Quality and match are independent questions, so they run together rather
+    // than one after the other — this route is a stranger waiting on a page.
+    const [quality, jobMatch] = await Promise.all([
+        generateStructured({
+            task: 'atsScore',
+            feature: 'resume',
+            userId: ANON_USER_ID,
+            schema: AnonScoreModelSchema,
+            system: SYSTEM_PROMPT,
+            prompt: buildPrompt(resumeText, jobDescription),
+            guard: buildGuard(resumeText, jobDescription),
+        }),
+        targetJob ? matchAgainst(resumeText, targetJob) : Promise.resolve(undefined),
+    ]);
 
     // Derive band server-side so tone/thresholds stay consistent.
-    const overall = Math.min(100, Math.max(0, data.overall));
+    const overall = Math.min(100, Math.max(0, quality.data.overall));
 
     return {
-        ...data,
+        ...quality.data,
         overall,
         band: deriveBand(overall),
-        fixes: data.fixes.filter(isIntact),
-        // Drop jobMatch if no JD was supplied (defensive — the model may return
-        // one anyway, and a "missing keywords" list with no job to miss them
-        // from is noise).
-        jobMatch: jobDescription?.trim() ? data.jobMatch : undefined,
+        fixes: quality.data.fixes.filter(isIntact),
+        jobMatch,
     };
 }

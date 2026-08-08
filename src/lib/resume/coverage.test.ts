@@ -10,7 +10,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { JobRequirement } from './posting';
 import type { ScoredBullet } from './select';
-import { computeCoverage, gapAdvice, yearsAskedFor } from './coverage';
+import { computeCoverage, gapAdvice, reconcileSkillGaps, yearsAskedFor } from './coverage';
 
 function req(id: string, text: string, kind: 'must' | 'nice' = 'must'): JobRequirement {
     return { id, text, kind, category: 'experience' };
@@ -179,5 +179,52 @@ describe('answered requirements carry their evidence', () => {
             [bullet('b1', ['r1']), bullet('b2', ['r1'])],
         );
         expect(report.answered[0].bulletIds).toEqual(['b1', 'b2']);
+    });
+});
+
+describe('skill gaps the requirement list already covers', () => {
+    // This lived in report.ts and `/score` did not use it, so the free checker
+    // showed "Experience with cloud infrastructure (AWS)" as ANSWERED and
+    // "AWS" as missing at the same time. Two copies of a rule is one copy of a
+    // rule and one bug, so it lives here where both consumers reach it.
+    const requirements = [
+        req('r1', 'Experience with cloud infrastructure (AWS)'),
+        req('r2', 'Deep experience with distributed systems'),
+    ];
+
+    test('a skill named inside a requirement is dropped', () => {
+        expect(reconcileSkillGaps(['AWS'], requirements)).toEqual([]);
+    });
+
+    test('regardless of whether that requirement was answered', () => {
+        // Contradiction and restatement are both redundancy; the requirement
+        // row says it either way, in the employer's fuller words.
+        expect(reconcileSkillGaps(['Distributed systems'], requirements)).toEqual([]);
+    });
+
+    test('a skill no requirement mentions survives — that is the useful case', () => {
+        expect(reconcileSkillGaps(['Terraform', 'gRPC'], requirements)).toEqual([
+            'Terraform',
+            'gRPC',
+        ]);
+    });
+
+    test('matching is word-boundary, not substring', () => {
+        // "Go" must not be swallowed by "Google Cloud".
+        expect(reconcileSkillGaps(['Go'], [req('r1', 'Experience with Google Cloud')])).toEqual([
+            'Go',
+        ]);
+    });
+
+    test('case does not matter', () => {
+        expect(reconcileSkillGaps(['aws'], requirements)).toEqual([]);
+    });
+
+    test('no requirements means every gap survives', () => {
+        expect(reconcileSkillGaps(['Terraform'], [])).toEqual(['Terraform']);
+    });
+
+    test('an empty entry is dropped rather than matching everything', () => {
+        expect(reconcileSkillGaps(['', '   '], requirements)).toEqual([]);
     });
 });

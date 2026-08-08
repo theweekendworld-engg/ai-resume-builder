@@ -207,58 +207,105 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                 </div>
             </div>
 
-            {/* Job match (optional) */}
+            {/*
+                Job match — the same requirement coverage a signed-in user sees
+                in the editor's Job Match panel, not a keyword list.
+
+                This section used to be two bags of "matched" and "missing"
+                keywords the model produced by eyeballing overlap. That is the
+                thinking the 7 Aug audit caught scoring a resume with ten
+                fabricated skills at 95/100, and it meant the free checker
+                measured something the paid product no longer believes in.
+                Someone who signs up after seeing this should meet a better
+                version of the same analysis, not a different one.
+            */}
             {report.jobMatch && (
                 <div>
                     <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Job match
+                        Against{' '}
+                        {[report.jobMatch.role, report.jobMatch.company].filter(Boolean).join(' at ') ||
+                            'this job'}
                     </h3>
+
                     <Card>
-                        <CardContent className="grid gap-6 p-4 sm:grid-cols-2 sm:p-6">
-                            <div>
-                                <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                                    <Check className="h-4 w-4" /> Matched keywords
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {report.jobMatch.matchedKeywords.length ? (
-                                        report.jobMatch.matchedKeywords.map((k) => (
-                                            <Badge
-                                                key={k}
-                                                variant="outline"
-                                                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                            >
-                                                {k}
-                                            </Badge>
-                                        ))
-                                    ) : (
-                                        <span className="text-xs text-muted-foreground">
-                                            None detected yet.
-                                        </span>
-                                    )}
+                        <CardContent className="p-4 sm:p-6">
+                            {report.jobMatch.score !== null ? (
+                                <div className="mb-5 flex items-baseline gap-3">
+                                    <span className="text-3xl font-semibold tabular-nums text-foreground">
+                                        {report.jobMatch.score}
+                                        <span className="text-base text-muted-foreground">/100</span>
+                                    </span>
+                                    <p className="text-sm text-muted-foreground">
+                                        of what this employer asked for is answered by your resume.
+                                        Adding keywords cannot move this.
+                                    </p>
                                 </div>
-                            </div>
-                            <div>
-                                <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
-                                    <X className="h-4 w-4" /> Missing keywords
-                                </p>
-                                <div className="flex flex-wrap gap-1.5">
-                                    {report.jobMatch.missingKeywords.length ? (
-                                        report.jobMatch.missingKeywords.map((k) => (
-                                            <Badge
-                                                key={k}
-                                                variant="outline"
-                                                className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                                            >
-                                                {k}
-                                            </Badge>
-                                        ))
-                                    ) : (
-                                        <span className="text-xs text-muted-foreground">
-                                            Great — nothing major missing.
-                                        </span>
-                                    )}
+                            ) : null}
+
+                            {report.jobMatch.unanswered.length > 0 && (
+                                <div className="mb-5">
+                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                                        <X className="h-4 w-4" aria-hidden /> Not answered
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                        {report.jobMatch.unanswered.map((item) => (
+                                            <li key={item.text} className="flex items-start gap-2 text-sm">
+                                                <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden />
+                                                <span className="text-foreground">
+                                                    {item.text}
+                                                    {item.kind === 'nice' ? (
+                                                        <span className="ml-1.5 text-xs uppercase tracking-wide text-muted-foreground">
+                                                            bonus
+                                                        </span>
+                                                    ) : null}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </div>
-                            </div>
+                            )}
+
+                            {report.jobMatch.skillGaps.length > 0 && (
+                                <div className="mb-5">
+                                    <p className="mb-1.5 text-sm font-medium text-foreground">
+                                        Named in the posting, not in your resume
+                                    </p>
+                                    <p className="mb-2 text-xs text-muted-foreground">
+                                        If you have used one, say so — we will never put a skill on
+                                        your resume you cannot back up.
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {report.jobMatch.skillGaps.map((skill) => (
+                                            <Badge key={skill} variant="outline" className="font-normal">
+                                                {skill}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {report.jobMatch.answered.length > 0 && (
+                                <div>
+                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                                        <Check className="h-4 w-4" aria-hidden /> Answered
+                                    </p>
+                                    <ul className="space-y-1.5">
+                                        {report.jobMatch.answered.map((item) => (
+                                            <li key={item.text} className="flex items-start gap-2 text-sm">
+                                                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                                                <span className="text-muted-foreground">
+                                                    {item.text}
+                                                    {item.byDates ? (
+                                                        <span className="block text-xs">
+                                                            Covered by your dates, not by a bullet.
+                                                        </span>
+                                                    ) : null}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

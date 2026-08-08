@@ -185,20 +185,158 @@ describe('the report itself', () => {
         expect(result.band).toBe('strong');
     });
 
-    test('jobMatch is dropped when no job description was supplied', async () => {
-        useResponses([
-            {
-                ...report([goodFix]),
-                jobMatch: { matchedKeywords: ['api'], missingKeywords: ['terraform'] },
-            },
-        ]);
+    test('no job description means no match section, and no extra model calls', async () => {
+        useResponses([report([goodFix])]);
         const result = await scoreResumeText(RESUME);
         expect(result.jobMatch).toBeUndefined();
+        // Quality only. The posting-read and bullet-scoring calls cost money
+        // on an anonymous route and there is nothing for them to do.
+        expect(prompts).toHaveLength(1);
     });
 
     test('text too short to score is rejected before any model call', async () => {
         useResponses([report([goodFix])]);
         await expect(scoreResumeText('too short')).rejects.toThrow(/too short/i);
         expect(prompts).toHaveLength(0);
+    });
+});
+
+describe('the job match is measured, not opined on', () => {
+    /**
+     * `analyzeAgainstPosting` makes two further calls through the same seam:
+     * one to read the posting, one to score the resume's lines against it. The
+     * markers pick them apart.
+     */
+    function useMatchResponses(overrides: { posting?: unknown; select?: unknown } = {}) {
+        const runner: ObjectRunner = async ({ prompt }) => {
+            prompts.push(prompt);
+            if (prompt.includes('Read this job posting')) {
+                return {
+                    object:
+                        overrides.posting ?? {
+                            role: 'Senior Backend Engineer',
+                            company: 'Stripe',
+                            seniority: 'senior',
+                            domain: 'payments',
+                            requirements: [
+                                { text: 'Experience with Kubernetes', kind: 'must', category: 'skill' },
+                                { text: '6+ years backend', kind: 'must', category: 'experience' },
+                                { text: 'Experience with Terraform', kind: 'nice', category: 'skill' },
+                            ],
+                            skills: ['Kubernetes', 'Terraform'],
+                            responsibilities: [],
+                        },
+                    inputTokens: 500,
+                    outputTokens: 200,
+                };
+            }
+            if (prompt.includes("THE CANDIDATE'S OWN LINES:")) {
+                const ids = [...prompt.matchAll(/^(l\d+) \|/gm)].map((m) => m[1]);
+                return {
+                    object:
+                        overrides.select ?? {
+                            bullets: ids.map((id, index) => ({
+                                id,
+                                answers: index === 0 ? ['r1'] : [],
+                                strength: 4,
+                            })),
+                        },
+                    inputTokens: 500,
+                    outputTokens: 200,
+                };
+            }
+            return { object: report([goodFix]), inputTokens: 1000, outputTokens: 500 };
+        };
+        __testing.setObjectRunner(runner);
+    }
+
+    const JD = `Senior Backend Engineer at Stripe. We want Kubernetes, Terraform,
+and 6+ years of backend systems experience.`;
+
+    const KUBE_RESUME = `Priya Raman — Senior Software Engineer
+Flexport, 2018 - Present
+Led the migration of 9 services from EC2 to Kubernetes with zero downtime.
+Cut invoice generation p95 from 4.2s to 900ms with a batched query.`;
+
+    test('reports requirement coverage rather than keyword lists', async () => {
+        useMatchResponses();
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+
+        expect(result.jobMatch).toBeDefined();
+        expect(result.jobMatch!.role).toBe('Senior Backend Engineer');
+        // The shape the old model-opinion version had is gone entirely.
+        expect(result.jobMatch as unknown as Record<string, unknown>).not.toHaveProperty(
+            'matchedKeywords',
+        );
+    });
+
+    test('a skill the resume evidences is reported as matched', async () => {
+        useMatchResponses();
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        expect(result.jobMatch!.skillsMatched).toContain('Kubernetes');
+        expect(result.jobMatch!.skillsMatched).not.toContain('Terraform');
+    });
+
+    test('one it cannot is reported ONCE, as the requirement it belongs to', async () => {
+        // Terraform is both a listed skill and its own requirement. Before
+        // `reconcileSkillGaps` it appeared twice — as an unanswered
+        // requirement AND in a separate missing-skills list — which reads as
+        // two problems rather than one.
+        useMatchResponses();
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        expect(result.jobMatch!.unanswered.map((i) => i.text)).toContain('Experience with Terraform');
+        expect(result.jobMatch!.skillGaps).toEqual([]);
+    });
+
+    test('a posting skill that is not a requirement DOES survive as a gap', async () => {
+        // The genuinely additive case: named in the posting's skill list,
+        // never stated as a requirement, and absent from the resume.
+        useMatchResponses({
+            posting: {
+                role: 'Senior Backend Engineer',
+                company: 'Stripe',
+                seniority: 'senior',
+                domain: 'payments',
+                requirements: [
+                    { text: 'Experience with Kubernetes', kind: 'must', category: 'skill' },
+                ],
+                skills: ['Kubernetes', 'Terraform'],
+                responsibilities: [],
+            },
+        });
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        expect(result.jobMatch!.skillGaps).toEqual(['Terraform']);
+    });
+
+    test('the dates answer a tenure requirement', async () => {
+        useMatchResponses();
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        const tenure = result.jobMatch!.answered.find((item) => item.text.includes('6+ years'));
+        expect(tenure).toBeDefined();
+        expect(tenure!.byDates).toBe(true);
+    });
+
+    test('a posting we cannot read scores null rather than zero', async () => {
+        useMatchResponses({
+            posting: {
+                role: '', company: '', seniority: '', domain: '',
+                requirements: [], skills: [], responsibilities: [],
+            },
+        });
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        expect(result.jobMatch!.score).toBeNull();
+    });
+
+    test('a failed match still returns the quality score', async () => {
+        // The one surface a stranger judges the product by. Degrading beats
+        // failing the request.
+        __testing.setObjectRunner(async ({ prompt }) => {
+            prompts.push(prompt);
+            if (prompt.includes('Read this job posting')) throw new Error('model down');
+            return { object: report([goodFix]), inputTokens: 100, outputTokens: 50 };
+        });
+        const result = await scoreResumeText(KUBE_RESUME, JD);
+        expect(result.overall).toBe(72);
+        expect(result.jobMatch).toBeUndefined();
     });
 });

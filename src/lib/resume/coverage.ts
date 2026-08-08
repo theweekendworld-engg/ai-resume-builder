@@ -126,6 +126,42 @@ export function computeCoverage(
 }
 
 /**
+ * Drop skill gaps the requirement list already covers.
+ *
+ * Lives here because BOTH consumers need it and the first version did not:
+ * the editor's stored report filtered gaps, and `/score` did not, so the free
+ * checker showed "Experience with cloud infrastructure (AWS)" under ANSWERED
+ * and "AWS" under NOT IN YOUR RESUME at the same time. Two copies of a rule is
+ * one copy of a rule and one bug.
+ *
+ * Two ways a gap is redundant:
+ *
+ *   Contradicted — the skill is named inside a requirement the resume ANSWERS.
+ *   The requirement is the stronger signal: it is a judgement about the
+ *   candidate's actual work, where the skill check is a string match against
+ *   their text. Saying both makes the report look broken.
+ *
+ *   Restated — the skill is named inside a requirement the resume does NOT
+ *   answer. True, but the requirement row already says it in the employer's own
+ *   fuller words, and saying it twice reads as two separate problems.
+ *
+ * What survives is the genuinely additive case: a skill the posting names that
+ * never became a requirement at all.
+ */
+export function reconcileSkillGaps(
+    skillGaps: readonly string[],
+    requirements: readonly { text: string }[],
+): string[] {
+    return skillGaps.filter((skill) => {
+        const needle = skill.trim().toLowerCase();
+        if (!needle) return false;
+        const escaped = needle.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&');
+        const pattern = new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, 'i');
+        return !requirements.some((requirement) => pattern.test(requirement.text));
+    });
+}
+
+/**
  * What to tell the candidate, in their own interest.
  *
  * Ordered by what would move the number most: unanswered musts first. The

@@ -44,16 +44,40 @@ export const ScoreFixSchema = z.object({
 });
 export type ScoreFix = z.infer<typeof ScoreFixSchema>;
 
+/**
+ * How the resume answers the posting.
+ *
+ * This used to be `{ matchedKeywords, missingKeywords }` — two lists the model
+ * produced by eyeballing overlap. That is the keyword thinking the 7 Aug audit
+ * caught scoring a resume with ten fabricated skills at 95/100, and it meant
+ * the free checker measured something different from what a signed-in user
+ * gets. Now it is the same requirement coverage generation uses, computed by
+ * `analyzeAgainstPosting`.
+ */
+export const MatchRequirementSchema = z.object({
+    text: z.string(),
+    kind: z.enum(['must', 'nice']),
+    /** Answered by the document's dates rather than by any line. */
+    byDates: z.boolean(),
+});
+
 export const JobMatchSchema = z.object({
-    matchedKeywords: z.array(z.string()),
-    missingKeywords: z.array(z.string()),
+    /** Share of stated requirements answered. Keywords cannot move it. */
+    score: z.number().int().min(0).max(100).nullable(),
+    /** Must-haves only — the number that predicts a callback. */
+    mustScore: z.number().int().min(0).max(100).nullable(),
+    role: z.string(),
+    company: z.string(),
+    answered: z.array(MatchRequirementSchema),
+    unanswered: z.array(MatchRequirementSchema),
+    /** Named by the posting and evidenced by the resume. */
+    skillsMatched: z.array(z.string()),
+    /** Named by the posting and evidenced nowhere in the resume. */
+    skillGaps: z.array(z.string()),
 });
 export type JobMatch = z.infer<typeof JobMatchSchema>;
+export type MatchRequirement = z.infer<typeof MatchRequirementSchema>;
 
-/**
- * The raw shape we ask the model to produce. `band` is derived server-side from
- * `overall`, so the model is not asked for it (keeps it consistent + non-punitive).
- */
 /**
  * Ceiling on the fix list. Exported because the numeric guard has to name the
  * paths it polices (`fixes.0.suggestion` …) and there is no wildcard — see
@@ -62,17 +86,27 @@ export type JobMatch = z.infer<typeof JobMatchSchema>;
  */
 export const MAX_FIXES = 8;
 
+/**
+ * What the MODEL is asked for. `jobMatch` is deliberately absent: it is
+ * computed from the posting, not opined on.
+ */
 export const AnonScoreModelSchema = z.object({
     overall: z.number().int().min(0).max(100),
     dimensions: z.array(ScoreDimensionSchema).min(1),
     fixes: z.array(ScoreFixSchema).min(1).max(MAX_FIXES),
-    jobMatch: JobMatchSchema.optional(),
 });
 export type AnonScoreModel = z.infer<typeof AnonScoreModelSchema>;
 
-/** The final report returned to the client (band added). */
+/**
+ * The report returned to the client.
+ *
+ * `band` is derived server-side from `overall` so tone and thresholds stay
+ * consistent, and `jobMatch` is computed rather than asked for — present only
+ * when a job description was supplied.
+ */
 export const AnonScoreReportSchema = AnonScoreModelSchema.extend({
     band: ScoreBandSchema,
+    jobMatch: JobMatchSchema.optional(),
 });
 export type AnonScoreReport = z.infer<typeof AnonScoreReportSchema>;
 
