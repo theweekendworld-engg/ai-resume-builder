@@ -20,7 +20,21 @@ const clerk = installClerkMock();
 
 // `revalidatePath` needs a request-scoped store that only exists inside a real
 // Next render. Stubbed, not removed: the action should keep calling it.
-mock.module('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+//
+// `updateTag` is here because the rule above is real and this stub broke it.
+// It is used by `src/actions/profile.ts`, which nothing in THIS file touches —
+// but `onboarding.integration.test.ts` does, and it loads later in the same
+// process, so it linked against this two-export stub and died with
+// `Export named 'updateTag' not found`. The whole file stopped being collected
+// and the run reported one anonymous failure with no test name attached.
+//
+// So: when adding a `next/cache` caller anywhere in `src/`, add its export
+// here. `grep -rn "from 'next/cache'" src` is the list.
+mock.module('next/cache', () => ({
+    revalidatePath: () => {},
+    revalidateTag: () => {},
+    updateTag: () => {},
+}));
 
 const { prisma } = await import('@/lib/prisma');
 const { cleanupTestUser, makeWin, newTestUserId } = await import('@/services/winFixtures.test-utils');

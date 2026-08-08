@@ -102,6 +102,11 @@ export const SERVER_EVENTS = [
     // event was the one the product is named after.
     'resume_generated',
 
+    // First run
+    'onboarding_resume_imported',
+    'onboarding_completed',
+    'onboarding_skipped',
+
     // Missions — PRD 05 §7
     'mission_started',
     'mission_step_completed',

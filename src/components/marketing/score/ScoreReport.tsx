@@ -18,7 +18,15 @@ import { cn } from '@/lib/utils';
 import type { AnonScoreReport, ScoreBand, ScoreFix } from '@/lib/anonScoreSchema';
 import { trackFunnelEvent } from '@/lib/funnelEvents';
 
-const SIGNUP_URL = '/sign-up?redirect_url=/build';
+/**
+ * No `?redirect_url=`. It read as the handoff's destination for months and
+ * never was one — Clerk's `forceRedirectUrl` on the sign-up page takes
+ * precedence over the query parameter, so every user who got here landed
+ * wherever that pointed regardless of what this said. The destination lives in
+ * exactly one place now, `src/app/sign-up/[[...sign-up]]/page.tsx`, and it is
+ * `/welcome`, which reads the stash written just below.
+ */
+const SIGNUP_URL = '/sign-up';
 const PENDING_SCORE_KEY = 'patronus:pendingScore';
 
 const BAND_META: Record<ScoreBand, { label: string; ring: string; text: string; chip: string }> = {

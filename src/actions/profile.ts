@@ -46,7 +46,19 @@ async function getUserId(): Promise<string | null> {
 }
 
 function revalidateProfileCaches(userId: string) {
-  updateTag(`dashboard:${userId}`);
+  // Never let cache invalidation turn a committed write into a reported
+  // failure. The callers here wrap the write and this call in one try, so a
+  // throw from `updateTag` — it requires a Server Action scope, and nested or
+  // background callers do not always have one — would tell the user their
+  // profile did not save after it already did. On the onboarding path that is
+  // a dead end: the toast says setup failed while `onboardingComplete` is true,
+  // so retrying redirects them straight past the screen they are stuck on.
+  try {
+    updateTag(`dashboard:${userId}`);
+  } catch {
+    // Stale dashboard until the next revalidation. Strictly better than
+    // claiming the save failed.
+  }
 }
 
 function normalizePreferenceInput(value: unknown): unknown {

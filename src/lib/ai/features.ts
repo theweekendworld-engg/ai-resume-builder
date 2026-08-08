@@ -21,6 +21,7 @@ export const FEATURE_TAGS = [
     'jd_parse',
     'grounding',
     'backfill',
+    'onboarding',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];

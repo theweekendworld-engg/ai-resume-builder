@@ -26,7 +26,6 @@ import { ProfileSection } from '@/components/dashboard/sections/ProfileSection';
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
 import { PdfHistorySection } from '@/components/dashboard/sections/PdfHistorySection';
 import { ApplicationsSection } from '@/components/dashboard/sections/ApplicationsSection';
-import { OnboardingDialog } from '@/components/dashboard/OnboardingDialog';
 import { DashboardTour, DASHBOARD_TOUR_STORAGE_KEY } from '@/components/dashboard/DashboardTour';
 
 export type DashboardSectionId =
@@ -109,10 +108,11 @@ export function DashboardShell({
   const [activeSection, setActiveSection] = useState<DashboardSectionId>(initialSection);
   const [navOpen, setNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // The tour waits for onboarding, which now happens at `/welcome` before
+    // anyone reaches this screen.
     if (!overview.success || !overview.profile?.onboardingComplete) return;
     if (window.localStorage.getItem(DASHBOARD_TOUR_STORAGE_KEY)) return;
     const timer = window.setTimeout(() => {
@@ -122,14 +122,6 @@ export function DashboardShell({
       window.clearTimeout(timer);
     };
   }, [overview.success, overview.profile?.onboardingComplete]);
-
-  const handleOnboardingComplete = () => {
-    setOnboardingDismissed(true);
-    setTourOpen(true);
-  };
-
-  const showOnboarding =
-    overview.success && !overview.profile?.onboardingComplete && !onboardingDismissed;
 
   const navContent = (
     <nav className="flex flex-col gap-1">
@@ -207,12 +199,6 @@ export function DashboardShell({
         </main>
       </div>
 
-      {showOnboarding && (
-        <OnboardingDialog
-          profile={profile}
-          onComplete={handleOnboardingComplete}
-        />
-      )}
       <DashboardTour open={tourOpen} onOpenChange={setTourOpen} onNavigate={setActiveSection} />
     </div>
   );
