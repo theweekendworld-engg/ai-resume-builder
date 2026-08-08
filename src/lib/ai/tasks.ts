@@ -105,3 +105,47 @@ export function resolveTaskReasoningEffort(
 ): 'minimal' | 'low' | 'medium' | 'high' | undefined {
     return TASK_REASONING_EFFORT[task];
 }
+
+/**
+ * Sampling temperature is NOT configurable here, and that is a finding rather
+ * than an omission.
+ *
+ * The 8 Aug audit ran the free checker twice on identical input and got job
+ * match 38 then 33. The obvious fix is `temperature: 0` on the reading and
+ * judging tasks — so it was built, as a per-task map exactly like the model
+ * and effort maps above.
+ *
+ * It does nothing. Every model this product uses is from the gpt-5 family, and
+ * the provider answers:
+ *
+ *   AI SDK Warning (openai.responses / gpt-5): The feature "temperature" is
+ *   not supported. temperature is not supported for reasoning models
+ *
+ * A WARNING, not an error — so the call succeeds, the setting is dropped, and
+ * a `temperature: 0` sitting in config would read for years as though
+ * determinism had been handled. That is the same shape as the "kept in sync"
+ * comment on the extension tokens: configuration that cannot fail and is not
+ * true.
+ *
+ * ── What the variance actually is ───────────────────────────────────────────
+ *
+ * Measured, three live runs of `readPosting` over one posting:
+ *
+ *   run 1  12 requirements   6 must   0 tenure-satisfiable
+ *   run 2  11 requirements   6 must   1 tenure-satisfiable
+ *   run 3  12 requirements   6 must   0 tenure-satisfiable
+ *
+ * The must-have count did not move. The difference was one duty split two ways
+ * ("Mentor engineers." + "Raise the technical bar." vs the single sentence),
+ * which changes the denominator slightly and nothing a candidate would notice.
+ *
+ * `satisfiedByTenure` DID flip, and that one matters — it decides whether the
+ * resume's date range credits a requirement. It fails closed (no flag, no
+ * credit), so the variance costs a coverage point rather than inventing a
+ * qualification, which is the right direction to be wrong in. It is not fixed.
+ *
+ * If reproducibility becomes a promise rather than an aspiration, the lever is
+ * a `seed` on the provider call plus caching the parsed brief per posting hash
+ * — not a temperature the provider ignores.
+ */
+

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { request } from '@/background/messageBus';
 import { useExtensionAuth } from '../hooks/useExtensionAuth';
 import { LogOut, ExternalLink } from 'lucide-react';
+import { SiteAccessSection } from '@/sidepanel/components/SiteAccessSection';
 
 const DEFAULT_APP_BASE = 'http://localhost:3000';
 
@@ -78,6 +79,8 @@ export function SettingsRoute() {
                 <p>Patronus Job Copilot — extension v0.1.0</p>
                 <p className="mt-1">No file uploads are stored. Autofill never auto-submits.</p>
             </section>
+        
+            <SiteAccessSection />
         </div>
     );
 }

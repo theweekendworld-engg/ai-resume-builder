@@ -2,7 +2,8 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { aiOpenAI } from '@/lib/aiProvider';
 import { calculateOpenAiCostUsd, logUsageEvent } from '@/lib/usageTracker';
-import { resolveTaskModel, resolveTaskReasoningEffort, type TaskKey } from '@/lib/ai/tasks';
+import { resolveTaskModel, resolveTaskReasoningEffort, type TaskKey ,
+} from '@/lib/ai/tasks';
 import type { FeatureTag } from '@/lib/ai/features';
 import {
     buildCorrectionPrompt,

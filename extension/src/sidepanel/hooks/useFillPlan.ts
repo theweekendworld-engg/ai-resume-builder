@@ -29,8 +29,13 @@ export function useFillPlan(): {
         }
         setState({ status: 'loading' });
         const res = await request<FillPlanWire>({ type: 'GET_FILL_PLAN', tabId });
-        if (res.ok) setState({ status: 'ready', plan: res.data });
-        else setState({ status: 'error', error: res.error });
+        // `ok` with no payload is not "ready" — it is a worker that answered
+        // without data, which happens across a service-worker restart or a
+        // version skew between the panel and the background. Trusting `ok`
+        // alone put a null plan into state and the next `plan.actions` read
+        // took the whole panel down to a white screen.
+        if (res.ok && res.data) setState({ status: 'ready', plan: res.data });
+        else setState({ status: 'error', error: res.ok ? 'no_plan_returned' : res.error });
     }, []);
 
     useEffect(() => {

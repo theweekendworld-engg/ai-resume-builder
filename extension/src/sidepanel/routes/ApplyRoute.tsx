@@ -1,5 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Loader2, FileSearch, Sparkles, Layers, BookmarkCheck, BookmarkPlus } from 'lucide-react';
+import {
+    Loader2,
+    FileSearch,
+    ShieldCheck,
+    Sparkles,
+    Layers,
+    BookmarkCheck,
+    BookmarkPlus,
+} from 'lucide-react';
 import { cn } from '@/shared/ui/cn';
 import { request } from '@/background/messageBus';
 import { usePageContext } from '../hooks/usePageContext';
@@ -14,6 +22,7 @@ import { FillUndoToast } from '../components/FillUndoToast';
 import { QuestionsCard } from '../components/QuestionsCard';
 import { useAppBaseUrl } from '../hooks/useAppBaseUrl';
 import { trackExtensionEvent } from '@/shared/lib/telemetry';
+import { useSiteAccess } from '@/sidepanel/hooks/useSiteAccess';
 
 
 const BAND_STYLES = {
@@ -25,6 +34,7 @@ const BAND_STYLES = {
 export function ApplyRoute() {
     const appBase = useAppBaseUrl();
     const { state, reparse } = usePageContext();
+    const siteAccess = useSiteAccess();
     const session = useSession();
     const completeness = useProfileCompleteness();
     const { state: fillState, apply, undo } = useFillPlan();
@@ -58,6 +68,40 @@ export function ApplyRoute() {
     }
 
     if (state.status === 'empty') {
+        /*
+         * A page we have no access to reads exactly like a page with no job on
+         * it, and the fix is completely different. The manifest declares nine
+         * job boards; on anything else the content script never ran, so there
+         * is nothing to re-scan — the user has to grant this one site first.
+         *
+         * Offering "Re-scan" there is the wrong button: it cannot work, and
+         * repeating it is all the panel gave them.
+         */
+        if (siteAccess.access.status === 'grantable') {
+            return (
+                <div className="card p-4 text-sm">
+                    <div className="mb-2 flex items-center gap-2 font-medium">
+                        <ShieldCheck className="h-4 w-4" /> Patronus is off on this site
+                    </div>
+                    <p className="text-muted-foreground">
+                        We only ask for the job boards we know how to read. Turn it on for{' '}
+                        <span className="font-medium text-foreground">{siteAccess.access.host}</span>{' '}
+                        and we will read this page too.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => void siteAccess.grant()}
+                        className="btn-primary mt-3 text-xs"
+                    >
+                        Enable on {siteAccess.access.host}
+                    </button>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                        This site only. You can remove it any time in Settings.
+                    </p>
+                </div>
+            );
+        }
+
         return (
             <div className="card p-4 text-sm">
                 <div className="mb-2 flex items-center gap-2 font-medium">

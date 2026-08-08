@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { UserButton } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   FileText,
@@ -144,6 +143,17 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-screen flex-col">
+      {/*
+        The SECTION bar, not the app bar.
+
+        `(app)/layout.tsx` renders `AppNav` above this now — brand, primary
+        destinations, "Tailor a resume" and the account menu. This header kept
+        its own `UserButton`, so the dashboard showed two bars and two avatars
+        stacked on top of each other.
+
+        What is left is what belongs to this page: which dashboard section you
+        are in, the mobile trigger for switching section, and the admin link.
+      */}
       <header className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-3">
         <div className="flex items-center gap-3">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -169,7 +179,6 @@ export function DashboardShell({
               </Button>
             </Link>
           )}
-          <UserButton />
         </div>
       </header>
 
