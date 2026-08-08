@@ -465,6 +465,99 @@ export type QuotaScope = 'period' | 'lifetime';
 export interface MeteredLimit {
   limit: number;
   scope: QuotaScope;
+  /**
+   * A taste, not an allowance.
+   *
+   * The difference matters in two places. `tierRequiredForAction` skips trial
+   * tiers, so "the cheapest plan that has this" still names Career rather than
+   * Free — otherwise a paywall would tell someone the feature they just ran out
+   * of is included on the plan they are already on. And an exhausted trial
+   * reads as an upsell rather than as an emptied bucket, because that is what
+   * it is.
+   */
+  trial?: boolean;
+}
+
+/* ── What a free account gets ───────────────────────────────────────────────
+ *
+ * Everything, a few times, and then it stops.
+ *
+ * The previous shape gave Free a hard zero on most of the product, which is
+ * the cheapest possible way to lose someone: they never see the thing they
+ * would have paid for. A metered feature that costs us tokens can be tried a
+ * few times for a few cents and sells itself far better than a locked screen.
+ *
+ * Every number here is env-overridable, and so is every per-tier limit —
+ * `ENTITLEMENT_LIMIT_<TIER>_<ACTION>`, e.g.
+ * `ENTITLEMENT_LIMIT_FREE_TAILORED_GENERATION=15`. Nothing below needs a
+ * deploy to change.
+ */
+
+/** Free uses of a metered feature before it gates. `ENTITLEMENT_FREE_TRIAL_USES` */
+export function freeTrialUses(): number {
+  return envNumber('ENTITLEMENT_FREE_TRIAL_USES', 3);
+}
+
+/**
+ * Total tailored resumes on Free, ever.
+ *
+ * Lifetime rather than monthly: resume tailoring is the thing people came for,
+ * and three a month forever is a worse deal for us AND a weaker prompt to
+ * upgrade than ten now. Someone who has made ten tailored resumes is in a job
+ * search, which is exactly when Search is worth $2.
+ *
+ * `ENTITLEMENT_FREE_RESUME_LIFETIME_CAP`
+ */
+export function freeResumeCap(): number {
+  return envNumber('ENTITLEMENT_FREE_RESUME_LIFETIME_CAP', 10);
+}
+
+/**
+ * Days of full depth on the view-only gates — the whole Radar rather than the
+ * teaser, the full rubric readiness rather than the locked verdict.
+ *
+ * A count is the wrong unit for those: they are screens, and a page refresh
+ * would burn a use. A window is the honest equivalent of "a few free uses" for
+ * something you look at rather than run.
+ *
+ * `ENTITLEMENT_FREE_TRIAL_DAYS`
+ */
+export function freeTrialDays(): number {
+  return envNumber('ENTITLEMENT_FREE_TRIAL_DAYS', 14);
+}
+
+/**
+ * Monthly token ceiling per tier. An abuse and cost backstop, not a product
+ * limit — a user should hit their feature quota long before this.
+ *
+ * Free is sized off the resume cap: a tailored generation costs roughly
+ * 25-30k tokens end to end, so ten of them plus scoring and parsing fits
+ * inside 400k with room to spare.
+ *
+ * `ENTITLEMENT_TOKENS_<TIER>`, e.g. `ENTITLEMENT_TOKENS_FREE=500000`.
+ * `unlimited` is accepted as a value.
+ */
+const TOKEN_BUDGET_DEFAULTS: Record<Tier, number> = {
+  free: 400_000,
+  always_on: 2_000_000,
+  pro: 6_000_000,
+  team: UNLIMITED,
+};
+
+export function tokenBudget(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_TOKENS_${tier.toUpperCase()}`, TOKEN_BUDGET_DEFAULTS[tier]);
+}
+
+/** Monthly spend ceiling per tier, USD. `ENTITLEMENT_COST_USD_<TIER>` */
+const COST_BUDGET_DEFAULTS: Record<Tier, number> = {
+  free: 2,
+  always_on: 10,
+  pro: 30,
+  team: UNLIMITED,
+};
+
+export function costBudgetUsd(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_COST_USD_${tier.toUpperCase()}`, COST_BUDGET_DEFAULTS[tier]);
 }
 
 /** Noun phrase for the meter: "4 of 15 tailored resumes this period". */
@@ -491,6 +584,11 @@ function lifetime(limit: number): MeteredLimit {
   return { limit, scope: 'lifetime' };
 }
 
+/** A lifetime taste of a paid feature. See {@link MeteredLimit.trial}. */
+function trial(limit: number): MeteredLimit {
+  return { limit, scope: 'lifetime', trial: true };
+}
+
 const unlimited: MeteredLimit = { limit: UNLIMITED, scope: PERIOD };
 
 /**
@@ -499,23 +597,51 @@ const unlimited: MeteredLimit = { limit: UNLIMITED, scope: PERIOD };
  * on that tier at all, which is an upsell rather than an exhausted quota.
  */
 const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
-  free: {
-    tailored_generation: period(3),
-    auto_apply: period(0),
-    // PRD 07 §6. One free reconstruction: it is the strongest demo the product
-    // has, and a user who rebuilds one job wants to rebuild the other three.
-    // `period(0)` here would have made backfill unreachable on Free the moment
-    // enforcement flipped on.
-    context_interview: lifetime(1),
-    tier2_grounding: period(0),
-    // An abuse ceiling, not a product limit: drafting is part of the capture
-    // loop we refuse to gate.
-    win_draft: period(30),
-    month_in_review: period(0),
-    review_packet: lifetime(1),
-    rubric_upload: period(0),
-    radar_refresh: period(0),
-    cover_letter: period(0),
+  /*
+   * Free is a trial of the whole product, not a crippled subset.
+   *
+   * Everything metered is available a few times and then gates. The only
+   * `period(0)` left would be an action we have decided Free should never
+   * touch, and there is currently no such action — a feature nobody can reach
+   * is a feature nobody buys.
+   *
+   * These are FUNCTIONS rather than constants because the env override is read
+   * per call, so changing a limit takes an env var and a restart rather than a
+   * deploy. See `freeTrialUses`, `freeResumeCap`.
+   */
+  get free(): Record<MeteredAction, MeteredLimit> {
+    const uses = freeTrialUses();
+    return {
+      // The one the whole funnel points at, so it gets its own number.
+      tailored_generation: { limit: freeResumeCap(), scope: 'lifetime', trial: true },
+
+      // ── Built, and therefore worth trying ────────────────────────────────
+      //
+      // PRD 07 §6 gave backfill one lifetime run, on the grounds that it is
+      // the strongest demo the product has and a user who rebuilds one job
+      // wants to rebuild the other three. Which is the argument for more
+      // than one.
+      context_interview: trial(uses),
+      month_in_review: trial(uses),
+      review_packet: trial(uses),
+      rubric_upload: trial(uses),
+
+      // An abuse ceiling, not a product limit: drafting is part of the capture
+      // loop we refuse to gate. Not a trial — it never becomes an upsell.
+      win_draft: period(30),
+
+      // ── Not built ────────────────────────────────────────────────────────
+      //
+      // A trial of a feature that does not exist is not generous, it is noise:
+      // it can never be consumed, and it would make `tierRequiredForAction`
+      // treat Free as a tier that offers the thing. These stay at zero until
+      // there is something to try. See `NO_FEATURE_YET` in
+      // `src/lib/entitlementWiring.test.ts`, which is the same list.
+      auto_apply: period(0),
+      tier2_grounding: period(0),
+      radar_refresh: period(0),
+      cover_letter: period(0),
+    };
   },
   always_on: {
     tailored_generation: period(15),
@@ -581,12 +707,30 @@ export function meteredLimit(tier: Tier, action: MeteredAction): MeteredLimit {
   const legacyVar = LEGACY_LIMIT_ENV[tier]?.[action];
   const legacy = legacyVar ? envNumber(legacyVar, base.limit) : base.limit;
   const limit = envNumber(`ENTITLEMENT_LIMIT_${tier.toUpperCase()}_${action.toUpperCase()}`, legacy);
-  return limit === base.limit ? base : { limit, scope: base.scope };
+  // `trial` must survive the override — an operator raising the free
+  // allowance is changing how MUCH of a taste it is, not turning it into the
+  // plan's permanent entitlement.
+  return limit === base.limit ? base : { ...base, limit };
 }
 
-/** The lowest tier on which an action is available at all. */
+/**
+ * The lowest tier on which an action is a real allowance rather than a taste.
+ *
+ * A trial does not count. Free now has a few of everything, so without this
+ * skip the paywall shown to an out-of-quota free user would say "that's part
+ * of Free" — naming the plan they are already on as the fix.
+ */
 export function tierRequiredForAction(action: MeteredAction): Tier {
-  return TIERS_BY_ORDER.find((tier) => meteredLimit(tier, action).limit > 0) ?? 'pro';
+  const real = TIERS_BY_ORDER.find((tier) => {
+    const limit = meteredLimit(tier, action);
+    return limit.limit > 0 && !limit.trial;
+  });
+  return real ?? 'pro';
+}
+
+/** Is this tier's access to this action a trial rather than an allowance? */
+export function isTrialLimit(tier: Tier, action: MeteredAction): boolean {
+  return meteredLimit(tier, action).trial === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -626,15 +770,15 @@ export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
   { label: 'Log history', values: ['90 days visible', 'Unlimited', 'Unlimited'] },
   { label: 'Connected sources', values: ['1', '3', '3'] },
   { label: 'Weekly digest', values: ['Included', 'Included', 'Included'] },
-  { label: 'Month in Review', values: ['—', 'Included', 'Included'] },
-  { label: 'Review packets', values: ['1 lifetime', '4 per period', '4 per period'] },
-  { label: 'Rubric mapping and readiness', values: ['—', 'Included', 'Included'] },
+  { label: 'Month in Review', values: ['3 free', 'Included', 'Included'] },
+  { label: 'Review packets', values: ['3 free', '4 per period', '4 per period'] },
+  { label: 'Rubric mapping and readiness', values: ['14-day trial', 'Included', 'Included'] },
   // `one_on_one_prep` exists in PLAN_FEATURES and nowhere else — no action,
   // no route, no service.
   { label: '1:1 prep', values: ['—', 'Included', 'Included'], built: false },
-  { label: 'Career Radar', values: ['Teaser', 'Included', 'Included, on demand'] },
+  { label: 'Career Radar', values: ['14-day trial', 'Included', 'Included, on demand'] },
   { label: 'Master resumes', values: ['1', '3', 'Unlimited'] },
-  { label: 'Tailored generations', values: ['3 per month', '15 per month', 'Unlimited'] },
+  { label: 'Tailored generations', values: ['10 total', '15 per month', 'Unlimited'] },
   // Auto-fix does not exist. `ats_auto_fix` is a flag in the feature table
   // with no implementation behind it, so the Search cell claimed a capability
   // no plan can deliver.

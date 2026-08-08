@@ -8,6 +8,19 @@ import {
   invalidateFlagCache,
   type FeatureFlagKey,
 } from '@/lib/flags';
+import { entitlementsEnforced } from '@/lib/entitlements';
+import {
+  COMPARISON_PLANS,
+  METERED_ACTIONS,
+  METERED_ACTION_LABELS,
+  costBudgetUsd,
+  freeResumeCap,
+  freeTrialDays,
+  freeTrialUses,
+  meteredLimit,
+  tokenBudget,
+  type MeteredAction,
+} from '@/lib/plans';
 import { z } from 'zod';
 import {
   getCurrentBillingPeriod,
@@ -448,4 +461,61 @@ export async function seedFeatureFlags(): Promise<{ success: boolean; seeded: nu
   const after = await prisma.featureFlag.count();
 
   return { success: true, seeded: after - before };
+}
+
+/* ── Effective limits ───────────────────────────────────────────────────────
+ *
+ * Read-only. Every value here comes from an env var with a code default, so
+ * the question "what is actually live right now" has no answer you can get by
+ * reading the source — the source only tells you the fallback.
+ */
+
+export type EffectiveLimitRow = {
+  action: MeteredAction;
+  label: string;
+  /** One cell per plan, Free / Career / Search. */
+  values: string[];
+};
+
+export type EffectiveLimits = {
+  rows: EffectiveLimitRow[];
+  tokens: { plan: string; tokens: string; costUsd: string }[];
+  trialUses: number;
+  resumeCap: number;
+  trialDays: number;
+  enforced: boolean;
+};
+
+function formatLimit(limit: { limit: number; scope: string; trial?: boolean }): string {
+  if (!Number.isFinite(limit.limit)) return 'unlimited';
+  if (limit.limit === 0) return '—';
+  const scope = limit.scope === 'lifetime' ? 'total' : 'per month';
+  return `${limit.limit} ${scope}${limit.trial ? ' (trial)' : ''}`;
+}
+
+export async function getEffectiveLimits(): Promise<EffectiveLimits> {
+  await requireAdminUserId();
+
+  const tiers = COMPARISON_PLANS.map((plan) => plan.tier);
+
+  return {
+    rows: METERED_ACTIONS.map((action) => ({
+      action,
+      label: METERED_ACTION_LABELS[action],
+      values: tiers.map((tier) => formatLimit(meteredLimit(tier, action))),
+    })),
+    tokens: COMPARISON_PLANS.map((plan) => ({
+      plan: plan.name,
+      tokens: Number.isFinite(tokenBudget(plan.tier))
+        ? tokenBudget(plan.tier).toLocaleString()
+        : 'unlimited',
+      costUsd: Number.isFinite(costBudgetUsd(plan.tier))
+        ? `$${costBudgetUsd(plan.tier)}`
+        : 'unlimited',
+    })),
+    trialUses: freeTrialUses(),
+    resumeCap: freeResumeCap(),
+    trialDays: freeTrialDays(),
+    enforced: entitlementsEnforced(),
+  };
 }

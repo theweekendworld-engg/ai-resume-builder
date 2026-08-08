@@ -14,7 +14,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { CaptureSourceKind, WinCategory, WinSource, WinStatus } from '@prisma/client';
 
 import { gateMeteredAction } from '@/lib/entitlements';
-import { CAREER_PLAN, SEARCH_PLAN } from '@/lib/plans';
+import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN, meteredLimit } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
 
 import {
@@ -259,9 +259,18 @@ describe('loaders — real data or nothing', () => {
     const userId = newUser('pw3');
     expect(await loadPw3(userId)).toBeNull();
 
-    for (let i = 0; i < 3; i += 1) await gateMeteredAction(userId, 'tailored_generation');
+    // Read the cap rather than assume it: Free's tailored generations are a
+    // lifetime cap that the operator can move (`ENTITLEMENT_FREE_RESUME_
+    // LIFETIME_CAP`). Hardcoding three made this test silently stop checking
+    // the paywall the moment the cap became ten — it just kept passing `null`
+    // through the "not exhausted yet" branch.
+    const cap = meteredLimit(FREE_PLAN.tier, 'tailored_generation').limit;
+    for (let i = 0; i < cap - 1; i += 1) await gateMeteredAction(userId, 'tailored_generation');
+    expect(await loadPw3(userId)).toBeNull();
+
+    await gateMeteredAction(userId, 'tailored_generation');
     const content = await loadPw3(userId);
-    expect(content?.headline).toBe("You've used your 3 free tailored resumes.");
+    expect(content?.headline).toBe(`You've used your ${cap} free tailored resumes.`);
   });
 
   test('PW7 appears at the source limit, with their count in it', async () => {

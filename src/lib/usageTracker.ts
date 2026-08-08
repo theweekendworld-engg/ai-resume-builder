@@ -2,6 +2,9 @@ import OpenAI from 'openai';
 import { Prisma } from '@prisma/client';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
+import { getCurrentBillingPeriod } from '@/lib/billingPeriod';
+import { getUserTier } from '@/lib/entitlements';
+import { costBudgetUsd, tokenBudget } from '@/lib/plans';
 
 const realOpenAI = new OpenAI({ apiKey: config.openai.apiKey });
 let openai: OpenAI = realOpenAI;
@@ -63,13 +66,10 @@ export type UsageLogInput = {
   metadata?: Record<string, unknown>;
 };
 
-export function getCurrentBillingPeriod(now = new Date()): { start: Date; end: Date } {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
-  const start = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(year, month + 1, 1, 0, 0, 0, 0));
-  return { start, end };
-}
+// Moved to its own module so this file can import `entitlements` for the
+// per-tier token budget without creating a cycle. Re-exported because a dozen
+// call sites import it from here.
+export { getCurrentBillingPeriod };
 
 function toTwoDecimals(value: number): number {
   return Math.round(value * 100) / 100;
@@ -126,12 +126,27 @@ export async function logUsageEvent(input: UsageLogInput): Promise<void> {
   });
 }
 
-function getMonthlyTokenLimit(): number {
-  return Number(process.env.USAGE_MAX_MONTHLY_TOKENS_PER_USER ?? 300000);
-}
-
-function getMonthlyCostLimitUsd(): number {
-  return Number(process.env.USAGE_MAX_MONTHLY_COST_USD_PER_USER ?? 10);
+/**
+ * The backstop, per tier.
+ *
+ * One global number gave a paying Search customer the same ceiling as an
+ * anonymous free account — either too tight to sell or too loose to protect
+ * us, and it could not be both. `USAGE_MAX_MONTHLY_TOKENS_PER_USER` is still
+ * honoured as a hard cap ACROSS all tiers, so an existing deployment that set
+ * it keeps its ceiling.
+ *
+ * This is a cost and abuse backstop, not a product limit. A user should meet
+ * their feature quota — ten resumes, three Month in Reviews — long before they
+ * meet this, and if they do not, the tier's budget is set wrong.
+ */
+async function budgetFor(userId: string): Promise<{ tokens: number; costUsd: number }> {
+  const tier = await getUserTier(userId);
+  const globalTokens = process.env.USAGE_MAX_MONTHLY_TOKENS_PER_USER;
+  const globalCost = process.env.USAGE_MAX_MONTHLY_COST_USD_PER_USER;
+  return {
+    tokens: globalTokens ? Math.min(tokenBudget(tier), Number(globalTokens)) : tokenBudget(tier),
+    costUsd: globalCost ? Math.min(costBudgetUsd(tier), Number(globalCost)) : costBudgetUsd(tier),
+  };
 }
 
 async function getCurrentPeriodUsage(userId: string): Promise<{ totalTokens: number; totalCostUsd: number }> {
@@ -176,17 +191,18 @@ async function getCurrentPeriodUsage(userId: string): Promise<{ totalTokens: num
 }
 
 export async function enforceUsageLimit(userId: string): Promise<void> {
-  const tokenLimit = getMonthlyTokenLimit();
-  const costLimit = getMonthlyCostLimitUsd();
-  if (tokenLimit <= 0 && costLimit <= 0) return;
+  const { tokens: tokenLimit, costUsd: costLimit } = await budgetFor(userId);
+  const tokenCapped = Number.isFinite(tokenLimit) && tokenLimit > 0;
+  const costCapped = Number.isFinite(costLimit) && costLimit > 0;
+  if (!tokenCapped && !costCapped) return;
 
   const usage = await getCurrentPeriodUsage(userId);
 
-  if (tokenLimit > 0 && usage.totalTokens >= tokenLimit) {
+  if (tokenCapped && usage.totalTokens >= tokenLimit) {
     throw new Error('Monthly token usage limit reached for your account');
   }
 
-  if (costLimit > 0 && usage.totalCostUsd >= costLimit) {
+  if (costCapped && usage.totalCostUsd >= costLimit) {
     throw new Error('Monthly usage cost limit reached for your account');
   }
 }

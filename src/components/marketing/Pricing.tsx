@@ -25,8 +25,8 @@ const HIGHLIGHTS: Record<string, readonly string[]> = {
         'Unlimited wins, kept forever',
         'GitHub auto-drafting',
         'Weekly digest',
-        'One brag doc',
-        'ATS resume score',
+        '10 tailored resumes',
+        'Everything else, a few times over',
     ],
     career: [
         'Everything in Free',

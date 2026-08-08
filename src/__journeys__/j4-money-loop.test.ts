@@ -31,8 +31,8 @@ import { NextRequest } from 'next/server';
 import { GroundState, PacketStatus, PacketType, Tier, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { invalidateFlagCache } from '@/lib/flags';
-import { getSubscriptionState } from '@/lib/entitlements';
-import { PLAN_CATALOG, planName } from '@/lib/plans';
+import { gateMeteredAction, getSubscriptionState } from '@/lib/entitlements';
+import { PLAN_CATALOG, meteredLimit, planName } from '@/lib/plans';
 import {
     assertGrounded,
     assertNoDeadJobs,
@@ -41,6 +41,9 @@ import {
     drainJobs,
     purge,
 } from './harness';
+
+/** Free's context-interview trial, read from the catalog rather than assumed. */
+const TRIAL = meteredLimit(Tier.free, 'context_interview').limit;
 
 const WEBHOOK_SECRET = 'whsec_journey_d4';
 
@@ -367,7 +370,15 @@ test('the free plan surface shows the user their own numbers, named from the cat
     // Nobody should discover a limit by hitting it: every action is listed,
     // including the ones this plan does not include.
     expect(page.usage.length).toBeGreaterThan(5);
-    expect(line).toMatchObject({ used: 0, limit: 1, remaining: 1, scope: 'lifetime', available: true });
+    // The size of the free allowance is an operator knob; that it is a
+    // LIFETIME one, fully unspent, and shown to the user is the journey.
+    expect(line).toMatchObject({
+        used: 0,
+        limit: TRIAL,
+        remaining: TRIAL,
+        scope: 'lifetime',
+        available: true,
+    });
 
     record('planPage', page.planName, page.planBlurb, page.priceLabel);
     for (const entry of page.usage) record('planPage.usage', entry.label);
@@ -375,7 +386,10 @@ test('the free plan surface shows the user their own numbers, named from the cat
 
 // ═══════════════════════════════ 3. consume to the limit, then hit the wall
 
-test('a free user spends their one lifetime interview', async () => {
+test('a free user spends their whole lifetime trial', async () => {
+    // Free is a trial of the product rather than a locked version of it, so
+    // this is however many the trial is — the point is that it runs out and
+    // never refills, not that it is one.
     const opened = await backfill.startBackfillSession({
         subjectType: 'employer',
         subjectId: employerAId,
@@ -384,8 +398,14 @@ test('a free user spends their one lifetime interview', async () => {
     });
     expect(opened).toMatchObject({ success: true });
 
+    for (let spent = 1; spent < TRIAL; spent += 1) {
+        await gateMeteredAction(journey.userId, 'context_interview');
+    }
+
     const { line } = await usageLine('context_interview');
-    expect(line).toMatchObject({ used: 1, limit: 1, remaining: 0, scope: 'lifetime' });
+    expect(line).toMatchObject({ used: TRIAL, limit: TRIAL, remaining: 0, scope: 'lifetime' });
+    // Nothing to wait for. That is what makes the next screen an upgrade
+    // prompt rather than "come back next month".
     expect(line.resetsOn).toBeNull();
 });
 
@@ -400,15 +420,15 @@ test('the next call is refused, with the numbers from their own record', async (
     expect(refused).toMatchObject({ success: false, code: 'entitlement_required' });
     if (refused.success) return;
 
-    // Their real limit and their real plan, not a placeholder.
-    expect(refused.error).toContain('1');
-    expect(refused.error).toContain(PLAN_CATALOG.free.name);
+    // Their real limit and the plan that continues it, not a placeholder.
+    expect(refused.error).toContain(String(TRIAL));
+    expect(refused.error).toContain(PLAN_CATALOG.always_on.name);
     record('entitlement refusal', refused.error);
 
     // Refused means refused: no second session, and the counter did not move.
     expect(await prisma.interviewSession.count({ where: { userId: journey.userId } })).toBe(1);
     const { line } = await usageLine('context_interview');
-    expect(line).toMatchObject({ used: 1, remaining: 0 });
+    expect(line).toMatchObject({ used: TRIAL, remaining: 0 });
 
     const exhausted = await prisma.funnelEvent.findFirst({
         where: { userId: journey.userId, type: 'quota_exhausted' },

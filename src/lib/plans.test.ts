@@ -209,17 +209,26 @@ describe('numeric attributes', () => {
 });
 
 describe('metered limits', () => {
-  test('the PRD allotments', () => {
-    expect(meteredLimit(Tier.free, 'tailored_generation').limit).toBe(3);
+  test('the allotments', () => {
+    // Free's tailored generations became 10 LIFETIME rather than 3 a month.
+    // Three a month forever is a worse deal for us and a weaker prompt to
+    // upgrade than ten now — someone who has made ten is in a job search,
+    // which is exactly when Search is worth $2. See `freeResumeCap`.
+    expect(meteredLimit(Tier.free, 'tailored_generation').limit).toBe(10);
+    expect(meteredLimit(Tier.free, 'tailored_generation').scope).toBe('lifetime');
     expect(meteredLimit(Tier.always_on, 'tailored_generation').limit).toBe(15);
     expect(isUnlimited(meteredLimit(Tier.pro, 'tailored_generation').limit)).toBe(true);
     expect(meteredLimit(Tier.always_on, 'cover_letter').limit).toBe(3);
     expect(isUnlimited(meteredLimit(Tier.pro, 'cover_letter').limit)).toBe(true);
   });
 
-  test('the Free brag doc is one LIFETIME packet, not one a month', () => {
+  test('the Free packet allowance is lifetime, and now a trial of three', () => {
+    // Was `lifetime(1)`. Free is a trial of the whole product now, so the
+    // number moved with every other trial — but the SCOPE is the part that
+    // matters and has not: a lifetime counter never refills, which is what
+    // makes it an upgrade prompt rather than a wait.
     const free = meteredLimit(Tier.free, 'review_packet');
-    expect(free).toEqual({ limit: 1, scope: 'lifetime' });
+    expect(free).toEqual({ limit: 3, scope: 'lifetime', trial: true });
     expect(meteredLimit(Tier.always_on, 'review_packet')).toEqual({ limit: 4, scope: 'period' });
   });
 

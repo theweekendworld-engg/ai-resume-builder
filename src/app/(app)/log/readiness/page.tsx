@@ -5,6 +5,7 @@ import { ReadinessScreen } from '@/components/packets/ReadinessScreen';
 import { getUserTier, hasFeature } from '@/lib/entitlements';
 import { isEnabled } from '@/lib/flags';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
+import { hasFeatureOrTrial, loadTrialWindow } from '@/lib/trialWindow';
 
 export const metadata = {
     title: 'Level readiness · Patronus',
@@ -31,13 +32,14 @@ export default async function ReadinessPage({
 
     const params = await searchParams;
 
-    const [report, frameworks, tier] = await Promise.all([
+    const [report, frameworks, tier, window] = await Promise.all([
         getReadiness({
             frameworkId: params.framework ?? null,
             targetLevel: params.level ?? null,
         }),
         listFrameworkOptions(),
         getUserTier(userId),
+        loadTrialWindow(userId),
     ]);
 
     if (!report.success) notFound();
@@ -48,7 +50,8 @@ export default async function ReadinessPage({
             frameworks={frameworks.success ? frameworks.data : []}
             // Gate on the capability, not the tier name (CLAUDE.md rule 4):
             // a raw enum comparison silently breaks the moment a plan is added.
-            locked={!hasFeature(tier, 'rubric_mapping')}
+            // Free accounts see the real verdict for their trial window.
+            locked={!hasFeatureOrTrial(tier, 'rubric_mapping', window)}
         />
     );
 }

@@ -12,7 +12,7 @@
  * `afterEach` — never assume an empty table.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { Tier } from '@prisma/client';
 
 import {
@@ -30,7 +30,7 @@ import {
   requireFeature,
   __testing,
 } from './entitlements';
-import { METERED_ACTIONS } from './plans';
+import { METERED_ACTIONS, meteredLimit } from './plans';
 import { prisma } from './prisma';
 import { getCurrentBillingPeriod } from './usageTracker';
 
@@ -223,13 +223,31 @@ describe('feature gates are a table lookup, not a query (PRD 06 §3.3)', () => {
   });
 });
 
+/*
+ * The free tailored-generation cap is operator-tunable (10 by default, env
+ * `ENTITLEMENT_FREE_RESUME_LIFETIME_CAP`). These tests are about consuming,
+ * racing and refunding — not about the number — so they pin it to something
+ * small and assert against the pinned value. Hardcoding 3 is what made them
+ * fail the moment the free tier was re-shaped, which is a test measuring
+ * config rather than behaviour.
+ */
+const CAP = 3;
+
+beforeAll(() => {
+  process.env.ENTITLEMENT_LIMIT_FREE_TAILORED_GENERATION = String(CAP);
+});
+
+afterAll(() => {
+  delete process.env.ENTITLEMENT_LIMIT_FREE_TAILORED_GENERATION;
+});
+
 describe('metered consume', () => {
   test('consuming decrements the remainder and writes one row', async () => {
     const userId = newUser('consume');
     const first = await gateMeteredAction(userId, 'tailored_generation');
     expect(first.allowed).toBe(true);
-    expect(first.limit).toBe(3);
-    expect(first.remaining).toBe(2);
+    expect(first.limit).toBe(CAP);
+    expect(first.remaining).toBe(CAP - 1);
 
     const check = await checkEntitlement(userId, 'tailored_generation');
     expect(check.used).toBe(1);
@@ -246,15 +264,21 @@ describe('metered consume', () => {
         Array.from({ length: 6 }, () => gateMeteredAction(userId, 'tailored_generation'))
       );
       const allowed = results.filter((r) => r.status === 'fulfilled').length;
-      expect(allowed).toBe(3);
+      expect(allowed).toBe(CAP);
 
-      const { start } = getCurrentBillingPeriod();
+      // Free's tailored generations are a LIFETIME cap now, so the counter
+      // lives at the epoch rather than at this month's start. Querying the
+      // current period would find no row and quietly assert nothing.
       const row = await prisma.usageQuota.findUnique({
         where: {
-          userId_periodStart_action: { userId, periodStart: start, action: 'tailored_generation' },
+          userId_periodStart_action: {
+            userId,
+            periodStart: __testing.LIFETIME_PERIOD_START,
+            action: 'tailored_generation',
+          },
         },
       });
-      expect(row?.used).toBe(3);
+      expect(row?.used).toBe(CAP);
     } finally {
       process.env.ENTITLEMENTS_ENFORCE = 'false';
     }
@@ -290,12 +314,12 @@ describe('metered consume', () => {
 describe('soft mode (PRD 06 §4)', () => {
   test('over quota still completes, records the overage, and says by how much', async () => {
     const userId = newUser('soft');
-    for (let i = 0; i < 3; i += 1) await gateMeteredAction(userId, 'tailored_generation');
+    for (let i = 0; i < CAP; i += 1) await gateMeteredAction(userId, 'tailored_generation');
 
     const fourth = await gateMeteredAction(userId, 'tailored_generation');
     expect(fourth.allowed).toBe(true);
-    expect(fourth.used).toBe(4);
-    expect(fourth.limit).toBe(3);
+    expect(fourth.used).toBe(CAP + 1);
+    expect(fourth.limit).toBe(CAP);
 
     const events = await prisma.funnelEvent.findMany({
       where: { userId, type: 'entitlement_soft_allowed' },
@@ -308,7 +332,7 @@ describe('soft mode (PRD 06 §4)', () => {
     const userId = newUser('hard');
     process.env.ENTITLEMENTS_ENFORCE = 'true';
     try {
-      for (let i = 0; i < 3; i += 1) await gateMeteredAction(userId, 'tailored_generation');
+      for (let i = 0; i < CAP; i += 1) await gateMeteredAction(userId, 'tailored_generation');
       await expect(gateMeteredAction(userId, 'tailored_generation')).rejects.toThrow();
 
       const events = await prisma.funnelEvent.findMany({
@@ -325,14 +349,14 @@ describe('refundMeteredAction (PRD 06 §8)', () => {
   test('a terminal failure gives the unit back', async () => {
     const userId = newUser('refund');
     const consumed = await gateMeteredAction(userId, 'tailored_generation');
-    expect(consumed.remaining).toBe(2);
+    expect(consumed.remaining).toBe(CAP - 1);
 
     const refunded = await refundMeteredAction(userId, 'tailored_generation');
     expect(refunded).toBe(true);
 
     const after = await checkEntitlement(userId, 'tailored_generation');
     expect(after.used).toBe(0);
-    expect(after.remaining).toBe(3);
+    expect(after.remaining).toBe(CAP);
   });
 
   test('a double refund cannot mint quota', async () => {
@@ -361,7 +385,7 @@ describe('refundMeteredAction (PRD 06 §8)', () => {
     const userId = newUser('refund-respend');
     process.env.ENTITLEMENTS_ENFORCE = 'true';
     try {
-      for (let i = 0; i < 3; i += 1) await gateMeteredAction(userId, 'tailored_generation');
+      for (let i = 0; i < CAP; i += 1) await gateMeteredAction(userId, 'tailored_generation');
       await expect(gateMeteredAction(userId, 'tailored_generation')).rejects.toThrow();
 
       await refundMeteredAction(userId, 'tailored_generation');
@@ -386,9 +410,17 @@ describe('lifetime quotas — the Free brag doc', () => {
     });
     expect(row?.periodStart.getTime()).toBe(__testing.LIFETIME_PERIOD_START.getTime());
 
-    const second = await checkEntitlement(userId, 'review_packet');
-    expect(second.allowed).toBe(false);
-    expect(second.reason).toBe('quota exhausted');
+    // Free gets a trial of three packets rather than the single lifetime one
+    // it used to, so exhausting it takes the whole allowance.
+    const trialSize = meteredLimit(Tier.free, 'review_packet').limit;
+    for (let i = 1; i < trialSize; i += 1) await gateMeteredAction(userId, 'review_packet');
+
+    const spent = await checkEntitlement(userId, 'review_packet');
+    expect(spent.allowed).toBe(false);
+    expect(spent.reason).toBe('quota exhausted');
+    // And it reads as an upsell, because a lifetime trial has no next period.
+    expect(spent.requiresUpgrade).toBe(true);
+    expect(spent.requiredTier).toBe(Tier.always_on);
   });
 
   test('on Career the same action is a per-period quota of 4', async () => {
@@ -413,9 +445,12 @@ describe('getEntitlementSnapshot — the plan page read model', () => {
 
     const tailored = snapshot.usage.find((u) => u.action === 'tailored_generation');
     expect(tailored?.used).toBe(1);
-    expect(tailored?.limit).toBe(3);
-    expect(tailored?.remaining).toBe(2);
-    expect(tailored?.resetsOn).not.toBeNull();
+    expect(tailored?.limit).toBe(CAP);
+    expect(tailored?.remaining).toBe(CAP - 1);
+    // Null, and that is the point: a lifetime cap never resets, so the plan
+    // page must not print a date implying it will.
+    expect(tailored?.scope).toBe('lifetime');
+    expect(tailored?.resetsOn).toBeNull();
 
     const autoApply = snapshot.usage.find((u) => u.action === 'auto_apply');
     expect(autoApply?.available).toBe(false);

@@ -23,6 +23,7 @@ import { WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { isEnabled } from '@/lib/flags';
+import { hasFeatureOrTrial, loadTrialWindow } from '@/lib/trialWindow';
 import { getUserTier, hasFeature } from '@/lib/entitlements';
 import { track } from '@/lib/track';
 import {
@@ -246,13 +247,17 @@ export async function getRadar(): Promise<Result<RadarView>> {
     if (!userId) return err('Not signed in', 'unauthenticated');
     if (!(await isEnabled(userId, 'career_radar'))) return err('Not available yet', 'not_found');
 
-    const [inferred, corpusResult, tier] = await Promise.all([
+    const [inferred, corpusResult, tier, window] = await Promise.all([
         inferProfile(userId),
         buildCorpus(userId),
         getUserTier(userId),
+        loadTrialWindow(userId),
     ]);
 
-    const locked = !hasFeature(tier, 'radar_full');
+    // A free account sees the whole Radar for its trial window rather than the
+    // teaser. Counting views would be the wrong unit — a refresh would spend
+    // one — so this is time, not uses. See `src/lib/trialWindow.ts`.
+    const locked = !hasFeatureOrTrial(tier, 'radar_full', window);
 
     // Companies the user already tracks, plus their current employer — §4
     // excludes both, because showing someone a job they already applied for is

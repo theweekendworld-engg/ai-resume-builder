@@ -1,9 +1,15 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { getAdminDashboardData, listFeatureFlags, refreshCurrentUsageSummaries } from '@/actions/admin';
-import type { AdminDashboardData, FeatureFlagRow } from '@/actions/admin';
+import {
+  getAdminDashboardData,
+  getEffectiveLimits,
+  listFeatureFlags,
+  refreshCurrentUsageSummaries,
+} from '@/actions/admin';
+import type { AdminDashboardData, EffectiveLimits, FeatureFlagRow } from '@/actions/admin';
 import { FeatureFlagPanel } from '@/components/admin/FeatureFlagPanel';
+import { EffectiveLimitsPanel } from '@/components/admin/EffectiveLimitsPanel';
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -12,8 +18,13 @@ function formatUsd(value: number): string {
 export default async function AdminDashboardPage() {
   let data: AdminDashboardData;
   let flags: FeatureFlagRow[];
+  let limits: EffectiveLimits;
   try {
-    [data, flags] = await Promise.all([getAdminDashboardData(), listFeatureFlags()]);
+    [data, flags, limits] = await Promise.all([
+      getAdminDashboardData(),
+      listFeatureFlags(),
+      getEffectiveLimits(),
+    ]);
   } catch {
     redirect('/dashboard');
   }
@@ -46,6 +57,10 @@ export default async function AdminDashboardPage() {
           can reach. Usage numbers are diagnostics; this is the product. */}
       <div className="mb-8">
         <FeatureFlagPanel initial={flags} />
+      </div>
+
+      <div className="mb-8">
+        <EffectiveLimitsPanel limits={limits} />
       </div>
 
       <section className="mb-8 grid gap-4 md:grid-cols-3">

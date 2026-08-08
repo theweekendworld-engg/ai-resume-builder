@@ -5,6 +5,7 @@ import {
   METERED_ACTION_LABELS,
   PLAN_FEATURES,
   UNLIMITED,
+  isTrialLimit,
   isUnlimited,
   maxTier,
   meteredLimit,
@@ -17,7 +18,7 @@ import {
   type SubscriptionSlot,
 } from '@/lib/plans';
 import { track } from '@/lib/track';
-import { getCurrentBillingPeriod } from '@/lib/usageTracker';
+import { getCurrentBillingPeriod } from '@/lib/billingPeriod';
 
 /**
  * Entitlement layer (PRD 06 §3).
@@ -269,10 +270,32 @@ export class EntitlementError extends Error {
  * plan" is both meaningless and a rule-4 violation (CLAUDE.md).
  */
 function entitlementMessage(decision: EntitlementDecision): string {
-  if (decision.action === null || decision.requiresUpgrade) {
+  if (decision.action === null) {
     return `That's part of ${planName(decision.requiredTier)}, not ${planName(decision.tier)}.`;
   }
+
   const noun = METERED_ACTION_LABELS[decision.action].toLowerCase();
+
+  // An exhausted trial is a different sentence from an exhausted allowance.
+  // They did not run out of something they pay for; they finished looking at
+  // something they do not. Naming both halves — what they used and where it
+  // continues — is the whole reason to give a trial in the first place.
+  if (isTrialLimit(decision.tier, decision.action)) {
+    // `planName(tier)` rather than the adjective "free": lowercase `free` is
+    // the raw `Tier` column value, and CLAUDE.md rule 4 keeps it out of copy.
+    // The j4 journey asserts this, and caught it.
+    // The label uncased: "3 month in review" reads as a typo, and the labels
+    // are already written as meter nouns ("Tailored resumes", "Review packets").
+    const label = METERED_ACTION_LABELS[decision.action];
+    return `You've used all ${decision.limit} ${label} on ${planName(
+      decision.tier
+    )} — ${planName(decision.requiredTier)} continues them.`;
+  }
+
+  if (decision.requiresUpgrade) {
+    return `That's part of ${planName(decision.requiredTier)}, not ${planName(decision.tier)}.`;
+  }
+
   return decision.scope === 'lifetime'
     ? `You've used your ${decision.limit} ${noun} on ${planName(decision.tier)}.`
     : `You've used your ${decision.limit} ${noun} for this period.`;
@@ -372,8 +395,9 @@ export async function checkEntitlementForTier(
 
   const used = await usedFor(userId, action, start);
   const remaining = Math.max(0, limit - used);
+  const exhausted = used >= limit;
   return {
-    allowed: used < limit,
+    allowed: !exhausted,
     tier,
     action,
     feature: null,
@@ -383,8 +407,10 @@ export async function checkEntitlementForTier(
     scope,
     resetsOn: end,
     requiredTier,
-    requiresUpgrade: false,
-    reason: used < limit ? undefined : 'quota exhausted',
+    // A spent trial IS an upsell: there is no next period that refills it, and
+    // the paywall should offer the plan rather than a wait.
+    requiresUpgrade: exhausted && isTrialLimit(tier, action),
+    reason: exhausted ? 'quota exhausted' : undefined,
   };
 }
 
@@ -456,6 +482,8 @@ export async function gateMeteredAction(
   const remaining = Math.max(0, limit - used);
 
   if (!consumed) {
+    // A spent trial has no next period to wait for, so it is an upsell.
+    const spentTrial = isTrialLimit(tier, action);
     const decision: EntitlementDecision = {
       allowed: false,
       tier,
@@ -467,11 +495,11 @@ export async function gateMeteredAction(
       scope,
       resetsOn: end,
       requiredTier,
-      requiresUpgrade: false,
+      requiresUpgrade: spentTrial,
       reason: 'quota exhausted',
     };
     if (enforce) {
-      await track(userId, 'quota_exhausted', { action, tier, requiresUpgrade: false });
+      await track(userId, 'quota_exhausted', { action, tier, requiresUpgrade: spentTrial });
       throw new EntitlementError(decision);
     }
     // Soft mode: record the overage so the usage data stays real, then allow.
