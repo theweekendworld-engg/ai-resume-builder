@@ -1,3 +1,5 @@
+import { Section, SectionIntro } from './Section';
+
 /**
  * Name the pain before the mechanism.
  *
@@ -35,35 +37,31 @@ const MOMENTS = [
 
 export function TheProblem() {
     return (
-        <section className="border-b border-border/40 bg-card/20">
-            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
-                <div className="max-w-2xl">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
-                        The problem
-                    </p>
-                    <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                        Nobody keeps the brag doc.
-                    </h2>
-                    <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+        <Section className="bg-card/20">
+            <SectionIntro
+                eyebrow="The problem"
+                title="Nobody keeps the brag doc."
+                lead={
+                    <>
                         Not because people are lazy — because writing about yourself, weekly, with
                         no immediate payoff, is a habit almost nobody sustains. So the record only
                         gets built at the exact moment it is most expensive to build.
-                    </p>
-                </div>
+                    </>
+                }
+            />
 
-                <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
-                    {MOMENTS.map((moment) => (
-                        <div key={moment.when} className="bg-background/60 p-6">
-                            <p className="font-heading text-sm font-semibold text-foreground">
-                                {moment.when}
-                            </p>
-                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                                {moment.pain}
-                            </p>
-                        </div>
-                    ))}
-                </div>
+            <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
+                {MOMENTS.map((moment) => (
+                    <div key={moment.when} className="bg-background/60 p-6">
+                        <p className="font-heading text-sm font-semibold text-foreground">
+                            {moment.when}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            {moment.pain}
+                        </p>
+                    </div>
+                ))}
             </div>
-        </section>
+        </Section>
     );
 }

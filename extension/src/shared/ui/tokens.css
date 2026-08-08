@@ -2,51 +2,245 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens — kept in sync with the web app's tailwind theme so the
-   extension feels like the same product. Values are HSL channels so tailwind
-   utilities can apply alpha via `/<alpha-value>`. */
+/*
+ * Design tokens — a VERBATIM mirror of the web app's `src/app/globals.css`.
+ *
+ * ── What this replaces ──────────────────────────────────────────────────────
+ *
+ * The previous version carried the comment "kept in sync with the web app's
+ * tailwind theme so the extension feels like the same product" above a set of
+ * values that had never matched it:
+ *
+ *              app (light)        extension (light)
+ *   primary    205 78% 42%        217 91% 60%   ← generic Tailwind blue-500
+ *   background 210 20% 99%        0 0% 100%
+ *   foreground 222 35% 12%        222 47% 11%
+ *   border     214 18% 89%        214 32% 91%
+ *   success    152 62% 30%        142 71% 45%   ← different hue, and 2.5:1 on
+ *                                                 white, against a 4.5:1 floor
+ *                                                 this project sets for itself
+ *
+ * It also used different NAMES — `--bg` and `--surface` where the app has
+ * `--background` and `--card` — so the two could not be diffed even by eye,
+ * and it was missing `--secondary`, `--accent`, `--ring`, `--border-strong`,
+ * `--danger`, `--info`, `--radius` and every motion token.
+ *
+ * The net effect: the side panel was a different product wearing the same
+ * name, in the one place where the user has our web app open in the next tab.
+ *
+ * `extension/src/shared/ui/tokens.parity.test.ts` now parses both files and
+ * fails when a value drifts, so the comment above can no longer become untrue
+ * quietly.
+ */
+
+/* ── Fonts ──────────────────────────────────────────────────────────────────
+ *
+ * Self-hosted, because MV3's content security policy blocks remote font loads
+ * outright. The old stack asked for `'Inter'` and got whatever the OS had —
+ * which on most machines is nothing, so the panel silently rendered in
+ * system-ui while the web app rendered in Inter and Sora.
+ *
+ * Latin subsets of the same variable faces `next/font` serves on the web
+ * (Inter 400-600, Sora 600). 63KB for both.
+ */
+/*
+ * The token blocks below sit OUTSIDE `@layer base` on purpose.
+ *
+ * Tailwind purges rules inside `@layer` whose selectors do not appear in the
+ * content glob. Nothing in the panel's markup writes `.dark` — it has no theme
+ * switcher — so the entire dark block was stripped from every build this
+ * extension has ever produced. Dark mode looked implemented in source and had
+ * never once shipped, which is exactly the class of bug a comment claiming
+ * parity hides. Unlayered CSS is emitted verbatim.
+ */
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('./fonts/Inter-latin.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Sora';
+    font-style: normal;
+    font-weight: 500 700;
+    font-display: swap;
+    src: url('./fonts/Sora-latin.woff2') format('woff2');
+}
+
+
+/* Theme-independent — mirrors globals.css. */
+:root {
+    --radius: 0.625rem;
+
+    --duration-micro: 120ms;
+    --duration-state: 180ms;
+    --duration-enter: 220ms;
+    --duration-exit: 160ms;
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-state: cubic-bezier(0.2, 0, 0, 1);
+    --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* ── Light (default) — design/00 §3.1 ─────────────────────────────────── */
+:root,
+.light {
+    color-scheme: light;
+
+    --background: 210 20% 99%;
+    --foreground: 222 35% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 35% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 35% 12%;
+
+    --primary: 205 78% 42%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 22% 96%;
+    --secondary-foreground: 222 30% 18%;
+    --muted: 210 22% 96%;
+    --muted-foreground: 215 14% 42%;
+    --accent: 205 70% 94%;
+    --accent-foreground: 205 78% 30%;
+    --destructive: 0 68% 46%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 18% 89%;
+    --input: 214 18% 89%;
+    --ring: 205 78% 42%;
+    --glow: 205 78% 55%;
+
+    --border-strong: 214 16% 58%;
+
+    --success: 152 62% 30%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 95% 31%;
+    --warning-foreground: 0 0% 100%;
+    --danger: 0 68% 46%;
+    --danger-foreground: 0 0% 100%;
+    --info: 205 78% 42%;
+    --info-foreground: 0 0% 100%;
+}
+
+/* ── Dark ─────────────────────────────────────────────────────────────── */
+.dark {
+    color-scheme: dark;
+
+    --background: 222 42% 6%;
+    --foreground: 210 18% 96%;
+    --card: 222 32% 9%;
+    --card-foreground: 210 18% 96%;
+    --popover: 222 32% 9%;
+    --popover-foreground: 210 18% 96%;
+
+    --primary: 205 85% 72%;
+    --primary-foreground: 222 42% 8%;
+
+    --secondary: 215 25% 14%;
+    --secondary-foreground: 210 18% 96%;
+    --muted: 215 25% 14%;
+    --muted-foreground: 215 12% 52%;
+    --accent: 205 75% 78%;
+    --accent-foreground: 222 42% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 22% 16%;
+    --input: 215 25% 14%;
+    --ring: 205 85% 72%;
+    --glow: 205 85% 72%;
+
+    --border-strong: 215 16% 44%;
+
+    --success: 152 50% 55%;
+    --success-foreground: 222 42% 8%;
+    --warning: 38 88% 62%;
+    --warning-foreground: 222 42% 8%;
+    --danger: 0 72% 58%;
+    --danger-foreground: 222 42% 8%;
+    --info: 205 85% 72%;
+    --info-foreground: 222 42% 8%;
+}
+
+/*
+ * `prefers-color-scheme`, because the panel has no theme switcher of its own.
+ *
+ * The web app drives light/dark from a `next-themes` class in localStorage,
+ * which a side panel in another origin cannot read. Following the browser is
+ * the honest equivalent, and `.dark` below still wins when something sets it
+ * explicitly.
+ *
+ * `:not(.light)` so an explicit light choice is not overridden by the OS.
+ */
+@media (prefers-color-scheme: dark) {
+    :root:not(.light) {
+        color-scheme: dark;
+
+        --background: 222 42% 6%;
+        --foreground: 210 18% 96%;
+        --card: 222 32% 9%;
+        --card-foreground: 210 18% 96%;
+        --popover: 222 32% 9%;
+        --popover-foreground: 210 18% 96%;
+        --primary: 205 85% 72%;
+        --primary-foreground: 222 42% 8%;
+        --secondary: 215 25% 14%;
+        --secondary-foreground: 210 18% 96%;
+        --muted: 215 25% 14%;
+        --muted-foreground: 215 12% 52%;
+        --accent: 205 75% 78%;
+        --accent-foreground: 222 42% 8%;
+        --destructive: 0 72% 51%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 215 22% 16%;
+        --input: 215 25% 14%;
+        --ring: 205 85% 72%;
+        --border-strong: 215 16% 44%;
+        --success: 152 50% 55%;
+        --success-foreground: 222 42% 8%;
+        --warning: 38 88% 62%;
+        --warning-foreground: 222 42% 8%;
+        --danger: 0 72% 58%;
+        --danger-foreground: 222 42% 8%;
+        --info: 205 85% 72%;
+        --info-foreground: 222 42% 8%;
+    }
+}
+
 @layer base {
-    :root {
-        --bg: 0 0% 100%;
-        --surface: 0 0% 100%;
-        --foreground: 222 47% 11%;
-        --muted: 210 40% 96%;
-        --muted-foreground: 215 16% 47%;
-        --border: 214 32% 91%;
-        --primary: 217 91% 60%;
-        --primary-foreground: 0 0% 100%;
-        --destructive: 0 84% 60%;
-        --success: 142 71% 45%;
-        --warning: 38 92% 50%;
-    }
-
-    .dark {
-        --bg: 222 47% 7%;
-        --surface: 222 47% 9%;
-        --foreground: 210 40% 98%;
-        --muted: 217 33% 17%;
-        --muted-foreground: 215 20% 65%;
-        --border: 217 33% 22%;
-        --primary: 217 91% 60%;
-        --primary-foreground: 0 0% 100%;
-        --destructive: 0 63% 50%;
-        --success: 142 71% 45%;
-        --warning: 38 92% 50%;
-    }
-
     html,
     body {
         margin: 0;
         padding: 0;
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
         font-feature-settings: 'cv11', 'ss01';
+        /*
+         * 13/20 is the app's `mono`/`small` end of the scale, and it is the
+         * right default for a 400px panel — but it is now a deliberate
+         * DENSITY choice against a shared scale rather than a private one.
+         * See `fontSize` in tailwind.config.ts.
+         */
         font-size: 13px;
         line-height: 20px;
     }
 
     body {
-        background: hsl(var(--bg));
+        background: hsl(var(--background));
         color: hsl(var(--foreground));
+    }
+
+    /*
+     * Sora for structure, Inter for content — design/00 §4.1. The panel had no
+     * heading face at all, so every h1..h3 rendered in the body font and the
+     * type had no hierarchy beyond weight.
+     */
+    h1,
+    h2,
+    h3,
+    .font-heading {
+        font-family: 'Sora', 'Inter', system-ui, sans-serif;
+        letter-spacing: -0.01em;
     }
 
     *,
@@ -54,23 +248,31 @@
     *::after {
         box-sizing: border-box;
     }
+
+    /* One focus language, matching `focusRing` in the app's pattern tokens. */
+    :focus-visible {
+        outline: 2px solid hsl(var(--ring));
+        outline-offset: 2px;
+    }
 }
 
 @layer components {
     .btn {
-        @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+        @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+        transition-duration: var(--duration-micro);
     }
     .btn-primary {
         @apply btn bg-primary text-primary-foreground hover:opacity-90;
     }
     .btn-ghost {
-        @apply btn hover:bg-muted;
+        @apply btn hover:bg-secondary;
     }
     .btn-outline {
-        @apply btn border border-border bg-transparent hover:bg-muted;
+        @apply btn border border-border-strong bg-transparent hover:bg-secondary;
     }
+    /* `rounded-xl` on cards, `rounded-lg` on controls — design/00 §6. */
     .card {
-        @apply rounded-lg border border-border bg-surface;
+        @apply rounded-xl border border-border bg-card;
     }
     .chip {
         @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium;

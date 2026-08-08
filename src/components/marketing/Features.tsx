@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, BarChart3, Chrome, FileText, ListChecks, Repeat2 } from 'lucide-react';
+import { Section, SectionIntro } from './Section';
 
 /**
  * What the log turns into.
@@ -50,65 +51,61 @@ const PAYOFFS = [
 
 export function Features() {
     return (
-        <section id="features" className="border-b border-border/40 bg-card/20">
-            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
-                <div className="flex flex-wrap items-end justify-between gap-6">
-                    <div className="max-w-2xl">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
-                            What the log becomes
-                        </p>
-                        <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                            One record. Every conversation about your career.
-                        </h2>
-                        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+        <Section id="features" className="bg-card/20">
+            <div className="flex flex-wrap items-end justify-between gap-6">
+                <SectionIntro
+                    eyebrow="What the log becomes"
+                    title="One record. Every conversation about your career."
+                    lead={
+                        <>
                             The log is not the product — it is the input. Everything below is
                             generated from the same confirmed evidence, which is why the numbers
                             agree with each other.
-                        </p>
-                    </div>
-                </div>
+                        </>
+                    }
+                />
+            </div>
 
-                <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                    {PAYOFFS.map((item) => {
-                        const Icon = item.icon;
-                        return (
-                            <article
-                                key={item.title}
-                                className="flex flex-col rounded-xl border border-border/50 bg-background/50 p-6"
-                            >
-                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </span>
-                                <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
-                                    {item.title}
-                                </h3>
-                                <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
-                                    {item.body}
-                                </p>
-                                <p className="mt-4 border-t border-border/40 pt-3 text-xs leading-relaxed text-muted-foreground/70">
-                                    {item.proof}
-                                </p>
-                            </article>
-                        );
-                    })}
+            <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                {PAYOFFS.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                        <article
+                            key={item.title}
+                            className="flex flex-col rounded-xl border border-border/50 bg-background/50 p-6"
+                        >
+                            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                <Icon className="h-4 w-4" strokeWidth={1.75} />
+                            </span>
+                            <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
+                                {item.title}
+                            </h3>
+                            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
+                                {item.body}
+                            </p>
+                            <p className="mt-4 border-t border-border/40 pt-3 text-xs leading-relaxed text-muted-foreground/70">
+                                {item.proof}
+                            </p>
+                        </article>
+                    );
+                })}
 
-                    <div className="flex flex-col justify-center rounded-xl border border-dashed border-border/50 p-6">
-                        <p className="font-heading text-base font-semibold leading-snug">
-                            Start with the record.
-                        </p>
-                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                            Keeping a log is free, permanently. The payoffs are there when you need
-                            them.
-                        </p>
-                        <Link href="/sign-up?redirect_url=/log" className="mt-4">
-                            <Button className="group w-full gap-2">
-                                Start your work log
-                                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                            </Button>
-                        </Link>
-                    </div>
+                <div className="flex flex-col justify-center rounded-xl border border-dashed border-border/50 p-6">
+                    <p className="font-heading text-base font-semibold leading-snug">
+                        Start with the record.
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        Keeping a log is free, permanently. The payoffs are there when you need
+                        them.
+                    </p>
+                    <Link href="/sign-up?redirect_url=/log" className="mt-4">
+                        <Button className="group w-full gap-2">
+                            Start your work log
+                            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </Button>
+                    </Link>
                 </div>
             </div>
-        </section>
+        </Section>
     );
 }

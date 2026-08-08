@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Check } from 'lucide-react';
 import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN, type PlanDefinition } from '@/lib/plans';
+import { Section, SectionIntro } from './Section';
 
 /**
  * Pricing, read from the catalog rather than retyped.
@@ -91,94 +92,90 @@ const COLUMNS: ReadonlyArray<{
 
 export function Pricing() {
     return (
-        <section id="pricing" className="border-b border-border/40 bg-card/20">
-            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
-                <div className="max-w-2xl">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
-                        Pricing
-                    </p>
-                    <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                        Logging is free. We charge for what we do with it.
-                    </h2>
-                    <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+        <Section id="pricing">
+            <SectionIntro
+                eyebrow="Pricing"
+                title="Logging is free. We charge for what we do with it."
+                lead={
+                    <>
                         The record is the part you should never have to pay to keep — losing it is
                         the problem we exist to solve.
-                    </p>
-                </div>
+                    </>
+                }
+            />
 
-                <div className="mt-12 grid gap-5 lg:grid-cols-3">
-                    {COLUMNS.map(({ plan, key, cta, href, featured, note }) => {
-                        const { amount, cadence } = headline(plan);
-                        const other = alternate(plan);
+            <div className="mt-12 grid gap-5 lg:grid-cols-3">
+                {COLUMNS.map(({ plan, key, cta, href, featured, note }) => {
+                    const { amount, cadence } = headline(plan);
+                    const other = alternate(plan);
 
-                        return (
-                            <div
-                                key={plan.tier}
-                                className={
-                                    featured
-                                        ? 'relative flex flex-col rounded-xl border border-primary/40 bg-background/70 p-6 shadow-lg'
-                                        : 'relative flex flex-col rounded-xl border border-border/50 bg-background/40 p-6'
-                                }
-                            >
-                                {featured ? (
-                                    <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
-                                        Most people
-                                    </span>
-                                ) : null}
+                    return (
+                        <div
+                            key={plan.tier}
+                            className={
+                                featured
+                                    ? 'relative flex flex-col rounded-xl border border-primary/40 bg-background/70 p-6 shadow-lg'
+                                    : 'relative flex flex-col rounded-xl border border-border/50 bg-background/40 p-6'
+                            }
+                        >
+                            {featured ? (
+                                <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
+                                    Most people
+                                </span>
+                            ) : null}
 
-                                <div className="flex items-baseline justify-between gap-2">
-                                    <h3 className="font-heading text-lg font-semibold">{plan.name}</h3>
-                                    <span className="text-xs text-muted-foreground">{plan.blurb}</span>
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">{plan.audience}</p>
-
-                                <div className="mt-5">
-                                    <p className="font-heading text-3xl font-semibold tabular-nums">
-                                        {amount}
-                                    </p>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                        {cadence}
-                                        {other ? ` · ${other}` : ''}
-                                    </p>
-                                </div>
-
-                                <ul className="mt-6 flex-1 space-y-2.5">
-                                    {HIGHLIGHTS[key].map((item) => (
-                                        <li key={item} className="flex gap-2.5 text-sm">
-                                            <Check
-                                                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
-                                                strokeWidth={2.5}
-                                                aria-hidden
-                                            />
-                                            <span className="text-muted-foreground">{item}</span>
-                                        </li>
-                                    ))}
-                                </ul>
-
-                                {note ? (
-                                    <p className="mt-4 text-xs leading-relaxed text-muted-foreground/70">
-                                        {note}
-                                    </p>
-                                ) : null}
-
-                                <Link href={href} className="mt-6">
-                                    <Button
-                                        className="w-full"
-                                        variant={featured ? 'default' : 'outline'}
-                                    >
-                                        {cta}
-                                    </Button>
-                                </Link>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <h3 className="font-heading text-lg font-semibold">{plan.name}</h3>
+                                <span className="text-xs text-muted-foreground">{plan.blurb}</span>
                             </div>
-                        );
-                    })}
-                </div>
+                            <p className="mt-1 text-xs text-muted-foreground">{plan.audience}</p>
 
-                <p className="mt-8 text-center text-xs text-muted-foreground/70">
-                    Limits are always shown before you reach them. Downgrade and your history is
-                    hidden, never deleted.
-                </p>
+                            <div className="mt-5">
+                                <p className="font-heading text-3xl font-semibold tabular-nums">
+                                    {amount}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {cadence}
+                                    {other ? ` · ${other}` : ''}
+                                </p>
+                            </div>
+
+                            <ul className="mt-6 flex-1 space-y-2.5">
+                                {HIGHLIGHTS[key].map((item) => (
+                                    <li key={item} className="flex gap-2.5 text-sm">
+                                        <Check
+                                            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
+                                            strokeWidth={2.5}
+                                            aria-hidden
+                                        />
+                                        <span className="text-muted-foreground">{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            {note ? (
+                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground/70">
+                                    {note}
+                                </p>
+                            ) : null}
+
+                            <Link href={href} className="mt-6">
+                                <Button
+                                    className="w-full"
+                                    variant={featured ? 'default' : 'outline'}
+                                >
+                                    {cta}
+                                </Button>
+                            </Link>
+                        </div>
+                    );
+                })}
             </div>
-        </section>
+
+            <p className="mt-8 text-center text-xs text-muted-foreground/70">
+                Limits are always shown before you reach them. Downgrade and your history is hidden,
+                never deleted.
+            </p>
+        </Section>
     );
 }

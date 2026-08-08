@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { marketingType } from './Section';
 
 /**
  * The close.
@@ -17,7 +19,7 @@ export function ClosingCta() {
                 aria-hidden
             />
             <div className="mx-auto w-full max-w-3xl px-4 py-24 text-center sm:px-6 lg:py-28">
-                <h2 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+                <h2 className={marketingType.section}>
                     The best time to start was three years ago.
                 </h2>
                 <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">

@@ -66,7 +66,7 @@ export function ApplyRoute() {
                 <p className="text-muted-foreground">
                     Open a job listing or application form and reopen this panel.
                 </p>
-                <button type="button" onClick={reparse} className="btn-ghost mt-3 text-xs">
+                <button type="button" onClick={reparse} className="btn-outline mt-3 text-xs">
                     Re-scan this page
                 </button>
             </div>

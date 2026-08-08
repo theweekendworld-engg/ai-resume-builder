@@ -133,7 +133,7 @@ export function QuestionDrafter({
                                         'chip text-[10px]',
                                         tone === t.key
                                             ? 'border-primary/40 bg-primary/10 text-primary'
-                                            : 'border-border bg-bg text-muted-foreground'
+                                            : 'border-border bg-background text-muted-foreground'
                                     )}
                                 >
                                     {t.label}
@@ -164,7 +164,7 @@ export function QuestionDrafter({
                                 value={editText}
                                 onChange={(e) => setEditText(e.target.value)}
                                 rows={6}
-                                className="w-full resize-y rounded border border-border bg-bg p-2 font-mono text-[11px]"
+                                className="w-full resize-y rounded border border-border bg-background p-2 font-mono text-[11px]"
                             />
                             <div className="flex gap-1.5">
                                 <button

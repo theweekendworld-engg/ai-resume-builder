@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Check, GitPullRequest } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { marketingContainer, marketingType } from './Section';
 
 /**
  * The hero states the thesis, not the feature list.
@@ -44,19 +46,39 @@ export function Hero() {
                 aria-hidden
             />
 
-            <div className="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 pb-20 pt-20 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:pb-28 lg:pt-28">
+            <div
+                className={cn(
+                    marketingContainer,
+                    'grid items-center gap-12 pb-20 pt-20 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:pb-28 lg:pt-28',
+                )}
+            >
                 {/* ── the argument */}
                 <div>
-                    <p className="animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    <p
+                        className={cn(
+                            marketingType.eyebrow,
+                            'animate-fade-in-up inline-flex items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1 text-muted-foreground',
+                        )}
+                    >
                         The career operating system
                     </p>
 
-                    <h1 className="font-heading animate-fade-in-up animation-delay-100 mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-[3.4rem]">
+                    <h1
+                        className={cn(
+                            marketingType.hero,
+                            'animate-fade-in-up animation-delay-100 mt-6 text-foreground',
+                        )}
+                    >
                         Your company owns your work history.
                         <span className="mt-2 block text-primary">This one is yours.</span>
                     </h1>
 
-                    <p className="animate-fade-in-up animation-delay-200 mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+                    <p
+                        className={cn(
+                            marketingType.lead,
+                            'animate-fade-in-up animation-delay-200 mt-6 max-w-xl',
+                        )}
+                    >
                         Patronus is the private, evidence-backed record of what you actually did —
                         kept as you go, so review week, a promotion case, and a job search all draw
                         on the same years of proof instead of your memory.

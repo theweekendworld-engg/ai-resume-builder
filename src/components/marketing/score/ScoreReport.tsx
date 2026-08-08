@@ -32,9 +32,9 @@ const PENDING_SCORE_KEY = 'patronus:pendingScore';
 const BAND_META: Record<ScoreBand, { label: string; ring: string; text: string; chip: string }> = {
     needs_work: {
         label: 'Needs work',
-        ring: 'text-amber-500',
-        text: 'text-amber-600 dark:text-amber-400',
-        chip: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        ring: 'text-warning',
+        text: 'text-warning',
+        chip: 'border-warning/30 bg-warning/10 text-warning',
     },
     good: {
         label: 'Good',
@@ -44,9 +44,9 @@ const BAND_META: Record<ScoreBand, { label: string; ring: string; text: string; 
     },
     strong: {
         label: 'Strong',
-        ring: 'text-emerald-500',
-        text: 'text-emerald-600 dark:text-emerald-400',
-        chip: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+        ring: 'text-success',
+        text: 'text-success',
+        chip: 'border-success/30 bg-success/10 text-success',
     },
 };
 
@@ -63,13 +63,13 @@ const PRIORITY_META: Record<
     high: {
         label: 'High priority',
         icon: AlertTriangle,
-        chip: 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400',
+        chip: 'border-danger/30 bg-danger/10 text-danger',
         order: 0,
     },
     medium: {
         label: 'Medium priority',
         icon: CircleAlert,
-        chip: 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        chip: 'border-warning/30 bg-warning/10 text-warning',
         order: 1,
     },
     low: {
@@ -136,7 +136,7 @@ function ScoreRing({ score, band }: { score: number; band: ScoreBand }) {
 
 function DimensionBar({ score, band }: { score: number; band: ScoreBand }) {
     const color =
-        score >= 80 ? 'bg-emerald-500' : score >= 60 ? 'bg-primary' : 'bg-amber-500';
+        score >= 80 ? 'bg-success' : score >= 60 ? 'bg-primary' : 'bg-warning';
     void band;
     return (
         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -252,7 +252,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
 
                             {report.jobMatch.unanswered.length > 0 && (
                                 <div className="mb-5">
-                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-warning">
                                         <X className="h-4 w-4" aria-hidden /> Not answered
                                     </p>
                                     <ul className="space-y-1.5">
@@ -294,13 +294,13 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
 
                             {report.jobMatch.answered.length > 0 && (
                                 <div>
-                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                                    <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-success">
                                         <Check className="h-4 w-4" aria-hidden /> Answered
                                     </p>
                                     <ul className="space-y-1.5">
                                         {report.jobMatch.answered.map((item) => (
                                             <li key={item.text} className="flex items-start gap-2 text-sm">
-                                                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                                                <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" aria-hidden />
                                                 <span className="text-muted-foreground">
                                                     {item.text}
                                                     {item.byDates ? (

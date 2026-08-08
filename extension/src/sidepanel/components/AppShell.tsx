@@ -34,14 +34,17 @@ export function AppShell({
                 </div>
                 <AuthChip status={auth.status} email={auth.status === 'connected' ? auth.email : undefined} />
             </header>
-            <nav className="flex border-b border-border bg-surface">
+            <nav className="flex border-b border-border bg-card">
                 {TABS.map(({ key, label, icon: Icon }) => (
                     <button
                         key={key}
                         type="button"
                         onClick={() => onRouteChange(key)}
                         className={cn(
-                            'flex flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[10px] font-medium uppercase tracking-wide transition-colors',
+                            // design/00 §4.2: sentence case everywhere. ALL CAPS is reserved for
+                            // caption-role section labels — a primary nav is not one, and
+                            // the web app's own nav reads "Home / Work Log / Resumes".
+                            'flex flex-1 flex-col items-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors',
                             route === key
                                 ? 'text-primary border-b-2 border-primary'
                                 : 'text-muted-foreground hover:text-foreground'

@@ -65,7 +65,7 @@ export function SettingsRoute() {
                     type="url"
                     value={appBase}
                     onChange={(e) => setAppBase(e.target.value)}
-                    className="w-full rounded border border-border bg-bg px-2 py-1.5 text-xs"
+                    className="w-full rounded border border-border bg-background px-2 py-1.5 text-xs"
                     placeholder="http://localhost:3000"
                 />
                 <p className="mt-1 text-[11px] text-muted-foreground">

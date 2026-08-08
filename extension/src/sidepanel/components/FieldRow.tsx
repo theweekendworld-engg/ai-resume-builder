@@ -69,11 +69,11 @@ export function FieldRow({
                         <p className="text-muted-foreground">{action.reason}</p>
                     </div>
                     <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
-                        <span className="chip border-border bg-bg uppercase tracking-wide">
+                        <span className="chip border-border bg-background uppercase tracking-wide">
                             {action.inputType}
                         </span>
                         {action.fieldKey ? (
-                            <span className="chip border-border bg-bg">{action.fieldKey}</span>
+                            <span className="chip border-border bg-background">{action.fieldKey}</span>
                         ) : null}
                         <span className="text-[10px]">{action.source.label}</span>
                     </div>

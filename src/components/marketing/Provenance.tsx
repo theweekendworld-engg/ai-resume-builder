@@ -1,4 +1,6 @@
 import { FileWarning, Fingerprint, Lock, ShieldCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { marketingType, Section, SectionIntro } from './Section';
 
 /**
  * The trust section — the actual differentiator.
@@ -40,62 +42,59 @@ const GUARANTEES = [
 
 export function Provenance() {
     return (
-        <section className="border-b border-border/40">
-            <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 lg:py-24">
-                <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-                    <div>
-                        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
-                            Truthfulness
-                        </p>
-                        <h2 className="font-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-                            A record is worthless if you can’t defend it.
-                        </h2>
-                        <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                            You are going to put this in front of your manager, or a hiring panel,
-                            and be asked follow-up questions. So the constraint is not that the
-                            writing sounds good — it is that every sentence survives someone asking
-                            “where did that come from?”
-                        </p>
+        <Section>
+            <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+                <div>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
+                        Truthfulness
+                    </p>
+                    <h2 className={cn(marketingType.section, 'mt-3')}>
+                        A record is worthless if you can’t defend it.
+                    </h2>
+                    <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+                        You are going to put this in front of your manager, or a hiring panel, and
+                        be asked follow-up questions. So the constraint is not that the writing
+                        sounds good — it is that every sentence survives someone asking “where did
+                        that come from?”
+                    </p>
 
-                        <figure className="mt-8 rounded-xl border border-border/50 bg-card/30 p-5">
-                            <blockquote className="text-sm leading-relaxed text-foreground">
-                                “I stabilised payments by migrating off the legacy queue in four
-                                waves, and fixing the duplicate-webhook bug that double-charged 38
-                                accounts.”
-                            </blockquote>
-                            <figcaption className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
-                                <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] text-success">
-                                    grounded
-                                </span>
-                                <span className="text-[11px] text-muted-foreground">
-                                    drawn from 3 confirmed wins · “38” appears in your log
-                                </span>
-                            </figcaption>
-                        </figure>
-                    </div>
+                    <figure className="mt-8 rounded-xl border border-border/50 bg-card/30 p-5">
+                        <blockquote className="text-sm leading-relaxed text-foreground">
+                            “I stabilised payments by migrating off the legacy queue in four waves,
+                            and fixing the duplicate-webhook bug that double-charged 38 accounts.”
+                        </blockquote>
+                        <figcaption className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
+                            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] text-success">
+                                grounded
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                                drawn from 3 confirmed wins · “38” appears in your log
+                            </span>
+                        </figcaption>
+                    </figure>
+                </div>
 
-                    <div className="grid gap-px self-start overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
-                        {GUARANTEES.map((item) => {
-                            const Icon = item.icon;
-                            return (
-                                <div key={item.title} className="bg-background/60 p-6">
-                                    <Icon
-                                        className="h-4 w-4 text-primary"
-                                        strokeWidth={1.75}
-                                        aria-hidden
-                                    />
-                                    <p className="font-heading mt-3 text-sm font-semibold">
-                                        {item.title}
-                                    </p>
-                                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                                        {item.body}
-                                    </p>
-                                </div>
-                            );
-                        })}
-                    </div>
+                <div className="grid gap-px self-start overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
+                    {GUARANTEES.map((item) => {
+                        const Icon = item.icon;
+                        return (
+                            <div key={item.title} className="bg-background/60 p-6">
+                                <Icon
+                                    className="h-4 w-4 text-primary"
+                                    strokeWidth={1.75}
+                                    aria-hidden
+                                />
+                                <p className="font-heading mt-3 text-sm font-semibold">
+                                    {item.title}
+                                </p>
+                                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                                    {item.body}
+                                </p>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
-        </section>
+        </Section>
     );
 }
