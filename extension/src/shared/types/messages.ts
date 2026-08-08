@@ -164,6 +164,23 @@ export type SavedAnswerWire = {
  * Generation is asynchronous and can take tens of seconds, so the panel starts
  * a run and then polls this shape until it reaches a terminal status.
  */
+/**
+ * What the finished resume answers, trimmed for a 400px panel.
+ *
+ * Mirrors `ExtensionJobMatchSchema` on the server. Optional because a session
+ * that ran before this existed, or fell back to v1, has a score and no report
+ * behind it.
+ */
+export type GenerationMatchWire = {
+    score: number | null;
+    role: string;
+    company: string;
+    /** Stated must-haves nothing on the resume answers, in the employer's words. */
+    unanswered: string[];
+    /** Named by the posting, evidenced nowhere, therefore left off. */
+    skillGaps: string[];
+};
+
 export type GenerationSessionWire = {
     id: string;
     status: 'pending' | 'awaiting_clarification' | 'generating' | 'completed' | 'failed';
@@ -180,6 +197,7 @@ export type GenerationSessionWire = {
     startedAt: string;
     updatedAt: string;
     completedAt?: string | null;
+    match?: GenerationMatchWire;
 };
 
 export type Message =

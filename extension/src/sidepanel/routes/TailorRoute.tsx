@@ -245,9 +245,65 @@ export function TailorRoute() {
 
                     {session.status === 'completed' ? (
                         <div className="mt-3 space-y-2">
-                            {typeof session.atsScore === 'number' ? (
+                            {/*
+                                What the resume answers, not a bare number.
+
+                                This used to read "ATS score 71" and stop. The
+                                number was keyword overlap, then it became
+                                requirement coverage, and either way a figure
+                                with nothing behind it tells someone nothing.
+                                The panel is open on the job page with the
+                                posting right there — the best moment anyone
+                                gets to learn what they have not answered.
+                            */}
+                            {session.match ? (
+                                <div className="rounded-md border border-border bg-card p-2.5">
+                                    {typeof session.match.score === 'number' ? (
+                                        <p className="text-xs">
+                                            <span className="text-base font-semibold text-foreground">
+                                                {session.match.score}
+                                            </span>
+                                            <span className="text-muted-foreground">
+                                                /100 of what they asked for is answered
+                                            </span>
+                                        </p>
+                                    ) : null}
+
+                                    {session.match.unanswered.length > 0 ? (
+                                        <div className="mt-2">
+                                            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                Not answered
+                                            </p>
+                                            <ul className="mt-1 space-y-0.5">
+                                                {session.match.unanswered.map((item) => (
+                                                    <li key={item} className="flex gap-1.5 text-xs text-foreground">
+                                                        <span className="text-muted-foreground" aria-hidden>
+                                                            ·
+                                                        </span>
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    ) : null}
+
+                                    {session.match.skillGaps.length > 0 ? (
+                                        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                                            <span className="font-medium">
+                                                {session.match.skillGaps.join(', ')}
+                                            </span>{' '}
+                                            {session.match.skillGaps.length === 1 ? 'is' : 'are'} named in
+                                            the posting and not in your history, so{' '}
+                                            {session.match.skillGaps.length === 1 ? 'it was' : 'they were'}{' '}
+                                            left off.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : typeof session.atsScore === 'number' ? (
+                                // Older sessions, and the v1 fallback, carry a
+                                // score with no report behind it.
                                 <p className="text-xs text-muted-foreground">
-                                    ATS score{' '}
+                                    Match score{' '}
                                     <span className="font-medium text-foreground">{session.atsScore}</span>
                                 </p>
                             ) : null}

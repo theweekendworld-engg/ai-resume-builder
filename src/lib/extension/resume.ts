@@ -4,11 +4,13 @@ import { gateMeteredAction, refundMeteredAction } from '@/lib/entitlements';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
+import { parseReport } from '@/lib/resume/report';
 import { config } from '@/lib/config';
 import type {
   ExtensionResumeGenerateRequest,
   ExtensionResumeGenerateResponse,
   ExtensionWorkspaceSnapshot,
+  ExtensionJobMatch,
 } from '@/lib/extension/schemas';
 import { getExtensionWorkspace } from '@/lib/extension/workspaces';
 
@@ -103,8 +105,35 @@ async function buildGenerationSessionStatus(params: {
     resumeId: session.resultResumeId,
   });
 
+  // The gap report, trimmed for a narrow panel. The side panel is open on the
+  // job page with the posting right there, which is the best moment anyone
+  // gets to be told what their resume does not answer.
+  let match: ExtensionJobMatch | undefined;
+  if (session.resultResumeId) {
+    const resume = await prisma.resume.findFirst({
+      where: { id: session.resultResumeId, userId: params.userId },
+      select: { coverageReport: true },
+    });
+    const report = parseReport(resume?.coverageReport);
+    if (report) {
+      match = {
+        score: report.score,
+        role: report.role,
+        company: report.company,
+        // Must-haves only. A bonus item is not what someone needs told while
+        // they are deciding whether to hit send.
+        unanswered: report.unanswered
+          .filter((item) => item.kind === 'must')
+          .map((item) => item.text)
+          .slice(0, 6),
+        skillGaps: report.skillGaps.slice(0, 8),
+      };
+    }
+  }
+
   return {
     id: session.id,
+    match,
     status: session.status,
     currentStep: session.currentStep,
     stageLabel: getGenerationStageLabel(session.currentStep),

@@ -526,6 +526,29 @@ export const ExtensionResumeGenerateRequestSchema = z.object({
   }
 });
 
+/**
+ * What the resume answers, compact enough for a 400px side panel.
+ *
+ * Without this the panel showed `atsScore: 71` and nothing else — a bare
+ * number with no way to know what it measured or what is missing. That is the
+ * same problem the editor had before the Job Match panel, and the extension is
+ * where someone is standing on the job page with the posting open in front of
+ * them, which is the best possible moment to be told what they have not
+ * answered.
+ *
+ * Deliberately trimmed: unanswered must-haves and unevidenced skills only. The
+ * full report is one tap away in the editor.
+ */
+export const ExtensionJobMatchSchema = z.object({
+  score: z.number().int().min(0).max(100).nullable(),
+  role: z.string(),
+  company: z.string(),
+  /** Stated requirements nothing on the resume answers, in the employer's words. */
+  unanswered: z.array(z.string()).max(6),
+  /** Named by the posting, evidenced nowhere — so left off the document. */
+  skillGaps: z.array(z.string()).max(8),
+});
+
 export const ExtensionGenerationSessionStatusSchema = z.object({
   id: z.string(),
   status: z.enum(['pending', 'awaiting_clarification', 'generating', 'completed', 'failed']),
@@ -542,6 +565,8 @@ export const ExtensionGenerationSessionStatusSchema = z.object({
   startedAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   completedAt: z.string().datetime().nullable().optional(),
+  /** Present once a v2 generation has finished. See the schema above. */
+  match: ExtensionJobMatchSchema.optional(),
 });
 
 export const ExtensionResumeGenerateResponseSchema = z.object({
@@ -617,6 +642,7 @@ export type ExtensionWorkspaceResponse = z.infer<typeof ExtensionWorkspaceRespon
 export type ExtensionWorkspaceSnapshot = z.infer<typeof ExtensionWorkspaceSnapshotSchema>;
 export type ExtensionResumeGenerateRequest = z.infer<typeof ExtensionResumeGenerateRequestSchema>;
 export type ExtensionResumeGenerateResponse = z.infer<typeof ExtensionResumeGenerateResponseSchema>;
+export type ExtensionJobMatch = z.infer<typeof ExtensionJobMatchSchema>;
 export type ExtensionCompanyInsightRequest = z.infer<typeof ExtensionCompanyInsightRequestSchema>;
 export type ExtensionCompanyInsightResponse = z.infer<typeof ExtensionCompanyInsightResponseSchema>;
 export type ExtensionSavedAnswer = z.infer<typeof ExtensionSavedAnswerSchema>;
