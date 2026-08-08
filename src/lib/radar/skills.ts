@@ -135,7 +135,7 @@ const SKILL_ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
     ['journey_mapping', ['journey mapping', 'user journey', 'customer journey', 'journey map']],
     ['visual_design', ['visual design', 'ui design', 'interface design']],
     ['design_ops', ['designops', 'design ops']],
-    ['sketch', ['sketch app']],
+    ['sketch', ['sketch', 'sketch app']],
     ['adobe_creative_suite', ['adobe creative suite', 'photoshop', 'illustrator', 'after effects', 'indesign']],
     ['framer', ['framer']],
     ['design_critique', ['design critique', 'design critiques', 'design review']],
@@ -317,9 +317,36 @@ function singularForm(value: string): string | null {
     return [...words.slice(0, -1), singular].join(' ');
 }
 
+/**
+ * Exact labels for the names that are too ambiguous to scan for in prose.
+ *
+ * `go`, `rust`, `r_lang` and `c_lang` live in {@link AMBIGUOUS} because a
+ * word-boundary match on "go" would fire on "we go to production". That is the
+ * right call when reading a paragraph — and the wrong one when reading a
+ * SKILLS LIST, where "Go" on its own is unambiguously the language.
+ *
+ * So `normalizeSkill` consults this and `extractSkills` does not. Without it a
+ * resume listing Go and Rust had neither recognised: they normalised to null,
+ * missed their category, and rendered under the catch-all row.
+ */
+const EXACT_LABEL_ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
+    ['go', ['go', 'golang']],
+    ['rust', ['rust']],
+    ['r_lang', ['r']],
+    ['c_lang', ['c']],
+];
+
+const EXACT_LABELS = new Map<string, string>(
+    EXACT_LABEL_ALIASES.flatMap(([slug, aliases]) => aliases.map((alias) => [alias, slug] as const)),
+);
+
 export function normalizeSkill(raw: string): string | null {
     const needle = raw.trim().toLowerCase();
     if (!needle) return null;
+
+    const exact = EXACT_LABELS.get(needle);
+    if (exact) return exact;
+
     for (const { slug, alias } of SORTED_ALIASES) {
         if (alias === needle) return slug;
     }
@@ -338,6 +365,24 @@ export function normalizeSkill(raw: string): string | null {
 /** Every canonical slug, for iteration in the rollup. */
 export function knownSkills(): string[] {
     return [...new Set(SKILL_ALIASES.map(([slug]) => slug))].sort();
+}
+
+/**
+ * Slugs that exist ONLY in {@link AMBIGUOUS} / {@link EXACT_LABEL_ALIASES}.
+ *
+ * `knownSkills()` is built from `SKILL_ALIASES`, so `go`, `rust`, `r_lang` and
+ * `c_lang` are absent from it — which meant a caller iterating "every skill"
+ * silently missed four of the most common languages on earth. The skills
+ * section grouped Go under its catch-all row for exactly that reason, and the
+ * parity test could not see it.
+ */
+export function ambiguousSkills(): string[] {
+    return [...new Set(AMBIGUOUS.map(([slug]) => slug))].sort();
+}
+
+/** Every canonical slug the system can produce, from either source. */
+export function allSkillSlugs(): string[] {
+    return [...new Set([...knownSkills(), ...ambiguousSkills()])].sort();
 }
 
 /**

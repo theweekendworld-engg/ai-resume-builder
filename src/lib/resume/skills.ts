@@ -37,21 +37,29 @@ import { extractSkills, normalizeSkill } from '@/lib/radar/skills';
  */
 const SLUG_LABELS: Record<string, string> = {
     aws: 'AWS', gcp: 'GCP', sql: 'SQL', llm: 'LLM', rag: 'RAG', ci_cd: 'CI/CD',
-    grpc: 'gRPC', graphql: 'GraphQL', seo: 'SEO', csharp: 'C#', cpp: 'C++',
-    r_lang: 'R', c_lang: 'C', nextjs: 'Next.js', dbt: 'dbt', ml: 'ML',
-    postgresql: 'PostgreSQL', mysql: 'MySQL', nodejs: 'Node.js', ios: 'iOS',
-    ec2: 'EC2', s3: 'S3', api: 'API', etl: 'ETL', ui: 'UI', ux: 'UX',
-    // The non-engineering vocabulary. Default title-casing renders these as
-    // "Ab Testing", "Power Bi" and "Go To Market" — a skills section that
-    // misspells its own entries reads as machine-written, which is the exact
-    // impression the whole rebuild exists to avoid.
-    swiftui: 'SwiftUI', ab_testing: 'A/B Testing', power_bi: 'Power BI',
-    go_to_market: 'Go-to-Market', design_ops: 'DesignOps', ixd: 'Interaction Design',
-    information_architecture: 'Information Architecture',
+    grpc: 'gRPC', graphql: 'GraphQL', seo: 'SEO', csharp: 'C#', cpp: 'C++', r_lang: 'R',
+    c_lang: 'C', nextjs: 'Next.js', dbt: 'dbt', ml: 'ML', postgresql: 'PostgreSQL',
+    mysql: 'MySQL', nodejs: 'Node.js', ios: 'iOS', ec2: 'EC2', s3: 'S3', api: 'API',
+    etl: 'ETL', ui: 'UI', ux: 'UX', swiftui: 'SwiftUI', ab_testing: 'A/B Testing',
+    power_bi: 'Power BI', go_to_market: 'Go-to-Market', design_ops: 'DesignOps',
+    ixd: 'Interaction Design', information_architecture: 'Information Architecture',
     adobe_creative_suite: 'Adobe Creative Suite', google_ads: 'Google Ads',
     meta_ads: 'Meta Ads', google_analytics: 'Google Analytics',
     budget_ownership: 'Budget Ownership', financial_modelling: 'Financial Modelling',
     machine_learning: 'Machine Learning', distributed_systems: 'Distributed Systems',
+    typescript: 'TypeScript', javascript: 'JavaScript', mongodb: 'MongoDB',
+    dynamodb: 'DynamoDB', clickhouse: 'ClickHouse', bigquery: 'BigQuery',
+    elasticsearch: 'Elasticsearch', pytorch: 'PyTorch', tensorflow: 'TensorFlow',
+    github_actions: 'GitHub Actions', gitlab: 'GitLab', ci_cd_pipeline: 'CI/CD',
+    tailwind: 'Tailwind CSS', php: 'PHP', go: 'Go', rust: 'Rust', sketch: 'Sketch',
+    figma: 'Figma', hubspot: 'HubSpot', marketo: 'Marketo', salesforce: 'Salesforce',
+    tableau: 'Tableau', looker: 'Looker', jira: 'Jira', notion: 'Notion', asana: 'Asana',
+    excel: 'Excel', kubernetes: 'Kubernetes', terraform: 'Terraform', kafka: 'Kafka',
+    airflow: 'Airflow', spark: 'Spark', pandas: 'pandas', redis: 'Redis',
+    snowflake: 'Snowflake', cassandra: 'Cassandra', docker: 'Docker', azure: 'Azure',
+    vue: 'Vue', angular: 'Angular', svelte: 'Svelte', react: 'React', java: 'Java',
+    kotlin: 'Kotlin', scala: 'Scala', ruby: 'Ruby', elixir: 'Elixir', python: 'Python',
+    swift: 'Swift', framer: 'Framer', braze: 'Braze',
 };
 
 /** Human label for a canonical slug. */
@@ -88,8 +96,26 @@ export type SkillDecision = {
  */
 export function isEvidenced(skill: string, corpus: string, evidencedSlugs: ReadonlySet<string>): boolean {
     const slug = normalizeSkill(skill);
-    if (slug) return evidencedSlugs.has(slug);
+    if (slug && evidencedSlugs.has(slug)) return true;
 
+    /*
+     * A resolved slug that the corpus scan did not find is NOT a rejection.
+     *
+     * The slug path exists to catch synonyms — to know that someone who wrote
+     * "Postgres" has evidenced "PostgreSQL". It was never meant to forbid the
+     * literal term, and treating a miss as final made this stricter than the
+     * fallback it was supposed to improve on.
+     *
+     * That bit as soon as `normalizeSkill` learned the ambiguous names. "Go"
+     * used to resolve to null and reach the word-boundary check, which found
+     * it in "wrote the service in go and rust"; once it resolved to a slug,
+     * `extractSkills`' deliberately-conservative prose pattern did not fire on
+     * that phrasing and the skill was dropped from the resume.
+     *
+     * The fallback below is safe for exactly these cases: `(^|[^a-z0-9])go
+     * ($|[^a-z0-9])` does not match "going", and the length guard already
+     * rejects the one-letter names where a bare match would be meaningless.
+     */
     const needle = skill.trim().toLowerCase();
     if (needle.length < 2) return false;
 

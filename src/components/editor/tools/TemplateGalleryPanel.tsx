@@ -11,6 +11,8 @@ import {
   ResumeFontFamily,
 } from '@/types/resume';
 import { TEMPLATE_OPTIONS } from '@/templates/latex';
+import { groupSkills } from '@/lib/resume/skillGroups';
+import { contactParts } from '@/lib/resume/contact';
 
 // ---------------------------------------------------------------------------
 // Shared client-side HTML approximation of a template + theme.
@@ -109,12 +111,31 @@ export function ResumeHtmlPreview({ data, theme, variant = 'full', className }: 
       {pi.title && (
         <div style={{ fontSize: isThumb ? 8 : 12, color: '#666', marginTop: 2 }}>{pi.title}</div>
       )}
+      {/*
+        Real anchors, coloured like links.
+
+        These used to render as dead text — `pi.linkedin && 'LinkedIn'` printed
+        the word and threw the URL away, so the live preview showed a contact
+        line nobody could click while the exported PDF had working `\href`s.
+        Two renderers, two documents. A recruiter opening the PDF expects the
+        profile links to work; so does anyone reading the preview.
+      */}
       <div style={{ fontSize: isThumb ? 6.5 : 10, color: '#777', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: '0 8px', justifyContent: centeredHeader ? 'center' : 'flex-start' }}>
-        {[pi.location, pi.email, pi.phone, pi.linkedin && 'LinkedIn', pi.github && 'GitHub', pi.website && 'Portfolio']
-          .filter(Boolean)
-          .map((c, i) => (
-            <span key={i}>{c}</span>
-          ))}
+        {contactParts(pi).map((part, i) =>
+          part.href ? (
+            <a
+              key={i}
+              href={part.href}
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{ color: accent, textDecoration: 'none' }}
+            >
+              {part.label}
+            </a>
+          ) : (
+            <span key={i}>{part.label}</span>
+          )
+        )}
       </div>
     </div>
   );
@@ -203,10 +224,26 @@ export function ResumeHtmlPreview({ data, theme, variant = 'full', className }: 
               </div>
             )
           : null;
-      case 'skills':
-        return data.skills.length
-          ? section('skills', <div style={{ color: '#333' }}>{data.skills.join(' · ')}</div>)
-          : null;
+      case 'skills': {
+        // Was `data.skills.join(' · ')` — one undifferentiated run of text,
+        // which is what the user was looking at while the LaTeX export grouped
+        // them properly. Same grouping in both now.
+        const groups = groupSkills(data.skills);
+        if (groups.length === 0) return null;
+        return section(
+          'skills',
+          <div style={{ color: '#333' }}>
+            {groups.map((group) => (
+              <div key={group.label || 'all'} style={{ marginBottom: 2 }}>
+                {group.label ? (
+                  <span style={{ fontWeight: 700, color: '#111' }}>{group.label}: </span>
+                ) : null}
+                {group.skills.join(', ')}
+              </div>
+            ))}
+          </div>
+        );
+      }
       default:
         return null;
     }

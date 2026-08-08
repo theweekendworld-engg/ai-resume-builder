@@ -7,6 +7,8 @@ import {
     ResumeFontFamily,
     ResumeDensity,
 } from '@/types/resume';
+import { groupSkills as sharedGroupSkills } from '@/lib/resume/skillGroups';
+import { contactParts } from '@/lib/resume/contact';
 
 function escapeLatex(text: string): string {
     if (!text) return '';
@@ -130,41 +132,27 @@ function shouldOmitSkill(skill: string): boolean {
     return genericPatterns.some((pattern) => pattern.test(normalized));
 }
 
+/**
+ * Grouping moved to `src/lib/resume/skillGroups.ts`.
+ *
+ * This file's version knew forty engineering terms off a hardcoded regex and
+ * dropped everything else into "Other Tools" — so a designer's whole section
+ * was one bucket. The live HTML preview, meanwhile, did no grouping at all.
+ * Two renderers, two documents, and only one of them was the one the user
+ * looked at while editing.
+ *
+ * `normalizeSkillValue` and `shouldOmitSkill` still run first: they are this
+ * template's own hygiene (casing, and stripping the generic filler the old
+ * pipeline used to emit) and are applied before the shared grouping sees them.
+ */
 function groupSkills(skills: string[]): SkillGroup[] {
-    const buckets: Array<{ label: string; pattern: RegExp; skills: string[] }> = [
-        { label: 'Languages', pattern: /\b(go|golang|typescript|javascript|python|java|bash|shell|sql|rust|c\+\+|c#)\b/i, skills: [] },
-        { label: 'Data and Search', pattern: /\b(postgresql|postgres|mysql|sqlite|redis|elasticsearch|opensearch|chromadb|qdrant|pinecone|weaviate|mongodb)\b/i, skills: [] },
-        { label: 'Infrastructure', pattern: /\b(docker|docker compose|kubernetes|terraform|aws|gcp|azure|vercel|linux)\b/i, skills: [] },
-        { label: 'AI and Document Systems', pattern: /\b(llms?|openai|anthropic|langchain|rag|latex|vector|embedding)\b/i, skills: [] },
-        { label: 'Frameworks and Tools', pattern: /\b(next\.js|nextjs|react|node\.js|nodejs|bun|git|github actions|web crawler)\b/i, skills: [] },
-    ];
-
-    const other: string[] = [];
-    const seen = new Set<string>();
-
+    const cleaned: string[] = [];
     for (const rawSkill of skills) {
         const skill = normalizeSkillValue(rawSkill);
-        const dedupeKey = skill.toLowerCase();
-        if (seen.has(dedupeKey) || shouldOmitSkill(skill)) continue;
-        seen.add(dedupeKey);
-
-        const bucket = buckets.find((entry) => entry.pattern.test(skill));
-        if (bucket) {
-            bucket.skills.push(skill);
-        } else {
-            other.push(skill);
-        }
+        if (shouldOmitSkill(skill)) continue;
+        cleaned.push(skill);
     }
-
-    const grouped = buckets
-        .filter((bucket) => bucket.skills.length > 0)
-        .map((bucket) => ({ label: bucket.label, skills: bucket.skills }));
-
-    if (other.length > 0) {
-        grouped.push({ label: 'Other Tools', skills: other });
-    }
-
-    return grouped;
+    return sharedGroupSkills(cleaned);
 }
 
 function renderSkillsSection(groups: SkillGroup[], style: 'simple' | 'modern'): string {
@@ -329,13 +317,21 @@ ${fontPackages(theme.fontFamily)}
     ${personalInfo.fullName ? `{\\LARGE \\textbf{${escapeLatex(personalInfo.fullName)}}}\\\\[4pt]` : ''}
     ${personalInfo.title ? `\\textit{${escapeLatex(personalInfo.title)}} \\\\` : ''}
     ${personalInfo.location ? `${escapeLatex(personalInfo.location)} \\\\` : ''}
-    ${[
-        personalInfo.email ? `\\href{mailto:${personalInfo.email}}{${escapeLatex(personalInfo.email)}}` : '',
-        personalInfo.phone ? `\\href{tel:${personalInfo.phone.replace(/\s/g, '')}}{${escapeLatex(personalInfo.phone)}}` : '',
-        personalInfo.github ? `\\href{https://${personalInfo.github.replace(/^https?:\/\//, '')}}{GitHub}` : '',
-        personalInfo.linkedin ? `\\href{https://${personalInfo.linkedin.replace(/^https?:\/\//, '')}}{LinkedIn}` : '',
-        personalInfo.website ? `\\href{https://${personalInfo.website.replace(/^https?:\/\//, '')}}{Portfolio}` : ''
-    ].filter(Boolean).join(' \\quad | \\quad ')}
+    ${/*
+        Built by the shared `contactParts` so the PDF and the live preview
+        agree. The previous version did `https://` + the value with any scheme
+        stripped, which turns a bare handle — plenty of people type `priyar`
+        rather than `github.com/priyar` — into `https://priyar`, a link that
+        404s from the top of their resume.
+      */ ''}${contactParts(personalInfo)
+        .filter((part) => part.label !== personalInfo.location?.trim())
+        .map((part) =>
+            part.href
+                ? `\\href{${part.href}}{${escapeLatex(part.label)}}`
+                : escapeLatex(part.label)
+        )
+        .filter(Boolean)
+        .join(' \\quad | \\quad ')}
 \\end{center}
 
 \\vspace{0.5em}
