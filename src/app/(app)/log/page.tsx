@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { loadLogSnapshot, logNow, parseScenario } from '@/components/log/data-source';
 import { LogScreen } from '@/components/log/LogScreen';
 import { isEnabled } from '@/lib/flags';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 /**
  * `/log` — the home of the product (design/02 §B).
@@ -28,7 +29,13 @@ export default async function LogPage({
   // Flag-gated (ADR-7). The surface now reads and writes real data, so it stays
   // invisible until `work_log` is switched on — team first, then a cohort.
   const { userId } = await auth();
-  if (!userId || !(await isEnabled(userId, 'work_log'))) notFound();
+  if (!userId) notFound();
+  // Strangers still get a 404 — it does not disclose an unreleased feature.
+  // A signed-in customer was sold this on the pricing page, so they get told
+  // the truth instead.
+  if (!(await isEnabled(userId, 'work_log'))) {
+      return <FeatureUnavailable {...FEATURE_COPY.work_log} reason="not_enabled" />;
+  }
 
   const params = await searchParams;
   const [snapshot, canConnectSources] = await Promise.all([

@@ -4,6 +4,7 @@ import { getReadiness, listFrameworkOptions } from '@/actions/packets';
 import { ReadinessScreen } from '@/components/packets/ReadinessScreen';
 import { getUserTier, hasFeature } from '@/lib/entitlements';
 import { isEnabled } from '@/lib/flags';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
     title: 'Level readiness · Patronus',
@@ -20,7 +21,13 @@ export default async function ReadinessPage({
     searchParams: Promise<{ framework?: string; level?: string }>;
 }) {
     const { userId } = await auth();
-    if (!userId || !(await isEnabled(userId, 'review_packet'))) notFound();
+    if (!userId) notFound();
+    // Strangers still get a 404 — it does not disclose an unreleased feature.
+    // A signed-in customer was sold this on the pricing page, so they get told
+    // the truth instead.
+    if (!(await isEnabled(userId, 'review_packet'))) {
+        return <FeatureUnavailable {...FEATURE_COPY.review_packet} reason="not_enabled" />;
+    }
 
     const params = await searchParams;
 

@@ -20,8 +20,13 @@ import {
 
 const CAPS = { maxPerGroup: 4, maxGroups: 4 };
 
-function req(id: string, text: string, kind: 'must' | 'nice' = 'must'): JobRequirement {
-    return { id, text, kind, category: 'experience' };
+function req(
+    id: string,
+    text: string,
+    kind: JobRequirement['kind'] = 'must',
+    satisfiedByTenure = false,
+): JobRequirement {
+    return { id, text, kind, category: 'experience', satisfiedByTenure };
 }
 
 function bullet(patch: Partial<ScoredBullet> & { id: string }): ScoredBullet {

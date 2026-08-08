@@ -1,7 +1,12 @@
 import { PipelineStep } from '@prisma/client';
 
 /**
- * What the user is told is happening, during a 60-90 second wait.
+ * What the user is told is happening, during a two-to-four minute wait.
+ *
+ * "60-90 second" was measured against v1. The 8 Aug audit clocked three live
+ * v2 runs at 200s, 231s and 138s — the labels were rewritten to stop lying
+ * about the WORK and kept a duration that was off by 2-3x, which is its own
+ * small lie and the one a waiting user can check.
  *
  * These described v1's plumbing — "Parsing job requirements", "Rewriting
  * bullets for impact", "Scoring ATS compatibility". v2 does different work
@@ -83,7 +88,10 @@ export function getGenerationDetailLines(params: {
   }
 
   if ((params.step === PipelineStep.ats_scoring || params.step === PipelineStep.completed) && typeof params.atsScore === 'number') {
-    lines.push(`Current ATS estimate: ${params.atsScore}%.`);
+    // Not an ATS estimate. It is the share of the posting's stated
+    // requirements this resume answers — the one term the rebuild's own
+    // documentation says it abandoned, still being printed to the user.
+    lines.push(`Answering ${params.atsScore}% of what this posting asks for.`);
   }
 
   if (params.step === PipelineStep.pdf_generation) {

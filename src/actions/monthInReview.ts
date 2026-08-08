@@ -13,6 +13,7 @@
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { err, ok, type Result } from '@/lib/result';
+import { gateMeteredAction } from '@/lib/entitlements';
 import {
     buildMonthInReview,
     formatPeriodKey,
@@ -61,6 +62,17 @@ const PeriodKeySchema = z.string().trim().regex(/^\d{4}-\d{2}$/, 'expected a yyy
 export async function getMonthInReview(periodKey: string): Promise<Result<MonthInReviewView>> {
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
+
+    // `month_in_review` has carried a limit since packaging shipped —
+    // `period(0)` on Free, unlimited on Career — and was never passed to
+    // `gateMeteredAction` anywhere. It is the flagship Career differentiator in
+    // the comparison table, so the day the `work_log` flag turns on, every free
+    // user would have had it. A declared limit with no call site is not a
+    // limit; it is documentation.
+    const gate = await gateMeteredAction(userId, 'month_in_review');
+    if (!gate.allowed) {
+        return err(gate.reason ?? 'Month in Review is not included on this plan', 'entitlement');
+    }
 
     const parsedKey = PeriodKeySchema.safeParse(periodKey);
     if (!parsedKey.success) return err('Invalid month', 'invalid_input');

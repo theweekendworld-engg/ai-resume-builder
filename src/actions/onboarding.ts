@@ -39,6 +39,7 @@ import { completeOnboarding } from '@/actions/profile';
 import { prisma } from '@/lib/prisma';
 import { track } from '@/lib/track';
 import { isEnabled } from '@/lib/flags';
+import { parseInternalPath } from '@/lib/safeNext';
 
 const FEATURE = { feature: 'onboarding' } as const;
 
@@ -150,7 +151,7 @@ export async function getWelcomeState(): Promise<Result<WelcomeState>> {
  *   history only        → the builder, to make the thing they came for
  *   nothing             → the builder, which is where history gets added
  */
-export async function finishOnboarding(): Promise<Result<{ next: string }>> {
+export async function finishOnboarding(requestedNext?: string): Promise<Result<{ next: string }>> {
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
 
@@ -162,19 +163,27 @@ export async function finishOnboarding(): Promise<Result<{ next: string }>> {
         isEnabled(userId, 'missions'),
     ]);
 
+    // Where they were going before we interrupted them to set up an account.
+    // "Get Career" means checkout, not the builder — the destination they
+    // chose beats the one we would have picked. Re-parsed here rather than
+    // trusted from the client, because a server action is a public endpoint.
+    const intended = parseInternalPath(requestedNext);
+
     await track(userId, 'onboarding_completed', {
         ...FEATURE,
         hasHistory: experiences > 0,
+        honoredIntent: intended !== null,
     });
 
+    if (intended) return ok({ next: intended });
     return ok({ next: experiences > 0 && missionsEnabled ? '/home' : '/build' });
 }
 
 /** Leave without importing. Recorded, because a skip is a real signal. */
-export async function skipOnboarding(): Promise<Result<{ next: string }>> {
+export async function skipOnboarding(requestedNext?: string): Promise<Result<{ next: string }>> {
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
 
     await track(userId, 'onboarding_skipped', FEATURE);
-    return finishOnboarding();
+    return finishOnboarding(requestedNext);
 }

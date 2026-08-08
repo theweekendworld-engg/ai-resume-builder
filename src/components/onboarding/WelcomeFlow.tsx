@@ -87,7 +87,14 @@ function ImportedSummary({ outcome }: { outcome: ImportOutcome }) {
     );
 }
 
-export function WelcomeFlow({ initial }: { initial: WelcomeState }) {
+export function WelcomeFlow({
+    initial,
+    next,
+}: {
+    initial: WelcomeState;
+    /** Where the CTA that started this was going. Honoured on the way out. */
+    next: string | null;
+}) {
     const router = useRouter();
 
     const [step, setStep] = React.useState<Step>(initial.hasHistory ? 'mission' : 'history');
@@ -112,9 +119,11 @@ export function WelcomeFlow({ initial }: { initial: WelcomeState }) {
 
     const totalSteps = initial.missionsEnabled ? 2 : 1;
 
-    const leave = async (fn: () => Promise<{ success: boolean; data?: { next: string }; error?: string }>) => {
+    const leave = async (
+        fn: (requestedNext?: string) => Promise<{ success: boolean; data?: { next: string }; error?: string }>,
+    ) => {
         setBusy(true);
-        const result = await fn();
+        const result = await fn(next ?? undefined);
         setBusy(false);
         if (!result.success) {
             toast.error(result.error ?? 'Something went wrong.');

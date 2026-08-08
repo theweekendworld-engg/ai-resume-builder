@@ -5,6 +5,7 @@ import { getPacket } from '@/actions/packets';
 import { PacketEditor } from '@/components/packets/PacketEditor';
 import { PacketProgressView } from '@/components/packets/PacketProgressView';
 import { isEnabled } from '@/lib/flags';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
     title: 'Review packet · Patronus',
@@ -17,7 +18,13 @@ export const metadata = {
  */
 export default async function PacketPage({ params }: { params: Promise<{ id: string }> }) {
     const { userId } = await auth();
-    if (!userId || !(await isEnabled(userId, 'review_packet'))) notFound();
+    if (!userId) notFound();
+    // Strangers still get a 404 — it does not disclose an unreleased feature.
+    // A signed-in customer was sold this on the pricing page, so they get told
+    // the truth instead.
+    if (!(await isEnabled(userId, 'review_packet'))) {
+        return <FeatureUnavailable {...FEATURE_COPY.review_packet} reason="not_enabled" />;
+    }
 
     const { id } = await params;
     const result = await getPacket(id);

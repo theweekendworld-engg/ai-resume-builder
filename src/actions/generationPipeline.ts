@@ -231,7 +231,20 @@ async function maybeReuseExistingResume(params: {
   const resumes = await prisma.resume.findMany({
     where: {
       userId: params.userId,
-      atsScore: { gte: config.resumeReuse.minAtsScore },
+      atsScore: { gte: config.resumeReuse.minCoverageScore },
+      // v2 rows only.
+      //
+      // `atsScore` holds two incompatible scales. Before the rebuild it was
+      // keyword overlap and reliably returned ~95; now it is requirement
+      // coverage and live runs score 61-73. Filtering on the number alone
+      // therefore matched EXACTLY the pre-rebuild resumes — the reuse path was
+      // biased toward serving the documents the rebuild was written to
+      // replace, and the better the new pipeline got, the less its output
+      // could be reused.
+      //
+      // `coverageReport` is only ever written by v2, so it is the marker for
+      // which scale the score is on.
+      coverageReport: { not: Prisma.DbNull },
     },
     orderBy: { updatedAt: 'desc' },
     take: 25,

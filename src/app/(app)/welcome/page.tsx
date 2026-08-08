@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 
 import { getWelcomeState } from '@/actions/onboarding';
 import { WelcomeFlow } from '@/components/onboarding/WelcomeFlow';
+import { parseInternalPath } from '@/lib/safeNext';
 
 export const metadata = {
     title: 'Welcome · Patronus',
@@ -19,13 +20,23 @@ export const metadata = {
  * Runs once. `onboardingComplete` sends a returning user straight through, so
  * a bookmarked or shared link cannot trap someone in setup they have done.
  */
-export default async function WelcomePage() {
+export default async function WelcomePage({
+    searchParams,
+}: {
+    searchParams: Promise<{ next?: string }>;
+}) {
     const { userId } = await auth();
     if (!userId) redirect('/sign-in');
 
-    const result = await getWelcomeState();
-    if (!result.success) redirect('/dashboard');
-    if (result.data.done) redirect('/dashboard');
+    // Where the CTA they clicked was actually going. "Get Career" means
+    // checkout; the hero means the Work Log. Sign-up parks it here because
+    // first run has to happen before the destination is worth reaching.
+    const next = parseInternalPath((await searchParams).next);
 
-    return <WelcomeFlow initial={result.data} />;
+    const result = await getWelcomeState();
+    if (!result.success) redirect(next ?? '/dashboard');
+    // A returning user has done this. Send them where they were going.
+    if (result.data.done) redirect(next ?? '/dashboard');
+
+    return <WelcomeFlow initial={result.data} next={next} />;
 }

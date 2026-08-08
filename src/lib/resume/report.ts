@@ -24,20 +24,29 @@
 
 import { z } from 'zod';
 
-import { reconcileSkillGaps, type CoverageReport } from './coverage';
+import { reconcileSkillGaps } from './coverage';
 import type { PostingBrief } from './posting';
 import type { TailorResult } from './tailor';
 
 /** One thing the employer asked for, and whether the resume answers it. */
 export const CoverageItemSchema = z.object({
     text: z.string(),
-    kind: z.enum(['must', 'nice']),
+    kind: z.enum(['must', 'nice', 'responsibility']),
     /**
      * True when the resume's DATE RANGE answers it rather than any line —
      * "6+ years building backend systems". The editor says so, because
      * "answered" with nothing to point at reads like a bug.
+     *
+     * Only ever true for a requirement the posting-reader marked as satisfied
+     * by time served. It used to be set by a bare years regex, which credited
+     * "2+ years owning a paid budget over $1M" to anyone who had held a job.
      */
     byDates: z.boolean(),
+    /**
+     * True on an item the candidate DOES evidence with a line that did not fit
+     * on the page. Rendered as a one-click restore rather than as a gap.
+     */
+    byCutLine: z.boolean().optional(),
 });
 
 export const DroppedLineSchema = z.object({
@@ -57,6 +66,11 @@ export const ResumeCoverageSchema = z.object({
     score: z.number().nullable(),
     mustScore: z.number().nullable(),
     answered: z.array(CoverageItemSchema),
+    /**
+     * Optional so a report stored before this existed still parses. A resume
+     * whose panel silently stops rendering is worse than one missing a row.
+     */
+    answeredByCut: z.array(CoverageItemSchema).optional(),
     unanswered: z.array(CoverageItemSchema),
     /** Wanted by the posting, unevidenced, therefore left off the document. */
     skillGaps: z.array(z.string()),
@@ -76,14 +90,16 @@ export function buildReport(
     now: Date = new Date(),
 ): ResumeCoverage {
     const toItem = (
-        requirement: { text: string; kind: 'must' | 'nice' },
+        requirement: { text: string; kind: 'must' | 'nice' | 'responsibility' },
         byDates: boolean,
-    ): CoverageItem => ({ text: requirement.text, kind: requirement.kind, byDates });
+        byCutLine = false,
+    ): CoverageItem => ({ text: requirement.text, kind: requirement.kind, byDates, byCutLine });
 
     const answered: CoverageItem[] = result.coverage.answered.map((entry) =>
-        // No bullet ids means nothing on the page states it and the dates
-        // carry it. `computeCoverage` is the only thing that produces that.
-        toItem(entry.requirement, entry.bulletIds.length === 0),
+        toItem(entry.requirement, entry.via === 'dates'),
+    );
+    const answeredByCut: CoverageItem[] = (result.coverage.answeredByCut ?? []).map((entry) =>
+        toItem(entry.requirement, false, true),
     );
     const unanswered: CoverageItem[] = result.coverage.unanswered.map((requirement) =>
         toItem(requirement, false),
@@ -96,9 +112,16 @@ export function buildReport(
         score: result.coverage.score,
         mustScore: result.coverage.mustScore,
         answered,
+        answeredByCut,
         unanswered,
-        // Only the gaps that add something — see `reconcileSkillGaps`.
-        skillGaps: reconcileSkillGaps(result.skillGaps, [...answered, ...unanswered]),
+        // Only the gaps that add something — see `reconcileSkillGaps`. A skill
+        // named inside a requirement the candidate answers with a CUT line is
+        // not a gap either; they have it.
+        skillGaps: reconcileSkillGaps(result.skillGaps, [
+            ...answered,
+            ...answeredByCut,
+            ...unanswered,
+        ]),
         dropped: result.dropped.map((line) => ({
             text: line.text,
             reason: line.reason,
@@ -124,12 +147,29 @@ export function parseReport(value: unknown): ResumeCoverage | null {
     return parsed.success ? parsed.data : null;
 }
 
+/** Sort order for the panel: musts, then stated duties, then bonuses. */
+const KIND_RANK: Record<CoverageItem['kind'], number> = {
+    must: 0,
+    responsibility: 1,
+    nice: 2,
+};
+
 /** Everything still missing, musts first. What the panel leads with. */
 export function openItems(report: ResumeCoverage): CoverageItem[] {
-    return [...report.unanswered].sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind === 'must' ? -1 : 1;
-        return 0;
-    });
+    return [...report.unanswered].sort((a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind]);
+}
+
+/**
+ * Requirements the candidate evidences with a line we cut for space.
+ *
+ * Separate from `openItems` on purpose: these are not gaps. They are the one
+ * category where the fix already exists in the user's own history and the
+ * editor can restore it in a click.
+ */
+export function restorableItems(report: ResumeCoverage): CoverageItem[] {
+    return [...(report.answeredByCut ?? [])].sort(
+        (a, b) => KIND_RANK[a.kind] - KIND_RANK[b.kind],
+    );
 }
 
 /**

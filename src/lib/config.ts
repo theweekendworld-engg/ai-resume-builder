@@ -75,7 +75,21 @@ export const config = {
     },
     resumeReuse: {
         enabled: process.env.RESUME_REUSE_ENABLED !== "false",
-        minAtsScore: Number(process.env.RESUME_REUSE_MIN_ATS_SCORE ?? 80),
+        /*
+         * Recalibrated for the coverage scale.
+         *
+         * `Resume.atsScore` now stores requirement coverage, and the two
+         * scales do not overlap: the old keyword score reliably returned ~95,
+         * while three live v2 runs scored 73, 66 and 61. At 80 the fast path
+         * had stopped firing for anything v2 produced — every generation paid
+         * the full cost and the full wait — and the ONLY rows that could still
+         * match were pre-rebuild resumes carrying inflated scores. Reuse was
+         * biased toward serving exactly the documents the rebuild replaced.
+         *
+         * 70 is "this resume answered most of what that posting asked for",
+         * which is the question reuse is actually asking.
+         */
+        minCoverageScore: Number(process.env.RESUME_REUSE_MIN_COVERAGE_SCORE ?? 70),
         similarityThreshold: Number(process.env.RESUME_REUSE_SIMILARITY_THRESHOLD ?? 0.65),
     },
     pdfStorage: {

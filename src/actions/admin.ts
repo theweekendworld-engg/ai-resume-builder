@@ -2,6 +2,12 @@
 
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
+import {
+  ensureFlagsSeeded,
+  FEATURE_FLAGS,
+  invalidateFlagCache,
+  type FeatureFlagKey,
+} from '@/lib/flags';
 import { z } from 'zod';
 import {
   getCurrentBillingPeriod,
@@ -351,4 +357,95 @@ export async function getAdminUserUsage(userId: string): Promise<AdminUserUsageD
 export async function refreshCurrentUsageSummaries(): Promise<void> {
   await requireAdminUserId();
   await upsertAllUserUsageSummaries();
+}
+
+/* ── Feature flags ──────────────────────────────────────────────────────────
+ *
+ * Until now there was no write path. `grep featureFlag src/actions/` returned
+ * only test files: the flag table could be changed by hand-written SQL against
+ * production and by nothing else, while every sold feature in the product sat
+ * behind one. An `/admin` route existed and could not perform the single
+ * operation that gates the entire product.
+ */
+
+export type FeatureFlagRow = {
+  key: FeatureFlagKey;
+  enabled: boolean;
+  rolloutPercent: number;
+  allowUserIds: string[];
+  description: string;
+  /** False when the row is missing entirely — off for everyone, allow-list included. */
+  seeded: boolean;
+};
+
+export async function listFeatureFlags(): Promise<FeatureFlagRow[]> {
+  await requireAdminUserId();
+
+  const rows = await prisma.featureFlag.findMany();
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+
+  // Driven by the declared list, not by what happens to be in the table. A
+  // flag with no row is the failure this screen exists to make visible, so it
+  // has to appear here rather than be absent from the listing.
+  return FEATURE_FLAGS.map((key) => {
+    const row = byKey.get(key);
+    return {
+      key,
+      enabled: row?.enabled ?? false,
+      rolloutPercent: row?.rolloutPercent ?? 0,
+      allowUserIds: Array.isArray(row?.allowUserIds)
+        ? (row.allowUserIds as unknown[]).filter((entry): entry is string => typeof entry === 'string')
+        : [],
+      description: row?.description ?? `Career OS: ${key}`,
+      seeded: Boolean(row),
+    };
+  });
+}
+
+const SetFeatureFlagSchema = z.object({
+  key: z.enum(FEATURE_FLAGS),
+  enabled: z.boolean(),
+  rolloutPercent: z.number().int().min(0).max(100),
+});
+
+export async function setFeatureFlag(input: {
+  key: string;
+  enabled: boolean;
+  rolloutPercent: number;
+}): Promise<{ success: boolean; error?: string }> {
+  await requireAdminUserId();
+
+  const parsed = SetFeatureFlagSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'Invalid flag input' };
+
+  // Upsert rather than update: the two flags this screen was written for had
+  // no row, and an update would silently no-op on exactly the case that
+  // matters most.
+  await prisma.featureFlag.upsert({
+    where: { key: parsed.data.key },
+    create: {
+      key: parsed.data.key,
+      enabled: parsed.data.enabled,
+      rolloutPercent: parsed.data.rolloutPercent,
+      description: `Career OS: ${parsed.data.key}`,
+    },
+    update: {
+      enabled: parsed.data.enabled,
+      rolloutPercent: parsed.data.rolloutPercent,
+    },
+  });
+
+  invalidateFlagCache();
+  return { success: true };
+}
+
+/** Fills in any declared flag with no row, defaulting to off. */
+export async function seedFeatureFlags(): Promise<{ success: boolean; seeded: number }> {
+  await requireAdminUserId();
+
+  const before = await prisma.featureFlag.count();
+  await ensureFlagsSeeded();
+  const after = await prisma.featureFlag.count();
+
+  return { success: true, seeded: after - before };
 }

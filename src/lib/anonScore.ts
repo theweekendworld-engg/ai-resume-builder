@@ -180,7 +180,10 @@ async function matchAgainst(
             userId: ANON_USER_ID,
         });
 
-        const toItem = (item: { text: string; kind: 'must' | 'nice' }, byDates: boolean) => ({
+        const toItem = (
+            item: { text: string; kind: 'must' | 'nice' | 'responsibility' },
+            byDates: boolean,
+        ) => ({
             text: item.text,
             kind: item.kind,
             byDates,
@@ -192,8 +195,7 @@ async function matchAgainst(
             role: analysis.brief.role,
             company: analysis.brief.company,
             answered: analysis.coverage.answered.map((entry) =>
-                // No bullet ids means the document's dates carry it.
-                toItem(entry.requirement, entry.bulletIds.length === 0),
+                toItem(entry.requirement, entry.via === 'dates'),
             ),
             unanswered: analysis.coverage.unanswered.map((item) => toItem(item, false)),
             skillsMatched: analysis.skillsMatched,

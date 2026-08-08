@@ -15,6 +15,7 @@ import { describe, test, expect, beforeEach, afterAll } from 'bun:test';
 import { __testing, type ObjectRunner } from '@/lib/ai/structured';
 import { ANON_USER_ID, scoreResumeText } from './anonScore';
 import type { AnonScoreModel } from './anonScoreSchema';
+import { deriveBand, type ScoreBand } from '@/lib/anonScoreSchema';
 
 const RESUME = `Jane Doe — Staff Engineer
 Rebuilt the checkout service; cut p95 latency from 800ms to 180ms.
@@ -180,7 +181,7 @@ describe('accounting', () => {
 
 describe('the report itself', () => {
     test('the band is derived server-side, never asked of the model', async () => {
-        useResponses([{ ...report([goodFix]), overall: 84 }]);
+        useResponses([{ ...report([goodFix]), overall: 86 }]);
         const result = await scoreResumeText(RESUME);
         expect(result.band).toBe('strong');
     });
@@ -219,9 +220,24 @@ describe('the job match is measured, not opined on', () => {
                             seniority: 'senior',
                             domain: 'payments',
                             requirements: [
-                                { text: 'Experience with Kubernetes', kind: 'must', category: 'skill' },
-                                { text: '6+ years backend', kind: 'must', category: 'experience' },
-                                { text: 'Experience with Terraform', kind: 'nice', category: 'skill' },
+                                {
+                                    text: 'Experience with Kubernetes',
+                                    kind: 'must',
+                                    category: 'skill',
+                                    satisfiedByTenure: false,
+                                },
+                                {
+                                    text: '6+ years backend',
+                                    kind: 'must',
+                                    category: 'experience',
+                                    satisfiedByTenure: true,
+                                },
+                                {
+                                    text: 'Experience with Terraform',
+                                    kind: 'nice',
+                                    category: 'skill',
+                                    satisfiedByTenure: false,
+                                },
                             ],
                             skills: ['Kubernetes', 'Terraform'],
                             responsibilities: [],
@@ -298,7 +314,12 @@ Cut invoice generation p95 from 4.2s to 900ms with a batched query.`;
                 seniority: 'senior',
                 domain: 'payments',
                 requirements: [
-                    { text: 'Experience with Kubernetes', kind: 'must', category: 'skill' },
+                    {
+                        text: 'Experience with Kubernetes',
+                        kind: 'must',
+                        category: 'skill',
+                        satisfiedByTenure: false,
+                    },
                 ],
                 skills: ['Kubernetes', 'Terraform'],
                 responsibilities: [],
@@ -338,5 +359,25 @@ Cut invoice generation p95 from 4.2s to 900ms with a batched query.`;
         const result = await scoreResumeText(KUBE_RESUME, JD);
         expect(result.overall).toBe(72);
         expect(result.jobMatch).toBeUndefined();
+    });
+});
+
+describe('the bands are calibrated to be worth reading', () => {
+    // A deliberately mediocre real resume — no numbers anywhere, five bullets
+    // opening "Responsible for" / "Helped" / "Assisted" — scored 64 and was
+    // told it was "good" under the old 80/60 thresholds. That is not only
+    // dishonest, it is counter-conversional: a free tool that says your resume
+    // is already fine leaves the paid product nothing to sell.
+    test.each([
+        [95, 'strong'],
+        [86, 'strong'],
+        [85, 'strong'],
+        [84, 'good'],
+        [70, 'good'],
+        [69, 'needs_work'],
+        [64, 'needs_work'],
+        [0, 'needs_work'],
+    ])('%p is %p', (score, band) => {
+        expect(deriveBand(score as number)).toBe(band as ScoreBand);
     });
 });

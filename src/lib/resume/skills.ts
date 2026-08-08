@@ -41,6 +41,17 @@ const SLUG_LABELS: Record<string, string> = {
     r_lang: 'R', c_lang: 'C', nextjs: 'Next.js', dbt: 'dbt', ml: 'ML',
     postgresql: 'PostgreSQL', mysql: 'MySQL', nodejs: 'Node.js', ios: 'iOS',
     ec2: 'EC2', s3: 'S3', api: 'API', etl: 'ETL', ui: 'UI', ux: 'UX',
+    // The non-engineering vocabulary. Default title-casing renders these as
+    // "Ab Testing", "Power Bi" and "Go To Market" — a skills section that
+    // misspells its own entries reads as machine-written, which is the exact
+    // impression the whole rebuild exists to avoid.
+    swiftui: 'SwiftUI', ab_testing: 'A/B Testing', power_bi: 'Power BI',
+    go_to_market: 'Go-to-Market', design_ops: 'DesignOps', ixd: 'Interaction Design',
+    information_architecture: 'Information Architecture',
+    adobe_creative_suite: 'Adobe Creative Suite', google_ads: 'Google Ads',
+    meta_ads: 'Meta Ads', google_analytics: 'Google Analytics',
+    budget_ownership: 'Budget Ownership', financial_modelling: 'Financial Modelling',
+    machine_learning: 'Machine Learning', distributed_systems: 'Distributed Systems',
 };
 
 /** Human label for a canonical slug. */

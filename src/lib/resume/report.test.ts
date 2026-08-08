@@ -13,12 +13,23 @@ import { buildReport, openItems, parseReport, verdict, type ResumeCoverage } fro
 
 const NOW = new Date('2026-08-07T12:00:00Z');
 
-function req(text: string, kind: 'must' | 'nice' = 'must') {
-    return { id: text, text, kind, category: 'experience' as const };
+function req(
+    text: string,
+    kind: 'must' | 'nice' | 'responsibility' = 'must',
+    satisfiedByTenure = false,
+) {
+    return { id: text, text, kind, category: 'experience' as const, satisfiedByTenure };
 }
 
 function coverage(patch: Partial<CoverageReport> = {}): CoverageReport {
-    return { score: 80, mustScore: 75, answered: [], unanswered: [], ...patch };
+    return {
+        score: 80,
+        mustScore: 75,
+        answered: [],
+        answeredByCut: [],
+        unanswered: [],
+        ...patch,
+    };
 }
 
 function build(patch: Parameters<typeof buildReport>[0]) {
@@ -30,8 +41,8 @@ describe('flattening for storage', () => {
         brief: { role: 'Senior Backend Engineer', company: 'Stripe' },
         coverage: coverage({
             answered: [
-                { requirement: req('Experience with Kubernetes'), bulletIds: ['e0:1'] },
-                { requirement: req('6+ years backend'), bulletIds: [] },
+                { requirement: req('Experience with Kubernetes'), bulletIds: ['e0:1'], via: 'page' as const },
+                { requirement: req('6+ years backend'), bulletIds: [], via: 'dates' as const },
             ],
             unanswered: [req('Strong written communication'), req('Terraform', 'nice')],
         }),
@@ -93,7 +104,7 @@ describe('the gap list stays coherent with the requirements', () => {
             ...base,
             coverage: coverage({
                 answered: [
-                    { requirement: req('Experience with cloud infrastructure (AWS)'), bulletIds: ['e0:1'] },
+                    { requirement: req('Experience with cloud infrastructure (AWS)'), bulletIds: ['e0:1'], via: 'page' as const },
                 ],
             }),
             skillGaps: ['AWS', 'Terraform'],
@@ -113,7 +124,7 @@ describe('the gap list stays coherent with the requirements', () => {
     test('a genuinely additive gap survives', () => {
         const report = build({
             ...base,
-            coverage: coverage({ answered: [{ requirement: req('Kubernetes'), bulletIds: ['e0:1'] }] }),
+            coverage: coverage({ answered: [{ requirement: req('Kubernetes'), bulletIds: ['e0:1'], via: 'page' as const }] }),
             skillGaps: ['Terraform'],
         });
         expect(report.skillGaps).toEqual(['Terraform']);
@@ -124,7 +135,7 @@ describe('the gap list stays coherent with the requirements', () => {
         const report = build({
             ...base,
             coverage: coverage({
-                answered: [{ requirement: req('Experience with Google Cloud'), bulletIds: ['e0:1'] }],
+                answered: [{ requirement: req('Experience with Google Cloud'), bulletIds: ['e0:1'], via: 'page' as const }],
             }),
             skillGaps: ['Go'],
         });

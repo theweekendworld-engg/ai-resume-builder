@@ -21,7 +21,9 @@ import {
   type SubscriptionSummary,
 } from '@/lib/entitlements';
 import {
+  CAREER_PLAN,
   PLAN_CATALOG,
+  SEARCH_PLAN,
   headlinePrice,
   isPriceKey,
   isUnlimited,
@@ -128,6 +130,27 @@ export async function startCheckout(
 
   const price = priceFor(plan);
   const tier = tierForPriceKey(plan);
+
+  // Search sits ON TOP of Career — both the pricing page and the plan screen
+  // say so in those words — and nothing enforced it.
+  //
+  // `PLAN_FEATURES.pro` is a strict superset of `PLAN_FEATURES.always_on`, and
+  // the effective tier is `maxTier` over active subscriptions. So a customer
+  // who bought Search alone for $2 received every Career capability plus
+  // unlimited generations, for $3 less than Career. The cheapest paid plan was
+  // the best one, and the upsell ladder ran downhill.
+  //
+  // Enforced here rather than in the UI because the UI is not where money is
+  // taken. A checkout URL is reachable by anyone who can call a server action.
+  if (slotForPriceKey(plan) === 'search') {
+    const { career } = await getSubscriptionState(userId);
+    if (!career?.active) {
+      return err(
+        `${SEARCH_PLAN.name} sits on top of ${CAREER_PLAN.name} — add ${CAREER_PLAN.name} first, then turn ${SEARCH_PLAN.name} on for as long as you are looking.`,
+        'career_required'
+      );
+    }
+  }
 
   try {
     const customerId = await ensureStripeCustomer(userId);

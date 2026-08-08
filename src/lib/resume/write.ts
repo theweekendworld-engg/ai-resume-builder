@@ -195,8 +195,19 @@ ${sourceText}
 Write 2 sentences, ${MAX_SUMMARY_WORDS} words maximum, in the third person with
 no pronoun ("Backend engineer who…", not "I am…").
 
-The first sentence says who this person is, in terms this employer would
-recognise. The second says why they are a fit for this specific role.
+The first sentence says who this person is, opening with the title above —
+"${params.currentTitle || params.brief.role}" — in terms this employer would
+recognise. The second says what they do that this role needs.
+
+NEVER address the employer or name the company or the role. The reader already
+knows which job they posted; a resume that tells them is a mail merge, and it is
+the tell that gets a document binned as AI-written. All of these are WRONG:
+  "Fit for Northbeam's Senior Product Designer, Payments role through…"
+  "Well-suited to Palvo's Growth Marketing Lead role by focusing on…"
+  "…well-suited to the Data Analyst role at Verrick Logistics."
+Write what they do, and let the fit be obvious:
+  "Designs payment flows end to end, from research through a shipped design
+   system." 
 
 Do NOT list their achievements — the reader is about to read them. Use at most
 ONE number, and only if it is the single most striking thing about them. Every
@@ -220,6 +231,17 @@ Never write "results-focused", "proven track record", "passionate", or
     };
 
     let summary = await attempt('');
+
+    // Addressing the employer survives the prompt often enough to need a
+    // check. All three live audit runs produced the same construction in
+    // sentence two, unprompted, and it is the first line a recruiter reads.
+    if (addressesEmployer(summary, params.brief)) {
+        summary = await attempt(
+            `Your previous attempt addressed the employer by name or named the role. Rewrite it so it never mentions ${
+                [params.brief.company, params.brief.role].filter(Boolean).join(' or ')
+            }. Describe what this person does; the fit speaks for itself.`,
+        );
+    }
 
     // Check, then one corrective retry — the same shape the numeric guard
     // uses, for the class of claim it cannot see.
@@ -245,6 +267,31 @@ Never write "results-focused", "proven track record", "passionate", or
     }
 
     return summary;
+}
+
+/**
+ * Does this summary talk TO the employer rather than about the candidate?
+ *
+ * Matches the company name and the posting's role title. Both are things a
+ * candidate would never write about themselves and a mail merge always does.
+ *
+ * The role check needs the multi-word form: a summary for a designer should be
+ * free to say "product design", and only "Senior Product Designer" — the
+ * posting's own headline, repeated back — is the tell.
+ */
+export function addressesEmployer(
+    summary: string,
+    brief: Pick<PostingBrief, 'role' | 'company'>,
+): boolean {
+    const haystack = summary.toLowerCase();
+
+    const company = brief.company.trim().toLowerCase();
+    if (company.length >= 3 && haystack.includes(company)) return true;
+
+    const role = brief.role.trim().toLowerCase();
+    if (role.split(/\s+/).length >= 2 && haystack.includes(role)) return true;
+
+    return false;
 }
 
 function forbiddenClause(terms: readonly string[]): string {
@@ -276,8 +323,13 @@ function safeSummary(currentTitle: string, brief: PostingBrief, yearsHint: strin
     const role = currentTitle || brief.role || 'Experienced professional';
     const years = /about (\d+) years/.exec(yearsHint)?.[1];
     const opener = years ? `${role} with ${years} years of experience.` : `${role}.`;
-    const target = brief.role ? ` Applying for ${brief.role}${brief.company ? ` at ${brief.company}` : ''}.` : '';
-    return truncateWords(`${opener}${target}`, MAX_SUMMARY_WORDS);
+    // Deliberately does NOT name the role or the company. This is the path
+    // taken when the model would not stop making unevidenced claims, and
+    // "Applying for X at Y" was the same mail-merge tell the main path is
+    // checked for — the fallback must not reintroduce what it is rescuing us
+    // from. The domain is a description of the work, not an address.
+    const focus = brief.domain.trim() ? ` Focused on ${brief.domain.trim()}.` : '';
+    return truncateWords(`${opener}${focus}`, MAX_SUMMARY_WORDS);
 }
 
 /**

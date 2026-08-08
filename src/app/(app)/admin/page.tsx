@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { getAdminDashboardData, refreshCurrentUsageSummaries } from '@/actions/admin';
-import type { AdminDashboardData } from '@/actions/admin';
+import { getAdminDashboardData, listFeatureFlags, refreshCurrentUsageSummaries } from '@/actions/admin';
+import type { AdminDashboardData, FeatureFlagRow } from '@/actions/admin';
+import { FeatureFlagPanel } from '@/components/admin/FeatureFlagPanel';
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -10,8 +11,9 @@ function formatUsd(value: number): string {
 
 export default async function AdminDashboardPage() {
   let data: AdminDashboardData;
+  let flags: FeatureFlagRow[];
   try {
-    data = await getAdminDashboardData();
+    [data, flags] = await Promise.all([getAdminDashboardData(), listFeatureFlags()]);
   } catch {
     redirect('/dashboard');
   }
@@ -39,6 +41,12 @@ export default async function AdminDashboardPage() {
           Refresh Monthly Summaries
         </button>
       </form>
+
+      {/* First, because it is the only thing here that changes what a customer
+          can reach. Usage numbers are diagnostics; this is the product. */}
+      <div className="mb-8">
+        <FeatureFlagPanel initial={flags} />
+      </div>
 
       <section className="mb-8 grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4">

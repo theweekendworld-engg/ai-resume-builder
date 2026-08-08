@@ -9,9 +9,24 @@
  *
  * Not covered here — needs a real Resend sandbox key, see TODO(provider) in
  * send.test.ts: provider-500 handling, delivery idempotency, and header arrival.
+ *
+ * ── The provider boundary is mocked, and was not ────────────────────────────
+ *
+ * This file used to install nothing, so every test that got past the consent
+ * check made a real HTTPS request to api.resend.com and relied on the fake key
+ * coming back 401. That made the suite depend on the public internet to
+ * FAIL — and "a CRITICAL template still sends to an opted-out user" flaked
+ * roughly one run in five, timing out at exactly 5000ms, because a slow round
+ * trip is indistinguishable from a hang.
+ *
+ * The mock sits at the provider boundary, so everything this file exists to
+ * test — preferences, suppression, the plain-text part, the List-Unsubscribe
+ * headers, the `EmailSend` bookkeeping — still runs for real. The only thing
+ * that stops happening is the request.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { installMocks, mocks, resetMocks, uninstallMocks } from '@/__mocks__';
 import { prisma } from '@/lib/prisma';
 import {
     applyUnsubscribe,
@@ -29,7 +44,16 @@ function newUser(name: string): string {
     return id;
 }
 
+beforeAll(() => {
+    installMocks({ only: ['email'] });
+});
+
+afterAll(() => {
+    uninstallMocks();
+});
+
 afterEach(async () => {
+    resetMocks();
     if (users.length === 0) return;
     await prisma.emailSend.deleteMany({ where: { userId: { in: users } } });
     await prisma.emailPreference.deleteMany({ where: { userId: { in: users } } });
@@ -100,9 +124,16 @@ describe('sendEmail — consent enforcement', () => {
             data: { url: 'https://example.com/w/abc', purpose: 'confirm a win' },
         } as Parameters<typeof sendEmail>[0]);
 
-        // It got past consent. It then fails at the fake provider key, which is
-        // the expected outcome here — the assertion is that it was NOT skipped.
+        // It got past consent, which is the whole assertion. It now reaches a
+        // local mock instead of the real API, so the outcome is deterministic
+        // rather than "whatever 401 the network gets around to returning".
         expect(result.status).not.toBe('skipped');
+        expect(mocks().recorder.emails).toHaveLength(1);
+        // The tag is how the template travels to the provider, so asserting it
+        // proves the critical template is what actually went out.
+        expect(
+            mocks().recorder.emails[0].tags.some((tag) => tag.value === 'magic_link'),
+        ).toBe(true);
     });
 
     test('an implausible recipient is rejected before any database write', async () => {

@@ -81,6 +81,15 @@ export type TailorResult = {
 
 const DEFAULT_CAPS = { maxBulletsPerRole: 4, maxRoles: 4 };
 
+/**
+ * Group id for education and skills.
+ *
+ * They are scored like bullets so the same model call decides what they
+ * answer, and excluded from selection because they are not bullets — they
+ * already have their own sections on the page.
+ */
+const CREDENTIAL_GROUP = 'cred';
+
 /** Split a description into its individual lines, which are the real unit. */
 function toBullets(text: string, groupId: string): SourceBullet[] {
     return text
@@ -142,12 +151,42 @@ export async function tailorResume(input: TailorInput): Promise<TailorResult> {
         bullets.push(...toBullets(item.description, groupId));
     });
 
-    const scored = await scoreBullets({
-        bullets,
+    // Education and the candidate's own skills are ON the resume and can
+    // answer a requirement, so they are scored alongside the bullets — but in
+    // their own group, which selection never sees. Without this, coverage read
+    // bullets only and told a career switcher holding a BS that nothing on her
+    // resume answered "Bachelor's degree in any field", and that she lacked
+    // "Working knowledge of SQL" while SQL sat in the skills section of the
+    // document being scored.
+    const credentialSources: SourceBullet[] = [
+        ...input.education.map((item, index) => ({
+            id: `${CREDENTIAL_GROUP}:edu${index}`,
+            groupId: CREDENTIAL_GROUP,
+            text: [item.degree, item.fieldOfStudy, item.institution, item.endDate]
+                .map((part) => (part ?? '').trim())
+                .filter(Boolean)
+                .join(', '),
+        })),
+        ...(input.candidateSkills.length > 0
+            ? [
+                  {
+                      id: `${CREDENTIAL_GROUP}:skills`,
+                      groupId: CREDENTIAL_GROUP,
+                      text: `Skills listed on the resume: ${input.candidateSkills.join(', ')}`,
+                  },
+              ]
+            : []),
+    ].filter((entry) => entry.text.trim().length > 0);
+
+    const scoredAll = await scoreBullets({
+        bullets: [...bullets, ...credentialSources],
         brief,
         userId: input.userId,
         sessionId: input.sessionId,
     });
+
+    const credentials = scoredAll.filter((entry) => entry.groupId === CREDENTIAL_GROUP);
+    const scored = scoredAll.filter((entry) => entry.groupId !== CREDENTIAL_GROUP);
 
     // ── 3. decide what earns space
     const selection = selectBullets(scored, brief.requirements, caps);
@@ -229,9 +268,21 @@ export async function tailorResume(input: TailorInput): Promise<TailorResult> {
     };
 
     // ── 8. score by what it answers
+    //
+    // All three evidence sources, not just the bullets that survived the cap.
+    // Coverage used to run on `selection.kept` alone, computed AFTER the
+    // four-per-role cap — so a line the candidate wrote, which answers a
+    // stated must, and which we removed for space, was indistinguishable from
+    // a line that never existed. That is how a marketer whose history says
+    // "Manage a team of three and a £1.2M annual budget" was told nothing on
+    // her resume answered "Experience managing and developing marketers".
     const coverage = computeCoverage(
         brief.requirements,
-        selection.kept,
+        {
+            kept: selection.kept,
+            cut: selection.dropped.map((entry) => entry.bullet),
+            credentials,
+        },
         tenureYears(input.experiences),
     );
 

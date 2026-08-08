@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 
 import { getHome } from '@/actions/missions';
 import { HomeScreen } from '@/components/missions/HomeScreen';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
     title: 'Home · Patronus',
@@ -20,7 +21,17 @@ export const metadata = {
  */
 export default async function HomePage() {
     const result = await getHome();
-    if (!result.success) notFound();
+    if (!result.success) {
+        // Three outcomes were collapsed into one 404: a stranger, a feature
+        // that is off, and a load that failed. Only the first should look like
+        // a wrong URL — an infrastructure error that is indistinguishable from
+        // a missing feature teaches the customer to stop retrying.
+        if (result.code === 'unauthenticated') notFound();
+        if (result.code === 'not_found') {
+            return <FeatureUnavailable {...FEATURE_COPY.missions} reason="not_enabled" />;
+        }
+        return <FeatureUnavailable feature="Home" reason="error" />;
+    }
 
     return <HomeScreen initial={result.data} />;
 }

@@ -4,6 +4,7 @@ import { isEnabled } from '@/lib/flags';
 import { getBackfillSession } from '@/actions/backfill';
 import { BackfillChat } from '@/components/backfill/BackfillChat';
 import type { CapturedWinView } from '@/components/backfill/types';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 /**
  * `/log/backfill/[sessionId]` — the conversation (design/02 §I).
@@ -24,7 +25,13 @@ export default async function BackfillSessionPage({
   params: Promise<{ sessionId: string }>;
 }) {
   const { userId } = await auth();
-  if (!userId || !(await isEnabled(userId, 'backfill'))) notFound();
+  if (!userId) notFound();
+  // Strangers still get a 404 — it does not disclose an unreleased feature.
+  // A signed-in customer was sold this on the pricing page, so they get told
+  // the truth instead.
+  if (!(await isEnabled(userId, 'backfill'))) {
+      return <FeatureUnavailable {...FEATURE_COPY.backfill} reason="not_enabled" />;
+  }
 
   const { sessionId } = await params;
   const session = await getBackfillSession(sessionId);

@@ -597,6 +597,24 @@ export interface PlanComparisonRow {
   label: string;
   /** One cell per plan in {@link COMPARISON_PLANS} order: Free, Career, Search. */
   values: readonly [string, string, string];
+  /**
+   * Does this capability exist in the product today?
+   *
+   * The marketing page already knew not to advertise the unbuilt rows and
+   * curated its own list to avoid them. The authenticated change-plan screen
+   * rendered this table unfiltered — so the judgement was applied to a
+   * logged-out visitor and withheld from the customer at the moment they
+   * choose a plan, which is exactly backwards. `built: false` keeps the row
+   * here as the packaging record and keeps it off every surface that sells.
+   */
+  built?: boolean;
+}
+
+/** The comparison rows a customer may be shown. Never the unbuilt ones. */
+export function builtComparisonRows(
+  rows: readonly PlanComparisonRow[] = PLAN_COMPARISON
+): readonly PlanComparisonRow[] {
+  return rows.filter((row) => row.built !== false);
 }
 
 /**
@@ -611,16 +629,23 @@ export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
   { label: 'Month in Review', values: ['—', 'Included', 'Included'] },
   { label: 'Review packets', values: ['1 lifetime', '4 per period', '4 per period'] },
   { label: 'Rubric mapping and readiness', values: ['—', 'Included', 'Included'] },
-  { label: '1:1 prep', values: ['—', 'Included', 'Included'] },
+  // `one_on_one_prep` exists in PLAN_FEATURES and nowhere else — no action,
+  // no route, no service.
+  { label: '1:1 prep', values: ['—', 'Included', 'Included'], built: false },
   { label: 'Career Radar', values: ['Teaser', 'Included', 'Included, on demand'] },
   { label: 'Master resumes', values: ['1', '3', 'Unlimited'] },
   { label: 'Tailored generations', values: ['3 per month', '15 per month', 'Unlimited'] },
-  { label: 'ATS score and fix', values: ['Score only', 'Score and fix', 'Score, fix, auto-fix'] },
+  // Auto-fix does not exist. `ats_auto_fix` is a flag in the feature table
+  // with no implementation behind it, so the Search cell claimed a capability
+  // no plan can deliver.
+  { label: 'ATS score and fix', values: ['Score only', 'Score and fix', 'Score and fix'] },
   { label: 'Extension fit-score and autofill', values: ['Included', 'Included', 'Included'] },
-  { label: 'Multi-step apply orchestration', values: ['—', '—', 'Included'] },
-  { label: 'Cover letters and outreach', values: ['—', '3 per month', 'Unlimited'] },
-  { label: 'Interview prep', values: ['—', '—', 'Included'] },
-  { label: 'Negotiation mission', values: ['—', '—', 'Included'] },
+  { label: 'Multi-step apply orchestration', values: ['—', '—', 'Included'], built: false },
+  // The extension recognises a cover-letter QUESTION and answers it from the
+  // library. There is no cover-letter generator, which is what this row sells.
+  { label: 'Cover letters and outreach', values: ['—', '3 per month', 'Unlimited'], built: false },
+  { label: 'Interview prep', values: ['—', '—', 'Included'], built: false },
+  { label: 'Negotiation mission', values: ['—', '—', 'Included'], built: false },
   { label: 'Full export', values: ['Included', 'Included', 'Included'] },
   { label: 'Support', values: ['Docs', 'Email, 2 business days', 'Email, 1 business day'] },
 ];

@@ -37,7 +37,28 @@ import { generateStructured } from '@/lib/ai/structured';
 
 // ─────────────────────────────────────────────────────────── the brief
 
-export const REQUIREMENT_KINDS = ['must', 'nice'] as const;
+/**
+ * `responsibility` was added after the 8 Aug audit.
+ *
+ * `readPosting` had always extracted the "What you'll do" section into
+ * `brief.responsibilities`, and NOTHING consumed it — not scoring, not
+ * selection, not coverage, not the editor's match panel. Grep found the field
+ * in its own parser and in test fixtures, nowhere else.
+ *
+ * For a designer posting that meant seven stated day-to-day expectations were
+ * read and discarded, including "Raise the bar on craft across the design
+ * team, and mentor designers earlier in their career" — while the pipeline cut
+ * the candidate's "Facilitated quarterly design critiques and mentored one
+ * junior designer" for space. That is the exact failure the v2 rebuild was
+ * written to prevent, reproduced through a different door, because the
+ * cover-pass only protects bullets answering a stated REQUIREMENT and had no
+ * idea a responsibility was ever stated.
+ *
+ * Most modern postings put the real signal in "What you'll do" and reserve
+ * "Requirements" for years-of-experience boilerplate, so this was the half of
+ * the posting that mattered most.
+ */
+export const REQUIREMENT_KINDS = ['must', 'nice', 'responsibility'] as const;
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 
 /**
@@ -61,6 +82,27 @@ export type JobRequirement = {
     text: string;
     kind: RequirementKind;
     category: RequirementCategory;
+    /**
+     * Is time served the ONLY thing this asks for?
+     *
+     * Coverage credits a requirement from the resume's date range when it asks
+     * for years, because no bullet says "I have six years of experience". That
+     * credit used to be handed out by a regex matching `(\d+)\s*\+?\s*years`
+     * anywhere in the requirement text — so a live free-score run reported
+     * `{ text: "2+ years owning a paid budget over $1M", byDates: true }` for a
+     * resume with no budget figure anywhere in it.
+     *
+     * The product told a stranger they met a $1M budget-ownership requirement
+     * on the strength of having been employed. That is the fabrication
+     * invariant inverted: the numeric guard stops the resume inventing
+     * figures, and nothing stopped the SCORER inventing qualifications.
+     *
+     * The judgement is the model's because it is a judgement — "5+ years
+     * designing digital products" is time served, "2+ years owning a paid
+     * budget over $1M" is a specific condition that happens to mention time.
+     * A regex cannot tell those apart. Fails closed: no flag, no credit.
+     */
+    satisfiedByTenure: boolean;
 };
 
 export type PostingBrief = {
@@ -87,6 +129,35 @@ const MAX_SKILL_WORDS = 4;
 const MAX_SKILL_CHARS = 34;
 
 /**
+ * Single words that are only skills as part of a longer name.
+ *
+ * "Paid search" and "paid social" are real disciplines; "Search" and "Social"
+ * on their own are the leftovers of a comma-split and belong to nobody. Kept
+ * short and specific — this is not a general stopword list, and a word only
+ * earns a place here after it has actually shipped on someone's resume.
+ */
+const FRAGMENT_WORDS = new Set([
+    'search',
+    'social',
+    'programmatic',
+    'paid',
+    'organic',
+    'digital',
+    'content',
+    'brand',
+    'growth',
+    'strategy',
+    'operations',
+    'analytics',
+    'marketing',
+    'engineering',
+    'leadership',
+    'communication',
+    'collaboration',
+    'ownership',
+]);
+
+/**
  * Would a person write this in a skills section?
  *
  * Deliberately strict, and asymmetric on purpose: dropping a real skill costs
@@ -108,7 +179,13 @@ export function isPlausibleSkill(raw: string): boolean {
     // A single word is almost always a real skill name, even if it collides
     // with a verb — "Design" is a discipline, "Scala" is a language. The
     // sentence tests below only make sense on phrases.
-    if (words.length === 1) return true;
+    //
+    // The exception is a word that only means something inside the phrase it
+    // came from. A live run put "Search" and "Social" on a marketer's resume:
+    // both were split out of the posting's "paid acquisition across search,
+    // social and programmatic", where the skill is the whole phrase and the
+    // fragments name nothing a person would claim.
+    if (words.length === 1) return !FRAGMENT_WORDS.has(value.toLowerCase());
 
     if (VERB_PHRASE.test(value)) return false;
     if (SENTENCE_GLUE.test(value)) return false;
@@ -165,16 +242,27 @@ const BriefSchema = z.object({
             text: z.string().min(1),
             kind: z.enum(REQUIREMENT_KINDS),
             category: z.enum(REQUIREMENT_CATEGORIES),
+            satisfiedByTenure: z.boolean(),
         }),
     ),
     skills: z.array(z.string()),
-    responsibilities: z.array(z.string()),
+    // Objects rather than strings so a responsibility can become a scoreable
+    // requirement without a second model call. `brief.responsibilities` is
+    // still exposed as plain text for the writing stage.
+    responsibilities: z.array(
+        z.object({
+            text: z.string().min(1),
+            category: z.enum(REQUIREMENT_CATEGORIES),
+        }),
+    ),
 });
 
 const SYSTEM = `You read job postings for a resume tool. You extract only what the posting actually says. You never infer requirements the employer did not state, and you never soften or generalise their wording.`;
 
 /** Ceiling on requirements. Beyond this a posting is repeating itself. */
 const MAX_REQUIREMENTS = 14;
+/** Same idea for duties. Long "What you'll do" lists restate themselves. */
+const MAX_RESPONSIBILITIES = 10;
 
 function buildPrompt(jobDescription: string): string {
     return `Read this job posting and extract what the employer will actually check for.
@@ -186,7 +274,17 @@ Each requirement is one discrete thing a candidate is expected to have or have d
 - Use the posting's own wording, trimmed. Do not paraphrase into your own words —
   this text is quoted back to the candidate.
 - "kind": "must" if the posting states it as required, "nice" if it is preferred,
-  bonus, or a plus.
+  bonus, or a plus. Do not use "responsibility" here — day-to-day duties go in
+  the RESPONSIBILITIES field below and are handled separately.
+- "satisfiedByTenure": true ONLY when time served is the whole of what is asked.
+    true  — "5+ years designing digital products"
+    true  — "3+ years in a product marketing role"
+    false — "2+ years owning a paid budget over $1M"   (owning a $1M budget is a
+            specific condition; being employed for two years does not meet it)
+    false — "5+ years, including 2 leading a team"      (leading a team is extra)
+    false — anything with no length of time in it at all
+  When unsure, answer false. A wrong true tells a candidate they are qualified
+  for something they are not.
 - "category":
     skill      — a named tool, language or technology
     experience — a length or type of background ("6+ years backend")
@@ -207,7 +305,14 @@ It is NOT a sentence or an activity. These are all WRONG and must never appear:
 Those belong in "responsibilities". If you cannot name it in one to three words,
 it is not a skill.
 
-RESPONSIBILITIES — what the job involves day to day, in the posting's words.
+RESPONSIBILITIES — what the job involves day to day, from "What you'll do",
+"In this role you will", "Responsibilities" or equivalent.
+- One per duty, in the posting's own words, trimmed. Split compound sentences
+  the same way you split requirements.
+- Give each the same "category" taxonomy as above.
+- These are weighed when deciding which of the candidate's lines earn space, so
+  omitting one costs the candidate a bullet that answers it. Be complete.
+- Do NOT repeat something you already listed as a requirement.
 
 JOB POSTING:
 """
@@ -241,14 +346,44 @@ export async function readPosting(params: {
         (entry) => !skills.some((kept) => kept.toLowerCase() === entry.trim().toLowerCase()),
     );
 
-    const requirements: JobRequirement[] = data.requirements
+    // Requirements first, then the responsibilities, sharing one id space so
+    // everything downstream — scoring, the cover pass, coverage, the gap
+    // report — treats them as the single list of things this employer will
+    // check for. Which is what they are.
+    const stated: JobRequirement[] = data.requirements
         .slice(0, MAX_REQUIREMENTS)
         .map((entry, index) => ({
             id: `r${index + 1}`,
             text: entry.text.trim(),
+            // The prompt says not to, but a model that returns
+            // `kind: "responsibility"` in the requirements array has still told
+            // us something true about the item.
             kind: entry.kind,
             category: entry.category,
+            satisfiedByTenure: entry.satisfiedByTenure,
         }));
+
+    const seen = new Set(stated.map((entry) => entry.text.toLowerCase()));
+    const duties: JobRequirement[] = data.responsibilities
+        .map((entry) => ({ text: entry.text.trim(), category: entry.category }))
+        .filter((entry) => entry.text.length > 0)
+        .filter((entry) => {
+            const key = entry.text.toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        })
+        .slice(0, MAX_RESPONSIBILITIES)
+        .map((entry, index) => ({
+            id: `d${index + 1}`,
+            text: entry.text,
+            kind: 'responsibility' as const,
+            category: entry.category,
+            // A duty is never satisfied by the clock.
+            satisfiedByTenure: false,
+        }));
+
+    const requirements: JobRequirement[] = [...stated, ...duties];
 
     return {
         brief: {
@@ -258,10 +393,10 @@ export async function readPosting(params: {
             domain: data.domain.trim(),
             requirements,
             skills,
-            // Responsibilities are kept because they are real context for the
-            // writing stage — and because giving them a home is half of why
-            // they stopped ending up in the skills list.
-            responsibilities: data.responsibilities.map((entry) => entry.trim()).filter(Boolean),
+            // Still exposed as plain text: the writing stage takes them as
+            // context, and giving them a home is half of why they stopped
+            // ending up in the skills list.
+            responsibilities: duties.map((entry) => entry.text),
         },
         rejectedSkills,
     };

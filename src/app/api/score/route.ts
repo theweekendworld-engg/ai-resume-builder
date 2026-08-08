@@ -5,7 +5,15 @@ import { scoreResumeText } from '@/lib/anonScore';
 import { extractDocxText } from '@/lib/docxParser';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+/*
+ * The measured p95 is what sets this, not a round number.
+ *
+ * A live run of a two-page resume against a full posting took 53 seconds
+ * against a 60-second ceiling. A slightly longer resume times out, and a
+ * stranger's first impression of the product is a 504 — on the one surface
+ * the whole funnel depends on.
+ */
+export const maxDuration = 120;
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_JD_CHARS = 6000;

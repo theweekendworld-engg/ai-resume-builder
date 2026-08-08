@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { getSourcesOverview } from '@/actions/capture';
 import { isEnabled } from '@/lib/flags';
 import { SourcesClient } from './sources-client';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 /**
  * `/settings/sources` — design/02 §J1.
@@ -19,7 +20,13 @@ export const metadata = {
 
 export default async function SourcesSettingsPage() {
     const { userId } = await auth();
-    if (!userId || !(await isEnabled(userId, 'github_capture'))) notFound();
+    if (!userId) notFound();
+    // Strangers still get a 404 — it does not disclose an unreleased feature.
+    // A signed-in customer was sold this on the pricing page, so they get told
+    // the truth instead.
+    if (!(await isEnabled(userId, 'github_capture'))) {
+        return <FeatureUnavailable {...FEATURE_COPY.github_capture} reason="not_enabled" />;
+    }
 
     const overview = await getSourcesOverview();
     if (!overview.success) notFound();

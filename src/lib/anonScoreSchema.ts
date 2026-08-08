@@ -56,7 +56,13 @@ export type ScoreFix = z.infer<typeof ScoreFixSchema>;
  */
 export const MatchRequirementSchema = z.object({
     text: z.string(),
-    kind: z.enum(['must', 'nice']),
+    /**
+     * `responsibility` is a duty from the posting's "What you'll do" section.
+     * Those were parsed and discarded for months; most modern postings put the
+     * real signal there and reserve "Requirements" for years-of-experience
+     * boilerplate.
+     */
+    kind: z.enum(['must', 'nice', 'responsibility']),
     /** Answered by the document's dates rather than by any line. */
     byDates: z.boolean(),
 });
@@ -110,8 +116,24 @@ export const AnonScoreReportSchema = AnonScoreModelSchema.extend({
 });
 export type AnonScoreReport = z.infer<typeof AnonScoreReportSchema>;
 
+/**
+ * Bands, recalibrated.
+ *
+ * The old thresholds were 80 / 60. A deliberately mediocre real resume — "Hard-
+ * working marketing professional… Passionate about brands… Team player with
+ * excellent communication skills", not a single number anywhere, five bullets
+ * opening "Responsible for" / "Helped" / "Assisted" — scored 64 and was told
+ * it was "good".
+ *
+ * That is not just dishonest, it is counter-conversional. The free checker's
+ * job is to tell someone the truth about a document they are about to send; if
+ * it says their resume is already good, the paid product has nothing to sell
+ * them and no reason to exist.
+ *
+ * 85 / 70 puts that resume in "needs work", which is where it belongs.
+ */
 export function deriveBand(overall: number): ScoreBand {
-    if (overall >= 80) return 'strong';
-    if (overall >= 60) return 'good';
+    if (overall >= 85) return 'strong';
+    if (overall >= 70) return 'good';
     return 'needs_work';
 }

@@ -26,8 +26,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 
 import { installMocks, mocks, resetMocks, uninstallMocks } from '@/__mocks__';
-import type { ExperienceItem, ProjectItem, ResumeData } from '@/types/resume';
+import type { EducationItem, ExperienceItem, ProjectItem, ResumeData } from '@/types/resume';
 import { tailorResume, type TailorResult } from './tailor';
+import { addressesEmployer } from './write';
 
 // ─────────────────────────────────────────────────────────── prompt markers
 
@@ -91,7 +92,7 @@ const BACKEND_INPUT = {
         }),
     ],
     projects: [] as ProjectItem[],
-    education: [],
+    education: [] as EducationItem[],
     candidateSkills: [] as string[],
     sectionOrder: ['experience', 'projects', 'skills', 'education'] as ResumeData['sectionOrder'],
     userId: 'eval-user',
@@ -104,13 +105,27 @@ const BACKEND_BRIEF = {
     seniority: 'senior',
     domain: 'payments',
     requirements: [
-        { text: 'Experience with Kubernetes', kind: 'must', category: 'skill' },
-        { text: 'Mentor engineers and raise the technical bar', kind: 'must', category: 'behaviour' },
-        { text: '6+ years building backend systems', kind: 'must', category: 'experience' },
-        { text: 'Experience with Terraform', kind: 'nice', category: 'skill' },
+        { text: 'Experience with Kubernetes', kind: 'must', category: 'skill', satisfiedByTenure: false },
+        {
+            text: 'Mentor engineers and raise the technical bar',
+            kind: 'must',
+            category: 'behaviour',
+            satisfiedByTenure: false,
+        },
+        {
+            text: '6+ years building backend systems',
+            kind: 'must',
+            category: 'experience',
+            // Time served is the whole of what this asks for. Contrast the
+            // budget requirement in the fabrication test below.
+            satisfiedByTenure: true,
+        },
+        { text: 'Experience with Terraform', kind: 'nice', category: 'skill', satisfiedByTenure: false },
     ],
     skills: ['Kubernetes', 'Kafka', 'Terraform', 'Go'],
-    responsibilities: ['Own critical payment services'],
+    // Objects, not strings: a duty is a scoreable requirement now. It was
+    // parsed into a field nothing read for the whole life of v2.
+    responsibilities: [{ text: 'Own critical payment services', category: 'outcome' }],
 };
 
 /**
@@ -145,7 +160,8 @@ type Script = {
     posting?: unknown;
     select?: (prompt: string) => unknown;
     write?: (prompt: string) => unknown;
-    summary?: unknown;
+    /** A function, so a test can answer differently on the retry. */
+    summary?: ((prompt: string) => unknown) | unknown;
 };
 
 function script(overrides: Script = {}) {
@@ -153,9 +169,14 @@ function script(overrides: Script = {}) {
     openai.onObject(IS_POSTING, () => overrides.posting ?? BACKEND_BRIEF);
     openai.onObject(IS_SELECT, (args: CallArgs) => (overrides.select ?? scoreBackend)(args.prompt));
     openai.onObject(IS_WRITE, (args: CallArgs) => (overrides.write ?? echoWrite)(args.prompt));
-    openai.onObject(IS_SUMMARY, () =>
-        overrides.summary ?? { summary: 'Backend engineer who owns payment services end to end.' },
-    );
+    openai.onObject(IS_SUMMARY, (args: CallArgs) => {
+        if (typeof overrides.summary === 'function') {
+            return (overrides.summary as (prompt: string) => unknown)(args.prompt);
+        }
+        return (
+            overrides.summary ?? { summary: 'Backend engineer who owns payment services end to end.' }
+        );
+    });
     // Anything unmatched means a prompt was reworded and a matcher above went
     // stale. Fail loudly rather than scripting nothing.
     openai.onObject(/./, () => {
@@ -277,6 +298,9 @@ describe('when the model misbehaves', () => {
             'Experience with Kubernetes',
             'Experience with Terraform',
             'Mentor engineers and raise the technical bar',
+            // A stated duty is a requirement too, and an id the model invented
+            // answers it no better than it answers the rest.
+            'Own critical payment services',
         ]);
         expect(result.coverage.answered.map((a) => a.requirement.text)).toEqual([
             '6+ years building backend systems',
@@ -293,7 +317,9 @@ describe('when the model misbehaves', () => {
 
     test('a posting it cannot read yields no score rather than a zero', async () => {
         const result = await run({
-            posting: { ...BACKEND_BRIEF, requirements: [], skills: [] },
+            // Responsibilities empty too: they are requirements now, and a
+            // posting we could not read has none of either.
+            posting: { ...BACKEND_BRIEF, requirements: [], skills: [], responsibilities: [] },
         });
         // "We could not read this posting" and "this answers nothing" are
         // different facts.
@@ -377,12 +403,22 @@ describe('a profession that is not engineering', () => {
         seniority: 'senior',
         domain: 'consumer fintech',
         requirements: [
-            { text: 'Expert with Figma', kind: 'must', category: 'skill' },
-            { text: 'Experience running design systems', kind: 'must', category: 'experience' },
-            { text: 'Expert with Adobe Creative Suite', kind: 'must', category: 'skill' },
+            { text: 'Expert with Figma', kind: 'must', category: 'skill', satisfiedByTenure: false },
+            {
+                text: 'Experience running design systems',
+                kind: 'must',
+                category: 'experience',
+                satisfiedByTenure: false,
+            },
+            {
+                text: 'Expert with Adobe Creative Suite',
+                kind: 'must',
+                category: 'skill',
+                satisfiedByTenure: false,
+            },
         ],
         skills: ['Figma', 'Adobe Creative Suite', 'InDesign'],
-        responsibilities: ['Lead brand campaigns'],
+        responsibilities: [{ text: 'Lead brand campaigns', category: 'behaviour' }],
     };
 
     const DESIGN_INPUT = {
@@ -439,5 +475,278 @@ describe('a profession that is not engineering', () => {
         );
         expect(result.skillGaps).toContain('Adobe Creative Suite');
         expect(result.resume.skills).not.toContain('Adobe Creative Suite');
+    });
+});
+
+/*
+ * ── The 8 Aug audit ─────────────────────────────────────────────────────────
+ *
+ * Three live runs for a product designer, a growth marketer and a career
+ * switcher — the first non-engineering personas the pipeline had ever seen.
+ * Everything below reproduces a failure those runs actually produced.
+ */
+
+const DESIGNER_LINES = [
+    'Built and maintained the design system in Figma — 90 components adopted by four squads.',
+    'Cut checkout abandonment from 31% to 19% by rebuilding the payment step.',
+    'Ran usability testing with 24 participants across three markets.',
+    'Owned the merchant dashboard redesign end to end.',
+    'Facilitated quarterly design critiques and mentored one junior designer through her first solo feature.',
+];
+
+const DESIGNER_BRIEF = {
+    role: 'Senior Product Designer',
+    company: 'Northbeam',
+    seniority: 'senior',
+    domain: 'fintech',
+    requirements: [
+        { text: 'Expert with Figma', kind: 'must', category: 'skill', satisfiedByTenure: false },
+        {
+            text: '5+ years designing digital products',
+            kind: 'must',
+            category: 'experience',
+            satisfiedByTenure: true,
+        },
+    ],
+    skills: ['Figma', 'Design systems'],
+    responsibilities: [
+        {
+            text: 'Raise the bar on craft across the design team, and mentor designers earlier in their career',
+            category: 'behaviour',
+        },
+        { text: 'Contribute to and evolve our design system', category: 'outcome' },
+    ],
+};
+
+const DESIGNER_INPUT = {
+    ...BACKEND_INPUT,
+    jobDescription: 'Senior Product Designer at Northbeam.',
+    profile: { ...BACKEND_INPUT.profile, title: 'Product Designer' },
+    experiences: [
+        experience({ id: 'exp-d', company: 'Monzo', role: 'Product Designer', description: DESIGNER_LINES.join('\n') }),
+    ],
+    projects: [],
+    candidateSkills: ['Figma', 'Design systems', 'Usability testing'],
+};
+
+/** Mentoring answers only the RESPONSIBILITY, and is the weakest line. */
+function scoreDesigner(prompt: string) {
+    const ids = [...prompt.matchAll(/^([ep]\d+:\d+|cred:\w+) \|/gm)].map((m) => m[1]);
+    return {
+        bullets: ids.map((id) => {
+            const raw = Number.parseInt(id.split(':')[1] ?? '', 10);
+            // `cred:skills` has no numeric suffix; it is evidence, not a line.
+            const index = Number.isFinite(raw) ? raw : 0;
+            const isMentoring = id.endsWith(':4');
+            return {
+                id,
+                answers: isMentoring ? ['d1'] : index === 0 ? ['r1', 'd2'] : [],
+                strength: isMentoring ? 3 : 5 - index,
+            };
+        }),
+    };
+}
+
+describe('the posting’s “What you’ll do” section is read', () => {
+    test('a line that answers only a stated DUTY survives the cap', async () => {
+        // The audit's exact failure. `readPosting` extracted seven duties for
+        // this posting and nothing consumed them, so the cover pass had never
+        // heard of "mentor designers earlier in their career" — and dropped
+        // the one line that answers it, for `cap`, as the weakest of five.
+        const result = await run(
+            { posting: DESIGNER_BRIEF, select: scoreDesigner },
+            DESIGNER_INPUT,
+        );
+        const text = result.resume.experience.map((role) => role.description).join('\n');
+        expect(text).toContain('mentored one junior designer');
+    });
+
+    test('a duty appears in coverage rather than being invisible', async () => {
+        const result = await run(
+            { posting: DESIGNER_BRIEF, select: scoreDesigner },
+            DESIGNER_INPUT,
+        );
+        const kinds = [
+            ...result.coverage.answered.map((a) => a.requirement.kind),
+            ...result.coverage.unanswered.map((r) => r.kind),
+        ];
+        expect(kinds).toContain('responsibility');
+    });
+});
+
+describe('evidence we cut is never reported as evidence we lack', () => {
+    test('a requirement answered only by a dropped line is reported as restorable', async () => {
+        // A marketer's history says "Manage a team of three and a £1.2M annual
+        // budget". The cap dropped it, and the gap report then told her
+        // nothing on her resume answered "Experience managing and developing
+        // marketers". That manufactures a false negative about her own career
+        // and presents it as analysis.
+        const result = await run({
+            posting: {
+                ...BACKEND_BRIEF,
+                requirements: [
+                    {
+                        text: 'Experience managing and developing marketers',
+                        kind: 'must',
+                        category: 'behaviour',
+                        satisfiedByTenure: false,
+                    },
+                ],
+                skills: [],
+                responsibilities: [],
+            },
+            // Only the fifth Flexport line answers it, and it is the weakest,
+            // so the four-per-role cap removes it.
+            // Below MIN_STRENGTH, so it is never eligible and the cover pass
+            // cannot rescue it. A real line, genuinely off the page — which is
+            // the only honest way to reach this branch now that a strong line
+            // answering a must is protected.
+            select: (prompt: string) => {
+                const ids = [...prompt.matchAll(/^(\S+) \|/gm)].map((m) => m[1]);
+                return {
+                    bullets: ids.map((id) => ({
+                        id,
+                        answers: id === 'e0:4' ? ['r1'] : [],
+                        strength: id === 'e0:4' ? 1 : 5,
+                    })),
+                };
+            },
+        });
+
+        expect(result.coverage.unanswered).toEqual([]);
+        expect(result.coverage.answeredByCut.map((a) => a.requirement.text)).toEqual([
+            'Experience managing and developing marketers',
+        ]);
+        expect(result.advice.some((line) => line.includes('did not fit'))).toBe(true);
+        expect(result.advice.some((line) => line.startsWith('Nothing on your resume answers'))).toBe(
+            false,
+        );
+    });
+});
+
+const TEXAS_STATE: EducationItem[] = [
+    {
+        id: 'edu-1',
+        institution: 'Texas State University',
+        degree: 'BS',
+        fieldOfStudy: 'Business Administration',
+        startDate: '2014-09',
+        endDate: '2018-05',
+        current: false,
+    },
+];
+
+describe('the education and skills sections count as evidence', () => {
+    test('a degree requirement is answered by the degree', async () => {
+        // A career switcher holding a BS from Texas State was told "Nothing on
+        // your resume answers: 'Bachelor's degree in any field'" — coverage
+        // read bullets and nothing else.
+        const result = await run(
+            {
+                posting: {
+                    ...BACKEND_BRIEF,
+                    requirements: [
+                        {
+                            text: "Bachelor's degree in any field",
+                            kind: 'must',
+                            category: 'domain',
+                            satisfiedByTenure: false,
+                        },
+                    ],
+                    skills: [],
+                    responsibilities: [],
+                },
+                select: (prompt: string) => {
+                    const ids = [...prompt.matchAll(/^(\S+) \|/gm)].map((m) => m[1]);
+                    return {
+                        bullets: ids.map((id) => ({
+                            id,
+                            // Only the education line answers it.
+                            answers: id.startsWith('cred:edu') ? ['r1'] : [],
+                            strength: 4,
+                        })),
+                    };
+                },
+            },
+            {
+                ...BACKEND_INPUT,
+                education: TEXAS_STATE,
+            },
+        );
+
+        expect(result.coverage.unanswered).toEqual([]);
+        expect(result.coverage.answered[0].via).toBe('credential');
+    });
+
+    test('education never becomes a bullet on the page', async () => {
+        // It is evidence, not a line of experience. Scoring it must not let it
+        // leak into a role's description.
+        const result = await run(
+            { posting: { ...BACKEND_BRIEF, responsibilities: [] } },
+            {
+                ...BACKEND_INPUT,
+                education: TEXAS_STATE,
+            },
+        );
+        const text = result.resume.experience.map((role) => role.description).join('\n');
+        expect(text).not.toContain('Texas State');
+    });
+});
+
+describe('the summary is not addressed to the employer', () => {
+    test('a mail-merge summary is rewritten, not shipped', async () => {
+        // All three live audit runs produced this construction in sentence
+        // two, unprompted. It is the first line a recruiter reads and the tell
+        // that gets a document binned as AI-written.
+        let calls = 0;
+        const result = await run({
+            posting: { ...BACKEND_BRIEF, responsibilities: [] },
+            summary: () => {
+                calls += 1;
+                return calls === 1
+                    ? { summary: "Fit for Stripe's Senior Backend Engineer role through owning payments." }
+                    : { summary: 'Backend engineer who owns payment services end to end.' };
+            },
+        });
+
+        expect(calls).toBe(2);
+        expect(result.resume.personalInfo.summary).toBe(
+            'Backend engineer who owns payment services end to end.',
+        );
+    });
+
+    test('a summary that never mentions the employer is left alone', async () => {
+        // The retry costs a model call; it must not fire on a good summary.
+        let calls = 0;
+        await run({
+            posting: { ...BACKEND_BRIEF, responsibilities: [] },
+            summary: () => {
+                calls += 1;
+                return { summary: 'Backend engineer who owns payment services end to end.' };
+            },
+        });
+        expect(calls).toBe(1);
+    });
+
+    test('the check itself', () => {
+        expect(
+            addressesEmployer("Fit for Stripe's Senior Backend Engineer role through…", {
+                role: 'Senior Backend Engineer',
+                company: 'Stripe',
+            }),
+        ).toBe(true);
+        expect(
+            addressesEmployer('Backend engineer who owns payment services end to end.', {
+                role: 'Senior Backend Engineer',
+                company: 'Stripe',
+            }),
+        ).toBe(false);
+    });
+
+    test('a one-word role title does not trip the check', () => {
+        // "Designs payment flows" must be allowed to mention design work.
+        expect(addressesEmployer('Designer who ships payment flows.', { role: 'Designer', company: '' })).toBe(
+            false,
+        );
     });
 });

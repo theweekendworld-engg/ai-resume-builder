@@ -27,7 +27,13 @@ const SKILL_ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
     ['javascript', ['javascript', 'js', 'ecmascript']],
     ['java', ['java']],
     ['kotlin', ['kotlin']],
-    ['swift', ['swift', 'swiftui']],
+    // `swiftui` is NOT an alias of `swift`. It was, and a product designer's
+    // generated resume shipped "Swift" — a programming language she does not
+    // write — because her history mentioned SwiftUI. Technically evidenced,
+    // materially a misrepresentation, and the single entry a hiring manager
+    // would have probed first.
+    ['swift', ['swift']],
+    ['swiftui', ['swiftui', 'swift ui']],
     ['ruby', ['ruby', 'ruby on rails', 'rails']],
     ['php', ['php']],
     ['scala', ['scala']],
@@ -100,6 +106,76 @@ const SKILL_ALIASES: ReadonlyArray<readonly [string, readonly string[]]> = [
     ['figma', ['figma']],
     ['product_analytics', ['amplitude', 'mixpanel', 'product analytics']],
     ['seo', ['seo', 'search engine optimization', 'search engine optimisation']],
+
+    /*
+     * ── Design, marketing, data and operations ──────────────────────────────
+     *
+     * Added after the 8 Aug audit, which ran the pipeline for three customers
+     * who are not backend engineers — the one profession the vocabulary was
+     * built against.
+     *
+     * `extractSkills` over a product designer's ENTIRE career returned three
+     * slugs: accessibility, figma, swift. The cap is 20. Her posting named
+     * "Design systems" as a must and her history says "Built and maintained
+     * the design system in Figma — 90 components", and the section shipped
+     * five entries, missing the three most relevant.
+     *
+     * This is a data problem, not a modelling one. Every entry below is a
+     * nameable thing a practitioner would put in a skills section.
+     */
+
+    // design
+    ['design_systems', ['design system', 'design systems', 'component library']],
+    ['user_research', ['user research', 'ux research', 'user interviews']],
+    ['usability_testing', ['usability testing', 'usability test', 'user testing']],
+    ['wireframing', ['wireframing', 'wireframe', 'wireframes']],
+    ['prototyping', ['prototyping', 'prototype', 'prototypes', 'interactive prototype']],
+    ['interaction_design', ['interaction design', 'ixd']],
+    ['information_architecture', ['information architecture', 'ia']],
+    ['journey_mapping', ['journey mapping', 'user journey', 'customer journey', 'journey map']],
+    ['visual_design', ['visual design', 'ui design', 'interface design']],
+    ['design_ops', ['designops', 'design ops']],
+    ['sketch', ['sketch app']],
+    ['adobe_creative_suite', ['adobe creative suite', 'photoshop', 'illustrator', 'after effects', 'indesign']],
+    ['framer', ['framer']],
+    ['design_critique', ['design critique', 'design critiques', 'design review']],
+
+    // marketing / growth
+    ['paid_acquisition', ['paid acquisition', 'paid media', 'performance marketing', 'paid search', 'sem']],
+    ['lifecycle_marketing', ['lifecycle marketing', 'crm marketing', 'email marketing', 'marketing automation']],
+    ['hubspot', ['hubspot']],
+    ['marketo', ['marketo']],
+    ['braze', ['braze']],
+    ['google_ads', ['google ads', 'adwords', 'google adwords']],
+    ['meta_ads', ['meta ads', 'facebook ads']],
+    ['google_analytics', ['google analytics', 'ga4']],
+    ['content_marketing', ['content marketing', 'content strategy']],
+    ['brand_marketing', ['brand marketing', 'brand strategy', 'positioning']],
+    ['ab_testing', ['a/b testing', 'ab testing', 'split testing', 'experimentation']],
+    ['attribution', ['attribution', 'attribution modeling', 'attribution modelling', 'marketing mix modeling']],
+    ['demand_generation', ['demand generation', 'demand gen', 'pipeline generation']],
+    ['go_to_market', ['go-to-market', 'go to market', 'gtm']],
+
+    // data / analytics
+    ['tableau', ['tableau']],
+    ['looker', ['looker', 'looker studio']],
+    ['power_bi', ['power bi', 'powerbi']],
+    ['excel', ['excel', 'advanced excel', 'microsoft excel']],
+    ['data_visualization', ['data visualization', 'data visualisation', 'dashboarding', 'dashboards']],
+    ['statistics', ['statistics', 'statistical analysis', 'regression analysis']],
+    ['forecasting', ['forecasting', 'demand forecasting', 'financial forecasting']],
+
+    // operations / people
+    ['project_management', ['project management', 'programme management', 'program management']],
+    ['stakeholder_management', ['stakeholder management', 'stakeholder engagement']],
+    ['process_improvement', ['process improvement', 'process design', 'operational excellence']],
+    ['vendor_management', ['vendor management', 'supplier management']],
+    ['financial_modelling', ['financial modelling', 'financial modeling', 'financial model']],
+    ['budget_ownership', ['budget ownership', 'budget management', 'p&l ownership', 'p&l']],
+    ['mentoring', ['mentoring', 'mentorship', 'coaching']],
+    ['jira', ['jira', 'atlassian jira']],
+    ['notion', ['notion']],
+    ['asana', ['asana']],
 ];
 
 /**
@@ -216,12 +292,46 @@ export function extractSkills(
 }
 
 /** Canonical slug for a raw skill string, or null when we do not know it. */
+/**
+ * Singular form of the last word, for alias lookup only.
+ *
+ * "Design systems" failed to match the `design system` alias and was dropped
+ * from a designer's resume over one letter — while the posting named it as a
+ * must and her history said "Built and maintained the design system in Figma".
+ *
+ * Deliberately crude, and only ever used as a FALLBACK after an exact match
+ * fails, so it cannot damage a name that is already correct. `kubernetes`,
+ * `pandas` and `statistics` all match exactly and never reach this.
+ */
+function singularForm(value: string): string | null {
+    const words = value.split(' ');
+    const last = words[words.length - 1];
+    if (!last || last.length < 4) return null;
+
+    let singular: string | null = null;
+    if (/[^aeiou]ies$/.test(last)) singular = `${last.slice(0, -3)}y`;
+    else if (/(?:ch|sh|ss|x|z)es$/.test(last)) singular = last.slice(0, -2);
+    else if (/[^s]s$/.test(last)) singular = last.slice(0, -1);
+
+    if (!singular) return null;
+    return [...words.slice(0, -1), singular].join(' ');
+}
+
 export function normalizeSkill(raw: string): string | null {
     const needle = raw.trim().toLowerCase();
     if (!needle) return null;
     for (const { slug, alias } of SORTED_ALIASES) {
         if (alias === needle) return slug;
     }
+
+    // Only now, and only on the plural.
+    const singular = singularForm(needle);
+    if (singular) {
+        for (const { slug, alias } of SORTED_ALIASES) {
+            if (alias === singular) return slug;
+        }
+    }
+
     return null;
 }
 

@@ -19,7 +19,7 @@ import {
   COMPARISON_PLANS,
   FREE_FOREVER_PROMISE,
   NO_DELETION_PROMISE,
-  PLAN_COMPARISON,
+  builtComparisonRows,
   SEARCH_PLAN,
   priceFor,
   type PriceKey,
@@ -421,7 +421,13 @@ function ComparisonTable() {
           </tr>
         </thead>
         <tbody>
-          {PLAN_COMPARISON.map((row) => (
+          {/* Built rows only. This table used to render in full to the
+              customer at the moment they choose a plan, selling multi-step
+              apply orchestration, interview prep, the negotiation mission,
+              1:1 prep and ATS auto-fix — none of which exist. The marketing
+              page had already made that judgement and curated around it; the
+              buyer is the audience that most needed it. */}
+          {builtComparisonRows().map((row) => (
             <tr key={row.label} className="border-t border-border/60">
               <th
                 scope="row"

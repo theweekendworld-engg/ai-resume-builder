@@ -131,9 +131,26 @@ export function selectBullets(
 
     const inPlay = eligible.filter((bullet) => groupSet.has(bullet.groupId)).sort(byStrength);
 
-    // ── pass 1: cover the must-haves
-    const musts = requirements.filter((requirement) => requirement.kind === 'must');
-    for (const requirement of musts) {
+    // ── pass 1: cover what the employer asked for, musts first
+    //
+    // Responsibilities are covered in the same pass, after the musts. They
+    // were not covered at all until the 8 Aug audit, because `readPosting`
+    // parsed the "What you'll do" section into a field nothing consumed.
+    //
+    // The cost of that was exactly the failure this pass exists to prevent,
+    // one section over: a designer posting said "Raise the bar on craft across
+    // the design team, and mentor designers earlier in their career", and the
+    // cap dropped her "Facilitated quarterly design critiques and mentored one
+    // junior designer" for space — because no *requirement* mentioned
+    // mentoring and this loop had never heard of the duty that did.
+    //
+    // Musts still go first: when there is only room for one, a stated bar
+    // beats a stated duty.
+    const covering = [
+        ...requirements.filter((requirement) => requirement.kind === 'must'),
+        ...requirements.filter((requirement) => requirement.kind === 'responsibility'),
+    ];
+    for (const requirement of covering) {
         const alreadyCovered = inPlay.some(
             (bullet) => claimed.has(bullet.id) && bullet.answers.includes(requirement.id),
         );

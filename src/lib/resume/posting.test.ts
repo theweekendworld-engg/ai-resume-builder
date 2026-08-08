@@ -104,9 +104,9 @@ describe('requirement ordering', () => {
         skills: [],
         responsibilities: [],
         requirements: [
-            { id: 'r1', text: 'Terraform', kind: 'nice' as const, category: 'skill' as const },
-            { id: 'r2', text: '6+ years backend', kind: 'must' as const, category: 'experience' as const },
-            { id: 'r3', text: 'Mentor engineers', kind: 'must' as const, category: 'behaviour' as const },
+            { id: 'r1', text: 'Terraform', kind: 'nice' as const, category: 'skill' as const, satisfiedByTenure: false },
+            { id: 'r2', text: '6+ years backend', kind: 'must' as const, category: 'experience' as const, satisfiedByTenure: true },
+            { id: 'r3', text: 'Mentor engineers', kind: 'must' as const, category: 'behaviour' as const, satisfiedByTenure: false },
         ],
     } satisfies PostingBrief;
 

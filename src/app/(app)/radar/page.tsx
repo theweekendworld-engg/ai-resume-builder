@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getRadar } from '@/actions/radar';
 import { RadarScreen } from '@/components/radar/RadarScreen';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
     title: 'Career Radar · Patronus',
@@ -16,9 +17,16 @@ export const metadata = {
  */
 export default async function RadarPage() {
     const view = await getRadar();
-    // A disabled flag reads as "not found" rather than "forbidden": an
-    // unreleased feature should not advertise its own existence.
-    if (!view.success) notFound();
+    if (!view.success) {
+        // A stranger gets a 404 — an unreleased feature should not advertise
+        // its own existence. A signed-in customer gets the reason, and a
+        // failed corpus build is reported as a failure rather than as absence.
+        if (view.code === 'unauthenticated') notFound();
+        if (view.code === 'not_found') {
+            return <FeatureUnavailable {...FEATURE_COPY.career_radar} reason="not_enabled" />;
+        }
+        return <FeatureUnavailable feature="Career Radar" reason="error" />;
+    }
 
     return <RadarScreen view={view.data} />;
 }

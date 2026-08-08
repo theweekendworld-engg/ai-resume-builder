@@ -12,8 +12,13 @@ import type { JobRequirement } from './posting';
 import type { ScoredBullet } from './select';
 import { computeCoverage, gapAdvice, reconcileSkillGaps, yearsAskedFor } from './coverage';
 
-function req(id: string, text: string, kind: 'must' | 'nice' = 'must'): JobRequirement {
-    return { id, text, kind, category: 'experience' };
+function req(
+    id: string,
+    text: string,
+    kind: JobRequirement['kind'] = 'must',
+    satisfiedByTenure = false,
+): JobRequirement {
+    return { id, text, kind, category: 'experience', satisfiedByTenure };
 }
 
 function bullet(id: string, answers: string[]): ScoredBullet {
@@ -97,28 +102,60 @@ describe('what the candidate is told', () => {
         req('r2', 'Experience with Terraform', 'nice'),
     ];
 
-    test('unanswered musts lead, quoted in the posting’s own words', () => {
+    test('it opens with where they stand, not with a rejection', () => {
+        // Every gap report in the 8 Aug audit was 100% negative — five lines
+        // of "nothing answers" with no summary and no next action. For a
+        // career switcher that is the whole advice block, and it is the
+        // version nobody shares.
+        const report = computeCoverage(requirements, []);
+        expect(gapAdvice(report, [])[0]).toBe('You answer 0 of 1 must-haves on this posting.');
+    });
+
+    test('unanswered musts come next, quoted in the posting’s own words', () => {
         const report = computeCoverage(requirements, []);
         const advice = gapAdvice(report, []);
-        expect(advice[0]).toContain('6+ years building backend systems at scale');
+        expect(advice[1]).toContain('6+ years building backend systems at scale');
+    });
+
+    test('a posting that states no must-haves invents no denominator', () => {
+        const bonusOnly = [req('r1', 'Experience with Terraform', 'nice')];
+        const advice = gapAdvice(computeCoverage(bonusOnly, []), []);
+        expect(advice.some((line) => line.includes('must-haves'))).toBe(false);
     });
 
     test('unevidenced skills are explained, not silently dropped', () => {
         const report = computeCoverage(requirements, [bullet('b1', ['r1']), bullet('b2', ['r2'])]);
         const advice = gapAdvice(report, ['Terraform', 'gRPC']);
-        expect(advice).toHaveLength(1);
-        expect(advice[0]).toContain('Terraform, gRPC');
-        expect(advice[0]).toContain('left off');
+        expect(advice.some((line) => line.includes('Terraform, gRPC'))).toBe(true);
+        expect(advice.some((line) => line.includes('left off'))).toBe(true);
     });
 
     test('singular reads as English', () => {
         const report = computeCoverage(requirements, [bullet('b1', ['r1']), bullet('b2', ['r2'])]);
-        expect(gapAdvice(report, ['Terraform'])[0]).toContain('does not mention it');
+        const advice = gapAdvice(report, ['Terraform']);
+        expect(advice.some((line) => line.includes('does not mention it'))).toBe(true);
     });
 
-    test('a fully answered posting with nothing missing says nothing', () => {
+    test('a fully answered posting says so, and says nothing negative', () => {
         const report = computeCoverage(requirements, [bullet('b1', ['r1']), bullet('b2', ['r2'])]);
-        expect(gapAdvice(report, [])).toEqual([]);
+        expect(gapAdvice(report, [])).toEqual(['You answer 1 of 1 must-haves on this posting.']);
+    });
+
+    test('a line we cut is offered back before anything is called a gap', () => {
+        // The single most damaging thing this product did: cut the candidate's
+        // own evidence for space, then report the requirement as unanswered.
+        // "You have this and it did not fit" is both true and the most useful
+        // sentence available — the editor can restore it in one click.
+        const report = computeCoverage(
+            requirements,
+            { kept: [], cut: [bullet('b9', ['r1'])] },
+        );
+        const advice = gapAdvice(report, []);
+        expect(advice[1]).toContain('You have this and it did not fit');
+        expect(advice[1]).toContain('6+ years building backend systems at scale');
+        expect(advice.some((line) => line.startsWith('Nothing on your resume answers'))).toBe(
+            false,
+        );
     });
 
     test('bonuses come after musts', () => {
@@ -129,7 +166,10 @@ describe('what the candidate is told', () => {
 });
 
 describe('the dates answer a tenure requirement', () => {
-    const sixYears = req('r1', '6+ years building backend systems at scale');
+    // `satisfiedByTenure: true` — the posting-reader judged that time served is
+    // the whole of what this asks for. Without that flag no date credit is
+    // given, however many years the resume shows.
+    const sixYears = req('r1', '6+ years building backend systems at scale', 'must', true);
 
     test('no bullet says it, and the date range does', () => {
         // The first live v2 run told a candidate with eight years of listed
@@ -157,6 +197,27 @@ describe('the dates answer a tenure requirement', () => {
     test('a requirement with no years is untouched by tenure', () => {
         const report = computeCoverage([req('r1', 'Experience with Kubernetes')], [], 20);
         expect(report.unanswered).toHaveLength(1);
+    });
+
+    test('a requirement that merely CONTAINS a year count gets no credit', () => {
+        // The defect this flag exists for. A live free-score run returned
+        //   { text: "2+ years owning a paid budget over $1M", byDates: true }
+        // for a resume with no budget figure anywhere in it — the old regex
+        // matched "2+ years" and credited the rest for free. The product told
+        // a stranger they met a $1M budget-ownership bar on the strength of
+        // having been employed for two years.
+        const budget = req('r1', '2+ years owning a paid budget over $1M', 'must', false);
+        const report = computeCoverage([budget], [], 20);
+        expect(report.unanswered).toEqual([budget]);
+        expect(report.answered).toEqual([]);
+    });
+
+    test('it fails closed — an unflagged tenure requirement is a gap, not a gift', () => {
+        // If the posting-reader does not make the call, we do not make it for
+        // them. Under-crediting costs a line in the gap report; over-crediting
+        // tells someone they are qualified when they are not.
+        const unflagged = req('r1', '6+ years building backend systems', 'must', false);
+        expect(computeCoverage([unflagged], [], 30).unanswered).toEqual([unflagged]);
     });
 
     test.each([

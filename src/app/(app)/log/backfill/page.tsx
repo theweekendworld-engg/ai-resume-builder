@@ -4,6 +4,7 @@ import { isEnabled } from '@/lib/flags';
 import { getBackfillEntryData } from '@/actions/backfill';
 import { BACKFILL_ENTRY_POINTS, type BackfillEntryPoint } from '@/agents/backfillAgent';
 import { BackfillEntry } from '@/components/backfill/BackfillEntry';
+import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 /**
  * `/log/backfill` — the subject picker.
@@ -30,7 +31,13 @@ export default async function BackfillEntryPage({
   searchParams: Promise<{ from?: string }>;
 }) {
   const { userId } = await auth();
-  if (!userId || !(await isEnabled(userId, 'backfill'))) notFound();
+  if (!userId) notFound();
+  // Strangers still get a 404 — it does not disclose an unreleased feature.
+  // A signed-in customer was sold this on the pricing page, so they get told
+  // the truth instead.
+  if (!(await isEnabled(userId, 'backfill'))) {
+      return <FeatureUnavailable {...FEATURE_COPY.backfill} reason="not_enabled" />;
+  }
 
   const params = await searchParams;
   const data = await getBackfillEntryData();

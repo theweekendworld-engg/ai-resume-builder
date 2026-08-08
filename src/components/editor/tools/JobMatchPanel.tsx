@@ -65,7 +65,13 @@ function ScoreDial({ score }: { score: number }) {
     );
 }
 
-function RequirementRow({ item, answered }: { item: { text: string; kind: 'must' | 'nice'; byDates: boolean }; answered: boolean }) {
+function RequirementRow({
+    item,
+    answered,
+}: {
+    item: { text: string; kind: 'must' | 'nice' | 'responsibility'; byDates: boolean };
+    answered: boolean;
+}) {
     return (
         <li className="flex items-start gap-2.5 py-1.5">
             <span className="mt-0.5 shrink-0" aria-hidden>
