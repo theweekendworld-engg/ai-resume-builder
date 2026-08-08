@@ -76,3 +76,41 @@ export function contactParts(personalInfo: {
 
     return parts;
 }
+
+export type ProjectLink = { label: string; href: string };
+
+/**
+ * The `[Live]` / `[Repo]` links beside a project title.
+ *
+ * The LaTeX template rendered these in blue; the live HTML preview rendered
+ * nothing at all — the same split that left the contact line dead in one
+ * renderer and working in the other. A project whose repo link only exists in
+ * the exported PDF is a project the reader cannot open from the document they
+ * were shown.
+ *
+ * `[Live]` first: a working thing beats source, and it is the one a
+ * non-engineer reader will click.
+ */
+export function projectLinks(project: {
+    liveUrl?: string | null;
+    repoUrl?: string | null;
+    url?: string | null;
+}): ProjectLink[] {
+    const links: ProjectLink[] = [];
+    for (const [label, raw] of [
+        ['Live', project.liveUrl],
+        ['Repo', project.repoUrl],
+    ] as const) {
+        const href = normalizeUrl((raw ?? '').trim());
+        if (href) links.push({ label, href });
+    }
+
+    // `url` is the legacy single field. Only used when neither of the specific
+    // ones is set, so an older project row still links somewhere.
+    if (links.length === 0) {
+        const href = normalizeUrl((project.url ?? '').trim());
+        if (href) links.push({ label: 'Link', href });
+    }
+
+    return links;
+}

@@ -33,6 +33,7 @@ import {
   improveResumeForLowAts as improveResumeForLowAtsService,
 } from '@/services/atsScorer';
 import { buildBaseResume as buildBaseResumeService } from '@/services/resumeAssembler';
+import { resolveLengthConstraints } from '@/lib/resume/length';
 
 const SENIORITY_LEVELS = ['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager'] as const;
 
@@ -338,17 +339,6 @@ function parseYearsExperience(raw: string): number {
   return match ? Number(match[0]) : 0;
 }
 
-function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', yearsExperience: number) {
-  const resolved = targetLength === 'auto'
-    ? (yearsExperience >= 5 ? '2-page' : '1-page')
-    : targetLength;
-
-  if (resolved === '1-page') {
-    return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 3, maxSkills: 15 };
-  }
-
-  return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 4, maxSkills: 20 };
-}
 
 export async function parseJobDescription(params: {
   jobDescription: string;
@@ -829,7 +819,10 @@ export async function generateSmartResumePipeline(
         ]),
         sectionOrder: preferences.defaultSectionOrder,
         caps: {
-          maxBulletsPerRole: 4,
+          // From the length preference, not a literal. Hardcoding 4 here meant
+          // a candidate who asked for two pages still lost their fifth bullet
+          // on every role — and then read a gap report blaming the cap.
+          maxBulletsPerRole: lengthConstraints.maxBulletsPerRole,
           maxRoles: lengthConstraints.maxExperiences,
           maxSkills: lengthConstraints.maxSkills,
         },

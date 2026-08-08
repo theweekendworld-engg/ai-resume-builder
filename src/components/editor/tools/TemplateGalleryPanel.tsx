@@ -12,7 +12,7 @@ import {
 } from '@/types/resume';
 import { TEMPLATE_OPTIONS } from '@/templates/latex';
 import { groupSkills } from '@/lib/resume/skillGroups';
-import { contactParts } from '@/lib/resume/contact';
+import { contactParts, projectLinks } from '@/lib/resume/contact';
 
 // ---------------------------------------------------------------------------
 // Shared client-side HTML approximation of a template + theme.
@@ -187,7 +187,25 @@ export function ResumeHtmlPreview({ data, theme, variant = 'full', className }: 
               <div style={{ display: 'flex', flexDirection: 'column', gap: d.itemGap }}>
                 {data.projects.map((p) => (
                   <div key={p.id}>
-                    <div style={{ fontWeight: 700, color: '#222' }}>{p.name || 'Project'}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                      <span style={{ fontWeight: 700, color: '#222' }}>{p.name || 'Project'}</span>
+                      {/*
+                        The PDF has rendered these in blue for as long as it has
+                        existed; the preview rendered nothing, so a repo link
+                        only appeared in the exported document.
+                      */}
+                      {projectLinks(p).map((link) => (
+                        <a
+                          key={link.label}
+                          href={link.href}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          style={{ color: accent, textDecoration: 'none', fontWeight: 500 }}
+                        >
+                          [{link.label}]
+                        </a>
+                      ))}
+                    </div>
                     <ul style={{ margin: '2px 0 0', paddingLeft: 14 }}>
                       {plainBullets(p.description).slice(0, isThumb ? 1 : 4).map((b, i) => (
                         <li key={i} style={{ color: '#333' }}>{b}</li>

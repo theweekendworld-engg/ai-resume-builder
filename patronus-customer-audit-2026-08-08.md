@@ -518,7 +518,8 @@ that gets shared.
 | 13 | Carry `redirect_url` through onboarding so pricing CTAs reach checkout (F4) | hours |
 | 14 | Serve gated surfaces an upgrade/coming-soon state to signed-in users; 404 only strangers (F3) | 1 day |
 | 15 | Create the Stripe Prices, revisit the ladder (F17) | blocked on a pricing decision |
-| 16 | Narrow the extension from `<all_urls>` to ATS hosts or `activeTab` (`extension/manifest.config.ts:12`) — the current prompt reads "read and change all your data on all websites", which is a hard sell for a privacy-first product and a Web Store review risk | 1 day |
+| 16 | ~~Narrow the extension from `<all_urls>`~~ — **done**, see §7 | ✅ |
+| 16b | The extension fix list in §7 ("Extension fix order"). E-1 and E-2 belong in the this-week table above | see §7 |
 | 17 | Build the generation eval corpus | 3 days |
 
 ---
@@ -632,6 +633,263 @@ Nothing in Part 5 moves. F3 comes off the list entirely, F2 stays but its fix is
 Career OS surfaces into whichever navigation survives, and retire the other one" rather
 than "build a nav from nothing". §6.3 is a new one-line fix that should go in the
 this-week table, above everything except the deploy.
+
+---
+
+## Part 7 — The Chrome extension, tested on live job postings
+
+Method: built it (`bun run ext:build` — clean, 1729 modules, 1.06s), type-checked it
+(clean), ran its tests (8 pass), then **bundled the real parser modules and executed them
+against live job pages in a real browser**. Not fixtures — the actual production
+`classifyPage`, `reduceDom`, `extractJobDescription`, `extractJobMetadata` and
+`collectNormalizedFields`, run on:
+
+- **Ashby** — Staff Product Designer @ Ashby (job page *and* its live application form)
+- **Greenhouse** — Performance Engineer @ Anthropic (28 real fields, 13 real questions)
+
+**Already fixed since Part 5 was written:** item 16, the `<all_urls>` host permission. The
+manifest now scopes to nine job hosts plus `activeTab` and optional host permissions, with
+a docstring explaining why. That was the right call and it is done.
+
+### What genuinely works
+
+Platform detection is correct and confident. Ashby job page → `ashby` / `job_detail` /
+**0.88 high**; the Ashby form → `application_form`; Greenhouse → `greenhouse`. JD
+extraction pulled 11,605 clean characters off the Ashby page with the boilerplate
+stripped. `companyName: "Ashby"` and `roleTitle: "Staff Product Designer"` were both
+exactly right. On the Greenhouse form the core identity fields are excellent — First Name
+0.97, Last Name 0.97, Email 0.93, Phone 0.99 — and the two `Attach` file inputs were
+correctly split into `resume_upload` (0.99) and `cover_letter` (0.81) purely from their
+`name` attributes, which is a nice piece of work. Both real Ashby essay questions were
+found and flagged as custom questions at 0.84/0.93. The API surface is correctly
+authenticated: `page/analyze`, `resume/generate`, `questions/suggest` and
+`company-insight` all return 401 unauthenticated.
+
+The skeleton is good. The semantic layer on top of it is where the problems are, and one
+of them is serious.
+
+### E1 — A visa-sponsorship question is classified as a "project story" 🔴
+
+Reproduced deterministically, and live on the Anthropic form:
+
+| Question (real, from the live form) | `typeHint` returned |
+|---|---|
+| "Do you require visa sponsorship?*" | **`project_story`** |
+| "Will you now or will you in the future require employment sponsorship?" | **`project_story`** |
+| "Are you legally authorized to work in the US?" | `eligibility` ✓ |
+
+`extension/src/parsers/fieldDetector.ts:389` tests `/project|build|ship/` **two lines
+before** `:391` tests `/authorized|eligible|citizen|sponsorship|visa/`.
+
+`ship` is a substring of "sponsor**ship**". Every sponsorship question in existence matches
+the project rule first and never reaches the eligibility rule.
+
+Why this is the most serious defect in the extension: the Answer Library exists to reuse a
+saved answer when it recognises a question's type. A question typed `project_story` will
+be offered — or auto-filled — with the candidate's saved *project story* in a field asking
+about their **work authorisation**. Misstating work authorisation on an application is the
+category of error that gets an offer withdrawn or a hire reversed. A one-word substring bug
+in a regex is carrying that risk.
+
+Fix is two-fold and both halves are needed: anchor the token (`/\bship(ped|ping|s)?\b/`)
+and move the eligibility test above the project test, because eligibility is the
+higher-stakes classification and should win ties.
+
+### E2 — EEO and demographic questions are treated as answerable 🔴
+
+On the Anthropic form the detector returned:
+
+| Field | Semantic key | Confidence |
+|---|---|---|
+| `Are you Hispanic/Latino?` | **`custom_question`** | **0.84** |
+| `Gender` | `null` | 0.56 |
+| `Veteran Status` | `null` | 0.56 |
+| `Disability Status` | `null` | 0.56 |
+
+`Are you Hispanic/Latino?` ends in a question mark, so the `custom_question` heuristic
+promoted it into the **answerable question list**, alongside "Why Anthropic?". The other
+three are merely *unrecognised* — not blocked. There is no exclusion list for protected
+characteristics anywhere in `fieldDetector.ts`.
+
+Race, ethnicity, gender, veteran and disability self-identification are voluntary
+disclosures that must be made by the human, every time, and never replayed from a stored
+profile. An autofill product that can put a remembered answer into an EEO field has a
+compliance problem, not a bug — and for the product whose entire brand is "we do not take
+more than we need", it is the worst possible place to be careless.
+
+This needs a hard deny-list checked *before* semantic matching: any field whose label or
+`name` matches gender / race / ethnic / hispanic / latino / veteran / disability /
+self-identif / sexual orientation / transgender / pronoun is marked
+`never_autofill` and excluded from both the fill planner and the answer library. Not
+low-confidence — excluded.
+
+### E3 — "Why {Company}?" is unrecognised, which is most of the answer library's value 🟠
+
+```
+"Why Anthropic?"                     -> other
+"Why do you want to work at Stripe?" -> other
+"Why this company?"                  -> why_company   ✓
+```
+
+`fieldDetector.ts:386` matches `/why.*(company|here|us|join)/`. The literal word "company"
+almost never appears — employers write their own name. So the classifier recognises the
+question only in the phrasing no real employer uses.
+
+On the Anthropic form, **11 of 13** detected questions came back `other`, including "Why
+Anthropic?", "Are you open to relocation", "When is the earliest you would want to start",
+"Have you ever interviewed at Anthropic before?" and "What is the address from which you
+plan on working". The taxonomy has nine buckets and no bucket for the two commonest kinds
+of real application question — **behavioural/STAR** ("share a time when you deviated from
+your standard process") and **logistics** (start date, relocation, prior applications).
+
+The Answer Library's promise is "you answered this before, reuse it". With everything in
+`other`, there is no matching signal — it degrades to one flat list the user scrolls.
+Fixing the `why` pattern is a one-liner (drop the required noun, or match the detected
+company name from the page metadata); the missing buckets are a taxonomy change.
+
+### E4 — A file upload is presented to the user as a question to answer 🟠
+
+`Attach` — the Greenhouse cover-letter **file input** — appears in the question list with
+`mode: short_text`. Cause: `buildQuestions` filters on `key === 'custom_question' || key === 'cover_letter'`,
+and the cover-letter *file* input legitimately carries `cover_letter`. Nothing checks
+`inputType`. The user is asked to type an answer into an upload control.
+
+One-line fix: exclude `inputType === 'file'` from the question list.
+
+### E5 — Compensation extraction reports $220 for a $220K–$240K role 🔴
+
+Live from the Ashby page, which displays three salary bands:
+
+```
+page says:      $220K – $240K   (SF/NY)   $200K – $220K   $180K – $200K
+extension got:  "$220"
+```
+
+`jdExtractor.ts:106`:
+
+```js
+/([$€£]\s?\d[\d,]*(?:\s?[-to]{1,3}\s?[$€£]?\d[\d,]*)?(?:\s?\/\s?(?:year|yr|hour|hr))?)/i
+```
+
+Two independent bugs:
+
+1. **No `K`/`M` suffix.** Matching stops at `$220`, so a $220,000 salary is recorded as
+   **$220** — wrong by a factor of 1000.
+2. **`[-to]{1,3}` is a character class, not an alternation.** It matches 1–3 characters
+   drawn from the set {`-`, `t`, `o`} — so it can never match the en-dash `–` that Ashby
+   (and most boards) actually render. The range half of the regex is dead code.
+
+This lands in the customer's application tracker as a fabricated quantity, in the product
+whose first invariant is that no generated artifact contains a number absent from its
+source. It is the same class of error the resume pipeline was rebuilt to eliminate, living
+in a different module.
+
+### E6 — The structured JobPosting schema is on the page and is almost entirely ignored 🟠
+
+The Ashby page ships a complete `application/ld+json` `JobPosting`. The extension parses
+ld+json but uses it only as a weak fallback for company and location. Available and unread:
+
+| Field on the page | Value | Used? |
+|---|---|---|
+| `datePosted` | **2025-12-11** | no |
+| `jobLocationType` | `TELECOMMUTE` | no — remote is guessed from body text |
+| `employmentType` | `FULL_TIME` | no |
+| `applicantLocationRequirements` | USA, Canada | no |
+| `hiringOrganization.name` | Ashby | fallback only |
+| `baseSalary` | (absent here; present on many boards) | no |
+
+`datePosted` is the one that stings. That posting is **eight months old**. "This role was
+posted 8 months ago" is arguably the single most decision-relevant fact for someone about
+to spend twenty minutes on an application, it is sitting in the DOM as a structured date,
+and the extension neither reads nor shows it. Greenhouse, Lever, Ashby and Workday all
+emit this schema — it is a more reliable source than any DOM heuristic, and the priority
+is currently inverted.
+
+### E7 — Autofill misses the most basic fields, and mis-maps one 🟠
+
+From the two live forms:
+
+| Field | Result | Problem |
+|---|---|---|
+| `Name` (Ashby, required) | `null`, 0.56 | The rules cover "full name", "your name", "legal name", "first name", "last name" — **not a bare `Name`**, which is what Ashby and many boards use. The most important autofill target on the form. |
+| `Country*` (Greenhouse, required) | `null`, 0.56 | `current_location` matches `/location\|city\|state\|where are you based\|current address/` — no "country". |
+| `Portfolio Password (if applicable)` | **`portfolio_url`, 0.90 high** | "Portfolio" matched first. A **password field mapped to a URL**, at high confidence. Autofill would type the candidate's portfolio URL into a password box. |
+| `Publications (e.g. Google Scholar) URL` | `null`, 0.56 | unmapped |
+| `AI Policy for Application*` (required) | `null`, 0.56 | unmapped — and pointedly, this is the field asking how AI was used in the application |
+| `Start typing...` (Ashby location autocomplete) | `null`, 0.38 low | label recovered from the placeholder only; a field the detector *has* a rule for |
+| Ashby's own "Autofill from resume" dropzone | `resume_upload`, 0.89 | competes with the real required Resume field; both carry the identical key with nothing to disambiguate |
+
+Nine of 28 Greenhouse fields and 4 of 10 Ashby fields are unmapped or wrong. The
+first-match-wins rule ordering with unanchored substrings is the common cause of the
+mis-maps ("Portfolio" in "Portfolio Password", "ship" in "sponsorship"); the misses are
+just gaps in a hand-written list.
+
+### E8 — `connect/start` mints unlimited unauthenticated pairing grants 🟡
+
+```
+POST /api/extension/connect/start   (no auth, empty body)
+-> 200 {"grantId":"...","verifier":"...","connectUrl":"...","expiresAt":"..."}
+6 rapid calls -> 6x 200
+```
+
+Each call writes a grant row. Only `api/extension/events` has any rate limiting. The
+design itself is sound — grantId + verifier is PKCE-shaped, it expires, and it is inert
+until a signed-in human approves it at `/extension/connect` — so this is not a data leak.
+It is an unauthenticated unbounded DB write, and it is the one extension endpoint reachable
+without a token. It wants the same `checkRateLimit` the anon score route already has.
+
+### E9 — Test coverage does not reach the semantic layer 🟠
+
+6,218 lines, **8 tests**, across `pipeline.fixture.test.ts` and `utils.test.ts`. Every
+defect above — E1 through E7 — is a pure function over a string or a DOM node, which is to
+say every one is trivially unit-testable, and none is tested. E1 and E3 are single-line
+table-driven assertions:
+
+```
+'Do you require visa sponsorship?'  -> 'eligibility'
+'Why Anthropic?'                    -> 'why_company'
+'Are you Hispanic/Latino?'          -> never_autofill
+'$220K – $240K'                     -> '$220K – $240K'
+'Portfolio Password (if applicable)' -> not portfolio_url
+```
+
+The fixture test proves the pipeline runs. Nothing proves it is *right*. That is the gap
+that let a sponsorship question become a project story.
+
+### Does the extension do what it says?
+
+Its description is *"Developer job application copilot for analysis, autofill, and resume
+tailoring."*
+
+| Claim | Verdict |
+|---|---|
+| **Analysis** | Mostly yes. Platform and page classification are strong; JD capture is clean. Metadata is weak and the salary figure is wrong. |
+| **Autofill** | Partly. Name/email/phone/resume work on Greenhouse; `Name`, `Country` and location fail; one field is mis-mapped to a password box. Not something I would let run unattended. |
+| **Resume tailoring** | Wired correctly (401s, paywall pass-through, progress polling) but it calls the same backend audited in Part 2 — so it inherits every finding there, including the 200-second wait and the dropped-evidence gap report. |
+| **"Developer"** | The description says developer; the manifest and parsers are profession-neutral and I tested it on a *designer* posting. The word narrows the audience for no reason — same profession-bias thread as F9. |
+
+**Quality bar: not yet.** The architecture is better than the average job-search extension
+— scoped permissions, confidence bands with stated reasons, a real DOM reducer, PKCE-shaped
+pairing. But a product that autofills job applications is judged on whether it can be
+trusted unsupervised, and today it can put a project story in a visa field, a URL in a
+password box, a remembered answer in an EEO field, and a 1000×-wrong salary in a tracker.
+Those are all small fixes. Until they are made, the honest posture is
+**suggest-and-confirm, never auto-submit** — which is roughly what the UI does today, and
+is the only reason none of this has caused damage yet.
+
+### Extension fix order
+
+| # | Fix | Why | Size |
+|---|---|---|---|
+| E-1 | Deny-list EEO/demographic fields before semantic matching | E2 — compliance | 1 hour |
+| E-2 | Anchor `\bship\b`, move eligibility above project | E1 — visa answers | 10 min |
+| E-3 | Exclude `inputType==='file'` from the question list | E4 | 5 min |
+| E-4 | Fix the salary regex: `K`/`M` suffixes, real range alternation `(?:–\|-\|to)` | E5 — fabricated number | 30 min |
+| E-5 | Read `datePosted`, `jobLocationType`, `employmentType`, `baseSalary` from ld+json first; show posting age | E6 — the highest-value unbuilt feature in the extension | 1 day |
+| E-6 | Add `name`, `country`; negative-guard `password`; disambiguate duplicate `resume_upload` by `required` | E7 | half day |
+| E-7 | Table-driven tests over the semantic and typeHint classifiers | E9 — the reason E1 shipped | half day |
+| E-8 | Rate-limit `connect/start` | E8 | 15 min |
+| E-9 | Widen the `typeHint` taxonomy: behavioural, logistics, eligibility; match "Why {company}" via page metadata | E3 — answer reuse | 1 day |
 
 ---
 

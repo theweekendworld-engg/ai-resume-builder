@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { allSkillSlugs } from '@/lib/radar/skills';
 import { groupSkills, isRenderableSkill, __testing } from './skillGroups';
-import { contactParts, normalizeUrl } from './contact';
+import { contactParts, normalizeUrl, projectLinks } from './contact';
 
 describe('skills are grouped, not listed', () => {
     test('an engineer gets the rows a reader scans for', () => {
@@ -164,5 +164,33 @@ describe('contact links', () => {
 
     test('nothing empty is rendered', () => {
         expect(contactParts({ email: '  ', github: '', location: undefined })).toEqual([]);
+    });
+});
+
+describe('project links', () => {
+    test('Live comes before Repo', () => {
+        // A working thing beats source, and it is the one a non-engineer
+        // reader clicks.
+        const links = projectLinks({ repoUrl: 'github.com/p/x', liveUrl: 'x.dev' });
+        expect(links.map((l) => l.label)).toEqual(['Live', 'Repo']);
+    });
+
+    test('the same forms people type for a profile work here too', () => {
+        expect(projectLinks({ repoUrl: 'github.com/p/x' })[0].href).toBe('https://github.com/p/x');
+    });
+
+    test('a legacy single url still links', () => {
+        const links = projectLinks({ url: 'https://x.dev' });
+        expect(links).toEqual([{ label: 'Link', href: 'https://x.dev' }]);
+    });
+
+    test('but only when nothing more specific is set', () => {
+        const links = projectLinks({ url: 'https://x.dev', repoUrl: 'github.com/p/x' });
+        expect(links.map((l) => l.label)).toEqual(['Repo']);
+    });
+
+    test('an unusable value produces no link rather than a broken one', () => {
+        expect(projectLinks({ repoUrl: 'my-project' })).toEqual([]);
+        expect(projectLinks({})).toEqual([]);
     });
 });
