@@ -40,6 +40,10 @@ import {
     drainJobs,
     purge,
 } from './harness';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 // `defineJourney` registers the Clerk module mock, so it must run before the
 // modules under test bind `auth()`. Hence the top-level dynamic imports below.
@@ -165,6 +169,7 @@ beforeEach(() => {
 let flagRestore: (() => Promise<void>) | null = null;
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     const existing = await prisma.featureFlag.findUnique({ where: { key: 'backfill' } });
     const before = Array.isArray(existing?.allowUserIds) ? (existing.allowUserIds as string[]) : [];
 
@@ -194,6 +199,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     await flagRestore?.();
 });
 

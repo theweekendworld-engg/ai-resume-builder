@@ -19,6 +19,10 @@ import { weekStart } from '@/lib/notifications/budget';
 import { missionNudgeHandler } from './missionNudge';
 import { missionTemplate, stepKindOf } from '@/lib/missions/catalog';
 import type { JobContext, JobResultObject } from '../types';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 const RUN = `itest-nudge-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const users: string[] = [];
@@ -89,6 +93,7 @@ async function run(userId: string): Promise<JobResultObject> {
 }
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     // Only the email boundary: these seams are module bindings shared across
     // the whole Bun process, so wiring one this file does not need would point
     // another suite's real client at an in-memory double.
@@ -102,6 +107,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     for (const userId of users) {
         await prisma.mission.deleteMany({ where: { userId } });
         await prisma.emailSend.deleteMany({ where: { userId } });

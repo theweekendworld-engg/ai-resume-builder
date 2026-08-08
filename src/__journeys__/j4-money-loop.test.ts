@@ -41,6 +41,10 @@ import {
     drainJobs,
     purge,
 } from './harness';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 /** Free's context-interview trial, read from the catalog rather than assumed. */
 const TRIAL = meteredLimit(Tier.free, 'context_interview').limit;
@@ -82,6 +86,7 @@ function setEnv(name: string, value: string): void {
 let restoreFlag: (() => Promise<void>) | null = null;
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     setEnv('ENTITLEMENTS_ENFORCE', 'true');
     setEnv('STRIPE_SECRET_KEY', 'sk_test_journey_d4');
     setEnv('STRIPE_WEBHOOK_SECRET', WEBHOOK_SECRET);
@@ -117,6 +122,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     for (const [name, value] of envBackup) {
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;

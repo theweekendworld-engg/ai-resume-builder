@@ -12,6 +12,10 @@ import { installClerkMock } from '@/__mocks__/clerk';
 import { installMocks, mocks, resetMocks, uninstallMocks } from '@/__mocks__';
 import { prisma } from '@/lib/prisma';
 import { invalidateFlagCache } from '@/lib/flags';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 const clerk = installClerkMock();
 
@@ -128,6 +132,7 @@ async function setMissionsFlag(enabled: boolean) {
 }
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     installMocks({ only: ['openai'] });
     await setMissionsFlag(false);
 });
@@ -135,6 +140,7 @@ beforeAll(async () => {
 afterEach(() => resetMocks());
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     for (const userId of users) {
         await prisma.userExperience.deleteMany({ where: { userId } });
         await prisma.userEducation.deleteMany({ where: { userId } });

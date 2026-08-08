@@ -51,6 +51,10 @@ import type {
     SearchIssueItem,
 } from '@/lib/capture/github/client';
 import type { CaptureDraft } from '@/lib/capture/drafting';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 installClerkMock();
 
@@ -635,6 +639,7 @@ async function assertQueueHealthy(since: Date): Promise<void> {
 const startedAt = new Date();
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     // The one place the MockGithubApi is handed over: the real adapter, with a
     // fake client underneath, so `pull` — queries, pagination, the request
     // budget, the cursor watermark — is the code actually under test.
@@ -645,6 +650,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     captureRegistry.__testing.reset();
     for (const fragment of jobKeyFragments) {
         await prisma.job.deleteMany({ where: { dedupeKey: { contains: fragment } } });

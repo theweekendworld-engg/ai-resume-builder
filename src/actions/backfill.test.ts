@@ -38,6 +38,19 @@ const sessionIds: string[] = [];
 const allowed: string[] = [];
 let flagExisted = false;
 let originalAllowList: string[] = [];
+/**
+ * The flag's own state, saved and restored.
+ *
+ * The allow-list was already preserved; `enabled` and `rolloutPercent` were
+ * not, and the gating tests silently assumed both were off in whatever
+ * database they happened to run against. Turning `backfill` on for real
+ * development made "a flagged-off user cannot reach the action" fail — the
+ * user was not flagged off any more, and the test had no way to say so.
+ *
+ * A test that asserts about a gate has to own the gate.
+ */
+let originalEnabled = false;
+let originalRollout = 0;
 
 /**
  * Flip the flag on for exactly the test users, never globally. The local
@@ -98,7 +111,19 @@ beforeAll(async () => {
     originalAllowList = Array.isArray(existing?.allowUserIds)
         ? (existing.allowUserIds as string[])
         : [];
+    originalEnabled = existing?.enabled ?? false;
+    originalRollout = existing?.rolloutPercent ?? 0;
     allowed.push(...originalAllowList);
+
+    // Off for everyone except the allow-list, for the duration. That is the
+    // condition every assertion in this file is about.
+    if (flagExisted) {
+        await prisma.featureFlag.update({
+            where: { key: 'backfill' },
+            data: { enabled: false, rolloutPercent: 0 },
+        });
+        invalidateFlagCache();
+    }
 
     aiTesting.setObjectRunner(async ({ system }) => ({
         object: system === BACKFILL_EXTRACT_SYSTEM ? EXTRACTION : OPENING,
@@ -122,7 +147,11 @@ afterAll(async () => {
     if (flagExisted) {
         await prisma.featureFlag.update({
             where: { key: 'backfill' },
-            data: { allowUserIds: originalAllowList },
+            data: {
+                allowUserIds: originalAllowList,
+                enabled: originalEnabled,
+                rolloutPercent: originalRollout,
+            },
         });
     } else {
         await prisma.featureFlag.deleteMany({ where: { key: 'backfill' } });

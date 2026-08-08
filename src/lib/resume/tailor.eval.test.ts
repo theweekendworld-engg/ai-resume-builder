@@ -197,9 +197,28 @@ function allText(resume: ResumeData): string {
     ].join('\n');
 }
 
+/**
+ * The model is mocked; the USAGE LOG is not.
+ *
+ * `generateStructured` writes an `ApiUsageLog` row per call whatever answers
+ * it, so this file — nineteen end-to-end runs, several model calls each —
+ * had quietly written 6,390 rows under `eval-user`. That was 96% of the whole
+ * table, so the admin dashboard's tokens, spend and top-users panels were
+ * almost entirely this test, and the four real accounts were invisible in it.
+ *
+ * A test that leaves rows in a table someone reads as a metric is not
+ * self-contained. It cleans up after itself now.
+ */
+const EVAL_USER = 'eval-user';
+
 beforeAll(() => installMocks({ only: ['openai'] }));
 afterEach(() => resetMocks());
-afterAll(() => uninstallMocks());
+afterAll(async () => {
+    uninstallMocks();
+    const { prisma } = await import('@/lib/prisma');
+    await prisma.apiUsageLog.deleteMany({ where: { userId: EVAL_USER } });
+    await prisma.funnelEvent.deleteMany({ where: { userId: EVAL_USER } });
+});
 
 // ═══════════════════════════════════════════════════════ the audit failures
 

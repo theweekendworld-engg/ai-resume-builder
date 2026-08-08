@@ -26,7 +26,7 @@
  * the vector store are doubled.
  */
 
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { Tier, WinCategory, WinSensitivity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { mocks } from '@/__mocks__';
@@ -41,6 +41,14 @@ import {
     purge,
 } from '@/__journeys__/harness';
 import type { PacketBlock, PacketContent } from '@/services/reviewPacket';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
+});
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 // `defineJourney` registers the Clerk module mock at module scope, so anything
 // that binds `auth()` is imported after it. Type-only imports above are erased
@@ -708,4 +716,9 @@ describe('J2 — the payoff loop', () => {
         await purge(journey.runId);
         expect(await assertPurged(journey.runId)).toEqual({});
     });
+});
+
+
+afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
 });

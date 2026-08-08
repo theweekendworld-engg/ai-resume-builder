@@ -25,9 +25,13 @@
  * that a function had been called with some arguments.
  */
 
-import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { Channel, WinStatus } from '@prisma/client';
 import { installMocks, resetMocks, uninstallMocks } from '@/__mocks__';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 const APP_URL = 'http://localhost:3000';
 
@@ -145,6 +149,10 @@ async function send(userId: string, weekStart: Date = WEEK_START) {
     return weeklyDigestHandler({ userId, weekStart: weekStart.toISOString() }, ctx());
 }
 
+beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
+});
+
 beforeEach(() => {
     resetMocks();
 });
@@ -168,6 +176,10 @@ afterEach(async () => {
     users.length = 0;
     await prisma.featureFlag.deleteMany({ where: { key: 'weekly_digest' } });
     invalidateFlagCache();
+});
+
+afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
 });
 
 afterAll(() => {

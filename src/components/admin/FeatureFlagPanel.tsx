@@ -1,12 +1,12 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { seedFeatureFlags, setFeatureFlag, type FeatureFlagRow } from '@/actions/admin';
+import { setFeatureFlag, type FeatureFlagRow } from '@/actions/admin';
 
 /**
  * The one admin operation that gates the entire product.
@@ -33,24 +33,38 @@ const LABELS: Record<string, string> = {
     missions: 'Missions',
 };
 
-function FlagRow({ row, onChanged }: { row: FeatureFlagRow; onChanged: () => void }) {
+function FlagRow({
+    row,
+    onSaved,
+}: {
+    row: FeatureFlagRow;
+    onSaved: (next: FeatureFlagRow) => void;
+}) {
     const [busy, setBusy] = React.useState(false);
     const [rollout, setRollout] = React.useState(row.rolloutPercent);
 
+    // The row prop is the truth. Without this, a refresh that returns new
+    // values would leave the number input showing the old one.
+    React.useEffect(() => setRollout(row.rolloutPercent), [row.rolloutPercent]);
+
     const save = async (next: { enabled?: boolean; rolloutPercent?: number }) => {
+        const enabled = next.enabled ?? row.enabled;
+        const rolloutPercent = next.rolloutPercent ?? rollout;
+
         setBusy(true);
-        const result = await setFeatureFlag({
-            key: row.key,
-            enabled: next.enabled ?? row.enabled,
-            rolloutPercent: next.rolloutPercent ?? rollout,
-        });
+        const result = await setFeatureFlag({ key: row.key, enabled, rolloutPercent });
         setBusy(false);
         if (!result.success) {
             toast.error(result.error ?? 'Could not save that flag.');
             return;
         }
         toast.success(`${LABELS[row.key] ?? row.key} updated.`);
-        onChanged();
+        // The write succeeded, so say what it now IS. The previous version
+        // called a bare `onChanged()` whose parent did `setRows(prev =>
+        // [...prev])` — a new array holding the same row objects, so
+        // `row.enabled` never moved and the switch snapped straight back.
+        // The database had changed and the screen insisted otherwise.
+        onSaved({ ...row, enabled, rolloutPercent, seeded: true });
     };
 
     const live = row.enabled && rollout > 0;
@@ -115,24 +129,18 @@ function FlagRow({ row, onChanged }: { row: FeatureFlagRow; onChanged: () => voi
 }
 
 export function FeatureFlagPanel({ initial }: { initial: FeatureFlagRow[] }) {
+    const router = useRouter();
     const [rows, setRows] = React.useState(initial);
-    const [seeding, setSeeding] = React.useState(false);
     const missing = rows.filter((row) => !row.seeded);
 
     React.useEffect(() => setRows(initial), [initial]);
 
-    const seed = async () => {
-        setSeeding(true);
-        const result = await seedFeatureFlags();
-        setSeeding(false);
-        toast.success(
-            result.seeded > 0
-                ? `Created ${result.seeded} missing flag row${result.seeded === 1 ? '' : 's'}.`
-                : 'Every declared flag already has a row.',
-        );
-        // The rows come from a server component above; a refresh is the
-        // honest way to show what the database now holds.
-        window.location.reload();
+    const applySaved = (next: FeatureFlagRow) => {
+        // Optimistic, so the switch moves under the finger…
+        setRows((prev) => prev.map((row) => (row.key === next.key ? next : row)));
+        // …then re-read, because the server component above owns the truth and
+        // `invalidateFlagCache` has just run inside the action.
+        router.refresh();
     };
 
     return (
@@ -145,9 +153,6 @@ export function FeatureFlagPanel({ initial }: { initial: FeatureFlagRow[] }) {
                         makes its surface unreachable for customers who were sold it.
                     </p>
                 </div>
-                <Button variant="outline" size="sm" disabled={seeding} onClick={() => void seed()}>
-                    {seeding ? 'Seeding…' : 'Seed missing rows'}
-                </Button>
             </div>
 
             {missing.length > 0 ? (
@@ -155,7 +160,8 @@ export function FeatureFlagPanel({ initial }: { initial: FeatureFlagRow[] }) {
                     {missing.length} declared flag{missing.length === 1 ? ' has' : 's have'} no
                     database row: <span className="font-mono">{missing.map((row) => row.key).join(', ')}</span>.
                     A missing row is off for <em>everyone</em>, allow-list included, and cannot be
-                    turned on until it exists. Seeding creates them disabled.
+                    turned on until it exists. Restarting the app creates them, disabled —
+                    `instrumentation.ts` seeds every declared flag on boot.
                 </p>
             ) : null}
 
@@ -172,11 +178,7 @@ export function FeatureFlagPanel({ initial }: { initial: FeatureFlagRow[] }) {
                     </thead>
                     <tbody>
                         {rows.map((row) => (
-                            <FlagRow
-                                key={row.key}
-                                row={row}
-                                onChanged={() => setRows((prev) => [...prev])}
-                            />
+                            <FlagRow key={row.key} row={row} onSaved={applySaved} />
                         ))}
                     </tbody>
                 </table>

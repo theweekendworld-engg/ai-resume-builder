@@ -23,6 +23,10 @@ import {
 import { installClerkMock } from '@/__mocks__/clerk';
 import { prisma } from '@/lib/prisma';
 import { invalidateFlagCache } from '@/lib/flags';
+import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
+
+/** Restored in `afterAll` — the suite shares a database with development. */
+let __flagSnapshot: FlagSnapshot = [];
 
 const clerk = installClerkMock();
 
@@ -73,6 +77,7 @@ async function addWin(
 }
 
 beforeAll(async () => {
+    __flagSnapshot = await snapshotFlags();
     await prisma.featureFlag.upsert({
         where: { key: 'missions' },
         create: { key: 'missions', enabled: true, rolloutPercent: 100, description: 'test' },
@@ -82,6 +87,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+    await restoreFlags(__flagSnapshot);
     for (const userId of users) {
         await prisma.mission.deleteMany({ where: { userId } });
         await prisma.win.deleteMany({ where: { userId } });
