@@ -87,7 +87,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    await restoreFlags(__flagSnapshot);
     for (const userId of users) {
         await prisma.mission.deleteMany({ where: { userId } });
         await prisma.win.deleteMany({ where: { userId } });
@@ -98,6 +97,12 @@ afterAll(async () => {
     await prisma.featureFlag.updateMany({ where: { key: 'missions' }, data: { enabled: false } });
     invalidateFlagCache();
     clerk.signOut();
+
+
+    // LAST. Some of these files also delete or disable flags in their own
+    // cleanup, and a restore placed first was simply undone by the lines
+    // after it — `j1` restored the table and then deleted the same rows.
+    await restoreFlags(__flagSnapshot);
 });
 
 describe('§2 rule 1 — at most one active mission', () => {

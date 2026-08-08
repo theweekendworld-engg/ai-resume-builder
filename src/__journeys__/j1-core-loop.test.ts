@@ -650,13 +650,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    await restoreFlags(__flagSnapshot);
     captureRegistry.__testing.reset();
     for (const fragment of jobKeyFragments) {
         await prisma.job.deleteMany({ where: { dedupeKey: { contains: fragment } } });
     }
     await prisma.featureFlag.deleteMany({ where: { key: { in: [...FLAG_KEYS] } } });
     invalidateFlagCache();
+
+
+    // LAST. Some of these files also delete or disable flags in their own
+    // cleanup, and a restore placed first was simply undone by the lines
+    // after it — `j1` restored the table and then deleted the same rows.
+    await restoreFlags(__flagSnapshot);
 });
 
 // ═══════════════════════════════════════════════════════════════ J1

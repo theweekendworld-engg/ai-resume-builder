@@ -140,7 +140,6 @@ beforeAll(async () => {
 afterEach(() => resetMocks());
 
 afterAll(async () => {
-    await restoreFlags(__flagSnapshot);
     for (const userId of users) {
         await prisma.userExperience.deleteMany({ where: { userId } });
         await prisma.userEducation.deleteMany({ where: { userId } });
@@ -154,6 +153,12 @@ afterAll(async () => {
     invalidateFlagCache();
     uninstallMocks();
     clerk.signOut();
+
+
+    // LAST. Some of these files also delete or disable flags in their own
+    // cleanup, and a restore placed first was simply undone by the lines
+    // after it — `j1` restored the table and then deleted the same rows.
+    await restoreFlags(__flagSnapshot);
 });
 
 describe('the /score handoff finally lands', () => {
