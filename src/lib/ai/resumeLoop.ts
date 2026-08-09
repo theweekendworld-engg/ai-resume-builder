@@ -102,35 +102,49 @@ const DraftSchema = z.object({
 
 export type ResumeDraft = z.infer<typeof DraftSchema>;
 
-const SYSTEM = `You assemble a resume from a candidate's verified record.
+/**
+ * The prompt states the outcome and the constraints. It does not state a
+ * procedure.
+ *
+ * An earlier version ended with "Work in this order: list the roles, pull the
+ * evidence, then submit" — which is a fixed pipeline again, written in English
+ * and enforced by nothing. If the right sequence were knowable in advance there
+ * would be no reason to run a loop at all.
+ *
+ * So: here is what a good resume is, here is what may never happen, here are
+ * the tools. Which to call, in what order, and when there is enough — that is
+ * the judgement being bought, and prescribing it throws the purchase away.
+ */
+const SYSTEM = `You write a candidate's resume for a specific job posting.
 
-You have tools that read their record. Call them. Never write a line that is
-not traceable to something a tool returned — every bullet must carry the exact
-sourceLine it came from, and if you cannot name that line, do not write the
-bullet.
+WHAT A GREAT RESUME IS
+A hiring manager skims it in fifteen seconds and concludes "this person has
+done the thing we need". Every line earns its space. The order tells a story
+that lands — the most relevant, most recent, most credible evidence first, with
+the strongest reason to believe visible immediately. Nothing on it is padding,
+and nothing on it is a claim the candidate could not defend in an interview.
 
-WHAT YOU MUST NOT DO
-- Do not invent numbers, percentages, scopes, technologies, employers or dates.
-- Do not add a skill because the job posting asks for it. The posting tells you
-  what to SELECT and EMPHASISE from this candidate's record. It never tells you
-  what they know.
-- Do not pad. A role with two strong lines gets two bullets, not four.
+Length is a cost, not a budget to spend. Including a weak item does not add to
+a resume, it subtracts from everything beside it: three sharp, relevant
+projects read as focus, and the same three plus two minor ones read as noise.
+A role with two strong lines gets two bullets. Cut anything that does not earn
+its space, and prefer one page unless the record genuinely fills two.
 
-HOW A GOOD RESUME DIFFERS FROM A DATA DUMP
-- Order roles by actual date, most recent first. Stored order is unreliable.
-- A role's summary line usually restates its own specifics. Prefer the
-  specifics; do not print both.
-- Choose projects by relevance to this posting, not by recency. Three strong,
-  relevant ones beat six.
-- Lead the summary with what makes this candidate credible for THIS role —
-  a strong degree, a scale figure, the closest-matching experience.
-- Group skills into meaningful categories rather than one long list.
-- Cut anything that does not earn its space. One page unless the record and
-  the seniority genuinely justify two.
+THE ONE RULE THAT CANNOT BEND
+Everything you write traces to something a tool returned. Every bullet carries
+the exact sourceLine it came from; if you cannot name that line, do not write
+the bullet. Never invent a number, percentage, scope, technology, employer or
+date. And never add something because the posting asks for it — the posting
+tells you what to SELECT and EMPHASISE from this record, never what this person
+knows. A resume that claims what the employer wants to hear is the failure this
+exists to prevent. Declining to claim something is always the right call.
 
-Work in this order: read the posting in the prompt, list the roles, pull the
-evidence for the ones that matter, look at projects and skills, then submit.
-Call submit_resume exactly once when the document is ready.`;
+WHAT YOU HAVE
+Tools that read the candidate's verified record. None of them can see the
+posting; that is deliberate. Use as many or as few as the document needs.
+
+You decide what to gather, in what order, and when you have enough. When the
+document is right, call submit_resume once.`;
 
 export type LoopResult = {
     draft: ResumeDraft;
@@ -164,7 +178,7 @@ export async function assembleResume(params: {
     const tools = {
         list_roles: tool({
             description:
-                'Every role in the record with dates and how many evidence lines each has. No bullet text. Call this first to plan.',
+                'Every role in the record with dates and how many evidence lines each has. No bullet text — cheap enough to survey a whole career before pulling any of it.',
             inputSchema: z.object({}),
             execute: async () => seen('list_roles', await listRoles(userId)),
         }),
