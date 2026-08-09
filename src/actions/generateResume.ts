@@ -331,7 +331,25 @@ function buildExperienceDescription(item: { description: string; highlights: unk
   if (!baseDescription) return cleanedHighlights.join('\n');
   if (cleanedHighlights.length === 0) return baseDescription;
 
-  return `${baseDescription}\n${cleanedHighlights.join('\n')}`.trim();
+  // Highlights win, and the description is dropped rather than prepended.
+  //
+  // These two fields are not peers. `description` is the role summary a user
+  // writes first ("Worked on secure in-browser Python execution and
+  // cost-optimized remote execution infrastructure"); `highlights` are the
+  // specifics underneath it ("Hosted remote execution services on GCP Cloud
+  // Run... reduce infrastructure costs by 70%"). Concatenating both fed the
+  // summary into selection as a peer of the lines it summarises, so a real
+  // resume came back with the same claim twice per role — once vague, once
+  // precise — spending two of fourteen scarce lines saying one thing.
+  //
+  // This looked like a model failing to deduplicate. It was not: every bullet
+  // was faithful to a real source line. The redundancy was manufactured here,
+  // before any model saw the text.
+  //
+  // When specifics exist they strictly dominate the summary, so the summary is
+  // not a bullet. It is not lost either — `defaultSummary` and the generated
+  // resume summary are where role-level framing belongs.
+  return cleanedHighlights.join('\n');
 }
 
 function parseYearsExperience(raw: string): number {

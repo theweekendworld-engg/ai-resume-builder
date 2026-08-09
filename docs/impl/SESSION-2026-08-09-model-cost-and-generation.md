@@ -74,49 +74,47 @@ gpt-5 rewrites more aggressively and so survives that filter.
 
 ---
 
-## 4. The more urgent bug: gpt-5 fabricates
+## 4. RETRACTED — there was no fabrication
 
-Source row for 2Sigma School is **one line**:
+**This section previously claimed a confirmed P0 fabrication. That was wrong,
+and it was committed to the repo before being verified. Correcting it here.**
 
-> "Worked on secure in-browser Python execution and cost-optimized remote
-> execution infrastructure."
+The claim was that gpt-5 invented "reducing infrastructure costs by 70%",
+Pyodide, GCP Cloud Run, autoscaling, Shopify and Flutter, because a search of
+the user's records found none of them.
 
-gpt-5 produced **three bullets** adding *GCP Cloud Run*, *autoscaling*,
-*stateless containers*, *Pyodide (WebAssembly)*, and
-**"reducing infrastructure costs by 70%"**.
+**That search was defective.** It read `UserExperience.description` and never
+read `UserExperience.highlights`, a `Json` column. Every flagged term is in
+`highlights`, verbatim:
 
-Same pattern at Swachh.io: one source line → three bullets adding *Shopify*,
-*Google APIs*, *Flutter*.
+> "Hosted remote execution services on GCP Cloud Run, leveraging autoscaling and
+> stateless containers to reduce infrastructure costs by 70%."
 
-luna, given the identical source line, returned **one bullet: the source,
-restated. Nothing added.**
+> "Integrated Pyodide (WebAssembly-based Python runtime) to enable secure,
+> in-browser Python execution..."
 
-### CONFIRMED FABRICATION — the guard did not fire
+> "Developed a cross-platform affiliate marketing app in Flutter, integrated
+> with Shopify..."
 
-Searched all 13 source records for this user (4 `UserExperience`, 6
-`UserProject`, 3 `KnowledgeItem`). Result:
+So: **the numeric guard worked. gpt-5 was faithful. Nothing was invented.**
+"One source line became three bullets" was actually three source lines — one
+description plus two highlights — becoming three bullets, which is correct.
 
-```
-ABSENT  70%        ABSENT  Pyodide     ABSENT  GCP      ABSENT  Cloud Run
-ABSENT  Shopify    ABSENT  Flutter     ABSENT  autoscal
-```
+Also disproved along the way: v2 does NOT fall back to v1 on this path. An
+instrumented run never hit the `[resume] v2 failed` branch at
+`generateResume.ts:927`. The guarded v2 path is what ran.
 
-**Every one of those specifics was invented.** Not sourced from a wider record —
-they exist nowhere in the user's data. That includes the quantity
-"reducing infrastructure costs by 70%", which the numeric guard in
-`src/lib/ai/guard.ts` exists specifically to block, on the live generation path,
-and which it passed.
+### The one real defect, and it was never a model problem
 
-This is a P0 against the product's stated invariant — *"No generated artifact may
-contain a number, scope, or outcome absent from its source. Zero fabrications is
-the pass condition — not 'low rate'."* It outranks every other item in this
-document.
+`buildExperienceDescription` (`generateResume.ts:326`) concatenated
+`description` + `highlights` into the bullet source. Those two fields are not
+peers: `description` is the role summary, `highlights` are the specifics under
+it. Feeding both to selection made the summary compete as a bullet against the
+lines it summarises, so a role showed the same claim twice — once vague, once
+precise — burning two of fourteen scarce lines.
 
-Next step is not a fix, it is a diagnosis: determine whether `bulletWrite` calls
-`generateStructured` with a `guard` argument at all, and if so what `source` it
-passes. A guard given the wrong source text is indistinguishable from no guard.
-
----
+Fixed: when highlights exist they are the bullets, and the description is not
+one. The redundancy was manufactured in our code before any model saw the text.
 
 ## 5. Retractions
 
@@ -129,18 +127,27 @@ Recorded so they are not re-derived:
   it is populated. My test script read `e.position`, which does not exist.
 - ❌ "Reasoning tokens ate the output budget" — `finishReason: stop`, 21–46
   reasoning tokens.
+- ❌ "CONFIRMED FABRICATION / the numeric guard has a hole" — the worst of them,
+  because it was committed before being checked. The search read `description`
+  and skipped the `highlights` Json column where every flagged term actually
+  lives. The guard is fine.
+- ❌ "v2 silently falls back to the unguarded v1 path" — an instrumented run
+  never reached that branch.
 
-Pattern worth naming: three of four came from trusting a throwaway test harness
-over the code. Instrument the actual step before theorising from output shape.
+Pattern worth naming: nearly all of these came from trusting a throwaway script
+over the data model — reading one column and concluding from its absence,
+reading `e.position` when the field is `role`. The rule that would have caught
+every one: before claiming something is missing, dump the whole record and look
+at it. Absence of evidence in a partial query is not evidence of absence.
 
 ---
 
 ## 6. Plan, in priority order
 
-**P0 — DONE, and the answer is bad.** All terms absent from all 13 source
-records; see §4. The numeric guard passed a fabricated `70%` on the live path.
-The follow-up is to find out why: does `bulletWrite` pass a `guard` to
-`generateStructured`, and is its `source` the actual candidate text?
+**P0 — CLOSED, not a bug.** See §4. No fabrication; the guard works; `bulletWrite`
+passes `guard: { sourceText, fields: ['bullets.N.text'] }` correctly. The real
+defect was `buildExperienceDescription` merging summary with specifics, now
+fixed.
 
 **P1 — Instrument the pipeline for the 0-roles bug.**
 Log what `bulletSelect` and `bulletWrite` actually return inside one luna run,
