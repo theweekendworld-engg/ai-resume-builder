@@ -6,8 +6,38 @@ import { getCurrentBillingPeriod } from '@/lib/billingPeriod';
 import { getUserTier } from '@/lib/entitlements';
 import { costBudgetUsd, tokenBudget } from '@/lib/plans';
 
-const realOpenAI = new OpenAI({ apiKey: config.openai.apiKey });
+const realOpenAI = new OpenAI({
+  apiKey: config.openai.apiKey,
+  ...(config.openai.baseURL ? { baseURL: config.openai.baseURL } : {}),
+});
+
+/**
+ * Embeddings do not follow chat to a gateway.
+ *
+ * Gateways front chat models; none of them serve `text-embedding-3-large`, and
+ * the vector size is baked into the Qdrant collection, so a substituted model
+ * does not degrade retrieval — it breaks it. This client therefore resolves its
+ * own credentials, which default to OpenAI whatever `baseURL` says.
+ *
+ * When no override is set this is the same object as `realOpenAI`, so nothing
+ * changes for a deployment that never configures a gateway.
+ */
+const usesSeparateEmbeddingCreds =
+  config.openai.embedding.apiKey !== config.openai.apiKey ||
+  Boolean(config.openai.baseURL) ||
+  Boolean(config.openai.embedding.baseURL);
+
+const realEmbeddingOpenAI = usesSeparateEmbeddingCreds
+  ? new OpenAI({
+      apiKey: config.openai.embedding.apiKey,
+      ...(config.openai.embedding.baseURL
+        ? { baseURL: config.openai.embedding.baseURL }
+        : {}),
+    })
+  : realOpenAI;
+
 let openai: OpenAI = realOpenAI;
+let embeddingOpenAI: OpenAI = realEmbeddingOpenAI;
 
 /**
  * Test seam. This module constructs its own OpenAI client, so it is the
@@ -21,10 +51,17 @@ let openai: OpenAI = realOpenAI;
  */
 export const __testing = {
   setOpenAIClient(client: OpenAI | null) {
+    // Both clients, deliberately. Production splits chat from embeddings so a
+    // chat gateway cannot break retrieval; a test that injects one double
+    // still means "intercept every OpenAI call this module makes", and quietly
+    // leaving embeddings pointed at the real API would turn a unit test into a
+    // billable network call.
     openai = client ?? realOpenAI;
+    embeddingOpenAI = client ?? realEmbeddingOpenAI;
   },
   reset() {
     openai = realOpenAI;
+    embeddingOpenAI = realEmbeddingOpenAI;
   },
 };
 
@@ -33,8 +70,36 @@ type OpenAiPrice = {
   outputPer1M: number;
 };
 
+/**
+ * List prices, USD per 1M tokens, checked against each vendor's own pricing
+ * page on 9 Aug 2026. Gateway entries use OpenRouter's model ids because that
+ * is the string the provider hands back and therefore the string that lands in
+ * `ApiUsageLog.model`.
+ *
+ * Two things this table does NOT capture, so do not read it as a bill:
+ *   - OpenRouter charges 5.5% on credit PURCHASES (5% crypto), not per token.
+ *   - Indian buyers owe 18% GST under reverse charge on all of it, recoverable
+ *     as input tax credit only if you are GST-registered.
+ *
+ * Cached-input rates are omitted deliberately. Measured across real usage,
+ * input is ~7% of spend on this workload — reasoning is billed as output, and
+ * output is where the money goes. A caching column would add precision to the
+ * rounding error and none to the number anyone acts on.
+ */
 const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
+  // ── OpenAI. gpt-5*-2025-08-07 snapshots shut down 11 Dec 2026; the named
+  // replacements (terra/sol) cost 3-6x more on output, luna costs less.
+  'gpt-5.6-sol': { inputPer1M: 5, outputPer1M: 30 },
+  'gpt-5.6-terra': { inputPer1M: 2, outputPer1M: 12 },
+  'gpt-5.6-luna': { inputPer1M: 0.2, outputPer1M: 1.2 },
+  'gpt-5.5': { inputPer1M: 5, outputPer1M: 30 },
+  'gpt-5.5-pro': { inputPer1M: 30, outputPer1M: 180 },
+  'gpt-5.4': { inputPer1M: 2.5, outputPer1M: 15 },
+  'gpt-5.4-mini': { inputPer1M: 0.75, outputPer1M: 4.5 },
+  'gpt-5.4-nano': { inputPer1M: 0.2, outputPer1M: 1.25 },
+  'gpt-5.1': { inputPer1M: 1.25, outputPer1M: 10 },
   'gpt-5-mini': { inputPer1M: 0.25, outputPer1M: 2 },
+  'gpt-5-nano': { inputPer1M: 0.05, outputPer1M: 0.4 },
   'gpt-5': { inputPer1M: 1.25, outputPer1M: 10 },
   'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.6 },
   'gpt-4o': { inputPer1M: 2.5, outputPer1M: 10 },
@@ -42,6 +107,23 @@ const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
   'gpt-4.1': { inputPer1M: 2.5, outputPer1M: 10 },
   'text-embedding-3-small': { inputPer1M: 0.02, outputPer1M: 0 },
   'text-embedding-3-large': { inputPer1M: 0.13, outputPer1M: 0 },
+
+  // ── Via an OpenAI-compatible gateway (config.openai.baseURL).
+  'z-ai/glm-5.2': { inputPer1M: 0.07, outputPer1M: 0.22 },
+  'deepseek/deepseek-v4-flash-0731': { inputPer1M: 0.09, outputPer1M: 0.18 },
+  'qwen/qwen3.7-flash': { inputPer1M: 0.03, outputPer1M: 0.13 },
+  'qwen/qwen3.8-max': { inputPer1M: 2, outputPer1M: 6 },
+  'moonshotai/kimi-k3': { inputPer1M: 3, outputPer1M: 15 },
+  'moonshotai/kimi-k2.7-code': { inputPer1M: 0.7, outputPer1M: 3.5 },
+  'tencent/hy3': { inputPer1M: 0.132, outputPer1M: 0.528 },
+  'google/gemini-3.6-flash': { inputPer1M: 1.5, outputPer1M: 7.5 },
+  'google/gemini-3.5-flash-lite': { inputPer1M: 0.3, outputPer1M: 2.5 },
+  'google/gemini-3.1-flash-lite': { inputPer1M: 0.25, outputPer1M: 1.5 },
+  'anthropic/claude-sonnet-5': { inputPer1M: 2, outputPer1M: 10 },
+  'anthropic/claude-haiku-4.5': { inputPer1M: 1, outputPer1M: 5 },
+  'anthropic/claude-opus-5': { inputPer1M: 5, outputPer1M: 25 },
+  'openai/gpt-5.6-luna': { inputPer1M: 0.2, outputPer1M: 1.2 },
+  'openai/gpt-5.6-terra': { inputPer1M: 2, outputPer1M: 12 },
 };
 
 export type TrackableCall = {
@@ -87,10 +169,39 @@ function toMicroDollars(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
+/** Warn once per unknown model rather than on every call. */
+const unpricedModels = new Set<string>();
+
+/**
+ * An unknown model priced at zero is worse than an unknown model that throws.
+ *
+ * The fallback here is still $0 — a pricing gap must never fail a user's
+ * request — but it used to be SILENT, which meant the first thing a model
+ * switch did was make every per-feature cost tripwire in PRD 08 §4.3 read zero.
+ * Spend does not vanish because the table is stale; only the alarm does. So the
+ * gap now announces itself, once, with the string you need to add.
+ */
 function resolveOpenAiPrice(model: string): OpenAiPrice {
   const normalized = (model || '').toLowerCase().trim();
-  return OPENAI_PRICING_USD_PER_1M[normalized] ?? { inputPer1M: 0, outputPer1M: 0 };
+  const price = OPENAI_PRICING_USD_PER_1M[normalized];
+  if (price) return price;
+
+  if (normalized && !unpricedModels.has(normalized)) {
+    unpricedModels.add(normalized);
+    console.warn(
+      `[usage] no price for model "${normalized}" — cost is being logged as $0. ` +
+        `Add it to OPENAI_PRICING_USD_PER_1M in src/lib/usageTracker.ts.`,
+    );
+  }
+  return { inputPer1M: 0, outputPer1M: 0 };
 }
+
+/** Exported for the test that keeps the two model maps in sync. */
+export const __pricing = {
+  has(model: string): boolean {
+    return Boolean(OPENAI_PRICING_USD_PER_1M[(model || '').toLowerCase().trim()]);
+  },
+};
 
 export function calculateOpenAiCostUsd(params: {
   model: string;
@@ -320,7 +431,7 @@ export async function trackedEmbeddingCreate(
 
   const start = Date.now();
   try {
-    const result = await openai.embeddings.create(params);
+    const result = await embeddingOpenAI.embeddings.create(params);
     const inputTokens = result.usage?.prompt_tokens ?? 0;
 
     await logUsageEvent({

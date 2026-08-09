@@ -18,46 +18,103 @@ const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-l
 export const config = {
     openai: {
         apiKey: process.env.OPENAI_API_KEY as string,
-        model: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5-mini",
+        /**
+         * Point the whole stack at an OpenAI-compatible gateway.
+         *
+         * Unset (the default) means the real OpenAI API and no behaviour change
+         * whatsoever. Set to `https://openrouter.ai/api/v1` and every task in
+         * the map below can name a model from any lab OpenRouter fronts —
+         * GLM, DeepSeek, Qwen, Gemini, Claude — with no call-site edits,
+         * because rule 1 already forced every model id through this file.
+         *
+         * The point is not that OpenRouter is better. It is that "we'll switch
+         * the model once we have traction" is only true if switching is a
+         * config change, and until this existed it was a code change.
+         */
+        baseURL: process.env.OPENAI_BASE_URL || undefined,
+        /**
+         * Attribution headers OpenRouter uses for its public leaderboards.
+         * Harmless anywhere else, and only sent when a baseURL is configured.
+         */
+        appUrl: process.env.OPENAI_GATEWAY_APP_URL || undefined,
+        appTitle: process.env.OPENAI_GATEWAY_APP_TITLE || undefined,
+        model: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
         models: {
-            general: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            jdParse: process.env.OPENAI_MODEL || "gpt-5-mini",
-            paraphrase: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            atsScore: process.env.OPENAI_MODEL || "gpt-5-mini",
-            assembly: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            claimValidation: process.env.OPENAI_MODEL || "gpt-5-mini",
-            resumeParse: process.env.OPENAI_MODEL || "gpt-5-mini",
+            general: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            jdParse: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            paraphrase: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            atsScore: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            assembly: process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            claimValidation: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            resumeParse: process.env.OPENAI_MODEL || "gpt-5.6-luna",
             // R1 per-task keys (ADR-6 / P0.4). No model id at a call site, ever:
             // every one of these is reachable only through `TaskKey` in src/lib/ai/tasks.ts.
-            // Cheap tasks default to the small model; anything a human reads defaults to the large one.
-            winDraft: process.env.OPENAI_MODEL_WIN_DRAFT || process.env.OPENAI_MODEL || "gpt-5-mini",
+            //
+            // ── Why every task now names the same cheap model ──────────────
+            //
+            // These used to split into a small tier and a large tier. Measured
+            // against real logged usage, that split cost ~15c per tailored
+            // resume — $1.54 of COGS for the 10 free resumes a signup gets,
+            // against a $5/month plan. gpt-5.6-luna is ~2c for the same run,
+            // and unlike gpt-5/gpt-5-mini it survives the 11 Dec 2026 snapshot
+            // shutdown; OpenAI's named replacements (terra, sol) cost 3-6x MORE
+            // on output than what was here before.
+            //
+            // The tiering is not gone, it is unset: every key below still reads
+            // its own env var first, so raising one task back to a stronger
+            // model is one line in the environment and no deploy. What has NOT
+            // been done is proving luna writes as well as gpt-5 did — the
+            // Resume v2 eval corpus is the instrument for that, and it has not
+            // been run against this model.
+            winDraft: process.env.OPENAI_MODEL_WIN_DRAFT || process.env.OPENAI_MODEL || "gpt-5.6-luna",
             // Escalation tier: multi-PR groups and contexts over ~2k chars
-            // (PRD 02 §4.2). Draft accept rate is the R1 north-star input and
-            // the cost delta is ~$0.14/user/month, so quality wins here.
-            winDraftLarge: process.env.OPENAI_MODEL_WIN_DRAFT_LARGE || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
-            winStructure: process.env.OPENAI_MODEL_WIN_STRUCTURE || process.env.OPENAI_MODEL || "gpt-5-mini",
-            digestCompose: process.env.OPENAI_MODEL_DIGEST_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            monthReview: process.env.OPENAI_MODEL_MONTH_REVIEW || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            packetThemes: process.env.OPENAI_MODEL_PACKET_THEMES || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            packetMap: process.env.OPENAI_MODEL_PACKET_MAP || process.env.OPENAI_MODEL || "gpt-5-mini",
-            packetCompose: process.env.OPENAI_MODEL_PACKET_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            interviewTurn: process.env.OPENAI_MODEL_INTERVIEW_TURN || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            interviewExtract: process.env.OPENAI_MODEL_INTERVIEW_EXTRACT || process.env.OPENAI_MODEL || "gpt-5-mini",
-            radarNormalize: process.env.OPENAI_MODEL_RADAR_NORMALIZE || process.env.OPENAI_MODEL || "gpt-5-mini",
-            radarReason: process.env.OPENAI_MODEL_RADAR_REASON || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5",
-            // Resume generation v2. All three default to the quality tier: this
-            // is the artifact a candidate sends to an employer, and the audit
-            // of 7 Aug showed the mini model silently dropping the two
-            // strongest lines on the page. Cost is ~$0.06 per resume against a
-            // $5/month subscription — roughly 87 generations before the model
-            // bill reaches the price, and nobody tailors 87 resumes a month.
-            postingRead: process.env.OPENAI_MODEL_POSTING_READ || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
-            bulletSelect: process.env.OPENAI_MODEL_BULLET_SELECT || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
-            bulletWrite: process.env.OPENAI_MODEL_BULLET_WRITE || process.env.OPENAI_MODEL_GENERAL || "gpt-5",
+            // (PRD 02 §4.2). Draft accept rate is the R1 north-star input, so
+            // if any task earns a stronger model back first, it is this one.
+            winDraftLarge: process.env.OPENAI_MODEL_WIN_DRAFT_LARGE || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
+            winStructure: process.env.OPENAI_MODEL_WIN_STRUCTURE || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            digestCompose: process.env.OPENAI_MODEL_DIGEST_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            monthReview: process.env.OPENAI_MODEL_MONTH_REVIEW || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            packetThemes: process.env.OPENAI_MODEL_PACKET_THEMES || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            packetMap: process.env.OPENAI_MODEL_PACKET_MAP || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            packetCompose: process.env.OPENAI_MODEL_PACKET_COMPOSE || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            interviewTurn: process.env.OPENAI_MODEL_INTERVIEW_TURN || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            interviewExtract: process.env.OPENAI_MODEL_INTERVIEW_EXTRACT || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            radarNormalize: process.env.OPENAI_MODEL_RADAR_NORMALIZE || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            radarReason: process.env.OPENAI_MODEL_RADAR_REASON || process.env.OPENAI_MODEL_GENERAL || process.env.OPENAI_MODEL || "gpt-5.6-luna",
+            // Resume generation v2 — the artifact a candidate actually sends to
+            // an employer, and so the three keys with the most to lose.
+            //
+            // The 7 Aug audit caught gpt-5-mini silently dropping the two
+            // strongest lines on the page, which is why these were pinned to
+            // the quality tier. That finding has NOT been retested on
+            // gpt-5.6-luna, and it is the specific failure to watch for: not
+            // fabrication (the numeric guard catches that) but omission, which
+            // nothing automated catches. If resumes start reading thin, raise
+            // OPENAI_MODEL_BULLET_WRITE first and re-run the eval corpus.
+            postingRead: process.env.OPENAI_MODEL_POSTING_READ || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
+            bulletSelect: process.env.OPENAI_MODEL_BULLET_SELECT || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
+            bulletWrite: process.env.OPENAI_MODEL_BULLET_WRITE || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
         },
+        /**
+         * Embeddings keep their own credentials, and that is load-bearing.
+         *
+         * `baseURL` above moves CHAT to a gateway. Embeddings cannot follow:
+         * OpenRouter and friends front chat models and do not serve
+         * `text-embedding-3-large`. Worse, the vector size is baked into the
+         * Qdrant collection — a different embedding model does not degrade
+         * retrieval, it breaks the collection.
+         *
+         * So these default to OpenAI regardless of where chat is pointed. If
+         * you replace OPENAI_API_KEY with a gateway key, set
+         * OPENAI_EMBEDDING_API_KEY to a real OpenAI key or every retrieval in
+         * the product starts failing with a 401.
+         */
         embedding: {
             model: embeddingModel,
             size: resolveEmbeddingSize(embeddingModel, process.env.OPENAI_EMBEDDING_SIZE),
+            apiKey: (process.env.OPENAI_EMBEDDING_API_KEY ||
+                process.env.OPENAI_API_KEY) as string,
+            baseURL: process.env.OPENAI_EMBEDDING_BASE_URL || undefined,
         },
     },
     app: {
