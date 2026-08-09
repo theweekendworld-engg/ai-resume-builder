@@ -180,6 +180,28 @@ export type ProjectEntry = {
     source: string | null;
 };
 
+/**
+ * GitHub language statistics that are not skills.
+ *
+ * Repo import copies GitHub's detected-language list into `technologies`, and
+ * that list counts file types. "Dockerfile" is a filename, "Shell" is whatever
+ * .sh files it found, "CSS" appears in any repo with a stylesheet. Printed on a
+ * resume they read as padding, and they crowd out the technologies that took
+ * skill to use.
+ *
+ * Filtered here rather than asked for in the prompt, because it was asked for
+ * in the prompt and a live run kept "Dockerfile, Shell" anyway. A rule that
+ * must hold is code.
+ */
+const LANGUAGE_STAT_NOISE = new Set([
+    'dockerfile', 'makefile', 'batchfile', 'procfile', 'shell', 'css', 'scss',
+    'less', 'html', 'roff', 'smarty', 'hcl', 'mdx', 'markdown', 'dotenv',
+]);
+
+export function isRealTechnology(raw: string): boolean {
+    return Boolean(raw.trim()) && !LANGUAGE_STAT_NOISE.has(raw.trim().toLowerCase());
+}
+
 export async function listProjects(userId: string): Promise<ProjectEntry[]> {
     const rows = await prisma.userProject.findMany({
         where: { userId },
@@ -194,7 +216,7 @@ export async function listProjects(userId: string): Promise<ProjectEntry[]> {
         id: row.id,
         name: row.name,
         description: (row.description || '').trim(),
-        technologies: asStringArray(row.technologies),
+        technologies: asStringArray(row.technologies).filter(isRealTechnology),
         url: row.url || null,
         githubUrl: row.githubUrl || null,
         source: row.source || null,

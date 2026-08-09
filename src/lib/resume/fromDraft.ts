@@ -77,8 +77,24 @@ export function resumeFromDraft(params: {
     contact: ContactCard | null;
     /** How many roles the record actually holds. An empty draft over a full record is a failure. */
     availableRoles: number;
+    /**
+     * The user's chosen sections, in their order. Absence from this list means
+     * "do not print this section at all" — it is how someone removes projects
+     * or a summary from every resume they generate.
+     *
+     * This was hardcoded, which silently overrode the preference on every
+     * generation: a user who had turned the summary off in onboarding got one
+     * anyway, and had no way to tell why.
+     */
+    sectionOrder?: ResumeData['sectionOrder'];
 }): DraftCheck {
     const { draft, contact, availableRoles } = params;
+    const sectionOrder =
+        params.sectionOrder?.length
+            ? params.sectionOrder
+            : (['summary', 'experience', 'projects', 'education', 'skills'] as const);
+    const shows = (section: ResumeData['sectionOrder'][number]) =>
+        sectionOrder.includes(section);
 
     const allViolations: string[] = [];
     const experience = draft.experience
@@ -137,10 +153,14 @@ export function resumeFromDraft(params: {
             website: contact?.website ?? '',
             linkedin: contact?.linkedin ?? '',
             github: contact?.github ?? '',
-            summary: draft.summary,
+            summary: shows('summary') ? draft.summary : '',
         },
         experience,
-        projects: draft.projects.map((project, index) => ({
+        // A section the user removed is not merely unordered, it is absent.
+        // Emitting the content and relying on the renderer to skip it means the
+        // data is still in the stored resume and still in any export that
+        // ignores sectionOrder.
+        projects: !shows('projects') ? [] : draft.projects.map((project, index) => ({
             id: `p${index}`,
             name: project.name,
             description: project.description,
@@ -149,7 +169,7 @@ export function resumeFromDraft(params: {
             repoUrl: project.url,
             technologies: project.technologies,
         })),
-        education: draft.education.map((entry, index) => ({
+        education: !shows('education') ? [] : draft.education.map((entry, index) => ({
             id: `e${index}`,
             institution: entry.institution,
             degree: entry.degree,
@@ -160,8 +180,8 @@ export function resumeFromDraft(params: {
         })),
         // Groups are flattened for storage; the renderer regroups. Keeping the
         // grouping here would mean a schema migration for a presentation choice.
-        skills: draft.skills.flatMap((group) => group.items),
-        sectionOrder: ['summary', 'experience', 'projects', 'education', 'skills'],
+        skills: !shows('skills') ? [] : draft.skills.flatMap((group) => group.items),
+        sectionOrder: [...sectionOrder],
     } as ResumeData;
 
     return { ok: true, resume };

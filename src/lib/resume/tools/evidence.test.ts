@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { dateSortKey } from './evidence';
+import { dateSortKey, isRealTechnology } from './evidence';
 
 /**
  * Career order is the most visible thing a resume can get wrong.
@@ -56,5 +56,33 @@ describe('dateSortKey orders a career correctly', () => {
 
     test('month matching is case-insensitive and tolerates long forms', () => {
         expect(dateSortKey('SEPTEMBER 2025')).toBe(dateSortKey('sep 2025'));
+    });
+});
+
+/**
+ * Repo import copies GitHub's language stats into `technologies`, and those
+ * count file types rather than skills. This was first attempted in the prompt;
+ * a live run kept "Dockerfile, Shell" regardless, which is the whole argument
+ * for enforcing it in code.
+ */
+describe('language statistics are not technologies', () => {
+    test('file types and stylesheet languages are dropped', () => {
+        for (const noise of ['Dockerfile', 'Shell', 'CSS', 'Makefile', 'HTML', 'SCSS']) {
+            expect(isRealTechnology(noise)).toBe(false);
+        }
+    });
+
+    test('real technologies survive, including ones that look like file types', () => {
+        for (const real of ['Rust', 'TypeScript', 'Go', 'Docker Compose', 'PostgreSQL', 'Solana']) {
+            expect(isRealTechnology(real)).toBe(true);
+        }
+    });
+
+    test('matching is case-insensitive and ignores padding', () => {
+        expect(isRealTechnology('  DOCKERFILE ')).toBe(false);
+    });
+
+    test('an empty entry is not a technology', () => {
+        expect(isRealTechnology('   ')).toBe(false);
     });
 });

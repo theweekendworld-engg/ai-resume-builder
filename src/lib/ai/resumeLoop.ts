@@ -149,6 +149,14 @@ tells you what to SELECT and EMPHASISE from this record, never what this person
 knows. A resume that claims what the employer wants to hear is the failure this
 exists to prevent. Declining to claim something is always the right call.
 
+PROJECTS ARE WRITTEN, NOT PASTED
+A project's stored description is often an imported README. It may list
+directory structure, file paths, "Tech stack:" lines and marketing prose. None
+of that belongs on a resume. Rewrite each project as one or two sentences
+saying what it does and what is impressive about it. And technologies means
+what the project is built WITH — Dockerfile, Shell and CSS are file types
+GitHub counted, not skills a person claims.
+
 WHAT YOU HAVE
 Tools that read the candidate's verified record. None of them can see the
 posting; that is deliberate. Use as many or as few as the document needs.

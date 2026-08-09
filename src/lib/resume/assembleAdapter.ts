@@ -3,6 +3,8 @@ import { computeCoverage, gapAdvice, reconcileSkillGaps } from '@/lib/resume/cov
 import { readPosting } from '@/lib/resume/posting';
 import { resumeFromDraft } from '@/lib/resume/fromDraft';
 import { getContactCard, listRoles } from '@/lib/resume/tools/evidence';
+import { prisma } from '@/lib/prisma';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { TailorInput, TailorResult } from './tailor.types';
 
 /**
@@ -43,7 +45,7 @@ export async function tailorViaLoop(input: TailorInput): Promise<TailorResult> {
     // before this.
     const { brief } = await readPosting({ jobDescription, userId, sessionId });
 
-    const [assembly, contact, roles] = await Promise.all([
+    const [assembly, contact, roles, profile] = await Promise.all([
         assembleResume({
             userId,
             jobDescription,
@@ -51,12 +53,16 @@ export async function tailorViaLoop(input: TailorInput): Promise<TailorResult> {
         }),
         getContactCard(userId),
         listRoles(userId),
+        prisma.userProfile.findUnique({ where: { userId }, select: { preferences: true } }),
     ]);
+
+    const preferences = parseUserGenerationPreferences(profile?.preferences);
 
     const checked = resumeFromDraft({
         draft: assembly.draft,
         contact,
         availableRoles: roles.length,
+        sectionOrder: preferences.defaultSectionOrder,
     });
 
     if (!checked.ok) {
