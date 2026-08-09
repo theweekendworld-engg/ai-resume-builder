@@ -7,7 +7,6 @@ import { proposeResumePatch, scoreReposForJob, CopilotContext } from '@/actions/
 import { fetchGitHubRepos } from '@/actions/github';
 import { searchKnowledgeBase } from '@/actions/kb';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -19,10 +18,7 @@ import {
     Loader2, 
     Bot,
     CheckCircle2,
-    Github,
-    FileText,
     Search,
-    Wand2,
     AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,9 +50,7 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
 
     const { searchItems } = useKnowledgeBaseStore();
 
-    const [isProcessing, setIsProcessing] = useState(false);
     const [workLog, setWorkLog] = useState<WorkLogMessage[]>([]);
-    const [localJD, setLocalJD] = useState(jobDescription);
 
     const addWorkLog = useCallback((type: WorkLogMessage['type'], message: string) => {
         setWorkLog(prev => [...prev, {
@@ -67,86 +61,6 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
         }]);
     }, []);
 
-    const handleTailorResume = async () => {
-        if (!localJD.trim()) {
-            toast.error('Please enter a job description');
-            return;
-        }
-
-        setJobDescription(localJD);
-        setIsProcessing(true);
-        setWorkLog([]);
-        setCopilotProposal(null);
-
-        try {
-            addWorkLog('info', 'Starting resume analysis...');
-
-            // Gather KB bullets
-            addWorkLog('info', 'Searching knowledge base for relevant achievements...');
-            let kbBullets: string[] = [];
-            try {
-                const cloudResults = await searchKnowledgeBase(localJD);
-                kbBullets = cloudResults.map((r) => String(r.content)).filter(Boolean);
-            } catch {
-                const localResults = searchItems(localJD);
-                kbBullets = localResults.map((r) => r.content);
-            }
-            
-            if (kbBullets.length > 0) {
-                addWorkLog('success', `Found ${kbBullets.length} relevant achievements`);
-            } else {
-                addWorkLog('info', 'No stored achievements found');
-            }
-
-            // Fetch GitHub repos from connected profile if available
-            let scoredRepos: Array<{ name: string; description: string | null; html_url: string; language: string | null; stargazers_count: number; topics: string[]; updated_at: string; fork: boolean; id: number; relevanceScore: number }> = [];
-
-            addWorkLog('info', 'Fetching projects from your connected GitHub account...');
-            try {
-                const githubResult = await fetchGitHubRepos({
-                    perPage: 30,
-                    excludeForks: true,
-                });
-
-                if (!githubResult.success) {
-                    addWorkLog('info', githubResult.error ?? 'GitHub unavailable, continuing without repos');
-                } else if (githubResult.repos.length > 0) {
-                    addWorkLog('info', `Found ${githubResult.repos.length} repos, scoring relevance...`);
-                    scoredRepos = await scoreReposForJob(githubResult.repos, localJD);
-                    const topRepos = scoredRepos.slice(0, 5);
-                    addWorkLog('success', `Selected ${topRepos.length} most relevant repos`);
-                } else {
-                    addWorkLog('info', 'No repositories found on your connected GitHub account');
-                }
-            } catch {
-                addWorkLog('info', 'GitHub unavailable, continuing without repos');
-            }
-
-            // Generate proposal
-            addWorkLog('info', 'Analyzing resume and generating improvements...');
-            
-            const context: CopilotContext = {
-                resumeData,
-                jobDescription: localJD,
-                kbBullets: kbBullets.slice(0, 10),
-                githubRepos: scoredRepos.slice(0, 5),
-            };
-
-            const patch = await proposeResumePatch(context);
-            
-            addWorkLog('success', 'Generated resume improvements!');
-            addWorkLog('info', `Estimated ATS score: ${patch.proposedAtsScore}%`);
-
-            setCopilotProposal(patch as CopilotProposal);
-
-        } catch (error: unknown) {
-            console.error('Copilot error:', error);
-            addWorkLog('error', 'Failed to generate improvements. Please try again.');
-            toast.error('Failed to generate improvements');
-        } finally {
-            setIsProcessing(false);
-        }
-    };
 
     const handleApplyAll = () => {
         const store = useResumeStore.getState();
@@ -177,61 +91,30 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
         toast.info('Changes rejected');
     };
 
-    const needsJobDescription = !localJD.trim();
-
     const content = (
         <div className="space-y-6">
                         {/* Context-aware one-click actions */}
                         <CopilotQuickActions />
 
-                        {/* Job Description Input */}
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-2">
-                                <FileText className="w-4 h-4" />
-                                Job Description
-                                {needsJobDescription && (
-                                    <span className="text-xs text-destructive">(required)</span>
-                                )}
-                            </Label>
-                            <Textarea
-                                value={localJD}
-                                onChange={(e) => setLocalJD(e.target.value)}
-                                placeholder="Paste the job description here..."
-                                className="min-h-[120px] resize-y text-sm"
-                                disabled={isProcessing}
-                            />
-                        </div>
+                        {/*
+                          The job-description box, the GitHub hint and the
+                          "Tailor Resume" button used to live here.
+                          Removed: rebuilding the whole document is not an
+                          editing operation. Someone in Review & Improve has a
+                          resume they mostly like and wants part of it better,
+                          and this panel made a full re-tailor the only route —
+                          a full round trip to change one paragraph, replacing
+                          sections nobody complained about.
 
-                        {/* GitHub Integration Hint */}
-                        <div className="space-y-2">
-                            <Label className="flex items-center gap-2">
-                                <Github className="w-4 h-4" />
-                                GitHub Projects
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                                We use the GitHub handle connected in Dashboard &gt; Profile &gt; GitHub to pull relevant repos.
-                            </p>
-                        </div>
+                          Targeted asks above do that job now. The posting still
+                          reaches them: `jobDescription` comes from the store,
+                          entered once in Job Target, so the same context is
+                          used without asking for it twice on a page whose
+                          purpose is editing.
 
-                        {/* Tailor Button */}
-                        <Button
-                            onClick={handleTailorResume}
-                            disabled={isProcessing || needsJobDescription}
-                            className="w-full gap-2"
-                            size="lg"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Processing...
-                                </>
-                            ) : (
-                                <>
-                                    <Wand2 className="w-4 h-4" />
-                                    Tailor Resume
-                                </>
-                            )}
-                        </Button>
+                          Generating a resume FROM a posting still exists, at
+                          /build, where starting from nothing is the point.
+                        */}
 
                         {/* Work Log */}
                         {workLog.length > 0 && (
@@ -256,18 +139,13 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                                             <span>{log.message}</span>
                                         </div>
                                     ))}
-                                    {isProcessing && (
-                                        <div className="flex items-center gap-2 text-xs text-primary">
-                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                            <span>Working...</span>
-                                        </div>
-                                    )}
+                                    
                                 </div>
                             </div>
                         )}
 
                         {/* Proposed Changes */}
-                        {copilotProposal && !isProcessing && (
+                        {copilotProposal && (
                             <ProposedChangesCard
                                 proposal={copilotProposal}
                                 onApplyAll={handleApplyAll}
@@ -276,7 +154,7 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                         )}
 
                         {/* Empty State */}
-                        {!isProcessing && !copilotProposal && workLog.length === 0 && (
+                        {!copilotProposal && workLog.length === 0 && (
                             <div className="text-center py-8">
                                 <Sparkles className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
                                 <p className="text-sm text-muted-foreground">
