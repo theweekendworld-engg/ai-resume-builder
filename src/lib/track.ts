@@ -117,6 +117,11 @@ export const SERVER_EVENTS = [
 
     // AI safety — PRD 08 §5
     'ai_guard_violation',
+    // A rebuild of an existing resume against its original posting. Tracked
+    // separately from a first generation because the interesting question is
+    // whether people rebuild after changing a preference — if they never do,
+    // the gap panel's warning is not landing.
+    'resume_regenerated',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];
