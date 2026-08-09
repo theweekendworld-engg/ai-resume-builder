@@ -116,33 +116,15 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                           /build, where starting from nothing is the point.
                         */}
 
-                        {/* Work Log */}
-                        {workLog.length > 0 && (
-                            <div className="space-y-2">
-                                <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                                    Activity Log
-                                </Label>
-                                <div className="bg-secondary/50 rounded-lg p-3 space-y-2">
-                                    {workLog.map((log) => (
-                                        <div 
-                                            key={log.id} 
-                                            className={cn(
-                                                "flex items-start gap-2 text-xs",
-                                                log.type === 'success' && "text-success",
-                                                log.type === 'error' && "text-destructive",
-                                                log.type === 'info' && "text-muted-foreground"
-                                            )}
-                                        >
-                                            {log.type === 'info' && <Search className="w-3 h-3 mt-0.5 flex-shrink-0" />}
-                                            {log.type === 'success' && <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />}
-                                            {log.type === 'error' && <AlertCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
-                                            <span>{log.message}</span>
-                                        </div>
-                                    ))}
-                                    
-                                </div>
-                            </div>
-                        )}
+                        {/*
+                          The Activity Log lived here: a running list of every
+                          copilot action taken in this session. Removed. It sat
+                          inside a panel used for thirty seconds at a time, and
+                          the diff above already shows what changed and lets you
+                          refuse it. A log of edits you just watched and
+                          approved is not information, it is furniture.
+                        */}
+
 
                         {/* Proposed Changes */}
                         {copilotProposal && (
