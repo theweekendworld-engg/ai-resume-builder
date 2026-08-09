@@ -380,14 +380,28 @@ export function BuildWizard() {
     });
   };
 
-  const submitClarification = () => {
-    if (!sessionId || !clarificationQuestion || !clarificationAnswer.trim()) return;
+  /**
+   * Answer, skip, or skip the lot.
+   *
+   * Before this there was one button, disabled until you typed something. A
+   * person who genuinely has no answer to "tell us about your Kubernetes
+   * experience" could either invent one or abandon the generation — and on a
+   * product whose single promise is that nothing on the resume is made up,
+   * a required text box is the product asking to be lied to.
+   */
+  const submitClarification = (mode: 'answer' | 'skip' | 'skipAll' = 'answer') => {
+    if (!sessionId || !clarificationQuestion) return;
+    if (mode === 'answer' && !clarificationAnswer.trim()) return;
 
     startTransition(async () => {
       const result = await processChannelGenerate({
         channel: 'web' as const,
         sessionId,
-        message: clarificationAnswer.trim(),
+        ...(mode === 'answer'
+          ? { message: clarificationAnswer.trim() }
+          : mode === 'skip'
+            ? { skip: true }
+            : { skipAll: true }),
       });
 
       if (!result.success) {
@@ -595,16 +609,40 @@ export function BuildWizard() {
               {clarificationQuestion ? (
                 <div className="space-y-3 rounded-lg border border-border p-4">
                   <p className="text-sm font-medium">{clarificationQuestion.question}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Only answer if you have actually done it. Skipping costs you nothing —
+                    the resume is simply built from what we already have.
+                  </p>
                   <Input
                     value={clarificationAnswer}
                     onChange={(event) => setClarificationAnswer(event.target.value)}
                     placeholder="Example: Built Dockerized services and reduced deploy errors by 40%."
                     disabled={isPending}
                   />
-                  <Button onClick={submitClarification} disabled={isPending || !clarificationAnswer.trim()}>
-                    {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    Continue
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      onClick={() => submitClarification('answer')}
+                      disabled={isPending || !clarificationAnswer.trim()}
+                    >
+                      {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Continue
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => submitClarification('skip')}
+                      disabled={isPending}
+                    >
+                      Skip this
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      onClick={() => submitClarification('skipAll')}
+                      disabled={isPending}
+                    >
+                      Skip all and generate
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-4">

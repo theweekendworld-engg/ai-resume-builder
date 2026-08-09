@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import { useResumeStore } from '@/store/resumeStore';
 import { getResumeCoverage } from '@/actions/coverage';
 import { openItems, verdict, type DroppedLine, type ResumeCoverage } from '@/lib/resume/report';
+import { GapCaptureRow } from './GapCaptureRow';
 
 /**
  * Job match — what this resume answers, and what it does not.
@@ -230,13 +231,21 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
                             Not answered
                         </CardTitle>
                         <CardDescription>
-                            In the employer&apos;s own words. Fix these first.
+                            In the employer&apos;s own words. If you have done one of these, say
+                            so — it goes to your Work Log and the next resume can use it.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-0">
+                        {/*
+                          These rows are the one place the resume writes BACK
+                          into the log. Every other surface only reads from it,
+                          so an unanswered requirement — shown to someone who
+                          very often has done the thing — was the most useful
+                          insight in the product being generated and discarded.
+                        */}
                         <ul className="divide-y divide-border/60">
                             {missing.map((item) => (
-                                <RequirementRow key={item.text} item={item} answered={false} />
+                                <GapCaptureRow key={item.text} item={item} resumeId={resumeId} />
                             ))}
                         </ul>
                     </CardContent>
