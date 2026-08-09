@@ -25,7 +25,7 @@
  */
 
 import type { JobRequirement } from './posting';
-import type { ScoredBullet } from './select';
+import type { ScoredBullet } from './bullet.types';
 
 /**
  * A "nice to have" is worth less than a "must", but not nothing — a posting

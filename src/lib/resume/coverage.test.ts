@@ -9,7 +9,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { JobRequirement } from './posting';
-import type { ScoredBullet } from './select';
+import type { ScoredBullet } from './bullet.types';
 import { computeCoverage, gapAdvice, reconcileSkillGaps, yearsAskedFor } from './coverage';
 
 function req(

@@ -8,7 +8,8 @@ import { calculateATSScore } from '@/actions/ai';
 import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
-import { tailorResume, type TailorResult } from '@/lib/resume/tailor';
+import { tailorViaLoop } from '@/lib/resume/assembleAdapter';
+import type { TailorResult } from '@/lib/resume/tailor.types';
 import type { CoverageReport } from '@/lib/resume/coverage';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
@@ -815,7 +816,7 @@ export async function generateSmartResumePipeline(
   // v2 ever misbehaves in production.
   if (config.resumeV2.enabled) {
     try {
-      const tailored = await tailorResume({
+      const tailored = await tailorViaLoop({
         jobDescription: trimmedJobDescription,
         profile: {
           fullName: profile?.fullName || fallback.personalInfo.fullName,

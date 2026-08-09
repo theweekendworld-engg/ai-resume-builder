@@ -26,7 +26,7 @@ import { z } from 'zod';
 
 import { reconcileSkillGaps } from './coverage';
 import type { PostingBrief } from './posting';
-import type { TailorResult } from './tailor';
+import type { TailorResult } from './tailor.types';
 
 /** One thing the employer asked for, and whether the resume answers it. */
 export const CoverageItemSchema = z.object({

@@ -26,6 +26,8 @@
 
 import { config } from '@/lib/config';
 import { __testing as structuredTesting } from '@/lib/ai/structured';
+import { __testing as resumeLoopTesting } from '@/lib/ai/resumeLoop';
+import { getRoleEvidence, listRoles } from '@/lib/resume/tools/evidence';
 import { __testing as emailTesting } from '@/lib/email/send';
 import { __testing as telegramTesting } from '@/lib/telegram';
 import { __testing as usageTesting } from '@/lib/usageTracker';
@@ -116,6 +118,46 @@ function wire(mocks: Mocks, options: InstallOptions): void {
     if (wanted.has('openai')) {
         usageTesting.setOpenAIClient(mocks.openai.asOpenAI());
         structuredTesting.setObjectRunner(mocks.openai.objectRunner);
+        // The agentic loop drives generateText with tools, which the structured
+        // runner above cannot intercept. Without this every resume-generating
+        // suite reaches for a real key and times out.
+        resumeLoopTesting.setAssembler(async ({ userId }) => {
+            const roles = await listRoles(userId);
+            const evidence = await Promise.all(
+                roles.map((role) => getRoleEvidence(userId, role.id)),
+            );
+            return {
+                draft: {
+                    headline: 'Software Engineer',
+                    summary: 'Assembled by the mock loop.',
+                    experience: roles.map((role, index) => ({
+                        roleId: role.id,
+                        company: role.company,
+                        role: role.role,
+                        startDate: role.startDate,
+                        endDate: role.endDate,
+                        location: role.location,
+                        // The candidate's own lines, verbatim. Two reasons this
+                        // matters more than a placeholder: figures seeded by a
+                        // journey (j6 asserts "800ms" and "180ms" survive) reach
+                        // the resume, and bullet === sourceLine means no fixture
+                        // can accidentally assert that fabrication passes.
+                        bullets: (evidence[index]?.lines ?? []).map((line) => ({
+                            text: line,
+                            sourceLine: line,
+                            answers: [],
+                        })),
+                    })),
+                    projects: [],
+                    education: [],
+                    skills: [],
+                    rationale: 'mock',
+                },
+                toolCalls: ['list_roles', 'get_role_evidence', 'submit_resume'],
+                evidenceSeen: evidence.flatMap((e) => e?.lines ?? []).join('\n'),
+                steps: 3,
+            };
+        });
     }
     if (wanted.has('stripe')) {
         if (options.stripeWebhookSecret) mocks.stripe.webhookSecret = options.stripeWebhookSecret;

@@ -57,6 +57,16 @@ import {
 const BulletSchema = z.object({
     text: z.string().min(1),
     /**
+     * Ids of the posting requirements this line answers, from the list in the
+     * prompt. Empty is normal — plenty of good lines answer nothing specific.
+     *
+     * This is the model's own selection reasoning, captured rather than
+     * re-derived. It already decided this bullet was worth space BECAUSE it
+     * addresses something the employer asked for; a text matcher run afterwards
+     * would be guessing at a judgement we could simply have asked for.
+     */
+    answers: z.array(z.string()),
+    /**
      * The exact source line this came from. Not decoration — it is what the
      * numeric guard checks against, and requiring it per bullet makes
      * fabrication awkward to express rather than merely forbidden.
@@ -155,14 +165,48 @@ export type LoopResult = {
     steps: number;
 };
 
+export type Assembler = (params: {
+    userId: string;
+    jobDescription: string;
+}) => Promise<LoopResult>;
+
+let assembler: Assembler | null = null;
+
+/**
+ * Test seam, mirroring `structured.ts` → `setObjectRunner`.
+ *
+ * The loop drives the model through `generateText` with tools, which the
+ * structured-call mock cannot intercept — it injects at `generateObject`. Every
+ * suite that generates a resume would otherwise reach for a real API key and
+ * hang. Injecting the whole assembly rather than the transport is deliberate:
+ * what tests need to control is which document comes back, not how many
+ * round trips produced it.
+ */
+export const __testing = {
+    setAssembler(next: Assembler | null) {
+        assembler = next;
+    },
+    reset() {
+        assembler = null;
+    },
+};
+
 /** Hard ceiling. Output tokens are ~93% of spend; an unbounded loop is an unbounded bill. */
 const MAX_STEPS = 14;
 
 export async function assembleResume(params: {
     userId: string;
     jobDescription: string;
+    /**
+     * The posting's requirements, already parsed, so bullets can be tagged with
+     * what they answer. Passing them as data does not weaken the rule that
+     * tools cannot see the posting: the model already has the posting as prose,
+     * so this adds ids, not information.
+     */
+    requirements?: readonly { id: string; text: string }[];
 }): Promise<LoopResult> {
-    const { userId, jobDescription } = params;
+    const { userId, jobDescription, requirements } = params;
+    if (assembler) return assembler({ userId, jobDescription });
 
     const toolCalls: string[] = [];
     const evidence: string[] = [];
@@ -227,7 +271,18 @@ export async function assembleResume(params: {
     const result = await generateText({
         model: aiOpenAI(resolveTaskModel('resumeAssemble')),
         system: SYSTEM,
-        prompt: `Assemble this candidate's resume for the following posting.\n\n${jobDescription}`,
+        prompt: [
+            "Assemble this candidate's resume for the following posting.",
+            '',
+            jobDescription,
+            ...(requirements?.length
+                ? [
+                      '',
+                      'REQUIREMENTS, with the ids to use in each bullet\'s `answers`:',
+                      ...requirements.map((r) => `${r.id}: ${r.text}`),
+                  ]
+                : []),
+        ].join('\n'),
         tools,
         // The loop terminates on submit_resume; this is the backstop for a model
         // that never gets there.
