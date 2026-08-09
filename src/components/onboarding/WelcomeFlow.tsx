@@ -20,6 +20,7 @@ import {
 import { getHome, startMission, type MissionOption } from '@/actions/missions';
 import { importParsedResumeData } from '@/actions/resumeImport';
 import type { ParsedResumeData } from '@/lib/aiSchemas';
+import { ResumeDefaultsStep } from '@/components/onboarding/ResumeDefaultsStep';
 
 /**
  * First run.
@@ -43,7 +44,7 @@ import type { ParsedResumeData } from '@/lib/aiSchemas';
  *   builder can collect history too.
  */
 
-type Step = 'history' | 'mission' | 'done';
+type Step = 'history' | 'preferences' | 'mission' | 'done';
 
 function StepDots({ step, total, index }: { step: string; total: number; index: number }) {
     return (
@@ -97,7 +98,9 @@ export function WelcomeFlow({
 }) {
     const router = useRouter();
 
-    const [step, setStep] = React.useState<Step>(initial.hasHistory ? 'mission' : 'history');
+    const [step, setStep] = React.useState<Step>(
+        initial.hasHistory ? 'preferences' : 'history',
+    );
     const [busy, setBusy] = React.useState(false);
     const [outcome, setOutcome] = React.useState<ImportOutcome | null>(null);
     const [carried, setCarried] = React.useState<string | null>(null);
@@ -117,7 +120,9 @@ export function WelcomeFlow({
         });
     }, [initial.missionsEnabled]);
 
-    const totalSteps = initial.missionsEnabled ? 2 : 1;
+    // history + preferences, plus the mission question when it is enabled.
+    const totalSteps = initial.missionsEnabled ? 3 : 2;
+    const stepIndex = step === 'history' ? 0 : step === 'preferences' ? 1 : 2;
 
     const leave = async (
         fn: (requestedNext?: string) => Promise<{ success: boolean; data?: { next: string }; error?: string }>,
@@ -132,7 +137,10 @@ export function WelcomeFlow({
         router.push(result.data!.next);
     };
 
-    const advance = () => {
+    const advance = () => setStep('preferences');
+
+    /** Leaving the preferences step, whether they answered or skipped. */
+    const afterPreferences = () => {
         if (initial.missionsEnabled) {
             setStep('mission');
             return;
@@ -191,22 +199,22 @@ export function WelcomeFlow({
     return (
         <div className="mx-auto flex min-h-screen w-full max-w-[560px] flex-col justify-center px-4 py-12">
             <header className="mb-8">
-                <StepDots
-                    step={step}
-                    total={totalSteps}
-                    index={step === 'history' ? 0 : 1}
-                />
+                <StepDots step={step} total={totalSteps} index={stepIndex} />
                 <h1 className="mt-5 font-heading text-2xl font-semibold tracking-tight text-foreground">
                     {step === 'history'
                         ? initial.firstName
                             ? `Welcome, ${initial.firstName}.`
                             : 'Welcome.'
-                        : 'What are you working toward?'}
+                        : step === 'preferences'
+                          ? 'How do you like your resume?'
+                          : 'What are you working toward?'}
                 </h1>
                 <p className="mt-1.5 text-muted-foreground">
                     {step === 'history'
                         ? 'Everything here works off what you have actually done, so that is the one thing we need.'
-                        : 'Pick one and we will pace it with you. You can change it whenever.'}
+                        : step === 'preferences'
+                          ? 'Answer once and every resume follows it. Skip and we will use sensible defaults.'
+                          : 'Pick one and we will pace it with you. You can change it whenever.'}
                 </p>
             </header>
 
@@ -281,6 +289,8 @@ export function WelcomeFlow({
                         </Button>
                     ) : null}
                 </div>
+            ) : step === 'preferences' ? (
+                <ResumeDefaultsStep onDone={afterPreferences} />
             ) : (
                 <div className="space-y-2">
                     {options.map((option) => (
