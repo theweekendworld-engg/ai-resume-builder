@@ -147,10 +147,24 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                                         </Link>
                                     );
                                 })}
+                                {/*
+                                  Settings links sit below the primary nav, in
+                                  the order someone reaches for them: resume
+                                  defaults change what every generation
+                                  produces, so they are used far more often
+                                  than billing.
+                                */}
+                                <Link
+                                    href="/settings/resume"
+                                    onClick={() => setOpen(false)}
+                                    className="mt-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                                >
+                                    Resume defaults
+                                </Link>
                                 <Link
                                     href="/settings/plan"
                                     onClick={() => setOpen(false)}
-                                    className="mt-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                                    className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                                 >
                                     Plan &amp; billing
                                 </Link>
