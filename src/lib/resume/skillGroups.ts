@@ -30,7 +30,7 @@
  */
 
 import { normalizeSkill } from '@/lib/radar/skills';
-import { isPlausibleSkill } from './posting';
+import { isPlausibleSkill } from './skillVocab';
 import { displaySkill } from './skills';
 
 export type SkillGroup = {
