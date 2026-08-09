@@ -14,7 +14,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProposedChangesCard } from '@/components/copilot';
 import { CopilotQuickActions } from '@/components/copilot/CopilotQuickActions';
 import { 
-    Sparkles, 
     Loader2, 
     Bot,
     CheckCircle2,
@@ -50,16 +49,6 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
 
     const { searchItems } = useKnowledgeBaseStore();
 
-    const [workLog, setWorkLog] = useState<WorkLogMessage[]>([]);
-
-    const addWorkLog = useCallback((type: WorkLogMessage['type'], message: string) => {
-        setWorkLog(prev => [...prev, {
-            id: uuidv4(),
-            type,
-            message,
-            timestamp: new Date(),
-        }]);
-    }, []);
 
 
     const handleApplyAll = () => {
@@ -81,13 +70,11 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
             });
         }
         
-        setWorkLog([]);
         toast.success('All changes applied!');
     };
 
     const handleReject = () => {
         setCopilotProposal(null);
-        setWorkLog([]);
         toast.info('Changes rejected');
     };
 
@@ -135,15 +122,17 @@ export function ResumeCopilot({ embedded = false }: ResumeCopilotProps) {
                             />
                         )}
 
-                        {/* Empty State */}
-                        {!copilotProposal && workLog.length === 0 && (
-                            <div className="text-center py-8">
-                                <Sparkles className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-                                <p className="text-sm text-muted-foreground">
-                                    Enter a job description and click &quot;Tailor Resume&quot; to get AI-powered suggestions
-                                </p>
-                            </div>
-                        )}
+                        {/*
+                          The empty state was removed with the button it named.
+                          It told users to "Enter a job description and click
+                          Tailor Resume" — advice for a control that no longer
+                          exists — and filled half the panel with a decorative
+                          icon while the ask box sat above it, already usable.
+
+                          Nothing replaces it. A panel whose only control is
+                          visible and self-explanatory does not have an empty
+                          state; it just has less to say before you type.
+                        */}
                     </div>
     );
 
