@@ -420,3 +420,106 @@ h1, h2, h3, h4, h5, h6 {
     padding: 0;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Marketing — "the lit record"
+   ═══════════════════════════════════════════════════════════════════════════
+
+   The design foundations name the theme "Your best self, in the light". The
+   landing page takes that literally: the page is a dark room, and every
+   ARTIFACT the product makes — the work log, a resume line, a packet — renders
+   as warm ivory paper, lit.
+
+   That is the whole idea, and it does three jobs at once. It is the brand line
+   made visual; it gives the page one repeatable move instead of scattered
+   decoration; and it inverts the usual dark-SaaS habit of stacking dark cards
+   on a dark ground, where nothing can be the subject.
+
+   Scoped to `.marketing` so none of it can leak into the authenticated app,
+   which is light-first and has entirely different jobs to do.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.marketing {
+  /* Warm, not white. A pure #fff artifact on navy reads as a dialog; ivory
+     reads as paper, which is what a record is. */
+  --paper: 40 28% 96%;
+  --paper-edge: 40 16% 88%;
+  --paper-ink: 218 30% 14%;
+  --paper-ink-soft: 218 12% 42%;
+  --paper-rule: 40 12% 89%;
+}
+
+/* The lit artifact. The glow is the light source, so it belongs to this
+   surface and nowhere else on the page. */
+.marketing .paper {
+  position: relative;
+  background: hsl(var(--paper));
+  color: hsl(var(--paper-ink));
+  border: 1px solid hsl(var(--paper-edge));
+  /*
+    Three layers, and the middle one is the whole point. The first reads as the
+    paper's own thickness; the second is the light it throws onto the room —
+    without it this is just a white card, and the concept is that the record is
+    the lit thing; the third grounds it so it does not float.
+  */
+  box-shadow:
+    0 1px 0 0 hsl(0 0% 100% / 0.6) inset,
+    0 0 90px -10px hsl(var(--glow) / 0.5),
+    0 30px 60px -24px hsl(0 0% 0% / 0.7);
+}
+
+/* A soft bloom just outside the edge, so the light reads as coming FROM the
+   paper rather than sitting behind it. */
+.marketing .paper::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px hsl(var(--glow) / 0.14);
+}
+
+.marketing .paper-muted { color: hsl(var(--paper-ink-soft)); }
+.marketing .paper-rule { border-color: hsl(var(--paper-rule)); }
+
+/*
+  The ledger voice — dates, sources, counts, section numbers.
+
+  A third type role, deliberately. Sora carries structure and Inter carries
+  prose; neither can say "this is a record with provenance" on its own. Tabular
+  figures because these are meant to line up.
+*/
+.marketing .ledger {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* The spine: a hairline that fades at both ends so it reads as a continuing
+   record rather than a bounded list. */
+.marketing .spine::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    hsl(var(--border)) 12%,
+    hsl(var(--border)) 88%,
+    transparent
+  );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .marketing .rise {
+    animation: marketing-rise 620ms cubic-bezier(0.2, 0, 0, 1) both;
+  }
+}
+
+@keyframes marketing-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}

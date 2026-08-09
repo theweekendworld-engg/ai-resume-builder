@@ -5,7 +5,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   return (
     // Marketing keeps the dark identity while the authenticated app defaults to
     // light (design/00 §3.1). `.dark` is a plain class, so it scopes to this subtree.
-    <div className="dark min-h-screen bg-background text-foreground">
+    <div className="marketing dark min-h-screen bg-background text-foreground">
       <Navbar />
       <main>{children}</main>
       <Footer />

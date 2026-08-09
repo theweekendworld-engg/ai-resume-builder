@@ -34,8 +34,21 @@ import { cn } from '@/lib/utils';
  */
 
 export const marketingType = {
-    /** 40 → 60px. The one statement on the page. Sora 600, tight. */
-    hero: 'font-heading text-[2.5rem] leading-[1.08] font-semibold tracking-tight sm:text-[3.25rem] lg:text-[3.75rem]',
+    /**
+     * 38 → 58px, with the top step held back to xl.
+     *
+     * At 60px on lg the hero's own line — "Your company owns" — is wider than
+     * the column it sits in, so it wrapped mid-phrase however the markup was
+     * split. Explicit line breaks cannot fix a size that does not fit; the
+     * measure has to. The full size returns at xl where there is room.
+     *
+     * Each step is MEASURED against the longest line at that breakpoint, not
+     * chosen for how it looks in isolation: 32 / 44 / 48 / 58px, verified at
+     * 390, 768, 1024, 1280 and 1440 with a script that counts client rects per
+     * span. A headline that reflows mid-phrase on somebody's laptop is the
+     * whole difference between finished and nearly.
+     */
+    hero: 'font-heading text-[2rem] leading-[1.06] font-semibold tracking-[-0.03em] sm:text-[2.75rem] lg:text-[3rem] xl:text-[3.6rem]',
     /** 30 → 36px. Section headings. */
     section:
         'font-heading text-[1.875rem] leading-[1.15] font-semibold tracking-tight sm:text-[2.25rem]',

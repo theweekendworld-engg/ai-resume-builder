@@ -98,9 +98,9 @@ export function Features() {
                         Keeping a log is free, permanently. The payoffs are there when you need
                         them.
                     </p>
-                    <Link href="/sign-up?redirect_url=/log" className="mt-4">
+                    <Link href="/sign-up?redirect_url=/build" className="mt-4">
                         <Button className="group w-full gap-2">
-                            Start your work log
+                            Start free
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                         </Button>
                     </Link>

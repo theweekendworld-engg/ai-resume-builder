@@ -23,10 +23,10 @@ import { Section, SectionIntro } from './Section';
 /** Only capabilities that exist in the product today. */
 const HIGHLIGHTS: Record<string, readonly string[]> = {
     free: [
+        '10 tailored resumes',
+        'Free ATS and coverage check',
         'Unlimited wins, kept forever',
         'GitHub auto-drafting',
-        'Weekly digest',
-        '10 tailored resumes',
         'Everything else, a few times over',
     ],
     career: [
@@ -69,8 +69,8 @@ const COLUMNS: ReadonlyArray<{
     {
         plan: FREE_PLAN,
         key: 'free',
-        cta: 'Start your work log',
-        href: '/sign-up?redirect_url=/log',
+        cta: 'Start free',
+        href: '/sign-up?redirect_url=/build',
         featured: false,
     },
     {

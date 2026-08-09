@@ -46,7 +46,7 @@ export function Navbar() {
                                 Sign in
                             </Button>
                         </SignInButton>
-                        <Link href="/sign-up?redirect_url=/log">
+                        <Link href="/sign-up?redirect_url=/build">
                             <Button size="sm" className="text-[13px]">
                                 Start free
                             </Button>

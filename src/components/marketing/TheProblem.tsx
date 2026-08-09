@@ -39,29 +39,64 @@ export function TheProblem() {
     return (
         <Section className="bg-card/20">
             <SectionIntro
-                eyebrow="The problem"
-                title="Nobody keeps the brag doc."
+                eyebrow="Why that is hard"
+                title="You cannot write down what you cannot remember."
                 lead={
                     <>
-                        Not because people are lazy — because writing about yourself, weekly, with
-                        no immediate payoff, is a habit almost nobody sustains. So the record only
-                        gets built at the exact moment it is most expensive to build.
+                        A resume is only as good as the record behind it, and almost nobody keeps
+                        one — not from laziness, but because writing about yourself weekly with no
+                        immediate payoff is a habit that does not survive a busy quarter. So the
+                        record gets built at the exact moment it is most expensive to build, and
+                        the same gap shows up in four different rooms.
                     </>
                 }
             />
 
-            <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
-                {MOMENTS.map((moment) => (
-                    <div key={moment.when} className="bg-background/60 p-6">
-                        <p className="font-heading text-sm font-semibold text-foreground">
-                            {moment.when}
+            {/*
+              A spine, not a grid of four boxes.
+
+              These are four moments on one timeline — they happen in this
+              order, to the same person, and each is worse than the last
+              because the record has decayed further. A 2×2 of equal cards
+              says "four unrelated features"; a rule with dated ticks down it
+              says "this is a sequence, and it is going somewhere bad."
+
+              It also introduces the ledger motif the rest of the page uses:
+              the record has dates, and the dates are the point.
+            */}
+            <ol className="spine relative mt-14 max-w-3xl pl-8 sm:pl-10">
+                {MOMENTS.map((moment, index) => (
+                    <li key={moment.when} className="relative pb-10 last:pb-0">
+                        {/* The tick sits ON the rule, centred to the first line. */}
+                        <span
+                            className="absolute -left-8 top-[7px] flex h-3 w-3 -translate-x-1/2 items-center justify-center sm:-left-10"
+                            aria-hidden
+                        >
+                            <span className="h-[7px] w-[7px] rounded-full bg-border ring-4 ring-background" />
+                        </span>
+
+                        <p className="ledger text-[11px] uppercase tracking-[0.16em] text-muted-foreground/50">
+                            {String(index + 1).padStart(2, '0')}
                         </p>
-                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        <h3 className="font-heading mt-1.5 text-lg font-semibold tracking-tight text-foreground">
+                            {moment.when}
+                        </h3>
+                        <p className="mt-2 max-w-xl leading-relaxed text-muted-foreground">
                             {moment.pain}
                         </p>
-                    </div>
+                    </li>
                 ))}
-            </div>
+            </ol>
+
+            {/*
+              Prose, so not the ledger voice — mono is reserved for dates,
+              sources and counts. Set off from the list with a rule so it reads
+              as the conclusion of the four rather than a fifth item.
+            */}
+            <p className="mt-10 max-w-xl border-t border-border/40 pt-6 text-[15px] leading-relaxed text-muted-foreground">
+                Four rooms, one missing thing. The resume is simply the room with a deadline —
+                which is why it is the one people notice.
+            </p>
         </Section>
     );
 }

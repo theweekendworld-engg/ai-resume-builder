@@ -58,18 +58,49 @@ export function Provenance() {
                         that come from?”
                     </p>
 
-                    <figure className="mt-8 rounded-xl border border-border/50 bg-card/30 p-5">
-                        <blockquote className="text-sm leading-relaxed text-foreground">
+                    {/*
+                      The claim rendered as paper, with its provenance under it.
+
+                      This is the section where the "lit record" idea has to
+                      earn its keep: the sentence a manager will read is the
+                      artifact, so it gets the paper treatment, and the audit
+                      trail sits beneath it in the ledger voice. Showing the
+                      link is more convincing than a paragraph promising one.
+                    */}
+                    <figure className="paper mt-9 rounded-2xl">
+                        <blockquote className="px-5 pb-4 pt-5 text-[15px] leading-relaxed">
                             “I stabilised payments by migrating off the legacy queue in four waves,
-                            and fixing the duplicate-webhook bug that double-charged 38 accounts.”
+                            and fixing the duplicate-webhook bug that double-charged{' '}
+                            <mark className="rounded bg-success/15 px-1 text-inherit">
+                                38 accounts
+                            </mark>
+                            .”
                         </blockquote>
-                        <figcaption className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/40 pt-3">
-                            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] text-success">
-                                grounded
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                                drawn from 3 confirmed wins · “38” appears in your log
-                            </span>
+                        <figcaption className="paper-rule border-t px-5 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="ledger inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2 py-[3px] text-[10.5px] text-success">
+                                    grounded
+                                </span>
+                                <span className="ledger paper-muted text-[11px]">
+                                    3 confirmed wins · “38” appears in your log
+                                </span>
+                            </div>
+                            <ul className="paper-muted mt-3 space-y-1">
+                                {[
+                                    ['30 Jun', 'Fixed the duplicate-webhook bug', 'PR #455'],
+                                    ['16 Jun', 'Led the payments migration', 'PR #431'],
+                                    ['02 Jun', 'Wave 3 cutover, zero downtime', 'PR #418'],
+                                ].map(([date, claim, src]) => (
+                                    <li
+                                        key={src}
+                                        className="ledger flex items-baseline gap-2 text-[11px]"
+                                    >
+                                        <span className="shrink-0">{date}</span>
+                                        <span className="truncate">{claim}</span>
+                                        <span className="ml-auto shrink-0 opacity-70">{src}</span>
+                                    </li>
+                                ))}
+                            </ul>
                         </figcaption>
                     </figure>
                 </div>

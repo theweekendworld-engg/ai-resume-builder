@@ -43,11 +43,14 @@ export function HowItWorks() {
         <Section id="how-it-works">
             <SectionIntro
                 eyebrow="How it works"
-                title="You confirm. You don’t write."
+                title="You confirm. We do the writing."
                 lead={
                     <>
-                        Every brag-doc tool fails the same way: it asks you to sit down and compose.
-                        This one does the drafting and leaves you the part that takes a moment.
+                        The record that makes a good resume has to already exist when you need
+                        it. Every tool that asks you to sit down and compose one fails for the same
+                        reason. This one drafts from what you already did and leaves you the part
+                        that takes a moment — so by the time you need a resume, the evidence is
+                        there.
                     </>
                 }
             />

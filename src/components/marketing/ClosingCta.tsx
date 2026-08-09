@@ -28,9 +28,9 @@ export function ClosingCta() {
                 </p>
 
                 <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-                    <Link href="/sign-up?redirect_url=/log">
+                    <Link href="/sign-up?redirect_url=/build">
                         <Button size="lg" className="group gap-2 px-6">
-                            Start your work log — free
+                            Start free
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                         </Button>
                     </Link>

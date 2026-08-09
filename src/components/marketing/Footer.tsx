@@ -22,7 +22,7 @@ export function Footer() {
                         Check resume
                     </Link>
                     <Link
-                        href="/sign-up?redirect_url=/log"
+                        href="/sign-up?redirect_url=/build"
                         className="transition-colors hover:text-foreground"
                     >
                         Start free
