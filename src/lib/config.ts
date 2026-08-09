@@ -15,23 +15,84 @@ export function resolveEmbeddingSize(model: string, override?: string): number {
 
 const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
 
+export type ModelGateway = {
+    /** Which vendor chat traffic actually goes to. For logs and the admin UI. */
+    provider: "openai" | "openrouter" | "custom";
+    apiKey: string;
+    /** Undefined means OpenAI's own endpoint. */
+    baseURL: string | undefined;
+};
+
+/**
+ * Where chat requests go, and with whose key.
+ *
+ * ── Why OpenRouter gets its own variable ────────────────────────────────────
+ *
+ * The obvious shortcut is to overwrite OPENAI_API_KEY with the router key and
+ * set a base URL. It works, and it plants a landmine: embeddings are not
+ * routable — no gateway serves `text-embedding-3-large`, and the vector size is
+ * baked into the Qdrant collection — so they must keep talking to OpenAI. One
+ * shared variable means switching chat silently pulls the key out from under
+ * retrieval, and the failure is a 401 from a subsystem nobody was touching.
+ *
+ * A named OPENROUTER_API_KEY makes the two independent. Set it and chat moves;
+ * OPENAI_API_KEY keeps doing exactly one job, which is embeddings (and chat, if
+ * no router key is present). Nothing has to be un-set to switch, and nothing
+ * has to be restored to switch back — which is the whole point of treating the
+ * model as a config decision.
+ *
+ * OPENAI_BASE_URL survives as the generic escape hatch for any other
+ * OpenAI-compatible endpoint (Together, Groq, a self-hosted vLLM). The router
+ * key wins when both are present, because naming a vendor is more specific
+ * than naming a URL.
+ *
+ * Pure and env-injectable so the precedence is testable — reading
+ * `process.env` at module load is not.
+ */
+export function resolveModelGateway(
+    env: Record<string, string | undefined> = process.env,
+): ModelGateway {
+    const openrouterKey = (env.OPENROUTER_API_KEY || "").trim();
+    if (openrouterKey) {
+        return {
+            provider: "openrouter",
+            apiKey: openrouterKey,
+            baseURL:
+                (env.OPENROUTER_BASE_URL || "").trim() || "https://openrouter.ai/api/v1",
+        };
+    }
+
+    const customBaseURL = (env.OPENAI_BASE_URL || "").trim();
+    return {
+        provider: customBaseURL ? "custom" : "openai",
+        apiKey: (env.OPENAI_API_KEY || "") as string,
+        baseURL: customBaseURL || undefined,
+    };
+}
+
+const gateway = resolveModelGateway();
+
 export const config = {
     openai: {
-        apiKey: process.env.OPENAI_API_KEY as string,
         /**
-         * Point the whole stack at an OpenAI-compatible gateway.
-         *
-         * Unset (the default) means the real OpenAI API and no behaviour change
-         * whatsoever. Set to `https://openrouter.ai/api/v1` and every task in
-         * the map below can name a model from any lab OpenRouter fronts —
-         * GLM, DeepSeek, Qwen, Gemini, Claude — with no call-site edits,
-         * because rule 1 already forced every model id through this file.
+         * The CHAT key — OPENROUTER_API_KEY if present, else OPENAI_API_KEY.
+         * See `resolveModelGateway`. Embeddings do not use this; they read
+         * `embedding.apiKey` below, which is always an OpenAI key.
+         */
+        apiKey: gateway.apiKey,
+        /** 'openai' | 'openrouter' | 'custom'. Undefined baseURL means OpenAI. */
+        provider: gateway.provider,
+        /**
+         * Set OPENROUTER_API_KEY and every task in the map below can name a
+         * model from any lab OpenRouter fronts — GLM, DeepSeek, Qwen, Gemini,
+         * Claude — with no call-site edits, because rule 1 already forced every
+         * model id through this file.
          *
          * The point is not that OpenRouter is better. It is that "we'll switch
          * the model once we have traction" is only true if switching is a
          * config change, and until this existed it was a code change.
          */
-        baseURL: process.env.OPENAI_BASE_URL || undefined,
+        baseURL: gateway.baseURL,
         /**
          * Attribution headers OpenRouter uses for its public leaderboards.
          * Harmless anywhere else, and only sent when a baseURL is configured.
@@ -99,15 +160,17 @@ export const config = {
          * Embeddings keep their own credentials, and that is load-bearing.
          *
          * `baseURL` above moves CHAT to a gateway. Embeddings cannot follow:
-         * OpenRouter and friends front chat models and do not serve
-         * `text-embedding-3-large`. Worse, the vector size is baked into the
-         * Qdrant collection — a different embedding model does not degrade
-         * retrieval, it breaks the collection.
+         * gateways front chat models and none serve `text-embedding-3-large`,
+         * and the vector size is baked into the Qdrant collection — so a
+         * substituted model does not degrade retrieval, it breaks it.
          *
-         * So these default to OpenAI regardless of where chat is pointed. If
-         * you replace OPENAI_API_KEY with a gateway key, set
-         * OPENAI_EMBEDDING_API_KEY to a real OpenAI key or every retrieval in
-         * the product starts failing with a 401.
+         * Note this reads OPENAI_API_KEY *directly* rather than
+         * `config.openai.apiKey`, which is the whole reason the router gets its
+         * own variable: setting OPENROUTER_API_KEY moves chat and leaves this
+         * untouched. Nothing to remember, nothing to restore.
+         *
+         * OPENAI_EMBEDDING_API_KEY exists only for the rarer case of billing
+         * embeddings to a different OpenAI account.
          */
         embedding: {
             model: embeddingModel,
