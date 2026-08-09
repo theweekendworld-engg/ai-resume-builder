@@ -1,153 +1,99 @@
 import { describe, expect, test } from 'bun:test';
 
 import { defaultUserGenerationPreferences } from '@/lib/userPreferences';
-import { resolveLengthConstraints } from './length';
 import { detectPreferenceConflicts, isCleanFit, type ConflictInput } from './preferenceConflicts';
 
 /**
  * The contract is "the preference wins, and the user is told what it cost".
  *
- * Both halves matter. A silent override breaks trust in a tool whose entire
- * pitch is that it does what you can defend; a warning that fires when nothing
- * was actually lost trains people to ignore the panel, which is the same as not
+ * Both halves matter. A silent override breaks trust in a tool whose pitch is
+ * that it does what you can defend; a warning that fires when nothing was
+ * actually lost trains people to ignore the panel, which is the same as not
  * having one.
  */
+
+const capLine = (targetLabel: string, targetKind: 'experience' | 'project' = 'experience') =>
+    ({ reason: 'cap' as const, targetKind, targetLabel });
 
 function input(overrides: Partial<ConflictInput> = {}): ConflictInput {
     return {
         preferences: defaultUserGenerationPreferences,
-        constraints: resolveLengthConstraints('1-page', 8),
-        available: { roles: 2, projects: 1, bulletsPerRole: [2, 2] },
+        dropped: [],
+        answeredByCut: [],
         ...overrides,
     };
 }
 
-describe('a cap that does not bite is not a conflict', () => {
-    test('fewer roles than the cap allows is silent', () => {
+describe('nothing cut means nothing said', () => {
+    test('no dropped lines is a clean fit', () => {
         expect(detectPreferenceConflicts(input())).toEqual([]);
         expect(isCleanFit(input())).toBe(true);
     });
 
-    test('exactly at the cap is still silent', () => {
-        const constraints = resolveLengthConstraints('1-page', 8);
+    test("lines cut for being weak are not the preference's fault", () => {
+        // The selector dropping a line that did not earn its place is it doing
+        // its job. Blaming the length preference for that would fire the
+        // warning on almost every resume, which is how a panel gets ignored.
         const conflicts = detectPreferenceConflicts(
             input({
-                constraints,
-                available: {
-                    roles: constraints.maxExperiences,
-                    projects: 1,
-                    bulletsPerRole: Array(constraints.maxExperiences).fill(
-                        constraints.maxBulletsPerRole,
-                    ),
-                },
+                dropped: [
+                    { reason: 'weak', targetKind: 'experience', targetLabel: 'Acme' },
+                    { reason: 'weak', targetKind: 'project', targetLabel: 'Bookshelf' },
+                ],
             }),
         );
         expect(conflicts).toEqual([]);
     });
 });
 
-describe('a cap that bites is reported once, with the count', () => {
-    test('dropped roles are named', () => {
-        const constraints = resolveLengthConstraints('1-page', 8);
+describe('a cap that bit is reported with what it cost', () => {
+    test('lines and distinct roles, not lines twice', () => {
         const conflicts = detectPreferenceConflicts(
             input({
-                constraints,
-                available: {
-                    roles: constraints.maxExperiences + 2,
-                    projects: 0,
-                    bulletsPerRole: Array(constraints.maxExperiences + 2).fill(1),
-                },
+                preferences: { ...defaultUserGenerationPreferences, targetLength: '1-page' },
+                dropped: [capLine('Acme'), capLine('Acme'), capLine('Globex')],
             }),
         );
         expect(conflicts).toHaveLength(1);
-        expect(conflicts[0].summary).toContain('2 roles');
-        expect(conflicts[0].preference).toBe('targetLength');
+        expect(conflicts[0].summary).toBe('Your 1-page default cut 3 lines from 2 roles.');
     });
 
-    test('singular reads as English, not "1 roles"', () => {
-        const constraints = resolveLengthConstraints('1-page', 8);
+    test('a lost requirement outranks a line count', () => {
+        // This is the sentence that decides whether they widen the resume, so
+        // it must lead with the employer's ask rather than with formatting.
         const conflicts = detectPreferenceConflicts(
             input({
-                constraints,
-                available: {
-                    roles: constraints.maxExperiences + 1,
-                    projects: 0,
-                    bulletsPerRole: Array(constraints.maxExperiences + 1).fill(1),
-                },
+                preferences: { ...defaultUserGenerationPreferences, targetLength: '1-page' },
+                dropped: [capLine('Acme'), capLine('Acme')],
+                answeredByCut: [{ text: 'Kubernetes in production' }, { text: 'Mentoring' }],
             }),
         );
-        expect(conflicts[0].summary).toContain('1 role.');
-        expect(conflicts[0].summary).not.toContain('1 roles');
+        expect(conflicts[0].summary).toContain('2 things this posting asks for');
+        expect(conflicts[0].requirementsLost).toEqual([
+            'Kubernetes in production',
+            'Mentoring',
+        ]);
     });
 
-    test('bullets on a DROPPED role are not counted twice', () => {
-        // The dropped role already accounts for its own bullets. Counting them
-        // again makes the cost look worse than it is, which is the same class
-        // of dishonesty as hiding it.
-        const constraints = resolveLengthConstraints('1-page', 8);
-        const overflowing = constraints.maxBulletsPerRole + 5;
+    test('one lost requirement reads as English, not "1 things"', () => {
         const conflicts = detectPreferenceConflicts(
             input({
-                constraints,
-                available: {
-                    roles: constraints.maxExperiences + 1,
-                    projects: 0,
-                    // Every kept role is exactly at the cap; only the dropped
-                    // one overflows.
-                    bulletsPerRole: [
-                        ...Array(constraints.maxExperiences).fill(constraints.maxBulletsPerRole),
-                        overflowing,
-                    ],
-                },
+                dropped: [capLine('Acme')],
+                answeredByCut: [{ text: 'Kubernetes' }],
             }),
         );
-        expect(conflicts[0].summary).toContain('1 role.');
-        expect(conflicts[0].summary).not.toContain('bullet');
+        expect(conflicts[0].summary).toContain('answered something this posting asks for');
+        expect(conflicts[0].summary).not.toContain('1 things');
     });
 
-    test('roles and bullets combine into one line, not two warnings', () => {
-        const constraints = resolveLengthConstraints('1-page', 8);
+    test('singular line and role read as English', () => {
         const conflicts = detectPreferenceConflicts(
             input({
-                constraints,
-                available: {
-                    roles: constraints.maxExperiences + 1,
-                    projects: 0,
-                    bulletsPerRole: Array(constraints.maxExperiences + 1).fill(
-                        constraints.maxBulletsPerRole + 1,
-                    ),
-                },
+                preferences: { ...defaultUserGenerationPreferences, targetLength: '1-page' },
+                dropped: [capLine('Acme')],
             }),
         );
-        expect(conflicts).toHaveLength(1);
-        expect(conflicts[0].summary).toContain('role');
-        expect(conflicts[0].summary).toContain('bullet');
-    });
-});
-
-describe('the escape hatch is per-resume, never a profile write', () => {
-    test('the override raises length without touching anything else', () => {
-        const constraints = resolveLengthConstraints('1-page', 8);
-        const conflicts = detectPreferenceConflicts(
-            input({
-                constraints,
-                available: { roles: 9, projects: 0, bulletsPerRole: Array(9).fill(1) },
-            }),
-        );
-        expect(conflicts[0].override).toEqual({ targetLength: '2-page' });
-        expect(conflicts[0].action).toBe('Allow two pages for this one');
-    });
-
-    test('the project override never exceeds the schema ceiling of 6', () => {
-        const conflicts = detectPreferenceConflicts(
-            input({
-                preferences: { ...defaultUserGenerationPreferences, maxProjects: 1 },
-                available: { roles: 1, projects: 40, bulletsPerRole: [1] },
-            }),
-        );
-        const projectConflict = conflicts.find((c) => c.preference === 'maxProjects');
-        // Proposing a value the zod schema rejects would make the button fail.
-        expect(projectConflict?.override.maxProjects).toBe(6);
+        expect(conflicts[0].summary).toBe('Your 1-page default cut 1 line from 1 role.');
     });
 });
 
@@ -155,21 +101,57 @@ describe('wording follows what the user actually chose', () => {
     test('an explicit choice is attributed to them', () => {
         const conflicts = detectPreferenceConflicts(
             input({
-                preferences: { ...defaultUserGenerationPreferences, targetLength: '1-page' },
-                available: { roles: 9, projects: 0, bulletsPerRole: Array(9).fill(1) },
+                preferences: { ...defaultUserGenerationPreferences, targetLength: '2-page' },
+                dropped: [capLine('Acme')],
             }),
         );
-        expect(conflicts[0].summary).toContain('Your 1-page default');
+        expect(conflicts[0].summary).toContain('Your 2-page default');
     });
 
     test('auto is described as an outcome, because they never asked for it', () => {
         const conflicts = detectPreferenceConflicts(
             input({
                 preferences: { ...defaultUserGenerationPreferences, targetLength: 'auto' },
-                available: { roles: 9, projects: 0, bulletsPerRole: Array(9).fill(1) },
+                dropped: [capLine('Acme')],
             }),
         );
-        expect(conflicts[0].summary).toContain('Fitting this to one page');
+        expect(conflicts[0].summary).toContain('Fitting this to your experience');
         expect(conflicts[0].summary).not.toContain('default');
+    });
+});
+
+describe('projects are a separate preference and a separate warning', () => {
+    test('project lines blame the project limit, not the length', () => {
+        const conflicts = detectPreferenceConflicts(
+            input({
+                preferences: { ...defaultUserGenerationPreferences, maxProjects: 2 },
+                dropped: [capLine('Bookshelf', 'project'), capLine('Bookshelf', 'project')],
+            }),
+        );
+        expect(conflicts).toHaveLength(1);
+        expect(conflicts[0].preference).toBe('maxProjects');
+        expect(conflicts[0].summary).toContain('limit of 2 projects');
+    });
+
+    test('a lost requirement is never attributed to the project limit', () => {
+        // answeredByCut is scored against experience lines. Attaching it to the
+        // project warning would borrow one preference's evidence for another.
+        const conflicts = detectPreferenceConflicts(
+            input({
+                dropped: [capLine('Bookshelf', 'project')],
+                answeredByCut: [{ text: 'Kubernetes' }],
+            }),
+        );
+        const projectConflict = conflicts.find((c) => c.preference === 'maxProjects');
+        expect(projectConflict?.requirementsLost).toEqual([]);
+    });
+
+    test('both caps biting yields two distinct warnings', () => {
+        const conflicts = detectPreferenceConflicts(
+            input({
+                dropped: [capLine('Acme'), capLine('Bookshelf', 'project')],
+            }),
+        );
+        expect(conflicts.map((c) => c.preference)).toEqual(['targetLength', 'maxProjects']);
     });
 });

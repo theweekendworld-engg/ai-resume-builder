@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, CornerDownLeft, Loader2, Minus } from 'lucide-react';
+import { AlertTriangle, Check, CornerDownLeft, Loader2, Minus, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/lib/utils';
 import { useResumeStore } from '@/store/resumeStore';
 import { getResumeCoverage } from '@/actions/coverage';
+import Link from 'next/link';
+import type { PreferenceConflict } from '@/lib/resume/preferenceConflicts';
 import { openItems, verdict, type DroppedLine, type ResumeCoverage } from '@/lib/resume/report';
 import { GapCaptureRow } from './GapCaptureRow';
 
@@ -132,6 +134,7 @@ function DroppedRow({ line, onRestore }: { line: DroppedLine; onRestore: (line: 
 
 export function JobMatchPanel({ resumeId }: { resumeId: string }) {
     const [report, setReport] = useState<ResumeCoverage | null>(null);
+    const [conflicts, setConflicts] = useState<PreferenceConflict[]>([]);
     const [loading, setLoading] = useState(true);
     const { resumeData, updateExperience } = useResumeStore();
 
@@ -139,7 +142,8 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
         setLoading(true);
         try {
             const result = await getResumeCoverage(resumeId);
-            setReport(result.success ? result.data : null);
+            setReport(result.success ? (result.data?.report ?? null) : null);
+            setConflicts(result.success ? (result.data?.conflicts ?? []) : []);
         } finally {
             setLoading(false);
         }
@@ -222,6 +226,55 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
                     </div>
                 </CardHeader>
             </Card>
+
+            {/*
+              What their own defaults cost on this posting.
+              Placed above the gap list on purpose: an unanswered requirement
+              the user cannot fix reads as a dead end, but one that is only
+              missing because of a setting they chose is the most actionable
+              thing on the screen — and the one they would never guess at.
+            */}
+            {conflicts.length > 0 ? (
+                <Card className="border-warning/40">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-sm">
+                            <SlidersHorizontal className="size-4 text-warning" aria-hidden />
+                            {conflicts.length === 1
+                                ? 'Your settings cost you something here'
+                                : 'Your settings cost you a few things here'}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pt-0">
+                        {conflicts.map((conflict) => (
+                            <div key={conflict.preference}>
+                                <p className="text-sm text-foreground">{conflict.summary}</p>
+                                {conflict.requirementsLost.length > 0 ? (
+                                    <ul className="mt-1.5 space-y-1">
+                                        {conflict.requirementsLost.map((requirement) => (
+                                            <li
+                                                key={requirement}
+                                                className="flex gap-2 text-xs text-muted-foreground"
+                                            >
+                                                <span aria-hidden>·</span>
+                                                <span>{requirement}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : null}
+                            </div>
+                        ))}
+                        <p className="text-xs text-muted-foreground">
+                            We did not override you — the resume follows your settings. Cut lines
+                            are listed below and can be put back individually, or change your
+                            defaults in{' '}
+                            <Link href="/dashboard" className="text-primary underline-offset-2 hover:underline">
+                                your profile
+                            </Link>
+                            .
+                        </p>
+                    </CardContent>
+                </Card>
+            ) : null}
 
             {missing.length > 0 ? (
                 <Card className="border-warning/40">
