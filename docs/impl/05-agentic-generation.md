@@ -1,6 +1,27 @@
 # Agentic resume generation — design
 
-**Status:** design agreed 9 Aug 2026, not yet implemented.
+**Status:** built and passing its eval, 9 Aug 2026. Flag ON.
+
+### Eval result — 5 postings, one real account
+
+| posting | roles | projects | time |
+|---|---|---|---|
+| payments | 4 | 3 | 22s |
+| ai-platform | 3 | 3 | 18s |
+| infra | 3 | 3 | 18s |
+| fullstack | 3 | 3 | 20s |
+| search | 2 | 2 | 18s |
+
+**5/5 accepted · 0 fabrication · 0 empty · median 18s.** The pipeline took 177s
+for one, and produced zero roles on the same model.
+
+It retitled itself per posting — "ML Platform Engineer | RAG Systems", "Software
+Engineer | Kubernetes & Cloud Automation", "Search Engineer | Elasticsearch,
+Hybrid Retrieval" — from one unchanged record. Selection adapting to the reader
+is the thing a fixed step order cannot do.
+
+Caveat kept honest: run-to-run the document varies (3-4 roles, 2-3 projects on
+the same posting family). Repeatability is the price paid for judgement.
 Replaces the fixed pipeline in `src/lib/resume/` for resume generation only.
 
 ---
