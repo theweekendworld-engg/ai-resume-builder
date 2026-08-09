@@ -10,7 +10,7 @@ import { estimateResumeLength } from '@/lib/resumeLength';
 import { Loader2, Wand2, Scissors, KeyRound, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type QuickActionId = 'tighten-summary' | 'add-keywords' | 'fit-one-page';
+type QuickActionId = 'tighten-summary' | 'add-keywords' | 'fit-one-page' | 'ask';
 
 interface PendingAction {
     id: QuickActionId;
@@ -38,6 +38,23 @@ export function CopilotQuickActions() {
 
     const [loadingId, setLoadingId] = useState<QuickActionId | null>(null);
     const [pending, setPending] = useState<PendingAction | null>(null);
+
+    /**
+     * The free-text ask.
+     *
+     * The three buttons below cover the three most common edits and nothing
+     * else, so anything a user actually wanted — "drop the jargon in the
+     * Hyperbots bullets", "lead with the payments work" — meant re-tailoring
+     * the entire document from the posting. That is a full round trip
+     * (~8,700 in / ~14,300 out, measured) to change one paragraph, and it
+     * replaced parts of the resume nobody complained about.
+     *
+     * Targeting one part and sending only that part is both the cheap answer
+     * and the correct one: the rest of the document is not at risk from an
+     * edit it was not included in.
+     */
+    const [target, setTarget] = useState<string>('summary');
+    const [ask, setAsk] = useState('');
 
     const length = useMemo(() => estimateResumeLength(resumeData), [resumeData]);
     const missingKeywords = atsScore?.missingKeywords ?? [];
@@ -138,8 +155,112 @@ export function CopilotQuickActions() {
         setPending(null);
     };
 
+
+    /** Where a targeted ask can point, and what it edits. */
+    const targets = [
+        { id: 'summary', label: 'Summary' },
+        { id: 'skills', label: 'Skills' },
+        ...resumeData.experience.map((item) => ({
+            id: `experience:${item.id}`,
+            label: `${item.company || 'Role'} — bullets`,
+        })),
+    ];
+
+    const runAsk = async () => {
+        const instruction = ask.trim();
+        if (!instruction) return;
+
+        const role = target.startsWith('experience:')
+            ? resumeData.experience.find((item) => item.id === target.slice('experience:'.length))
+            : null;
+
+        const before =
+            target === 'summary'
+                ? resumeData.personalInfo.summary || ''
+                : target === 'skills'
+                  ? resumeData.skills.join(', ')
+                  : role?.description || '';
+
+        if (!before.trim()) {
+            toast.error('That section is empty — add something to improve first.');
+            return;
+        }
+
+        const sectionType = target === 'summary' ? 'summary' : target === 'skills' ? 'skills' : 'experience';
+
+        setLoadingId('ask');
+        try {
+            const after = await improveSection(
+                sectionType,
+                before,
+                jobDescription || undefined,
+                instruction,
+            );
+            setPending({
+                id: 'ask',
+                label: targets.find((entry) => entry.id === target)?.label ?? 'Change',
+                before,
+                after,
+                apply: () => {
+                    if (target === 'summary') updatePersonalInfo({ summary: after });
+                    else if (target === 'skills')
+                        updateSkills(after.split(',').map((entry) => entry.trim()).filter(Boolean));
+                    else if (role) updateExperience(role.id, { description: after });
+                },
+            });
+            setAsk('');
+        } catch {
+            toast.error('Could not make that change.');
+        } finally {
+            setLoadingId(null);
+        }
+    };
+
     return (
         <div className="space-y-3">
+            <div className="mb-5 space-y-2">
+                <Label className="text-sm font-medium">Ask for a change</Label>
+                <div className="flex flex-wrap items-center gap-2">
+                    <select
+                        value={target}
+                        onChange={(event) => setTarget(event.target.value)}
+                        className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                        aria-label="What to change"
+                    >
+                        {targets.map((entry) => (
+                            <option key={entry.id} value={entry.id}>
+                                {entry.label}
+                            </option>
+                        ))}
+                    </select>
+                    <input
+                        value={ask}
+                        onChange={(event) => setAsk(event.target.value)}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter') void runAsk();
+                        }}
+                        placeholder="e.g. drop the jargon, lead with the payments work"
+                        className="h-9 min-w-[220px] flex-1 rounded-md border border-border bg-background px-3 text-sm"
+                    />
+                    <Button
+                        size="sm"
+                        className="h-9"
+                        disabled={loadingId !== null || !ask.trim()}
+                        onClick={() => void runAsk()}
+                    >
+                        {loadingId === 'ask' ? (
+                            <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                        ) : (
+                            'Improve'
+                        )}
+                    </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    Only the part you pick is sent and only it changes. Everything else on the
+                    resume is left exactly as it is.
+                </p>
+            </div>
+
             <Label className="flex items-center gap-2">
                 <Wand2 className="h-4 w-4" />
                 Quick actions
