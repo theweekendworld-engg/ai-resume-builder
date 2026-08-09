@@ -33,14 +33,17 @@ import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 
 import { err, ok, type Result } from '@/lib/result';
-import { prisma } from '@/lib/prisma';
 import { generateStructured } from '@/lib/ai/structured';
 import { getRoleEvidence } from '@/lib/resume/tools/evidence';
 import { track } from '@/lib/track';
 
 const InputSchema = z.object({
-    resumeId: z.string().min(1),
-    /** The experience row the line belongs to. Scopes the evidence we send. */
+    /**
+     * The experience row the line belongs to. Scopes the evidence we send AND
+     * is the authorization: `getRoleEvidence` queries `{ id, userId }`, so a
+     * roleId belonging to someone else returns nothing and the call fails. A
+     * separate resume ownership check would verify a row this never reads.
+     */
     roleId: z.string().min(1),
     /** The line as it currently reads on the page. */
     line: z.string().min(1).max(600),
@@ -88,14 +91,7 @@ export async function reviseLine(input: unknown): Promise<Result<LineRevision>> 
     if (!parsed.success) {
         return err(parsed.error.issues[0]?.message ?? 'Invalid request', 'invalid_input');
     }
-    const { resumeId, roleId, line, instruction } = parsed.data;
-
-    // Ownership, cheaply. The resume is not read — only proven to be theirs.
-    const owns = await prisma.resume.findFirst({
-        where: { id: resumeId, userId },
-        select: { id: true },
-    });
-    if (!owns) return err('Resume not found', 'not_found');
+    const { roleId, line, instruction } = parsed.data;
 
     const evidence = await getRoleEvidence(userId, roleId);
     if (!evidence) return err('That role is no longer in your record', 'not_found');
