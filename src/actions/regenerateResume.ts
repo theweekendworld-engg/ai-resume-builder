@@ -64,9 +64,14 @@ export async function regenerateResume(input: unknown): Promise<Result<Regenerat
 
     const resume = await prisma.resume.findFirst({
         where: { id: resumeId, userId },
-        select: { id: true },
+        select: { id: true, content: true },
     });
     if (!resume) return err('Resume not found', 'not_found');
+
+    // What we are risking. Read before the rebuild so the result can be
+    // compared against it rather than trusted.
+    const previousRoles =
+        (resume.content as { experience?: unknown[] } | null)?.experience?.length ?? 0;
 
     // The most recent session that produced this resume. Most recent because a
     // resume regenerated twice has two, and the latest is the one whose
@@ -107,6 +112,33 @@ export async function regenerateResume(input: unknown): Promise<Result<Regenerat
             actorUserId: userId,
             actorSessionId: session.id,
         });
+
+        // ── Refuse to overwrite a working resume with a worse one.
+        //
+        // "It did not throw" is not the same as "it worked". The first live
+        // regeneration returned a structurally valid ResumeData containing zero
+        // roles, with the model answering conversationally in the summary field
+        // ("Please provide the resume content..."). No exception, no guard
+        // violation — the numeric guard catches invented facts, and nothing
+        // catches absent ones. Writing that would have replaced a real resume
+        // with a blank one, which is worse than any failure this action can
+        // report.
+        //
+        // So the rebuild has to be at least as substantial as what it replaces.
+        // Losing a role is legitimate when the user asked for a shorter
+        // document; losing ALL of them never is.
+        const rebuilt = result.resume as unknown as {
+            experience?: unknown[];
+            personalInfo?: { summary?: string };
+        };
+        const rebuiltRoles = rebuilt.experience?.length ?? 0;
+
+        if (previousRoles > 0 && rebuiltRoles === 0) {
+            return err(
+                'The rebuild came back empty, so your existing resume was left untouched. Try again, or generate a new one from the posting.',
+                'internal_error',
+            );
+        }
 
         await prisma.resume.update({
             where: { id: resumeId },
