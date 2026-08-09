@@ -34,6 +34,10 @@ export const TASK_KEYS = [
     'postingRead',
     'bulletSelect',
     'bulletWrite',
+    // R4 — agentic assembly. One model orchestrates the evidence tools and
+    // emits the whole document, so this is a single key rather than one per
+    // judgement: the point of the loop is that the judgements interact.
+    'resumeAssemble',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];

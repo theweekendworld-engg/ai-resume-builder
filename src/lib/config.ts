@@ -155,6 +155,11 @@ export const config = {
             postingRead: process.env.OPENAI_MODEL_POSTING_READ || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
             bulletSelect: process.env.OPENAI_MODEL_BULLET_SELECT || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
             bulletWrite: process.env.OPENAI_MODEL_BULLET_WRITE || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
+            // Agentic assembly. Deliberately reads OPENAI_MODEL_GENERAL rather
+            // than the cheap tier: this call makes every editorial judgement in
+            // the document in one pass, and it is the one place where a weaker
+            // model shows up as a worse resume rather than a slower one.
+            resumeAssemble: process.env.OPENAI_MODEL_RESUME_ASSEMBLE || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
         },
         /**
          * Embeddings keep their own credentials, and that is load-bearing.
