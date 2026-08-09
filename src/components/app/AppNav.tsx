@@ -63,6 +63,38 @@ function isActive(pathname: string, href: string): boolean {
     return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+
+/**
+ * Clerk's UserButton, held back until after hydration.
+ *
+ * ── The bug this fixes ──────────────────────────────────────────────────────
+ *
+ * `UserButton` renders a placeholder during SSR and a full subtree on the
+ * client. React allocates `useId` in render order, so a component that consumes
+ * a different number of ids on each side shifts every id AFTER it — which is
+ * why the Sheet trigger below rendered `aria-controls="radix-_R_7qitmtb_"` on
+ * the server and `radix-_R_vabmrlb_` on the client, and React warned that the
+ * tree could not be patched up.
+ *
+ * ── Why isolate rather than reorder ─────────────────────────────────────────
+ *
+ * Moving the Sheet above the UserButton also works, by putting the Radix ids
+ * before the asymmetric subtree. It fixes this instance and leaves the trap
+ * armed: the next component added between them breaks it again, and nothing
+ * records why the order mattered. Rendering nothing on the server and nothing
+ * on the first client pass makes the two sides identical by construction, so
+ * ids downstream cannot drift no matter what is added around it.
+ *
+ * The reserved box keeps the header from shifting when the real button appears.
+ */
+function HydratedUserButton() {
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => setMounted(true), []);
+
+    if (!mounted) return <div className="size-7 shrink-0" aria-hidden />;
+    return <UserButton />;
+}
+
 export function AppNav({ destinations }: { destinations: NavDestination[] }) {
     const pathname = usePathname() ?? '';
     const [open, setOpen] = React.useState(false);
@@ -115,7 +147,7 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                             <span className="sm:hidden">Tailor</span>
                         </Link>
                     </Button>
-                    <UserButton />
+                    <HydratedUserButton />
 
                     <Sheet open={open} onOpenChange={setOpen}>
                         <SheetTrigger asChild>
