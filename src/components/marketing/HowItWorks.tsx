@@ -76,7 +76,7 @@ export function HowItWorks() {
                             as="li"
                             key={step.n}
                             delay={index * 120}
-                            className="mk-card mk-card-hover group relative overflow-hidden p-7"
+                            className="mk-card mk-card-hover mk-rail group relative overflow-hidden p-7 pl-8"
                         >
                             <span
                                 className="mk-display pointer-events-none absolute -right-2 -top-4 text-[5rem] text-primary/10 transition-colors group-hover:text-primary/20"

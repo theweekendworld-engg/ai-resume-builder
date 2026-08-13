@@ -82,7 +82,7 @@ export function Features() {
                             // the bottom row is still arriving well after the
                             // reader has finished the top one.
                             delay={(index % 3) * 100}
-                            className="mk-card mk-card-hover group flex flex-col p-7"
+                            className="mk-card mk-card-hover mk-rail group flex flex-col overflow-hidden p-7 pl-8"
                         >
                             <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
                                 <Icon className="h-5 w-5" strokeWidth={1.75} />

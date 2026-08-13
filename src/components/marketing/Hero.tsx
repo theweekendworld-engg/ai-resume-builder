@@ -76,8 +76,15 @@ export function Hero() {
                     Resumes, built from evidence
                 </Reveal>
 
+                {/*
+                  The headline itself drifts, which is the reference's move and
+                  the reason its hero feels alive rather than composed. It is a
+                  10px rise over 6 seconds — far too slow to read as animation
+                  while you are reading the words, and unmistakable the moment
+                  you stop.
+                */}
                 <Reveal delay={80}>
-                    <h1 className={cn(marketingType.hero, 'mx-auto mt-8 max-w-4xl')}>
+                    <h1 className={cn(marketingType.hero, 'mk-float mx-auto mt-8 max-w-4xl')}>
                         A resume you can defend,{' '}
                         <span className="text-primary">line by line.</span>
                     </h1>
@@ -103,7 +110,8 @@ export function Hero() {
                       demonstrates the thesis instead of asserting it — which is
                       worth more than a shorter path to a signup form.
                     */}
-                    <Link href="/score" className="mk-btn group w-full sm:w-auto">
+                    {/* The one pulsing element on the page. */}
+                    <Link href="/score" className="mk-btn mk-pulse group w-full sm:w-auto">
                         Check your resume — free
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>

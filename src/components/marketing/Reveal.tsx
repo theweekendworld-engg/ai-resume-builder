@@ -69,7 +69,21 @@ export function Reveal({
                     observer.disconnect();
                 }
             },
-            { threshold: 0.12, rootMargin: '0px 0px -10% 0px' },
+            /*
+              `threshold: 0` — fire as soon as any part of the element crosses
+              the line. The previous 0.12 required 12% of the element's AREA to
+              be visible, which for anything approaching viewport height meant
+              the reveal fired well after the element was plainly on screen: the
+              hero's resume card sat blank in the middle of the fold, reading as
+              a rendering failure rather than as an animation waiting its turn.
+              A tall element cannot be 12% visible until it is already a
+              problem.
+
+              The bottom inset does the "just after it enters" work instead, and
+              in pixels rather than a percentage so it behaves the same on a
+              phone and a monitor.
+            */
+            { threshold: 0, rootMargin: '0px 0px -80px 0px' },
         );
 
         observer.observe(el);
@@ -108,9 +122,21 @@ export function Ambience({ sweep = false, className }: { sweep?: boolean; classN
             className={cn('pointer-events-none absolute inset-0 -z-10 overflow-hidden', className)}
             aria-hidden
         >
-            <div className="mk-blob mk-drift-1 left-[6%] top-[4%] h-[680px] w-[680px] bg-primary/12 blur-[140px]" />
-            <div className="mk-blob mk-drift-2 right-[2%] top-[38%] h-[520px] w-[520px] bg-primary/8 blur-[120px]" />
-            {sweep ? <div className="mk-sweep h-[900px] w-[900px] opacity-30" /> : null}
+            {/*
+              Opacities raised from 12/8% and the blur pulled in from 140px.
+              At 12% behind a 140px blur on a 6%-lightness ground the blobs were
+              mathematically present and perceptually absent — the probe
+              confirmed them drifting while the page read as completely static.
+              A moving light nobody can see is worse than no moving light: it
+              costs the compositor and buys nothing.
+
+              Three now rather than two, on 18/22/26s periods, so the pattern
+              does not visibly repeat.
+            */}
+            <div className="mk-blob mk-drift-1 left-[4%] top-[2%] h-[620px] w-[620px] bg-primary/22 blur-[110px]" />
+            <div className="mk-blob mk-drift-2 right-[0%] top-[34%] h-[520px] w-[520px] bg-primary/16 blur-[100px]" />
+            <div className="mk-blob mk-drift-3 left-[38%] bottom-[-6%] h-[420px] w-[420px] bg-primary/12 blur-[120px]" />
+            {sweep ? <div className="mk-sweep h-[900px] w-[900px] opacity-50" /> : null}
         </div>
     );
 }

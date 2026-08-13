@@ -1,4 +1,5 @@
-import { Reveal } from './Reveal';
+import { Ambience, Reveal } from './Reveal';
+import { CountUp } from './CountUp';
 import { marketingContainer, marketingType } from './Section';
 import { cn } from '@/lib/utils';
 
@@ -28,27 +29,40 @@ import { cn } from '@/lib/utils';
  * true, in the ledger voice, directly underneath.
  */
 
+/**
+ * `to`/`suffix` rather than a formatted string, so the figures can count up.
+ *
+ * Two of the four have no distance to travel — 0 counts from 0, and 1 is over
+ * before it starts. That is not a defect to design around: they are the two
+ * strongest claims on the page and inventing a bigger number to make the
+ * animation prettier is precisely the failure this section is about. The band
+ * reads as alive because 90 and 100 are moving next to them.
+ */
 const CONSTRAINTS = [
     {
-        figure: '0',
+        to: 0,
+        suffix: '',
         label: 'invented numbers',
         detail: 'A generated document cannot contain a figure absent from your log.',
         mechanism: 'numeric guard, src/lib/ai',
     },
     {
-        figure: '1',
+        to: 1,
+        suffix: '',
         label: 'tap to confirm a win',
         detail: 'Confirming writes the evidence and the link in a single transaction.',
         mechanism: 'the only step the habit needs',
     },
     {
-        figure: '90s',
+        to: 90,
+        suffix: 's',
         label: 'is the whole weekly ritual',
         detail: 'Keep, edit or dismiss what we drafted. That is the entire commitment.',
         mechanism: 'designed to fit a busy Tuesday',
     },
     {
-        figure: '100%',
+        to: 100,
+        suffix: '%',
         label: 'of shipped lines carry a source',
         detail: 'A sentence that cannot be grounded is dropped rather than softened.',
         mechanism: 'unsourced claims never ship',
@@ -58,6 +72,13 @@ const CONSTRAINTS = [
 export function Guarantees() {
     return (
         <section className="mk-band relative isolate overflow-hidden border-b border-border/60 py-24 lg:py-32">
+            {/*
+              Mid-page ambience. Without this the drifting light lives only in
+              the hero and the closing CTA, so the entire middle of the scroll —
+              which is most of it — is dead still. No sweep: the rotating conic
+              layer is expensive and belongs to the two bookends.
+            */}
+            <Ambience />
             <div
                 className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-px bg-primary/25"
                 aria-hidden
@@ -94,9 +115,14 @@ export function Guarantees() {
                               proportional '1' next to a proportional '0' makes
                               the columns visibly disagree about their centres.
                             */}
-                            <p className="mk-display num text-primary text-[clamp(2.75rem,5vw,3.75rem)]">
-                                {item.figure}
-                            </p>
+                            <CountUp
+                                to={item.to}
+                                suffix={item.suffix}
+                                // `block` because CountUp renders a span and
+                                // this replaced a <p> — inline would collapse
+                                // the cell's vertical rhythm.
+                                className="mk-display num block text-primary text-[clamp(2.75rem,5vw,3.75rem)]"
+                            />
                             <p className="font-heading mt-2 text-sm font-semibold text-foreground">
                                 {item.label}
                             </p>

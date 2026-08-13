@@ -595,11 +595,35 @@ h1, h2, h3, h4, h5, h6 {
     box-shadow 260ms ease;
 }
 .marketing .mk-card-hover:hover {
-  transform: translateY(-4px);
-  border-color: hsl(var(--primary) / 0.4);
+  /* Lift AND scale. translateY alone was too polite to register — the
+     reference scales to 1.05, which at card size is a very large move; 1.025
+     reads as the same gesture without the text visibly resampling. */
+  transform: translateY(-4px) scale(1.025);
+  border-color: hsl(var(--primary) / 0.45);
   box-shadow:
     0 24px 48px -24px hsl(0 0% 0% / 0.8),
     0 0 32px -14px hsl(var(--glow) / 0.4);
+}
+
+/* The rail: a full-height accent bar down the left edge of a card that
+   thickens on hover. Lifted directly from the reference, where it is the
+   detail that makes an otherwise plain card feel like a control. */
+.marketing .mk-rail::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 1rem 0 0 1rem;
+  background: hsl(var(--primary) / 0.5);
+  transition:
+    width 260ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 260ms ease;
+}
+.marketing .mk-rail:hover::before {
+  width: 6px;
+  background: hsl(var(--primary));
 }
 .marketing .mk-glow {
   box-shadow:
@@ -654,6 +678,22 @@ h1, h2, h3, h4, h5, h6 {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-10px); }
 }
+/* The CTA's heartbeat. A ring that expands and fades outward, so the primary
+   button is the one element on the page that is never completely still. The
+   reference ships this as `btn-pulse`; the second shadow is the ring, and it
+   grows from 0 to 14px of spread while going fully transparent. */
+@keyframes mk-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 40px -12px hsl(var(--glow) / 0.55),
+      0 0 0 0 hsl(var(--glow) / 0.5);
+  }
+  70% {
+    box-shadow:
+      0 0 56px -8px hsl(var(--glow) / 0.7),
+      0 0 0 14px hsl(var(--glow) / 0);
+  }
+}
 @keyframes mk-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(7px); }
@@ -694,12 +734,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 .marketing .mk-float { animation: mk-float 6s ease-in-out infinite; }
 .marketing .mk-bob { animation: mk-bob 2s ease-in-out infinite; }
+/* Applied to the hero CTA only. On every primary button it would be noise —
+   a page where six things pulse has nothing to draw the eye to. */
+.marketing .mk-pulse { animation: mk-pulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.marketing .mk-pulse:hover { animation-play-state: paused; }
 
 /* ── Marquee ──────────────────────────────────────────────────────────────
    The track holds the item list twice; translating exactly -50% lands the
    copy on the original's start position, so the seam is never visible. */
-.marketing .mk-marquee { animation: mk-scroll 46s linear infinite; }
-.marketing .mk-marquee-rev { animation: mk-scroll-rev 52s linear infinite; }
+/* 32s/36s. At the 46s/52s these started on, a 5,400px track moves about 60px
+   a second — slow enough that a glance reads it as a static row of chips, which
+   defeats the point of the band. The two rows are deliberately not the same
+   duration, so they never line up. */
+.marketing .mk-marquee { animation: mk-scroll 32s linear infinite; }
+.marketing .mk-marquee-rev { animation: mk-scroll-rev 36s linear infinite; }
 .marketing .mk-marquee-mask {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
   mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
@@ -743,8 +791,17 @@ h1, h2, h3, h4, h5, h6 {
   .marketing .mk-blob,
   .marketing .mk-sweep,
   .marketing .mk-float,
-  .marketing .mk-bob {
+  .marketing .mk-bob,
+  .marketing .mk-pulse,
+  .marketing .mk-marquee,
+  .marketing .mk-marquee-rev {
     animation: none !important;
+  }
+  /* The marquee's resting position is translateX(0), which is the start of the
+     first copy — so killing the animation leaves a correctly-filled row rather
+     than a half-empty one. The duplicate track is simply never reached. */
+  .marketing .mk-card-hover:hover {
+    transform: none;
   }
 }
 
