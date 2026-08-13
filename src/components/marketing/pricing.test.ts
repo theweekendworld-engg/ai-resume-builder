@@ -35,14 +35,29 @@ function read(file: string): string {
         .replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-/** Every component rendered on the marketing home page. */
+/**
+ * Every component rendered on the marketing home page.
+ *
+ * `Pricing.tsx` is deliberately NOT in this list any more. It is no longer on
+ * the page — the Stripe Prices behind Career and Search do not exist yet, so
+ * `<Contact />` stands in its place until they do. The component and the
+ * catalog tests below survive because it is coming back; scanning it for
+ * unearned claims when nobody can read it would be scanning dead code.
+ *
+ * Keep this list in step with `src/app/(marketing)/page.tsx`. A section that
+ * renders to a logged-out visitor and is missing from here is a section that
+ * can quietly reintroduce every claim these tests exist to prevent.
+ */
 const PAGE_SOURCES = [
     'Hero.tsx',
+    'EvidenceTicker.tsx',
     'TheProblem.tsx',
     'HowItWorks.tsx',
+    'Guarantees.tsx',
     'Features.tsx',
     'Provenance.tsx',
-    'Pricing.tsx',
+    'Faq.tsx',
+    'Contact.tsx',
     'ClosingCta.tsx',
     'Navbar.tsx',
     'Footer.tsx',

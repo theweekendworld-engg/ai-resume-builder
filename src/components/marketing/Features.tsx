@@ -1,7 +1,7 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { ArrowRight, BarChart3, Chrome, FileText, ListChecks, Repeat2 } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
+import { Reveal } from './Reveal';
 
 /**
  * What the log turns into.
@@ -51,60 +51,77 @@ const PAYOFFS = [
 
 export function Features() {
     return (
-        <Section id="features" className="bg-card/20">
-            <div className="flex flex-wrap items-end justify-between gap-6">
-                <SectionIntro
-                    eyebrow="What the log becomes"
-                    title="One record. Every conversation about your career."
-                    lead={
-                        <>
-                            The log is not the product — it is the input. Everything below is
-                            generated from the same confirmed evidence, which is why the numbers
-                            agree with each other.
-                        </>
-                    }
-                />
-            </div>
+        <Section id="features" tone="raised">
+            <SectionIntro
+                eyebrow="What the log becomes"
+                title={
+                    <>
+                        One record.{' '}
+                        <span className="text-primary">Every conversation about your career.</span>
+                    </>
+                }
+                lead={
+                    <>
+                        The log is not the product — it is the input. Everything below is generated
+                        from the same confirmed evidence, which is why the numbers agree with each
+                        other.
+                    </>
+                }
+            />
 
-            <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-                {PAYOFFS.map((item) => {
+            <div className="mt-16 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                {PAYOFFS.map((item, index) => {
                     const Icon = item.icon;
                     return (
-                        <article
+                        <Reveal
+                            as="article"
                             key={item.title}
-                            className="flex flex-col rounded-xl border border-border/50 bg-background/50 p-6"
+                            // Stagger by column rather than by absolute index.
+                            // At index * 100 the sixth card waits half a second
+                            // after the first, which on a three-up grid means
+                            // the bottom row is still arriving well after the
+                            // reader has finished the top one.
+                            delay={(index % 3) * 100}
+                            className="mk-card mk-card-hover group flex flex-col p-7"
                         >
-                            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                <Icon className="h-4 w-4" strokeWidth={1.75} />
+                            <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                                <Icon className="h-5 w-5" strokeWidth={1.75} />
                             </span>
-                            <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
+                            <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {item.title}
                             </h3>
-                            <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
+                            <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                                 {item.body}
                             </p>
-                            <p className="mt-4 border-t border-border/40 pt-3 text-xs leading-relaxed text-muted-foreground/70">
+                            <p className="ledger mt-5 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground/60">
                                 {item.proof}
                             </p>
-                        </article>
+                        </Reveal>
                     );
                 })}
 
-                <div className="flex flex-col justify-center rounded-xl border border-dashed border-border/50 p-6">
-                    <p className="font-heading text-base font-semibold leading-snug">
+                {/*
+                  The sixth cell completes the 3×2 grid rather than leaving a
+                  hole, and it is the only card that is an action — so it
+                  inverts: accent border, lit, and the CTA where the other five
+                  put their provenance line.
+                */}
+                <Reveal
+                    delay={200}
+                    className="mk-card mk-glow flex flex-col justify-center border-primary/30 p-7"
+                >
+                    <h3 className="font-heading text-lg font-bold leading-snug tracking-tight">
                         Start with the record.
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    </h3>
+                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
                         Keeping a log is free, permanently. The payoffs are there when you need
                         them.
                     </p>
-                    <Link href="/sign-up?redirect_url=/build" className="mt-4">
-                        <Button className="group w-full gap-2">
-                            Start free
-                            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                        </Button>
+                    <Link href="/sign-up?redirect_url=/build" className="mk-btn group mt-6">
+                        Start free
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>
-                </div>
+                </Reveal>
             </div>
         </Section>
     );

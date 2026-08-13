@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { Reveal } from './Reveal';
 
 /**
  * The landing page's layout and type scale, in one place.
@@ -35,29 +36,28 @@ import { cn } from '@/lib/utils';
 
 export const marketingType = {
     /**
-     * 38 → 58px, with the top step held back to xl.
+     * 40 → 76px, fluid.
      *
-     * At 60px on lg the hero's own line — "Your company owns" — is wider than
-     * the column it sits in, so it wrapped mid-phrase however the markup was
-     * split. Explicit line breaks cannot fix a size that does not fit; the
-     * measure has to. The full size returns at xl where there is room.
+     * The previous scale topped out at 58px and stepped at four breakpoints,
+     * each one measured against the longest line so the headline could not
+     * reflow mid-phrase. `clamp` removes the need for that measurement: the
+     * size is a function of the viewport, so a line that fits at 1440 also
+     * fits at 1100 rather than falling into a gap between two fixed steps.
      *
-     * Each step is MEASURED against the longest line at that breakpoint, not
-     * chosen for how it looks in isolation: 32 / 44 / 48 / 58px, verified at
-     * 390, 768, 1024, 1280 and 1440 with a script that counts client rects per
-     * span. A headline that reflows mid-phrase on somebody's laptop is the
-     * whole difference between finished and nearly.
+     * The weight is the real change. 800 rather than 600 — a landing page's
+     * headline is the only element competing with a full-bleed glow behind it,
+     * and semibold loses that fight. See `fonts.ts` for why the extra weight
+     * is loaded only here.
      */
-    hero: 'font-heading text-[2rem] leading-[1.06] font-semibold tracking-[-0.03em] sm:text-[2.75rem] lg:text-[3rem] xl:text-[3.6rem]',
-    /** 30 → 36px. Section headings. */
-    section:
-        'font-heading text-[1.875rem] leading-[1.15] font-semibold tracking-tight sm:text-[2.25rem]',
-    /** 20 → 24px. A statement inside a section — a pull quote, a big number. */
-    statement: 'font-heading text-xl leading-snug font-semibold tracking-tight sm:text-2xl',
+    hero: 'mk-display mk-h1',
+    /** 32 → 52px, fluid. Section headings. */
+    section: 'mk-display mk-h2',
+    /** 18 → 22px. A statement inside a section — a card title, a pull quote. */
+    statement: 'mk-display mk-h3',
     /** 17 → 18px. The paragraph under a heading. Never smaller. */
     lead: 'text-[1.0625rem] leading-relaxed text-muted-foreground sm:text-lg',
-    /** 12px caps. The label above a heading. */
-    eyebrow: 'text-[11px] font-medium uppercase tracking-[0.12em]',
+    /** 11px caps. The label above a heading — see `.mk-pill`. */
+    eyebrow: 'text-[11px] font-bold uppercase tracking-[0.15em]',
     /** Body copy inside a section. */
     body: 'text-sm leading-relaxed text-muted-foreground',
 } as const;
@@ -75,8 +75,23 @@ export const marketingContainer = 'mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8
  *
  * One value, applied by `Section`. Sections that need more room say so by
  * composing, not by inventing a fourth number.
+ *
+ * Opened up from `py-20 lg:py-28`. The display scale roughly doubled, and a
+ * headline at 52px inside 80px of air reads as cramped in a way the same
+ * padding around a 36px headline does not — whitespace has to scale with the
+ * thing it surrounds or the page looks like it was zoomed rather than designed.
  */
-const RHYTHM = 'py-20 lg:py-28';
+const RHYTHM = 'py-24 lg:py-32';
+
+/** The ground a section sits on. `sunken`/`raised` alternate so consecutive
+ *  sections separate by value rather than by stacking more hairlines. */
+type SectionTone = 'default' | 'sunken' | 'raised';
+
+const TONE: Record<SectionTone, string> = {
+    default: '',
+    sunken: 'mk-band',
+    raised: 'bg-card/30',
+};
 
 export function Section({
     id,
@@ -84,6 +99,7 @@ export function Section({
     className,
     bleed = false,
     bordered = true,
+    tone = 'default',
 }: {
     id?: string;
     children: React.ReactNode;
@@ -92,13 +108,15 @@ export function Section({
     bleed?: boolean;
     /** The hairline between sections. Off for the last one before the footer. */
     bordered?: boolean;
+    tone?: SectionTone;
 }) {
     return (
         <section
             id={id}
             className={cn(
                 'relative isolate',
-                bordered && 'border-b border-border/40',
+                bordered && 'border-b border-border/60',
+                TONE[tone],
                 RHYTHM,
                 className,
             )}
@@ -109,18 +127,24 @@ export function Section({
 }
 
 /**
- * Eyebrow → heading → lead.
+ * Pill → heading → lead.
  *
- * Every section on the page opened with some version of this and none of them
- * agreed on the spacing. `align="center"` is the exception rather than the
- * default: centred text is harder to read and the design foundations say to
- * centre display headlines only.
+ * The heading takes a `<span className="text-primary">` for its second line
+ * rather than accepting an `accent` prop: which words carry the accent is a
+ * copy decision, and it changes per section. A prop would force every caller
+ * to split its headline the same way.
+ *
+ * `align="center"` is now the common case rather than the exception. That is a
+ * reversal of the previous rule and it is deliberate — at this display size the
+ * headline is two or three words per line, where centring reads as composed
+ * rather than as the hard-to-scan wall of centred text the old rule guarded
+ * against. Body copy underneath still gets a measure cap.
  */
 export function SectionIntro({
     eyebrow,
     title,
     lead,
-    align = 'left',
+    align = 'center',
     className,
 }: {
     eyebrow?: string;
@@ -129,13 +153,25 @@ export function SectionIntro({
     align?: 'left' | 'center';
     className?: string;
 }) {
+    const centered = align === 'center';
+
     return (
-        <div className={cn('max-w-2xl', align === 'center' && 'mx-auto text-center', className)}>
+        <div className={cn(centered ? 'mx-auto max-w-3xl text-center' : 'max-w-3xl', className)}>
             {eyebrow ? (
-                <p className={cn(marketingType.eyebrow, 'text-primary/80')}>{eyebrow}</p>
+                <Reveal className="mk-pill" as="span">
+                    {eyebrow}
+                </Reveal>
             ) : null}
-            <h2 className={cn(marketingType.section, eyebrow ? 'mt-3' : undefined)}>{title}</h2>
-            {lead ? <p className={cn(marketingType.lead, 'mt-4')}>{lead}</p> : null}
+            <Reveal delay={eyebrow ? 80 : 0}>
+                <h2 className={cn(marketingType.section, eyebrow ? 'mt-6' : undefined)}>{title}</h2>
+            </Reveal>
+            {lead ? (
+                <Reveal delay={160}>
+                    <p className={cn(marketingType.lead, 'mt-5', centered && 'mx-auto max-w-2xl')}>
+                        {lead}
+                    </p>
+                </Reveal>
+            ) : null}
         </div>
     );
 }

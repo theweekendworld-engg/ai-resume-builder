@@ -447,6 +447,305 @@ h1, h2, h3, h4, h5, h6 {
   --paper-ink: 218 30% 14%;
   --paper-ink-soft: 218 12% 42%;
   --paper-rule: 40 12% 89%;
+
+  /*
+    ── The landing page's own palette ──────────────────────────────────────
+
+    The app is a work tool: its blue is held at 205° and 72% L so it can sit
+    behind dense text all day without fatiguing. A landing page has the
+    opposite job — it is seen once, for ninety seconds, and it has to feel
+    like something. So marketing pushes the same hue family to its loudest
+    version: 190°, full saturation, one accent and nothing else.
+
+    These override `.dark` rather than sitting beside it, so every existing
+    `text-primary`, `<Button>`, `border-primary/40` and `--glow` consumer on
+    the page inherits the new accent without being touched. That is the whole
+    reason this is a token override and not a pile of new utility classes.
+
+    Scoped to `.marketing`, so the authenticated app keeps its calmer blue.
+  */
+  --background: 220 20% 6%;
+  --foreground: 0 0% 100%;
+  --card: 220 18% 10%;
+  --card-foreground: 0 0% 100%;
+  --muted: 220 15% 14%;
+  --muted-foreground: 220 10% 70%;
+  --border: 220 15% 18%;
+  --input: 220 15% 16%;
+
+  --primary: 190 100% 50%;
+  --primary-foreground: 220 30% 6%;
+  --ring: 190 100% 50%;
+  --glow: 190 100% 50%;
+
+  /* The two darker grounds the page alternates between, so consecutive
+     sections separate without a border doing all the work. */
+  --mk-sunken: 220 22% 4.5%;
+  --mk-raised: 220 18% 9%;
+}
+
+/* ── Display type ─────────────────────────────────────────────────────────
+   One class, three sizes. `clamp` rather than breakpoint steps because the
+   headline is the one element on the page that should be as large as the
+   viewport can hold — stepping it leaves obvious dead zones at 900px and
+   1100px where the type is visibly too small for its column. */
+.marketing .mk-display {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.98;
+  text-wrap: balance;
+}
+.marketing .mk-h1 { font-size: clamp(2.5rem, 7.2vw, 4.75rem); }
+.marketing .mk-h2 { font-size: clamp(2rem, 5vw, 3.25rem); }
+.marketing .mk-h3 {
+  font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+/* ── The label above every headline ───────────────────────────────────── */
+.marketing .mk-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--primary) / 0.3);
+  background: hsl(var(--primary) / 0.12);
+  padding: 0.375rem 0.9rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: hsl(var(--primary));
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────
+   Deliberately not the app's `<Button>`. The product's button is quiet by
+   design; this one is a billboard — uppercase, 800, letterspaced out, and
+   carrying its own light. Using one component for both jobs is how a landing
+   page ends up looking like a settings screen. */
+.marketing .mk-btn,
+.marketing .mk-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 3.25rem;
+  padding: 0 1.75rem;
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 220ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.marketing .mk-btn {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  box-shadow:
+    0 0 40px -12px hsl(var(--glow) / 0.55),
+    0 0 16px -6px hsl(var(--glow) / 0.4);
+}
+.marketing .mk-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 0 60px -8px hsl(var(--glow) / 0.75),
+    0 0 24px -4px hsl(var(--glow) / 0.5);
+}
+.marketing .mk-btn-ghost {
+  border: 2px solid hsl(var(--primary) / 0.55);
+  background: transparent;
+  color: hsl(var(--primary));
+}
+.marketing .mk-btn-ghost:hover {
+  background: hsl(var(--primary) / 0.1);
+  border-color: hsl(var(--primary));
+  transform: translateY(-2px);
+}
+.marketing .mk-btn:active,
+.marketing .mk-btn-ghost:active { transform: scale(0.98); }
+
+/* The nav-bar size. A separate class rather than utility overrides on the
+   call site: Tailwind v4 moved the important modifier to a trailing `!`, so
+   the v3-style `!h-9` reads as an unknown class and silently generates
+   nothing — leaving a 3.25rem button inside a 4rem bar. Source order beats
+   that whole category of mistake. */
+.marketing .mk-btn-sm {
+  height: 2.25rem;
+  padding: 0 1rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+}
+
+/* ── Surfaces ─────────────────────────────────────────────────────────── */
+.marketing .mk-card {
+  position: relative;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card) / 0.6);
+  border-radius: 1rem;
+  transition:
+    transform 260ms cubic-bezier(0.2, 0, 0, 1),
+    border-color 260ms ease,
+    box-shadow 260ms ease;
+}
+.marketing .mk-card-hover:hover {
+  transform: translateY(-4px);
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow:
+    0 24px 48px -24px hsl(0 0% 0% / 0.8),
+    0 0 32px -14px hsl(var(--glow) / 0.4);
+}
+.marketing .mk-glow {
+  box-shadow:
+    0 0 50px -10px hsl(var(--glow) / 0.5),
+    0 0 20px -5px hsl(var(--glow) / 0.35);
+}
+
+/* Section grounds. Written as CSS rather than arbitrary Tailwind values on
+   purpose — see the note in pricing.test.ts about scanning class strings. */
+.marketing .mk-hero-bg {
+  background:
+    radial-gradient(ellipse 90% 60% at 50% 0%, hsl(var(--primary) / 0.16), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 82% 78%, hsl(var(--primary) / 0.07), transparent 70%),
+    hsl(var(--background));
+}
+.marketing .mk-band {
+  background: hsl(var(--mk-sunken));
+}
+.marketing .mk-cta-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 50%, hsl(var(--primary) / 0.16), transparent 62%),
+    hsl(var(--mk-sunken));
+}
+
+/* ── Ambient motion ───────────────────────────────────────────────────────
+   Three blurred blobs on long, mutually-prime durations plus one very slow
+   conic sweep. The primes matter: equal durations resynchronise every cycle
+   and the eye catches the loop. At 18/22/26s against a 30s rotation the
+   pattern does not visibly repeat for minutes. */
+@keyframes mk-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(80px, -60px) scale(1.1); }
+  50% { transform: translate(-40px, 80px) scale(0.95); }
+  75% { transform: translate(60px, 40px) scale(1.05); }
+}
+@keyframes mk-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(-70px, 50px) scale(1.08); }
+  50% { transform: translate(60px, -70px) scale(0.92); }
+  75% { transform: translate(-30px, -40px) scale(1.04); }
+}
+@keyframes mk-drift-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(50px, -80px) scale(1.1); }
+  66% { transform: translate(-60px, 30px) scale(0.95); }
+}
+@keyframes mk-spin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes mk-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes mk-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+@keyframes mk-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes mk-scroll-rev {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+
+.marketing .mk-blob {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.marketing .mk-drift-1 { animation: mk-drift-1 18s ease-in-out infinite; }
+.marketing .mk-drift-2 { animation: mk-drift-2 22s ease-in-out infinite; }
+.marketing .mk-drift-3 { animation: mk-drift-3 26s ease-in-out infinite; }
+.marketing .mk-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    hsl(var(--primary) / 0.16) 20%,
+    transparent 40%,
+    hsl(var(--primary) / 0.07) 60%,
+    transparent 100%
+  );
+  filter: blur(80px);
+  animation: mk-spin 30s linear infinite;
+}
+.marketing .mk-float { animation: mk-float 6s ease-in-out infinite; }
+.marketing .mk-bob { animation: mk-bob 2s ease-in-out infinite; }
+
+/* ── Marquee ──────────────────────────────────────────────────────────────
+   The track holds the item list twice; translating exactly -50% lands the
+   copy on the original's start position, so the seam is never visible. */
+.marketing .mk-marquee { animation: mk-scroll 46s linear infinite; }
+.marketing .mk-marquee-rev { animation: mk-scroll-rev 52s linear infinite; }
+.marketing .mk-marquee-mask {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+}
+.marketing .mk-marquee-hover:hover .mk-marquee,
+.marketing .mk-marquee-hover:hover .mk-marquee-rev {
+  animation-play-state: paused;
+}
+
+/* ── Scroll reveal ────────────────────────────────────────────────────────
+   The class is added by `Reveal` (an IntersectionObserver) rather than by a
+   scroll listener, so nothing runs on the main thread between intersections.
+   The initial state lives here and not in inline styles so that a reader who
+   has JS disabled still sees content — `Reveal` promotes to `.is-in` on
+   mount, and the `no-js` fallback below covers the rest. */
+.marketing [data-reveal] {
+  opacity: 0;
+  transform: translateY(26px);
+  transition:
+    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+.marketing [data-reveal='left'] { transform: translateX(-26px); }
+.marketing [data-reveal='right'] { transform: translateX(26px); }
+.marketing [data-reveal='scale'] { transform: scale(0.96); }
+.marketing [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The global reduce block already collapses durations. These two are the
+     ones that would otherwise leave content invisible or mid-drift. */
+  .marketing [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .marketing .mk-blob,
+  .marketing .mk-sweep,
+  .marketing .mk-float,
+  .marketing .mk-bob {
+    animation: none !important;
+  }
 }
 
 /* The lit artifact. The glow is the light source, so it belongs to this

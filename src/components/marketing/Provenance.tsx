@@ -1,6 +1,7 @@
 import { FileWarning, Fingerprint, Lock, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { marketingType, Section, SectionIntro } from './Section';
+import { marketingType, Section } from './Section';
+import { Reveal } from './Reveal';
 
 /**
  * The trust section — the actual differentiator.
@@ -43,20 +44,25 @@ const GUARANTEES = [
 export function Provenance() {
     return (
         <Section>
-            <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
+            <div className="grid items-start gap-14 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
                 <div>
-                    <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-primary/80">
+                    <Reveal as="span" className="mk-pill">
                         Truthfulness
-                    </p>
-                    <h2 className={cn(marketingType.section, 'mt-3')}>
-                        A record is worthless if you can’t defend it.
-                    </h2>
-                    <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-                        You are going to put this in front of your manager, or a hiring panel, and
-                        be asked follow-up questions. So the constraint is not that the writing
-                        sounds good — it is that every sentence survives someone asking “where did
-                        that come from?”
-                    </p>
+                    </Reveal>
+                    <Reveal delay={80}>
+                        <h2 className={cn(marketingType.section, 'mt-6')}>
+                            A record is worthless{' '}
+                            <span className="text-primary">if you can’t defend it.</span>
+                        </h2>
+                    </Reveal>
+                    <Reveal delay={160}>
+                        <p className={cn(marketingType.lead, 'mt-5')}>
+                            You are going to put this in front of your manager, or a hiring panel,
+                            and be asked follow-up questions. So the constraint is not that the
+                            writing sounds good — it is that every sentence survives someone asking
+                            “where did that come from?”
+                        </p>
+                    </Reveal>
 
                     {/*
                       The claim rendered as paper, with its provenance under it.
@@ -67,7 +73,8 @@ export function Provenance() {
                       trail sits beneath it in the ledger voice. Showing the
                       link is more convincing than a paragraph promising one.
                     */}
-                    <figure className="paper mt-9 rounded-2xl">
+                    <Reveal delay={240} direction="scale" className="mt-10">
+                    <figure className="paper rounded-2xl">
                         <blockquote className="px-5 pb-4 pt-5 text-[15px] leading-relaxed">
                             “I stabilised payments by migrating off the legacy queue in four waves,
                             and fixing the duplicate-webhook bug that double-charged{' '}
@@ -103,25 +110,28 @@ export function Provenance() {
                             </ul>
                         </figcaption>
                     </figure>
+                    </Reveal>
                 </div>
 
-                <div className="grid gap-px self-start overflow-hidden rounded-xl border border-border/50 bg-border/40 sm:grid-cols-2">
-                    {GUARANTEES.map((item) => {
+                <div className="grid gap-px self-start overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
+                    {GUARANTEES.map((item, index) => {
                         const Icon = item.icon;
                         return (
-                            <div key={item.title} className="bg-background/60 p-6">
-                                <Icon
-                                    className="h-4 w-4 text-primary"
-                                    strokeWidth={1.75}
-                                    aria-hidden
-                                />
-                                <p className="font-heading mt-3 text-sm font-semibold">
+                            <Reveal
+                                key={item.title}
+                                delay={index * 100}
+                                className="group bg-background p-7 transition-colors hover:bg-card/60"
+                            >
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                                    <Icon className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden />
+                                </span>
+                                <p className="font-heading mt-4 text-base font-bold tracking-tight">
                                     {item.title}
                                 </p>
                                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                                     {item.body}
                                 </p>
-                            </div>
+                            </Reveal>
                         );
                     })}
                 </div>

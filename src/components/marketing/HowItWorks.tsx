@@ -1,5 +1,6 @@
 import { Check, GitBranch, Pencil } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
+import { Reveal } from './Reveal';
 
 /**
  * The mechanism, and why it survives contact with a busy week.
@@ -43,7 +44,11 @@ export function HowItWorks() {
         <Section id="how-it-works">
             <SectionIntro
                 eyebrow="How it works"
-                title="You confirm. We do the writing."
+                title={
+                    <>
+                        You confirm. <span className="text-primary">We do the writing.</span>
+                    </>
+                }
                 lead={
                     <>
                         The record that makes a good resume has to already exist when you need
@@ -55,33 +60,45 @@ export function HowItWorks() {
                 }
             />
 
-            <ol className="mt-12 grid gap-6 lg:grid-cols-3">
-                {STEPS.map((step) => {
+            {/*
+              The step number is now the loudest thing in each card, set huge
+              and knocked back to a low-opacity accent so it reads as a
+              watermark rather than as content. That is what makes three cards
+              scan as a SEQUENCE at a glance instead of as three features — the
+              eye picks up 01/02/03 before it reads a single word, which is the
+              one thing this section has to communicate.
+            */}
+            <ol className="mt-16 grid gap-6 lg:grid-cols-3">
+                {STEPS.map((step, index) => {
                     const Icon = step.icon;
                     return (
-                        <li
+                        <Reveal
+                            as="li"
                             key={step.n}
-                            className="relative rounded-xl border border-border/50 bg-card/30 p-6"
+                            delay={index * 120}
+                            className="mk-card mk-card-hover group relative overflow-hidden p-7"
                         >
-                            <div className="flex items-center gap-3">
-                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                                    <Icon className="h-4 w-4" strokeWidth={1.75} />
-                                </span>
-                                <span className="font-heading text-xs tabular-nums text-muted-foreground/60">
-                                    {step.n}
-                                </span>
-                            </div>
+                            <span
+                                className="mk-display pointer-events-none absolute -right-2 -top-4 text-[5rem] text-primary/10 transition-colors group-hover:text-primary/20"
+                                aria-hidden
+                            >
+                                {step.n}
+                            </span>
 
-                            <h3 className="font-heading mt-4 text-base font-semibold leading-snug">
+                            <span className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                                <Icon className="h-5 w-5" strokeWidth={1.75} />
+                            </span>
+
+                            <h3 className="font-heading relative mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {step.title}
                             </h3>
-                            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                            <p className="relative mt-2.5 text-sm leading-relaxed text-muted-foreground">
                                 {step.body}
                             </p>
-                            <p className="mt-3 border-t border-border/40 pt-3 text-xs text-muted-foreground/70">
+                            <p className="ledger relative mt-5 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground/60">
                                 {step.note}
                             </p>
-                        </li>
+                        </Reveal>
                     );
                 })}
             </ol>
