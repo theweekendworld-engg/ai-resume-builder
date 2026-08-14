@@ -84,7 +84,26 @@
 }
 
 /* ── Dark — the previous :root block, moved verbatim ─────────────────────── */
-.dark {
+.dark,
+/*
+ * `html:has(.marketing)` is not decoration — it fixes two visible bugs.
+ *
+ * The marketing layout puts `.dark` on a DIV inside body, so it scopes the dark
+ * identity to that subtree (which is the point) but leaves the ROOT element on
+ * the light tokens from `:root` above. The root is what the browser uses for two
+ * things that live outside every div:
+ *
+ *   - the rubber-band canvas revealed by overscrolling  -> painted near-white,
+ *     so dragging the landing page down showed a white band above the content
+ *   - `color-scheme`, which picks the scrollbar's colors -> stayed `light`,
+ *     so a white strip ran down the right edge of a dark page
+ *
+ * Matching the root whenever the marketing subtree is on the page hands it the
+ * dark tokens and `color-scheme: dark`, fixing both without moving the class or
+ * splitting the root layout. The authenticated app has no `.marketing`, so it is
+ * untouched and stays light.
+ */
+html:has(.marketing) {
   color-scheme: dark;
 
   --background: 222 42% 6%;
@@ -256,6 +275,19 @@
 
 * {
   @apply border-border;
+}
+
+/*
+ * The canvas background, which is not the same thing as body's.
+ *
+ * `body` below already sets bg-background, but the browser paints everything
+ * OUTSIDE the body box from the root element: the rubber-band area revealed by
+ * overscrolling at the top of the page, and the scrollbar gutter. With no rule
+ * here that fell back to white, so dragging the page down flashed a white band
+ * above the content — most obvious in dark mode, where it is white-on-near-black.
+ */
+html {
+  @apply bg-background;
 }
 
 body {

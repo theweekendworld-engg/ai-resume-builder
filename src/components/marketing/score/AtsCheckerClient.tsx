@@ -23,6 +23,19 @@ interface ScoreFailure {
 }
 type ScoreResponse = ScoreSuccess | ScoreFailure;
 
+/**
+ * Did the platform kill the function rather than the route returning an error?
+ *
+ * Vercel terminates at `maxDuration` and answers with its own HTML error page —
+ * status 504 plus an `x-vercel-error` header — so there is no JSON body and no
+ * `success: false` to read. The header is checked as well as the status because
+ * the status alone is ambiguous: a gateway anywhere in front could also emit
+ * 504. Same-origin request, so the header is readable.
+ */
+function isFunctionTimeout(res: Response): boolean {
+    return res.status === 504 || res.headers.get('x-vercel-error') === 'FUNCTION_INVOCATION_TIMEOUT';
+}
+
 export function AtsCheckerClient() {
     const [file, setFile] = useState<File | null>(null);
     const [jobDescription, setJobDescription] = useState('');
@@ -46,11 +59,14 @@ export function AtsCheckerClient() {
         const startedAt = Date.now();
         const fileType: 'pdf' | 'docx' =
             file.type === 'application/pdf' ? 'pdf' : 'docx';
-        trackFunnelEvent('score_started', {
+        // Attached to every outcome, not just the start: a timeout rate is only
+        // actionable next to the size and shape of what timed out.
+        const scoreContext = {
             hasJD: jobDescription.trim().length > 0,
             fileType,
             fileSizeKb: Math.round(file.size / 1024),
-        });
+        };
+        trackFunnelEvent('score_started', scoreContext);
         setStatus('loading');
         try {
             const formData = new FormData();
@@ -60,18 +76,48 @@ export function AtsCheckerClient() {
             }
 
             const res = await fetch('/api/score', { method: 'POST', body: formData });
-            const data: ScoreResponse = await res.json();
             const durationMs = Date.now() - startedAt;
 
-            if (!res.ok || !data.success) {
-                const message = !data.success ? data.error : 'Could not score your resume.';
+            /*
+             * Text first, parse second. `res.json()` throws on any non-JSON
+             * body, which is exactly what a function timeout returns — and that
+             * threw straight past this branch into the catch below, where every
+             * timeout was logged as a network error.
+             */
+            const raw = await res.text();
+            let data: ScoreResponse | null = null;
+            try {
+                data = JSON.parse(raw) as ScoreResponse;
+            } catch {
+                data = null;
+            }
+
+            if (isFunctionTimeout(res)) {
+                trackFunnelEvent('score_timed_out', { durationMs, ...scoreContext });
+                toast.error(
+                    scoreContext.hasJD
+                        ? 'That took too long to score. Try a shorter resume, or run it without the job description.'
+                        : 'That took too long to score. Try a shorter resume.'
+                );
+                setStatus('idle');
+                return;
+            }
+
+            if (!res.ok || !data || !data.success) {
+                const message =
+                    data && !data.success ? data.error : 'Could not score your resume.';
                 if (res.status === 429) {
                     trackFunnelEvent('score_rate_limited', { durationMs });
                 } else {
                     trackFunnelEvent('score_failed', {
                         durationMs,
                         status: res.status,
-                        reason: message,
+                        // `bodyKind` separates "the route rejected this" from
+                        // "something upstream answered instead of the route" —
+                        // the distinction the old handler collapsed.
+                        bodyKind: data ? 'json' : 'non_json',
+                        reason: data ? message : raw.slice(0, 120),
+                        ...scoreContext,
                     });
                 }
                 toast.error(message);
@@ -84,16 +130,20 @@ export function AtsCheckerClient() {
                 score: data.report.overall,
                 band: data.report.band,
                 fixCount: data.report.fixes.length,
-                hasJD: jobDescription.trim().length > 0,
-                fileType,
+                ...scoreContext,
             });
             setResult({ report: data.report, extractedText: data.extractedText });
             setStatus('idle');
         } catch (err) {
+            // Reaching here now means the request never completed — fetch itself
+            // rejected. Timeouts and non-JSON responses are handled above, so
+            // this no longer doubles as the bucket for both.
             console.error('Score request failed:', err);
             trackFunnelEvent('score_failed', {
                 durationMs: Date.now() - startedAt,
-                reason: err instanceof Error ? err.message : 'network_or_parse_error',
+                reason: err instanceof Error ? err.message : 'request_never_completed',
+                bodyKind: 'no_response',
+                ...scoreContext,
             });
             toast.error('Something went wrong. Please try again.');
             setStatus('idle');

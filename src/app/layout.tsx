@@ -5,9 +5,18 @@ import { clerkGlobalAppearance } from '@/lib/clerkAppearance'
 import { fontVariables } from './fonts'
 import './globals.css'
 
+
+/*
+ * This is the tagline that does the most work — it is what a search result, a
+ * shared link and a browser tab show, long before anyone reads the hero. It was
+ * still describing the product as an "AI-tailored resume builder with ATS
+ * scoring and live preview", which is both the pre-Career-OS positioning and a
+ * sentence any competitor could publish verbatim. It now matches the hero.
+ */
 export const metadata = {
-  title: 'Patronus',
-  description: 'AI-tailored resume builder with ATS scoring and live preview.',
+  title: 'Patronus — more interviews from work you’ve already done',
+  description:
+    'Your resume, assembled from work you logged and confirmed — nothing to write from scratch, nothing invented. See what a real posting makes of it: free, 60 seconds, no signup.',
 }
 
 export default function RootLayout({

@@ -85,8 +85,8 @@ export function Hero() {
                 */}
                 <Reveal delay={80}>
                     <h1 className={cn(marketingType.hero, 'mk-float mx-auto mt-8 max-w-4xl')}>
-                        A resume you can defend,{' '}
-                        <span className="text-primary">line by line.</span>
+                        More interviews from work{' '}
+                        <span className="text-primary">you’ve already done.</span>
                     </h1>
                 </Reveal>
 
