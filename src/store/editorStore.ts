@@ -8,8 +8,12 @@ export type EditorPanelId =
   | 'projects'
   | 'education'
   | 'skills'
+  | 'design'
   | 'section-order'
+  | 'job-match'
   | 'score-improve'
+  | 'fix-checklist'
+  | 'truthfulness'
   | 'latex'
   | 'settings';
 
@@ -26,8 +30,11 @@ function normalizeActivePanel(panel: unknown): EditorPanelId {
     'projects',
     'education',
     'skills',
+    'design',
     'section-order',
     'score-improve',
+    'fix-checklist',
+    'truthfulness',
     'latex',
     'settings',
   ];

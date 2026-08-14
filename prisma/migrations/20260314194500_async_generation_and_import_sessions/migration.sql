@@ -1,19 +1,27 @@
--- AlterEnum
-CREATE TYPE "ResumeImportStatus" AS ENUM ('pending', 'processing', 'ready', 'completed', 'failed');
+DO $$
+BEGIN
+    CREATE TYPE "ResumeImportStatus" AS ENUM ('pending', 'processing', 'ready', 'completed', 'failed');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
--- AlterEnum
-CREATE TYPE "ResumeImportStep" AS ENUM ('upload_received', 'pdf_text_extract', 'pdf_link_extract', 'ai_parse', 'ready', 'failed');
+DO $$
+BEGIN
+    CREATE TYPE "ResumeImportStep" AS ENUM ('upload_received', 'pdf_text_extract', 'pdf_link_extract', 'ai_parse', 'ready', 'failed');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable
 ALTER TABLE "GenerationSession"
-ADD COLUMN "workflowRunId" TEXT,
-ADD COLUMN "stepStartedAt" TIMESTAMP(3),
-ADD COLUMN "lastNotifiedState" TEXT,
-ADD COLUMN "fallbackResume" JSONB,
-ADD COLUMN "retryCount" INTEGER NOT NULL DEFAULT 0;
+ADD COLUMN IF NOT EXISTS "workflowRunId" TEXT,
+ADD COLUMN IF NOT EXISTS "stepStartedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "lastNotifiedState" TEXT,
+ADD COLUMN IF NOT EXISTS "fallbackResume" JSONB,
+ADD COLUMN IF NOT EXISTS "retryCount" INTEGER NOT NULL DEFAULT 0;
 
 -- CreateTable
-CREATE TABLE "ResumeImportSession" (
+CREATE TABLE IF NOT EXISTS "ResumeImportSession" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "status" "ResumeImportStatus" NOT NULL DEFAULT 'pending',
@@ -34,7 +42,7 @@ CREATE TABLE "ResumeImportSession" (
 );
 
 -- CreateTable
-CREATE TABLE "TelegramUpdateReceipt" (
+CREATE TABLE IF NOT EXISTS "TelegramUpdateReceipt" (
     "id" TEXT NOT NULL,
     "updateId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -43,10 +51,10 @@ CREATE TABLE "TelegramUpdateReceipt" (
 );
 
 -- CreateIndex
-CREATE INDEX "ResumeImportSession_userId_updatedAt_idx" ON "ResumeImportSession"("userId", "updatedAt");
+CREATE INDEX IF NOT EXISTS "ResumeImportSession_userId_updatedAt_idx" ON "ResumeImportSession"("userId", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "ResumeImportSession_status_updatedAt_idx" ON "ResumeImportSession"("status", "updatedAt");
+CREATE INDEX IF NOT EXISTS "ResumeImportSession_status_updatedAt_idx" ON "ResumeImportSession"("status", "updatedAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TelegramUpdateReceipt_updateId_key" ON "TelegramUpdateReceipt"("updateId");
+CREATE UNIQUE INDEX IF NOT EXISTS "TelegramUpdateReceipt_updateId_key" ON "TelegramUpdateReceipt"("updateId");

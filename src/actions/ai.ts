@@ -1,6 +1,7 @@
 'use server';
 
 import { z } from 'zod';
+import { LATEX_BUILD_URL, getLatexFetch } from '@/lib/latexClient';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
@@ -522,7 +523,7 @@ export async function compileLatex(
     const userId = await requireAuth(tracking?.userId);
     const start = Date.now();
     try {
-        const response = await fetch('https://latex.ytotech.com/builds/sync', {
+        const response = await getLatexFetch()(LATEX_BUILD_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

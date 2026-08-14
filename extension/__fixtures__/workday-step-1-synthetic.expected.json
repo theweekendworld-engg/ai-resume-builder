@@ -1,0 +1,25 @@
+{
+  "_synthetic": true,
+  "_note": "Replace this fixture with a real sanitized capture from a Workday first-step page. Capture the inner iframe document if the form is iframed. See README.md.",
+  "url": "https://example.wd5.myworkdayjobs.com/External/job/Remote/Senior-Platform-Engineer_R-1234/apply/applyManually",
+  "platform": "workday",
+  "pageKind": "multi_step_application",
+  "jobDescription": {
+    "present": true,
+    "minTextLength": 150,
+    "mustContainKeywords": ["responsibilities"]
+  },
+  "metadata": {
+    "roleTitleContains": "Platform Engineer"
+  },
+  "fields": {
+    "minCount": 5,
+    "maxCount": 25,
+    "_note_on_keys": "Current detector treats 'Legal first/last name' as full_name due to rule ordering ('legal name' matches full_name first). When the real Workday capture lands, tune this list to the actual labels captured.",
+    "semanticKeysPresent": ["email", "full_name"],
+    "highConfidenceSemanticKeys": ["email"]
+  },
+  "questions": {
+    "minCount": 0
+  }
+}

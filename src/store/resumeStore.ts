@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType } from '@/types/resume';
+import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
 import { LatexTemplateType, generateLatexFromResume, DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
 import { latexToResume } from '@/actions/ai';
+import type { ScoreFix } from '@/lib/anonScoreSchema';
 
 export interface ATSScore {
     overall: number;
@@ -21,6 +22,15 @@ export interface ATSScore {
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'error';
 
 export type CopilotSectionKey = 'summary' | 'experience' | 'projects' | 'skills';
+
+/**
+ * A fix carried over from the Phase 1 anonymous score, plus local resolution
+ * state so the editor checklist can check items off as they are addressed.
+ */
+export interface FixChecklistItem extends ScoreFix {
+    id: string;
+    resolved: boolean;
+}
 
 export interface SectionDiff {
     before: string;
@@ -53,6 +63,7 @@ interface ResumeState {
     atsScore: ATSScore | null;
     editorMode: 'visual' | 'latex';
     selectedTemplate: LatexTemplateType;
+    theme: ResumeTheme;
     isGenerating: boolean;
 
     // Sync tracking - tracks if visual/latex are out of sync
@@ -67,6 +78,9 @@ interface ResumeState {
     copilotProposal: CopilotProposal | null;
     copilotOpen: boolean;
 
+    // Fix checklist (carried from the Phase 1 anonymous score)
+    fixChecklist: FixChecklistItem[];
+
     // Setters
     setResumeData: (data: ResumeData) => void;
     setJobDescription: (description: string) => void;
@@ -75,6 +89,9 @@ interface ResumeState {
     setAtsScore: (score: ATSScore | null) => void;
     setEditorMode: (mode: 'visual' | 'latex') => void;
     setSelectedTemplate: (template: LatexTemplateType) => void;
+    setTheme: (theme: ResumeTheme) => void;
+    updateTheme: (patch: Partial<ResumeTheme>) => void;
+    setTemplateId: (templateId: ResumeTemplateId) => void;
     setIsGenerating: (generating: boolean) => void;
 
     // Sync helpers
@@ -96,6 +113,11 @@ interface ResumeState {
     applyCopilotSection: (section: CopilotSectionKey) => void;
     applyCopilotAll: () => void;
     clearCopilotSession: () => void;
+
+    // Fix checklist actions
+    setFixChecklist: (fixes: ScoreFix[]) => void;
+    toggleFixResolved: (id: string, resolved?: boolean) => void;
+    clearFixChecklist: () => void;
 
     generateLatexFromData: () => void;
     updatePersonalInfo: (info: Partial<ResumeData['personalInfo']>) => void;
@@ -150,6 +172,7 @@ export const useResumeStore = create<ResumeState>()(
             atsScore: null,
             editorMode: 'visual',
             selectedTemplate: 'ats-simple' as LatexTemplateType,
+            theme: DEFAULT_RESUME_THEME,
             isGenerating: false,
 
             // Sync tracking
@@ -165,6 +188,9 @@ export const useResumeStore = create<ResumeState>()(
             // Copilot state
             copilotProposal: null,
             copilotOpen: false,
+
+            // Fix checklist
+            fixChecklist: [],
 
             setResumeData: (data) => {
                 const { visualDataVersion } = get();
@@ -189,7 +215,20 @@ export const useResumeStore = create<ResumeState>()(
             },
             setAtsScore: (score) => set({ atsScore: score }),
             setEditorMode: (mode) => set({ editorMode: mode }),
-            setSelectedTemplate: (template) => set({ selectedTemplate: template }),
+            setSelectedTemplate: (template) => {
+                const { theme } = get();
+                set({ selectedTemplate: template, theme: { ...theme, templateId: template } });
+            },
+            setTheme: (theme) => set({ theme, selectedTemplate: theme.templateId }),
+            updateTheme: (patch) => {
+                const { theme } = get();
+                const next = { ...theme, ...patch };
+                set({ theme: next, selectedTemplate: next.templateId });
+            },
+            setTemplateId: (templateId) => {
+                const { theme } = get();
+                set({ theme: { ...theme, templateId }, selectedTemplate: templateId });
+            },
             setIsGenerating: (generating) => set({ isGenerating: generating }),
 
             // Sync helpers
@@ -206,8 +245,8 @@ export const useResumeStore = create<ResumeState>()(
                 return latexVersion > 0;
             },
             syncVisualToLatex: () => {
-                const { resumeData, selectedTemplate } = get();
-                const latex = generateLatexFromResume(resumeData, selectedTemplate);
+                const { resumeData, theme } = get();
+                const latex = generateLatexFromResume(resumeData, theme);
                 set({ latexCode: latex, lastSyncedLatex: latex, latexVersion: 0, visualDataVersion: 0 });
             },
             syncLatexToVisual: async () => {
@@ -323,14 +362,34 @@ export const useResumeStore = create<ResumeState>()(
                 });
             },
 
-            clearCopilotSession: () => set({ 
+            clearCopilotSession: () => set({
                 copilotProposal: null,
                 copilotOpen: false,
             }),
 
+            // Fix checklist actions
+            setFixChecklist: (fixes) => set({
+                fixChecklist: fixes.map((fix, index) => ({
+                    ...fix,
+                    id: `fix-${index}-${uuidv4()}`,
+                    resolved: false,
+                })),
+            }),
+            toggleFixResolved: (id, resolved) => {
+                const { fixChecklist } = get();
+                set({
+                    fixChecklist: fixChecklist.map((item) =>
+                        item.id === id
+                            ? { ...item, resolved: resolved ?? !item.resolved }
+                            : item
+                    ),
+                });
+            },
+            clearFixChecklist: () => set({ fixChecklist: [] }),
+
             generateLatexFromData: () => {
-                const { resumeData, selectedTemplate } = get();
-                const latex = generateLatexFromResume(resumeData, selectedTemplate);
+                const { resumeData, theme } = get();
+                const latex = generateLatexFromResume(resumeData, theme);
                 set({ latexCode: latex, lastSyncedLatex: latex, latexVersion: 0, visualDataVersion: 0 });
             },
 
@@ -532,10 +591,12 @@ export const useResumeStore = create<ResumeState>()(
                 latexCode: state.latexCode,
                 editorMode: state.editorMode,
                 selectedTemplate: state.selectedTemplate,
+                theme: state.theme,
                 isGenerating: state.isGenerating,
                 lastSyncedLatex: state.lastSyncedLatex,
                 visualDataVersion: state.visualDataVersion,
                 latexVersion: state.latexVersion,
+                fixChecklist: state.fixChecklist,
             }),
             merge: (persistedState: unknown, currentState) => {
                 const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;
@@ -555,11 +616,22 @@ export const useResumeStore = create<ResumeState>()(
                     if (!hydratedState.selectedTemplate) {
                         hydratedState.selectedTemplate = 'ats-simple';
                     }
+                    // Backfill the theme for users persisted before themes existed.
+                    if (!hydratedState.theme) {
+                        hydratedState.theme = {
+                            ...DEFAULT_RESUME_THEME,
+                            templateId: hydratedState.selectedTemplate || 'ats-simple',
+                        };
+                    } else {
+                        hydratedState.theme = { ...DEFAULT_RESUME_THEME, ...hydratedState.theme };
+                        // Keep the legacy mirror consistent with the persisted theme.
+                        hydratedState.selectedTemplate = hydratedState.theme.templateId;
+                    }
                     // Generate latex if empty
                     if (!hydratedState.latexCode) {
                         hydratedState.latexCode = generateLatexFromResume(
                             hydratedState.resumeData,
-                            hydratedState.selectedTemplate || 'ats-simple'
+                            hydratedState.theme
                         );
                     }
                     // Initialize sync tracking

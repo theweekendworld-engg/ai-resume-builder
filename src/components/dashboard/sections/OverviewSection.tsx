@@ -26,6 +26,7 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
   const totalPdfs = overview.totalPdfs ?? 0;
   const monthGens = overview.monthGenerations ?? 0;
   const projectCount = overview.projectCount ?? 0;
+  const totalApplications = overview.totalApplications ?? 0;
 
   return (
     <div className="space-y-6">
@@ -34,7 +35,7 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
         <p className="text-muted-foreground">Here’s a quick snapshot of your dashboard.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Resumes</CardDescription>
@@ -59,24 +60,28 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
             <CardTitle className="text-2xl">{projectCount}</CardTitle>
           </CardHeader>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Applications</CardDescription>
+            <CardTitle className="text-2xl">{totalApplications}</CardTitle>
+          </CardHeader>
+        </Card>
       </div>
 
       {usageStats.success && usageStats.stats && (
         <>
           <h2 className="text-lg font-semibold">Usage this period</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Tokens used</CardDescription>
-                <CardTitle className="text-2xl">{usageStats.stats.totalTokens.toLocaleString()}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Cost (USD)</CardDescription>
-                <CardTitle className="text-2xl">${usageStats.stats.totalCostUsd.toFixed(2)}</CardTitle>
-              </CardHeader>
-            </Card>
+            {/*
+              A dollar figure and a raw token count were here.
+              Removed: neither is a fact about the user, they are facts about
+              our supplier bill. A customer on a $5 plan does not benefit from
+              learning their resume cost us 23 cents — it invites the question
+              of why the plan is $5, and it exposes a number that moves when we
+              change model. What they need is what the plan promised: how many
+              resumes are left. Cost stays in /admin, where a decision is made
+              from it.
+            */}
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Generations completed</CardDescription>

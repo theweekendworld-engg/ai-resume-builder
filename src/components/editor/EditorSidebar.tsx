@@ -10,11 +10,15 @@ import {
   GraduationCap,
   PanelLeft,
   Target,
+  ClipboardCheck,
   User,
   Wrench,
   Brain,
   Settings,
   TrendingUp,
+  Palette,
+  ListChecks,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface EditorSidebarProps {
@@ -36,8 +40,17 @@ const contentItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[
   { id: 'skills', label: 'Skills', icon: <Code className="h-4 w-4" /> },
 ];
 
+const designItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+  { id: 'design', label: 'Design & Template', icon: <Palette className="h-4 w-4" /> },
+];
+
 const optimizeItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
+  // First in the section on purpose: "does this answer the job?" is the
+  // question someone opens the editor with.
+  { id: 'job-match', label: 'Job Match', icon: <ClipboardCheck className="h-4 w-4" /> },
   { id: 'score-improve', label: 'Review & Improve', icon: <TrendingUp className="h-4 w-4" /> },
+  { id: 'fix-checklist', label: 'Fix Checklist', icon: <ListChecks className="h-4 w-4" /> },
+  { id: 'truthfulness', label: 'Truthfulness', icon: <ShieldCheck className="h-4 w-4" /> },
 ];
 
 const utilityItems: { id: EditorPanelId; label: string; icon: React.ReactNode }[] = [
@@ -92,6 +105,7 @@ export function EditorSidebar({ activePanel, onSelect, collapsed, onToggleCollap
       <div className="space-y-4 overflow-auto pb-2">
         <NavSection title="Setup" items={setupItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Content" items={contentItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
+        <NavSection title="Design" items={designItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Optimize" items={optimizeItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
         <NavSection title="Utility" items={utilityItems} activePanel={activePanel} onSelect={onSelect} collapsed={collapsed} />
       </div>

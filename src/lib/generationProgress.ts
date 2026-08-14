@@ -1,15 +1,34 @@
 import { PipelineStep } from '@prisma/client';
 
+/**
+ * What the user is told is happening, during a two-to-four minute wait.
+ *
+ * "60-90 second" was measured against v1. The 8 Aug audit clocked three live
+ * v2 runs at 200s, 231s and 138s — the labels were rewritten to stop lying
+ * about the WORK and kept a duration that was off by 2-3x, which is its own
+ * small lie and the one a waiting user can check.
+ *
+ * These described v1's plumbing — "Parsing job requirements", "Rewriting
+ * bullets for impact", "Scoring ATS compatibility". v2 does different work
+ * under the same `PipelineStep` values, and two of those labels were by then
+ * simply untrue: nothing paraphrases in bulk any more, and the score is
+ * requirement coverage rather than ATS keyword overlap.
+ *
+ * They now name the interesting step rather than the mechanical one. The
+ * selection pass in particular is the thing worth waiting for, and telling
+ * someone their evidence is being weighed against the posting is both accurate
+ * and more reassuring than "paraphrasing".
+ */
 const STEP_LABELS: Record<PipelineStep, string> = {
-  reuse_check: 'Checking reusable drafts',
-  jd_parsing: 'Parsing job requirements',
-  semantic_search: 'Finding relevant projects and experience',
-  static_data_load: 'Loading your profile context',
+  reuse_check: 'Checking for a resume you already have',
+  jd_parsing: 'Reading what this employer asks for',
+  semantic_search: 'Finding your most relevant work',
+  static_data_load: 'Loading your history',
   awaiting_clarification: 'Waiting for clarification',
-  paraphrasing: 'Rewriting bullets for impact',
-  resume_assembly: 'Assembling your baseline resume',
-  claim_validation: 'Validating claims',
-  ats_scoring: 'Scoring ATS compatibility',
+  paraphrasing: 'Choosing what earns space, and writing it',
+  resume_assembly: 'Assembling the document',
+  claim_validation: 'Checking every claim against your history',
+  ats_scoring: 'Measuring it against the posting',
   pdf_generation: 'Generating export-ready PDF',
   completed: 'Resume ready',
 };
@@ -69,7 +88,10 @@ export function getGenerationDetailLines(params: {
   }
 
   if ((params.step === PipelineStep.ats_scoring || params.step === PipelineStep.completed) && typeof params.atsScore === 'number') {
-    lines.push(`Current ATS estimate: ${params.atsScore}%.`);
+    // Not an ATS estimate. It is the share of the posting's stated
+    // requirements this resume answers — the one term the rebuild's own
+    // documentation says it abandoned, still being printed to the user.
+    lines.push(`Answering ${params.atsScore}% of what this posting asks for.`);
   }
 
   if (params.step === PipelineStep.pdf_generation) {

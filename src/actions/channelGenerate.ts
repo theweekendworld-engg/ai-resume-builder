@@ -4,6 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { parseJobDescription } from '@/actions/generateResume';
+import { gateMeteredAction, isEntitlementError } from '@/lib/entitlements';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
@@ -28,10 +29,31 @@ const ChannelGenerateSchema = z.object({
   sourceResumeId: z.string().cuid().optional(),
   channel: z.nativeEnum(Channel),
   externalId: z.string().min(1).max(255).optional(),
-  message: z.string().min(1).max(50000),
+  message: z.string().max(50000).optional(),
   fallbackResumeData: z.unknown().optional(),
   maxQuestions: z.number().int().min(1).max(5).default(3),
-});
+  /**
+   * Move past a clarification question without answering it.
+   *
+   * `message` is `min(1)`, so before this the only way out of a question was
+   * to type something — and the thing a person types when they have nothing
+   * to say is a guess. On a product whose one promise is that nothing on the
+   * resume is invented, forcing a text box is not a small UX wrinkle: it is
+   * the product asking to be lied to.
+   *
+   * `skipAll` skips the remaining questions in one go, for someone who wants
+   * the draft now and will fix it in the editor.
+   */
+  skip: z.boolean().optional(),
+  skipAll: z.boolean().optional(),
+})
+  // A message is still required for everything that is not a skip — the
+  // opening request carries the job description, and answering a question
+  // carries the answer.
+  .refine((value) => Boolean(value.message?.trim()) || value.skip === true || value.skipAll === true, {
+    message: 'message is required unless the question is being skipped',
+    path: ['message'],
+  });
 
 export type ChannelGenerateResponse = {
   success: boolean;
@@ -123,8 +145,20 @@ function buildClarificationContext(payload: ClarificationPayload): string {
   return `\n\nCandidate clarifications (verified user input):\n${lines.join('\n')}`;
 }
 
+/**
+ * The next question that has not been PUT TO the user yet.
+ *
+ * Keyed on presence rather than on the answer being non-empty. A skip records
+ * an empty string, which means "asked, declined" — and the previous
+ * truthiness check treated that as still-unanswered, so a skipped question
+ * would have been handed straight back and the wizard would have looped on it
+ * forever.
+ *
+ * `buildClarificationContext` drops empty answers when it assembles the
+ * model's context, so a declined question still contributes nothing.
+ */
 function getNextUnansweredQuestion(payload: ClarificationPayload): ClarificationQuestion | undefined {
-  return payload.questions.find((question) => !payload.answers[question.id]?.trim());
+  return payload.questions.find((question) => payload.answers[question.id] === undefined);
 }
 
 async function buildGenerationContextText(params: {
@@ -237,6 +271,16 @@ async function startNewSession(params: {
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
 }): Promise<ChannelGenerateResponse> {
+  // Entitlement gate: one tailored-generation unit per initiated generation.
+  try {
+    await gateMeteredAction(params.userId, 'tailored_generation');
+  } catch (error: unknown) {
+    if (isEntitlementError(error)) {
+      return { success: false, error: error.message };
+    }
+    throw error;
+  }
+
   const [parsedJD, context] = await Promise.all([
     parseJobDescription({
       jobDescription: params.message,
@@ -309,8 +353,10 @@ async function continueSession(params: {
   userId: string;
   sessionId: string;
   channel: Channel;
-  message: string;
+  message?: string;
   fallbackResumeData?: ResumeData;
+  skip?: boolean;
+  skipAll?: boolean;
 }): Promise<ChannelGenerateResponse> {
   const session = await prisma.generationSession.findFirst({
     where: {
@@ -366,11 +412,23 @@ async function continueSession(params: {
     return { success: false, error: 'Clarification state is invalid for this session' };
   }
 
+  /*
+   * A skipped question is recorded as an EMPTY answer, not left unanswered.
+   *
+   * `getNextUnansweredQuestion` walks for the first question with no entry, so
+   * leaving the key absent would hand the same question back forever.
+   * `buildClarificationContext` already drops empty answers when it assembles
+   * the model's context, so an empty string means exactly what it should:
+   * asked, declined, contributes nothing.
+   */
+  const skipped = params.skip === true || params.skipAll === true;
   const mergedPayload: ClarificationPayload = {
     ...payload,
     answers: {
       ...payload.answers,
-      [nextQuestion.id]: params.message.trim(),
+      ...(params.skipAll
+        ? Object.fromEntries(payload.questions.map((question) => [question.id, '']))
+        : { [nextQuestion.id]: skipped ? '' : (params.message ?? '').trim() }),
     },
   };
 
@@ -456,6 +514,8 @@ export async function processChannelGenerate(input: unknown): Promise<ChannelGen
       channel: parsed.data.channel,
       sessionId: parsed.data.sessionId,
       message: parsed.data.message,
+      skip: parsed.data.skip,
+      skipAll: parsed.data.skipAll,
       fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
     });
   }
@@ -463,7 +523,9 @@ export async function processChannelGenerate(input: unknown): Promise<ChannelGen
   return startNewSession({
     userId,
     channel: parsed.data.channel,
-    message: parsed.data.message,
+    // Guaranteed by the schema refine: only a skip may omit it, and a skip
+    // requires an existing session.
+    message: parsed.data.message ?? '',
     sourceResumeId: parsed.data.sourceResumeId,
     fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
     maxQuestions: parsed.data.maxQuestions,

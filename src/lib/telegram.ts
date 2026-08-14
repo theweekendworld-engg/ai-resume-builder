@@ -26,6 +26,31 @@ function getTelegramBotToken(): string {
   return token;
 }
 
+/**
+ * Test seam. This module owns no client object — it calls `fetch` directly — so
+ * the seam is the transport itself.
+ *
+ * It exists so that tests can exercise THIS module for real (body construction,
+ * `parse_mode`, the throw-vs-return-false split between `sendTelegramMessage`
+ * and `editTelegramMessageText`, the multipart document upload) rather than
+ * replacing it wholesale with `mock.module`, which skips all of that.
+ *
+ * Production behaviour is unchanged: the default delegates to global `fetch`.
+ */
+type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+const realFetch: FetchLike = (input, init) => globalThis.fetch(input, init);
+let fetchImpl: FetchLike = realFetch;
+
+export const __testing = {
+  setFetch(impl: FetchLike | null) {
+    fetchImpl = impl ?? realFetch;
+  },
+  reset() {
+    fetchImpl = realFetch;
+  },
+};
+
 function buildTelegramApiUrl(method: string): string {
   return `https://api.telegram.org/bot${getTelegramBotToken()}/${method}`;
 }
@@ -49,7 +74,7 @@ export async function sendTelegramMessage(input: SendMessageInput): Promise<void
     body.reply_markup = input.replyMarkup;
   }
 
-  const response = await fetch(buildTelegramApiUrl('sendMessage'), {
+  const response = await fetchImpl(buildTelegramApiUrl('sendMessage'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -61,6 +86,51 @@ export async function sendTelegramMessage(input: SendMessageInput): Promise<void
     const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid telegram response';
     console.error('Telegram sendMessage failed:', { status: response.status, json, detail });
     throw new Error(`Telegram send failed: ${detail}`);
+  }
+}
+
+type EditMessageInput = {
+  chatId: string | number;
+  messageId: number;
+  text: string;
+  replyMarkup?: TelegramReplyMarkup;
+};
+
+/**
+ * Rewrite a message that is already in the chat. The weekly digest confirms in
+ * place with this (PRD 01 §5.2) — a second message per tap would turn a
+ * five-item digest into eleven notifications.
+ *
+ * Never throws: an edit failing is cosmetic, and by the time it is called the
+ * Win has already been written. `message is not modified` in particular is a
+ * normal response to a double tap, not an error.
+ */
+export async function editTelegramMessageText(input: EditMessageInput): Promise<boolean> {
+  const body: Record<string, unknown> = {
+    chat_id: input.chatId,
+    message_id: input.messageId,
+    text: input.text,
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+  };
+  if (input.replyMarkup) body.reply_markup = input.replyMarkup;
+
+  try {
+    const response = await fetchImpl(buildTelegramApiUrl('editMessageText'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await response.json().catch(() => ({}));
+    const parsed = TelegramSendResponseSchema.safeParse(json);
+    if (!response.ok || !parsed.success || !parsed.data.ok) {
+      console.warn('Telegram editMessageText failed:', { status: response.status, json });
+      return false;
+    }
+    return true;
+  } catch (error: unknown) {
+    console.warn('Telegram editMessageText threw:', error);
+    return false;
   }
 }
 
@@ -94,7 +164,7 @@ export async function sendTelegramDocument(input: SendDocumentInput): Promise<vo
     form.append('document', blob, input.fileName);
   }
 
-  const response = await fetch(buildTelegramApiUrl('sendDocument'), {
+  const response = await fetchImpl(buildTelegramApiUrl('sendDocument'), {
     method: 'POST',
     body: form,
   });
@@ -108,7 +178,7 @@ export async function sendTelegramDocument(input: SendDocumentInput): Promise<vo
 }
 
 export async function answerTelegramCallbackQuery(callbackQueryId: string): Promise<void> {
-  await fetch(buildTelegramApiUrl('answerCallbackQuery'), {
+  await fetchImpl(buildTelegramApiUrl('answerCallbackQuery'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -131,7 +201,7 @@ export async function setTelegramWebhook(webhookUrl: string): Promise<{ ok: bool
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
   if (secret) body.secret_token = secret;
 
-  const response = await fetch(buildTelegramApiUrl('setWebhook'), {
+  const response = await fetchImpl(buildTelegramApiUrl('setWebhook'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -150,7 +220,7 @@ export async function deleteTelegramWebhook(): Promise<{ ok: boolean; error?: st
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
 
-  const response = await fetch(buildTelegramApiUrl('deleteWebhook'), {
+  const response = await fetchImpl(buildTelegramApiUrl('deleteWebhook'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
@@ -176,7 +246,7 @@ export async function setTelegramBotCommands(): Promise<{ ok: boolean; error?: s
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
   if (!token) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not set' };
 
-  const response = await fetch(buildTelegramApiUrl('setMyCommands'), {
+  const response = await fetchImpl(buildTelegramApiUrl('setMyCommands'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ commands: BOT_COMMANDS }),

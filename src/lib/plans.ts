@@ -1,0 +1,809 @@
+import type { Tier } from '@prisma/client';
+
+/*
+ * `Tier` is imported as a TYPE only, and the tables below are keyed by string
+ * literal. That is deliberate: this module is reachable from client components
+ * (the plan page, the paywalls), and a value import of `@prisma/client` would
+ * drag the Prisma runtime into the browser bundle. Prisma generates `Tier` as a
+ * string union, so `Record<Tier, T>` still gives full exhaustiveness checking.
+ */
+
+/**
+ * The plan catalog (PRD 06 §3).
+ *
+ * This module is the ONLY place a plan name, a price, a quota, or a plan-gated
+ * capability is written down. Two rules follow from that, and both are graded:
+ *
+ *   1. **No raw `Tier` enum in the UI** (CLAUDE.md rule 4). `'always_on'`
+ *      displays as "Career", `'pro'` as "Search". Everything user-visible
+ *      goes through {@link planName} / {@link PLAN_CATALOG}.
+ *   2. **No numeric limit literal at a call site** (PRD 06 §9). `3 free
+ *      generations`, `90 days of history`, `1 source` — all of it resolves
+ *      here, and all of it is env-overridable so we can tune without a deploy.
+ *
+ * We deliberately do NOT migrate the `Tier` enum: it is a column on a live
+ * billing table, and renaming it buys nothing that a display map doesn't.
+ *
+ * Import direction: `plans.ts` knows nothing about the database. `entitlements.ts`
+ * imports this; never the reverse.
+ */
+
+// ---------------------------------------------------------------------------
+// Prices
+// ---------------------------------------------------------------------------
+
+/**
+ * Annual billing was retired when pricing moved to $5 Career + $2 Search,
+ * monthly only. `career_annual` is intentionally absent: subscriptions bought
+ * on the old annual Stripe price still exist, so resolvers must return null
+ * for it rather than pretend it is current.
+ */
+export type PriceKey = 'career_monthly' | 'search_monthly';
+
+export type BillingInterval = 'month' | 'year';
+
+export interface PlanPrice {
+  key: PriceKey;
+  interval: BillingInterval;
+  /**
+   * Display amount in cents — the source of truth for what the UI SAYS, and
+   * nothing more.
+   *
+   * What a customer is actually CHARGED comes from the Stripe Price object
+   * behind {@link PlanPrice.envVar}: checkout passes `line_items: [{ price }]`
+   * and Stripe bills whatever that object says. The two are independent, so
+   * editing this number alone changes the label on the pricing page and leaves
+   * the charge untouched — a customer would read $30 and be billed the old
+   * amount.
+   *
+   * Changing a price therefore takes both halves: a NEW Stripe Price object
+   * (they are immutable, so amounts cannot be edited in place), the env var
+   * repointed at its id, and this figure updated to match.
+   */
+  amountCents: number;
+  /** "$5/month" — precomputed so no call site does currency maths. */
+  label: string;
+  /** "billed annually" */
+  cadence: string;
+  /** Env var carrying the Stripe price id. Ids are deploy config, not code. */
+  envVar: string;
+  /** Marks the price we steer people to. */
+  recommended?: boolean;
+}
+
+/**
+ * Which subscription "slot" a price belongs to. Search is a *separate* Stripe
+ * subscription rather than a second line item (PRD 06 §5.2) — simpler
+ * proration, independent cancellation, and it matches the mental model of
+ * turning Search off without touching Career.
+ */
+export type SubscriptionSlot = 'career' | 'search';
+
+export const SUBSCRIPTION_SLOTS: readonly SubscriptionSlot[] = ['career', 'search'] as const;
+
+export function slotForPriceKey(key: PriceKey): SubscriptionSlot {
+  return key === 'search_monthly' ? 'search' : 'career';
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+export interface PlanDefinition {
+  tier: Tier;
+  /** The user-facing product name. Never the enum value. */
+  name: string;
+  /** Positioning line, PRD 06 §2.1. */
+  blurb: string;
+  /** Ordering for "effective tier = max order across active subscriptions". */
+  order: number;
+  /** Who this is for, in one clause. Used on the change-plan surface. */
+  audience: string;
+  prices: readonly PlanPrice[];
+  /** Whether a user can buy this today. Teams is R3. */
+  purchasable: boolean;
+  slot: SubscriptionSlot | null;
+}
+
+export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
+  free: {
+    tier: 'free',
+    name: 'Free',
+    blurb: 'Keep a record',
+    order: 0,
+    audience: 'Anyone starting a work log',
+    prices: [],
+    purchasable: false,
+    slot: null,
+  },
+  always_on: {
+    tier: 'always_on',
+    name: 'Career',
+    blurb: 'Stay ready',
+    order: 1,
+    audience: 'For people with a job and a review coming',
+    prices: [
+      {
+        key: 'career_monthly',
+        interval: 'month',
+        amountCents: 500,
+        label: '$5/month',
+        cadence: 'billed monthly, cancel any time',
+        envVar: 'STRIPE_PRICE_CAREER_MONTHLY',
+        recommended: true,
+      },
+    ],
+    purchasable: true,
+    slot: 'career',
+  },
+  pro: {
+    tier: 'pro',
+    name: 'Search',
+    blurb: 'Run the hunt',
+    order: 2,
+    audience: 'For people actively looking, for as long as that lasts',
+    prices: [
+      {
+        key: 'search_monthly',
+        interval: 'month',
+        amountCents: 200,
+        label: '$2/month',
+        cadence: 'billed monthly, cancel any time',
+        envVar: 'STRIPE_PRICE_SEARCH_MONTHLY',
+      },
+    ],
+    purchasable: true,
+    slot: 'search',
+  },
+  team: {
+    tier: 'team',
+    name: 'Teams',
+    blurb: 'For coaches',
+    order: 3,
+    audience: 'Coaches and career services',
+    prices: [],
+    purchasable: false,
+    slot: null,
+  },
+};
+
+/**
+ * Named handles on the catalog.
+ *
+ * UI code must reach plans through these rather than `PLAN_CATALOG.pro`:
+ * the CI grep gate bans `Tier.<value>` anywhere under `src/components` and
+ * `src/app`, and it is right to — a component that indexes by enum is one
+ * refactor away from rendering it.
+ */
+export const FREE_PLAN = PLAN_CATALOG.free;
+export const CAREER_PLAN = PLAN_CATALOG.always_on;
+export const SEARCH_PLAN = PLAN_CATALOG.pro;
+export const TEAMS_PLAN = PLAN_CATALOG.team;
+
+/** The three plans a user compares, in order. */
+export const COMPARISON_PLANS = [FREE_PLAN, CAREER_PLAN, SEARCH_PLAN] as const;
+
+/** Every price in the catalog, keyed. */
+export const PRICES: Record<PriceKey, PlanPrice> = Object.values(PLAN_CATALOG).reduce(
+  (acc, plan) => {
+    for (const price of plan.prices) acc[price.key] = price;
+    return acc;
+  },
+  {} as Record<PriceKey, PlanPrice>
+);
+
+export function isPriceKey(value: string): value is PriceKey {
+  return value in PRICES;
+}
+
+export function priceFor(key: PriceKey): PlanPrice {
+  return PRICES[key];
+}
+
+export function tierForPriceKey(key: PriceKey): Tier {
+  return key === 'search_monthly' ? 'pro' : 'always_on';
+}
+
+/**
+ * Env vars from the pre-packaging sprint. Read as a fallback so an environment
+ * configured before the rename keeps billing people correctly.
+ */
+const LEGACY_PRICE_ENV: Partial<Record<PriceKey, string>> = {
+  career_monthly: 'STRIPE_PRICE_ALWAYS_ON',
+  search_monthly: 'STRIPE_PRICE_PRO_MONTHLY',
+};
+
+/**
+ * Resolve the configured Stripe price id. **Server only** — price ids live in
+ * non-public env vars, so a client component calling this gets `undefined`.
+ * Display values come from the catalog, never from Stripe.
+ */
+export function stripePriceId(key: PriceKey): string | undefined {
+  const value = process.env[PRICES[key].envVar];
+  if (value && value.length > 0) return value;
+  const legacyVar = LEGACY_PRICE_ENV[key];
+  const legacy = legacyVar ? process.env[legacyVar] : undefined;
+  return legacy && legacy.length > 0 ? legacy : undefined;
+}
+
+/** Reverse lookup: a Stripe price id back to the catalog entry. */
+export function priceKeyForStripeId(priceId: string | null | undefined): PriceKey | null {
+  if (!priceId) return null;
+  for (const key of Object.keys(PRICES) as PriceKey[]) {
+    if (stripePriceId(key) === priceId) return key;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Display helpers — the only sanctioned way to render a plan
+// ---------------------------------------------------------------------------
+
+export function planName(tier: Tier): string {
+  return PLAN_CATALOG[tier].name;
+}
+
+export function planBlurb(tier: Tier): string {
+  return PLAN_CATALOG[tier].blurb;
+}
+
+export function planOrder(tier: Tier): number {
+  return PLAN_CATALOG[tier].order;
+}
+
+/** Effective tier across several active subscriptions (PRD 06 §5.2, §8). */
+export function maxTier(tiers: readonly Tier[]): Tier {
+  return tiers.reduce<Tier>(
+    (best, tier) => (planOrder(tier) > planOrder(best) ? tier : best),
+    'free'
+  );
+}
+
+export function isAtLeast(tier: Tier, required: Tier): boolean {
+  return planOrder(tier) >= planOrder(required);
+}
+
+/** `3000` → `"$30"`, `1550` → `"$15.50"`. */
+export function formatUsd(amountCents: number): string {
+  const dollars = amountCents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+/** The headline price for a tier, or null for Free/Teams. */
+export function headlinePrice(tier: Tier): PlanPrice | null {
+  const prices = PLAN_CATALOG[tier].prices;
+  if (prices.length === 0) return null;
+  return prices.find((p) => p.recommended) ?? prices[0];
+}
+
+// ---------------------------------------------------------------------------
+// Non-metered plan attributes (PRD 06 §3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Capabilities that are on/off rather than counted. These never touch
+ * `UsageQuota`: a flat table means `hasFeature` costs zero queries once the
+ * tier is known.
+ */
+export type PlanFeature =
+  | 'log_history_unlimited'
+  | 'month_in_review'
+  | 'rubric_mapping'
+  | 'radar_full'
+  | 'one_on_one_prep'
+  | 'apply_orchestration'
+  | 'interview_prep'
+  | 'negotiation_mission'
+  | 'ats_auto_fix';
+
+export const PLAN_FEATURES: Record<Tier, Record<PlanFeature, boolean>> = {
+  free: {
+    log_history_unlimited: false,
+    month_in_review: false,
+    rubric_mapping: false,
+    radar_full: false,
+    one_on_one_prep: false,
+    apply_orchestration: false,
+    interview_prep: false,
+    negotiation_mission: false,
+    ats_auto_fix: false,
+  },
+  always_on: {
+    log_history_unlimited: true,
+    month_in_review: true,
+    rubric_mapping: true,
+    radar_full: true,
+    one_on_one_prep: true,
+    apply_orchestration: false,
+    interview_prep: false,
+    negotiation_mission: false,
+    ats_auto_fix: false,
+  },
+  // Search *includes* Career (PRD 06 §2.1). Everything true above stays true.
+  pro: {
+    log_history_unlimited: true,
+    month_in_review: true,
+    rubric_mapping: true,
+    radar_full: true,
+    one_on_one_prep: true,
+    apply_orchestration: true,
+    interview_prep: true,
+    negotiation_mission: true,
+    ats_auto_fix: true,
+  },
+  team: {
+    log_history_unlimited: true,
+    month_in_review: true,
+    rubric_mapping: true,
+    radar_full: true,
+    one_on_one_prep: true,
+    apply_orchestration: true,
+    interview_prep: true,
+    negotiation_mission: true,
+    ats_auto_fix: true,
+  },
+};
+
+/** Human label for a capability, for paywall and comparison copy. */
+export const PLAN_FEATURE_LABELS: Record<PlanFeature, string> = {
+  log_history_unlimited: 'Unlimited log history',
+  month_in_review: 'Month in Review',
+  rubric_mapping: 'Rubric mapping and readiness',
+  radar_full: 'Career Radar',
+  one_on_one_prep: '1:1 prep',
+  apply_orchestration: 'Multi-step apply orchestration',
+  interview_prep: 'Interview prep',
+  negotiation_mission: 'Negotiation mission',
+  ats_auto_fix: 'ATS auto-fix',
+};
+
+/** Every tier, cheapest first. The order the upsell ladder is climbed in. */
+const TIERS_BY_ORDER: readonly Tier[] = (Object.keys(PLAN_CATALOG) as Tier[]).sort(
+  (a, b) => planOrder(a) - planOrder(b)
+);
+
+/** The lowest tier that includes a capability — what a paywall should offer. */
+export function tierRequiredFor(feature: PlanFeature): Tier {
+  return TIERS_BY_ORDER.find((tier) => PLAN_FEATURES[tier][feature]) ?? 'pro';
+}
+
+// ---------------------------------------------------------------------------
+// Numeric plan attributes (PRD 06 §3.4)
+// ---------------------------------------------------------------------------
+
+export const UNLIMITED = Number.POSITIVE_INFINITY;
+
+export function isUnlimited(limit: number): boolean {
+  return !Number.isFinite(limit);
+}
+
+/** Env override for any numeric plan attribute. Invalid values are ignored. */
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  if (raw === 'unlimited') return UNLIMITED;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+const SOURCE_LIMITS: Record<Tier, number> = {
+  free: 1,
+  always_on: 3,
+  pro: 3,
+  team: 3,
+};
+
+const LOG_HISTORY_DAYS: Record<Tier, number> = {
+  free: 90,
+  always_on: UNLIMITED,
+  pro: UNLIMITED,
+  team: UNLIMITED,
+};
+
+const MASTER_RESUME_LIMITS: Record<Tier, number> = {
+  free: 1,
+  always_on: 3,
+  pro: UNLIMITED,
+  team: UNLIMITED,
+};
+
+/** Connected capture sources allowed on a tier (PRD 06 §2.1, PW7). */
+export function sourceLimit(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_SOURCE_LIMIT_${tier.toUpperCase()}`, SOURCE_LIMITS[tier]);
+}
+
+/**
+ * Days of log history *visible* on a tier. Older Wins are hidden, never
+ * deleted (CLAUDE.md invariant, PRD 06 §5.4).
+ */
+export function logHistoryDays(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_LOG_HISTORY_DAYS_${tier.toUpperCase()}`, LOG_HISTORY_DAYS[tier]);
+}
+
+export function masterResumeLimit(tier: Tier): number {
+  return envNumber(
+    `ENTITLEMENT_MASTER_RESUME_LIMIT_${tier.toUpperCase()}`,
+    MASTER_RESUME_LIMITS[tier]
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Metered actions (PRD 06 §3.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Actions counted against a quota. Capture is deliberately absent and must
+ * stay absent: gating capture would starve the context graph, which is the
+ * asset (PRD 06 §2.3).
+ */
+export const METERED_ACTIONS = [
+  'tailored_generation',
+  'auto_apply',
+  'context_interview',
+  'tier2_grounding',
+  'win_draft',
+  'month_in_review',
+  'review_packet',
+  'rubric_upload',
+  'radar_refresh',
+  'cover_letter',
+] as const;
+
+export type MeteredAction = (typeof METERED_ACTIONS)[number];
+
+export function isMeteredAction(value: string): value is MeteredAction {
+  return (METERED_ACTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * `period` counts against the current billing month. `lifetime` counts once,
+ * ever — the Free brag doc is one lifetime packet, which a monthly quota
+ * cannot express (PRD 03 §8).
+ */
+export type QuotaScope = 'period' | 'lifetime';
+
+export interface MeteredLimit {
+  limit: number;
+  scope: QuotaScope;
+  /**
+   * A taste, not an allowance.
+   *
+   * The difference matters in two places. `tierRequiredForAction` skips trial
+   * tiers, so "the cheapest plan that has this" still names Career rather than
+   * Free — otherwise a paywall would tell someone the feature they just ran out
+   * of is included on the plan they are already on. And an exhausted trial
+   * reads as an upsell rather than as an emptied bucket, because that is what
+   * it is.
+   */
+  trial?: boolean;
+}
+
+/* ── What a free account gets ───────────────────────────────────────────────
+ *
+ * Everything, a few times, and then it stops.
+ *
+ * The previous shape gave Free a hard zero on most of the product, which is
+ * the cheapest possible way to lose someone: they never see the thing they
+ * would have paid for. A metered feature that costs us tokens can be tried a
+ * few times for a few cents and sells itself far better than a locked screen.
+ *
+ * Every number here is env-overridable, and so is every per-tier limit —
+ * `ENTITLEMENT_LIMIT_<TIER>_<ACTION>`, e.g.
+ * `ENTITLEMENT_LIMIT_FREE_TAILORED_GENERATION=15`. Nothing below needs a
+ * deploy to change.
+ */
+
+/** Free uses of a metered feature before it gates. `ENTITLEMENT_FREE_TRIAL_USES` */
+export function freeTrialUses(): number {
+  return envNumber('ENTITLEMENT_FREE_TRIAL_USES', 3);
+}
+
+/**
+ * Total tailored resumes on Free, ever.
+ *
+ * Lifetime rather than monthly: resume tailoring is the thing people came for,
+ * and three a month forever is a worse deal for us AND a weaker prompt to
+ * upgrade than ten now. Someone who has made ten tailored resumes is in a job
+ * search, which is exactly when Search is worth $2.
+ *
+ * `ENTITLEMENT_FREE_RESUME_LIFETIME_CAP`
+ */
+export function freeResumeCap(): number {
+  return envNumber('ENTITLEMENT_FREE_RESUME_LIFETIME_CAP', 10);
+}
+
+/**
+ * Days of full depth on the view-only gates — the whole Radar rather than the
+ * teaser, the full rubric readiness rather than the locked verdict.
+ *
+ * A count is the wrong unit for those: they are screens, and a page refresh
+ * would burn a use. A window is the honest equivalent of "a few free uses" for
+ * something you look at rather than run.
+ *
+ * `ENTITLEMENT_FREE_TRIAL_DAYS`
+ */
+export function freeTrialDays(): number {
+  return envNumber('ENTITLEMENT_FREE_TRIAL_DAYS', 14);
+}
+
+/**
+ * Monthly token ceiling per tier. An abuse and cost backstop, not a product
+ * limit — a user should hit their feature quota long before this.
+ *
+ * Free is sized off the resume cap: a tailored generation costs roughly
+ * 25-30k tokens end to end, so ten of them plus scoring and parsing fits
+ * inside 400k with room to spare.
+ *
+ * `ENTITLEMENT_TOKENS_<TIER>`, e.g. `ENTITLEMENT_TOKENS_FREE=500000`.
+ * `unlimited` is accepted as a value.
+ */
+const TOKEN_BUDGET_DEFAULTS: Record<Tier, number> = {
+  free: 400_000,
+  always_on: 2_000_000,
+  pro: 6_000_000,
+  team: UNLIMITED,
+};
+
+export function tokenBudget(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_TOKENS_${tier.toUpperCase()}`, TOKEN_BUDGET_DEFAULTS[tier]);
+}
+
+/** Monthly spend ceiling per tier, USD. `ENTITLEMENT_COST_USD_<TIER>` */
+const COST_BUDGET_DEFAULTS: Record<Tier, number> = {
+  free: 2,
+  always_on: 10,
+  pro: 30,
+  team: UNLIMITED,
+};
+
+export function costBudgetUsd(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_COST_USD_${tier.toUpperCase()}`, COST_BUDGET_DEFAULTS[tier]);
+}
+
+/** Noun phrase for the meter: "4 of 15 tailored resumes this period". */
+export const METERED_ACTION_LABELS: Record<MeteredAction, string> = {
+  tailored_generation: 'Tailored resumes',
+  auto_apply: 'Automated applications',
+  context_interview: 'Context interviews',
+  tier2_grounding: 'Deep truthfulness checks',
+  win_draft: 'AI-structured wins',
+  month_in_review: 'Month in Review',
+  review_packet: 'Review packets',
+  rubric_upload: 'Rubric uploads',
+  radar_refresh: 'On-demand Radar refreshes',
+  cover_letter: 'Cover letters and outreach',
+};
+
+const PERIOD: QuotaScope = 'period';
+
+function period(limit: number): MeteredLimit {
+  return { limit, scope: PERIOD };
+}
+
+function lifetime(limit: number): MeteredLimit {
+  return { limit, scope: 'lifetime' };
+}
+
+/** A lifetime taste of a paid feature. See {@link MeteredLimit.trial}. */
+function trial(limit: number): MeteredLimit {
+  return { limit, scope: 'lifetime', trial: true };
+}
+
+const unlimited: MeteredLimit = { limit: UNLIMITED, scope: PERIOD };
+
+/**
+ * Per-tier, per-action limits. `UNLIMITED` means the action is not metered for
+ * that tier (no `UsageQuota` row is ever written). `0` means the action is not
+ * on that tier at all, which is an upsell rather than an exhausted quota.
+ */
+const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
+  /*
+   * Free is a trial of the whole product, not a crippled subset.
+   *
+   * Everything metered is available a few times and then gates. The only
+   * `period(0)` left would be an action we have decided Free should never
+   * touch, and there is currently no such action — a feature nobody can reach
+   * is a feature nobody buys.
+   *
+   * These are FUNCTIONS rather than constants because the env override is read
+   * per call, so changing a limit takes an env var and a restart rather than a
+   * deploy. See `freeTrialUses`, `freeResumeCap`.
+   */
+  get free(): Record<MeteredAction, MeteredLimit> {
+    const uses = freeTrialUses();
+    return {
+      // The one the whole funnel points at, so it gets its own number.
+      tailored_generation: { limit: freeResumeCap(), scope: 'lifetime', trial: true },
+
+      // ── Built, and therefore worth trying ────────────────────────────────
+      //
+      // PRD 07 §6 gave backfill one lifetime run, on the grounds that it is
+      // the strongest demo the product has and a user who rebuilds one job
+      // wants to rebuild the other three. Which is the argument for more
+      // than one.
+      context_interview: trial(uses),
+      month_in_review: trial(uses),
+      review_packet: trial(uses),
+      rubric_upload: trial(uses),
+
+      // An abuse ceiling, not a product limit: drafting is part of the capture
+      // loop we refuse to gate. Not a trial — it never becomes an upsell.
+      win_draft: period(30),
+
+      // ── Not built ────────────────────────────────────────────────────────
+      //
+      // A trial of a feature that does not exist is not generous, it is noise:
+      // it can never be consumed, and it would make `tierRequiredForAction`
+      // treat Free as a tier that offers the thing. These stay at zero until
+      // there is something to try. See `NO_FEATURE_YET` in
+      // `src/lib/entitlementWiring.test.ts`, which is the same list.
+      auto_apply: period(0),
+      tier2_grounding: period(0),
+      radar_refresh: period(0),
+      cover_letter: period(0),
+    };
+  },
+  always_on: {
+    tailored_generation: period(15),
+    auto_apply: period(0),
+    context_interview: period(4),
+    tier2_grounding: unlimited,
+    win_draft: unlimited,
+    month_in_review: unlimited,
+    review_packet: period(4),
+    rubric_upload: period(3),
+    radar_refresh: period(1),
+    cover_letter: period(3),
+  },
+  pro: {
+    tailored_generation: unlimited,
+    auto_apply: unlimited,
+    context_interview: unlimited,
+    tier2_grounding: unlimited,
+    win_draft: unlimited,
+    month_in_review: unlimited,
+    review_packet: period(4),
+    rubric_upload: period(3),
+    radar_refresh: unlimited,
+    cover_letter: unlimited,
+  },
+  team: {
+    tailored_generation: unlimited,
+    auto_apply: unlimited,
+    context_interview: unlimited,
+    tier2_grounding: unlimited,
+    win_draft: unlimited,
+    month_in_review: unlimited,
+    review_packet: unlimited,
+    rubric_upload: unlimited,
+    radar_refresh: unlimited,
+    cover_letter: unlimited,
+  },
+};
+
+/**
+ * Legacy env overrides that shipped before the generic scheme. Kept so an
+ * already-deployed value keeps working; new limits use
+ * `ENTITLEMENT_LIMIT_<TIER>_<ACTION>`.
+ */
+const LEGACY_LIMIT_ENV: Partial<Record<Tier, Partial<Record<MeteredAction, string>>>> = {
+  free: {
+    tailored_generation: 'ENTITLEMENT_FREE_TAILORED_PER_MONTH',
+    win_draft: 'ENTITLEMENT_FREE_WIN_DRAFTS_PER_MONTH',
+  },
+  always_on: {
+    tailored_generation: 'ENTITLEMENT_ALWAYS_ON_TAILORED_PER_MONTH',
+  },
+};
+
+/**
+ * The limit for a tier/action pair, after env overrides.
+ *
+ * Every limit is tunable without a deploy — that is the whole point of routing
+ * them through one function.
+ */
+export function meteredLimit(tier: Tier, action: MeteredAction): MeteredLimit {
+  const base = PLAN_METERED_LIMITS[tier][action];
+  const legacyVar = LEGACY_LIMIT_ENV[tier]?.[action];
+  const legacy = legacyVar ? envNumber(legacyVar, base.limit) : base.limit;
+  const limit = envNumber(`ENTITLEMENT_LIMIT_${tier.toUpperCase()}_${action.toUpperCase()}`, legacy);
+  // `trial` must survive the override — an operator raising the free
+  // allowance is changing how MUCH of a taste it is, not turning it into the
+  // plan's permanent entitlement.
+  return limit === base.limit ? base : { ...base, limit };
+}
+
+/**
+ * The lowest tier on which an action is a real allowance rather than a taste.
+ *
+ * A trial does not count. Free now has a few of everything, so without this
+ * skip the paywall shown to an out-of-quota free user would say "that's part
+ * of Free" — naming the plan they are already on as the fix.
+ */
+export function tierRequiredForAction(action: MeteredAction): Tier {
+  const real = TIERS_BY_ORDER.find((tier) => {
+    const limit = meteredLimit(tier, action);
+    return limit.limit > 0 && !limit.trial;
+  });
+  return real ?? 'pro';
+}
+
+/** Is this tier's access to this action a trial rather than an allowance? */
+export function isTrialLimit(tier: Tier, action: MeteredAction): boolean {
+  return meteredLimit(tier, action).trial === true;
+}
+
+// ---------------------------------------------------------------------------
+// Comparison table (the change-plan surface)
+// ---------------------------------------------------------------------------
+
+export interface PlanComparisonRow {
+  label: string;
+  /** One cell per plan in {@link COMPARISON_PLANS} order: Free, Career, Search. */
+  values: readonly [string, string, string];
+  /**
+   * Does this capability exist in the product today?
+   *
+   * The marketing page already knew not to advertise the unbuilt rows and
+   * curated its own list to avoid them. The authenticated change-plan screen
+   * rendered this table unfiltered — so the judgement was applied to a
+   * logged-out visitor and withheld from the customer at the moment they
+   * choose a plan, which is exactly backwards. `built: false` keeps the row
+   * here as the packaging record and keeps it off every surface that sells.
+   */
+  built?: boolean;
+}
+
+/** The comparison rows a customer may be shown. Never the unbuilt ones. */
+export function builtComparisonRows(
+  rows: readonly PlanComparisonRow[] = PLAN_COMPARISON
+): readonly PlanComparisonRow[] {
+  return rows.filter((row) => row.built !== false);
+}
+
+/**
+ * PRD 06 §2.1, rendered. Strings rather than booleans because half the cells
+ * are quantities and a tick would lose the number that matters.
+ */
+export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
+  { label: 'Work log capture', values: ['Included', 'Included', 'Included'] },
+  { label: 'Log history', values: ['90 days visible', 'Unlimited', 'Unlimited'] },
+  { label: 'Connected sources', values: ['1', '3', '3'] },
+  { label: 'Weekly digest', values: ['Included', 'Included', 'Included'] },
+  { label: 'Month in Review', values: ['3 free', 'Included', 'Included'] },
+  { label: 'Review packets', values: ['3 free', '4 per period', '4 per period'] },
+  { label: 'Rubric mapping and readiness', values: ['14-day trial', 'Included', 'Included'] },
+  // `one_on_one_prep` exists in PLAN_FEATURES and nowhere else — no action,
+  // no route, no service.
+  { label: '1:1 prep', values: ['—', 'Included', 'Included'], built: false },
+  { label: 'Career Radar', values: ['14-day trial', 'Included', 'Included, on demand'] },
+  { label: 'Master resumes', values: ['1', '3', 'Unlimited'] },
+  { label: 'Tailored generations', values: ['10 total', '15 per month', 'Unlimited'] },
+  // Auto-fix does not exist. `ats_auto_fix` is a flag in the feature table
+  // with no implementation behind it, so the Search cell claimed a capability
+  // no plan can deliver.
+  { label: 'ATS score and fix', values: ['Score only', 'Score and fix', 'Score and fix'] },
+  { label: 'Extension fit-score and autofill', values: ['Included', 'Included', 'Included'] },
+  { label: 'Multi-step apply orchestration', values: ['—', '—', 'Included'], built: false },
+  // The extension recognises a cover-letter QUESTION and answers it from the
+  // library. There is no cover-letter generator, which is what this row sells.
+  { label: 'Cover letters and outreach', values: ['—', '3 per month', 'Unlimited'], built: false },
+  { label: 'Interview prep', values: ['—', '—', 'Included'], built: false },
+  { label: 'Negotiation mission', values: ['—', '—', 'Included'], built: false },
+  { label: 'Full export', values: ['Included', 'Included', 'Included'] },
+  { label: 'Support', values: ['Docs', 'Email, 2 business days', 'Email, 1 business day'] },
+];
+
+/**
+ * What stays free forever (PRD 06 §2.3). Rendered verbatim on the pricing and
+ * cancel surfaces, because it is the sentence that makes leaving safe.
+ */
+export const FREE_FOREVER_PROMISE =
+  'Logging is free forever. We charge for what we do with it.';
+
+/**
+ * The retention promise. Shown on every downgrade and cancel surface — and it
+ * has to be true, which is why there is an integration test on it.
+ */
+export const NO_DELETION_PROMISE =
+  'Nothing is deleted. Wins older than 90 days are hidden on Free and come back the moment you resubscribe.';

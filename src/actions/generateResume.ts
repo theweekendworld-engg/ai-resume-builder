@@ -8,6 +8,9 @@ import { calculateATSScore } from '@/actions/ai';
 import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
+import { tailorViaLoop } from '@/lib/resume/assembleAdapter';
+import type { TailorResult } from '@/lib/resume/tailor.types';
+import type { CoverageReport } from '@/lib/resume/coverage';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { trackedChatCompletion } from '@/lib/usageTracker';
@@ -31,6 +34,7 @@ import {
   improveResumeForLowAts as improveResumeForLowAtsService,
 } from '@/services/atsScorer';
 import { buildBaseResume as buildBaseResumeService } from '@/services/resumeAssembler';
+import { resolveLengthConstraints } from '@/lib/resume/length';
 
 const SENIORITY_LEVELS = ['junior', 'mid', 'senior', 'staff', 'principal', 'lead', 'manager'] as const;
 
@@ -152,7 +156,7 @@ const SemanticClaimValidationSchema = z.object({
 });
 
 const SmartGenerateOptionsSchema = z.object({
-  templatePreference: z.enum(['ats-simple', 'modern', 'classic']).optional(),
+  templatePreference: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).optional(),
   maxProjects: z.number().int().min(1).max(6).optional(),
   focusAreas: z.array(z.string().max(100)).max(20).optional(),
   fallbackResumeData: ResumeDataSchema.optional(),
@@ -219,6 +223,23 @@ type SmartResumeResult = {
   sources: SourceMap;
   atsEstimate: number;
   validation: ClaimValidation;
+  /** v2 only. Which of the posting's requirements the resume answers. */
+  coverage?: CoverageReport;
+  /** v2 only. Plain sentences naming what is missing. */
+  advice?: string[];
+  /** v2 only. Wanted by the posting, unevidenced, therefore left off. */
+  skillGaps?: string[];
+  /** v2 only. Lines that did not make the page, offered back as swaps. */
+  droppedBullets?: TailorResult['dropped'];
+  /**
+   * v2 only. How v2 read the posting.
+   *
+   * Carried separately from `artifacts.parsedJD` because the two disagree, and
+   * v2's is the one a human should see: v1's role for the Stripe posting was
+   * "Senior Backend Engineer Payments Infrastructure" — the headline with its
+   * punctuation stripped — which then showed up as the gap report's title.
+   */
+  brief?: TailorResult['brief'];
 };
 
 type SmartResumePipelineArtifacts = {
@@ -311,7 +332,25 @@ function buildExperienceDescription(item: { description: string; highlights: unk
   if (!baseDescription) return cleanedHighlights.join('\n');
   if (cleanedHighlights.length === 0) return baseDescription;
 
-  return `${baseDescription}\n${cleanedHighlights.join('\n')}`.trim();
+  // Highlights win, and the description is dropped rather than prepended.
+  //
+  // These two fields are not peers. `description` is the role summary a user
+  // writes first ("Worked on secure in-browser Python execution and
+  // cost-optimized remote execution infrastructure"); `highlights` are the
+  // specifics underneath it ("Hosted remote execution services on GCP Cloud
+  // Run... reduce infrastructure costs by 70%"). Concatenating both fed the
+  // summary into selection as a peer of the lines it summarises, so a real
+  // resume came back with the same claim twice per role — once vague, once
+  // precise — spending two of fourteen scarce lines saying one thing.
+  //
+  // This looked like a model failing to deduplicate. It was not: every bullet
+  // was faithful to a real source line. The redundancy was manufactured here,
+  // before any model saw the text.
+  //
+  // When specifics exist they strictly dominate the summary, so the summary is
+  // not a bullet. It is not lost either — `defaultSummary` and the generated
+  // resume summary are where role-level framing belongs.
+  return cleanedHighlights.join('\n');
 }
 
 function parseYearsExperience(raw: string): number {
@@ -319,17 +358,6 @@ function parseYearsExperience(raw: string): number {
   return match ? Number(match[0]) : 0;
 }
 
-function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'auto', yearsExperience: number) {
-  const resolved = targetLength === 'auto'
-    ? (yearsExperience >= 5 ? '2-page' : '1-page')
-    : targetLength;
-
-  if (resolved === '1-page') {
-    return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 3, maxSkills: 15 };
-  }
-
-  return { maxExperiences: MAX_EXPERIENCES_PER_RESUME, maxProjects: 4, maxSkills: 20 };
-}
 
 export async function parseJobDescription(params: {
   jobDescription: string;
@@ -773,6 +801,159 @@ export async function generateSmartResumePipeline(
     });
   }
 
+  // ── Resume generation v2 (src/lib/resume) ─────────────────────────────────
+  //
+  // Replaces the paraphrase → assemble → validate → ATS-improve block below
+  // with the sequence a person actually works in: read the posting as discrete
+  // requirements, score every BULLET against them, decide what earns space,
+  // write the survivors, gate skills on evidence, then score by what the
+  // document answers rather than by keyword overlap.
+  //
+  // The v1 block is kept underneath as a fallback. It is the path the 7 Aug
+  // audit caught fabricating a skills section and dropping the candidate's two
+  // strongest lines, so falling back to it is a degradation — but a degradation
+  // beats a failed generation, and `RESUME_V2_ENABLED=false` is the switch if
+  // v2 ever misbehaves in production.
+  if (config.resumeV2.enabled) {
+    try {
+      const tailored = await tailorViaLoop({
+        jobDescription: trimmedJobDescription,
+        profile: {
+          fullName: profile?.fullName || fallback.personalInfo.fullName,
+          title: profile?.defaultTitle || fallback.personalInfo.title,
+          email: profile?.email || fallback.personalInfo.email,
+          phone: profile?.phone || fallback.personalInfo.phone,
+          location: profile?.location || fallback.personalInfo.location,
+          website: profile?.website || fallback.personalInfo.website,
+          linkedin: profile?.linkedin || fallback.personalInfo.linkedin,
+          github: profile?.github || fallback.personalInfo.github,
+          summary: baseSummary,
+        },
+        experiences: selectedExperiences,
+        projects: selectedProjects,
+        education,
+        candidateSkills: uniqueStrings([
+          ...selectedProjects.flatMap((project) => project.technologies ?? []),
+          ...fallback.skills,
+        ]),
+        sectionOrder: preferences.defaultSectionOrder,
+        caps: {
+          // From the length preference, not a literal. Hardcoding 4 here meant
+          // a candidate who asked for two pages still lost their fifth bullet
+          // on every role — and then read a gap report blaming the cap.
+          maxBulletsPerRole: lengthConstraints.maxBulletsPerRole,
+          maxRoles: lengthConstraints.maxExperiences,
+          maxSkills: lengthConstraints.maxSkills,
+        },
+        userId,
+        sessionId,
+      });
+
+      await onStepComplete?.('paraphrasing', {
+        paraphrasedContent: {
+          summary: tailored.resume.personalInfo.summary,
+          experience: tailored.resume.experience.map((item) => ({
+            id: item.id,
+            description: item.description,
+          })),
+          projects: tailored.resume.projects.map((item) => ({
+            id: item.id,
+            description: item.description,
+          })),
+          skills: tailored.resume.skills,
+        },
+      });
+      await onStepStart?.('resume_assembly');
+      await onStepComplete?.('resume_assembly', { draftResume: tailored.resume });
+
+      // The grounding check still runs. v2 gates skills at construction and
+      // guards every figure at the point of writing, but this is the check the
+      // three thesis tests assert on and it must not quietly disappear.
+      await onStepStart?.('claim_validation');
+      const v2Sources = [
+        ...sourceExperiences.map((entry) => ({ id: `experience:${entry.id}`, text: entry.description })),
+        ...rankedProjects.map(({ project }) => ({ id: `project:${project.id}`, text: getProjectText(project) })),
+        ...rankedKnowledge.map(({ item }) => ({ id: `knowledge:${item.id}`, text: getKnowledgeText(item) })),
+      ];
+      const v2Validation = validateClaimsService(tailored.resume, v2Sources);
+      await onStepComplete?.('claim_validation', {
+        validationResult: v2Validation,
+        draftResume: tailored.resume,
+      });
+
+      // Requirement coverage replaces the keyword score. Null means the posting
+      // yielded no requirements to score against — fall back to the
+      // deterministic estimate rather than reporting a confident 0.
+      await onStepStart?.('ats_scoring');
+      const v2Score = tailored.coverage.score ?? computeAtsEstimateService(tailored.resume, parsedJD);
+      await onStepComplete?.('ats_scoring', {
+        atsScore: v2Score,
+        validationResult: v2Validation,
+        draftResume: tailored.resume,
+        coverage: tailored.coverage,
+        advice: tailored.advice,
+      });
+
+      return {
+        resume: tailored.resume,
+        sources: {
+          projects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+          knowledgeItems: rankedKnowledge.map((entry) => ({ id: entry.item.id, score: Number(entry.score.toFixed(4)) })),
+          parsedJD,
+        },
+        atsEstimate: v2Score,
+        validation: v2Validation,
+        coverage: tailored.coverage,
+        advice: tailored.advice,
+        skillGaps: tailored.skillGaps,
+        droppedBullets: tailored.dropped,
+        brief: tailored.brief,
+        artifacts: {
+          parsedJD,
+          matchedProjects: rankedProjects.map((entry) => ({ id: entry.project.id, score: Number(entry.score.toFixed(4)) })),
+          matchedAchievements: rankedKnowledge.map((entry) => ({
+            id: entry.item.id,
+            score: Number(entry.score.toFixed(4)),
+            type: entry.item.type,
+          })),
+          staticData: {
+            profile: profile
+              ? {
+                fullName: profile.fullName,
+                email: profile.email,
+                phone: profile.phone,
+                location: profile.location,
+                website: profile.website,
+                linkedin: profile.linkedin,
+                github: profile.github,
+                defaultTitle: profile.defaultTitle,
+                defaultSummary: profile.defaultSummary,
+              }
+              : null,
+            experiences: sourceExperiences,
+            education,
+          },
+          paraphrasedContent: {
+            summary: tailored.resume.personalInfo.summary,
+            experience: tailored.resume.experience.map((item) => ({ id: item.id, description: item.description })),
+            projects: tailored.resume.projects.map((item) => ({ id: item.id, description: item.description })),
+            skills: tailored.resume.skills,
+          },
+          draftResume: tailored.resume,
+          validationResult: v2Validation,
+        },
+      };
+    } catch (error: unknown) {
+      // Loud, because a silent fallback to the path with known defects is
+      // exactly the kind of quiet degradation this codebase has been bitten by.
+      console.error('[resume] v2 failed; falling back to v1', {
+        userId,
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   await onStepStart?.('paraphrasing');
   const paraphrased = await paraphraseStaticDataService({
     parsedJD,
@@ -909,13 +1090,23 @@ export async function generateSmartResumePipeline(
       });
 
       if (thinSections.includes('summary')) {
+        // The skills clause is omitted rather than left empty. With no skills
+        // extracted this produced "hands-on experience in  and a track record"
+        // — a visible double space and a dangling preposition, on the first
+        // line of a document going to an employer. Found by J6.
+        const role = parsedJD.role || improved.personalInfo.title || 'professional';
+        const topSkills = improved.skills.slice(0, 4).filter(Boolean);
+        const fallbackSummary = topSkills.length > 0
+          ? `Results-focused ${role} with hands-on experience in ${topSkills.join(', ')} and a track record of delivering measurable outcomes.`
+          : `Results-focused ${role} with a track record of delivering measurable outcomes.`;
+
         improved = {
           ...improved,
           personalInfo: {
             ...improved.personalInfo,
             summary: improved.personalInfo.summary.trim().length >= 80
               ? improved.personalInfo.summary
-              : `Results-focused ${parsedJD.role || improved.personalInfo.title || 'professional'} with hands-on experience in ${improved.skills.slice(0, 4).join(', ')} and a track record of delivering measurable outcomes.`,
+              : fallbackSummary,
           },
         };
       }

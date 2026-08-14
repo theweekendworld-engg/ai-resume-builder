@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { config } from '@/lib/config';
 import { processTelegramUpdate, TelegramUpdateSchema } from '@/services/telegramAgent';
 import { answerTelegramCallbackQuery, verifyTelegramWebhookSecret } from '@/lib/telegram';
+import { handleDigestCallback } from '@/lib/jobs/handlers/weeklyDigest';
+
+/**
+ * Digest inline-keyboard taps (PRD 01 §5.2).
+ *
+ * Parsed separately from `TelegramUpdateSchema` because editing the message in
+ * place needs `message_id`, which the shared schema does not carry, and that
+ * schema belongs to the Telegram agent. Digest callbacks are answered and
+ * returned here — they never reach `processTelegramUpdate`.
+ */
+const DigestCallbackSchema = z.object({
+  callback_query: z.object({
+    id: z.string(),
+    data: z.string(),
+    message: z
+      .object({
+        message_id: z.number().optional(),
+        chat: z.object({ id: z.union([z.string(), z.number()]) }),
+      })
+      .optional(),
+  }),
+});
 
 function getInternalProcessSecret(): string {
   return process.env.TELEGRAM_INTERNAL_SECRET?.trim()
@@ -39,6 +62,25 @@ export async function POST(req: NextRequest) {
     const secret = req.headers.get('x-telegram-bot-api-secret-token');
     if (!verifyTelegramWebhookSecret(secret)) {
       return NextResponse.json({ ok: false }, { status: 401 });
+    }
+
+    // Digest routing first: it owns the `d:` callback namespace and must not
+    // fall through to the resume agent's callback handling.
+    const digestCallback = DigestCallbackSchema.safeParse(body);
+    if (digestCallback.success && digestCallback.data.callback_query.data.startsWith('d:')) {
+      const { id, data, message } = digestCallback.data.callback_query;
+      const chatId = message?.chat.id;
+      if (chatId !== undefined) {
+        const result = await handleDigestCallback({
+          data,
+          chatId: String(chatId),
+          messageId: message?.message_id,
+        });
+        if (result.handled) {
+          await answerTelegramCallbackQuery(id);
+          return NextResponse.json({ ok: true, digest: result.outcome });
+        }
+      }
     }
 
     const payload = TelegramUpdateSchema.safeParse(body);

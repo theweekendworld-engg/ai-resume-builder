@@ -130,7 +130,9 @@ export function GlobalGenerationBanner() {
         : 'View progress';
 
   return (
-    <div className={`border-b px-4 py-3 ${bannerTone}`}>
+    // Never printed: a live status banner on a PDF going to a manager reads
+    // as a rendering artefact. See the print block in globals.css.
+    <div data-print-hide className={`border-b px-4 py-3 ${bannerTone}`}>
       <div className="mx-auto flex max-w-6xl items-start gap-3">
         <div className="mt-0.5 shrink-0">
           {status === 'completed' ? (

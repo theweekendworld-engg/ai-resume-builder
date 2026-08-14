@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LineReviser } from '@/components/editor/LineReviser';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Trash2, Plus, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { AIRewriteModal } from './AIRewriteModal';
+import { InlineBulletSuggestions } from './InlineBulletSuggestions';
 import { suggestSectionSkillHints } from '@/actions/copilot';
 import { useEffect, useState } from 'react';
 import type { ExperienceItem } from '@/types/resume';
@@ -258,6 +260,47 @@ export function ExperienceEditor() {
                                         placeholder="• Achieved X by doing Y, resulting in Z..."
                                         className="min-h-[180px] resize-y"
                                     />
+
+                                    {/*
+                                      One reviser per line. The Copilot button
+                                      above still rewrites the whole
+                                      description; this is for the far more
+                                      common case of one line being not quite
+                                      right, and it leaves every other line
+                                      untouched.
+                                    */}
+                                    {item.description
+                                        .split('\n')
+                                        .map((raw) => raw.trim())
+                                        .filter(Boolean)
+                                        .map((bullet) => (
+                                            <LineReviser
+                                                key={bullet}
+                                                roleId={item.id}
+                                                line={bullet}
+                                                onAccept={(next) =>
+                                                    updateExperience(item.id, {
+                                                        // Replace this line in place. Splitting and
+                                                        // rejoining rather than a string replace so a
+                                                        // line that is a substring of another cannot
+                                                        // corrupt its neighbour.
+                                                        description: item.description
+                                                            .split('\n')
+                                                            .map((entry) =>
+                                                                entry.trim() === bullet ? next : entry,
+                                                            )
+                                                            .join('\n'),
+                                                    })
+                                                }
+                                            />
+                                        ))}
+                                    {item.description.trim() && (
+                                        <InlineBulletSuggestions
+                                            description={item.description}
+                                            onChange={(next) => updateExperience(item.id, { description: next })}
+                                            type="bullet"
+                                        />
+                                    )}
                                 </div>
                             </div>
                         )}

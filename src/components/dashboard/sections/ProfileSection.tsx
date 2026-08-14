@@ -72,6 +72,12 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
     includeOSS: prefs.includeOSS,
     tonePreference: prefs.tonePreference,
     autoGenerate: prefs.autoGenerate,
+    workAuthorization: prefs.workAuthorization,
+    requiresSponsorship: prefs.requiresSponsorship,
+    willingToRelocate: prefs.willingToRelocate,
+    preferredWorkModes: prefs.preferredWorkModes.join(', '),
+    desiredCompensation: prefs.desiredCompensation,
+    noticePeriod: prefs.noticePeriod,
   });
 
   const [experiences, setExperiences] = useState<Array<{
@@ -118,6 +124,12 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
         includeOSS: p.includeOSS,
         tonePreference: p.tonePreference,
         autoGenerate: p.autoGenerate,
+        workAuthorization: p.workAuthorization,
+        requiresSponsorship: p.requiresSponsorship,
+        willingToRelocate: p.willingToRelocate,
+        preferredWorkModes: p.preferredWorkModes.join(', '),
+        desiredCompensation: p.desiredCompensation,
+        noticePeriod: p.noticePeriod,
       });
     }, 0);
     return () => {
@@ -170,6 +182,12 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
         includeOSS: preferences.includeOSS,
         tonePreference: preferences.tonePreference,
         autoGenerate: preferences.autoGenerate,
+        workAuthorization: preferences.workAuthorization,
+        requiresSponsorship: preferences.requiresSponsorship,
+        willingToRelocate: preferences.willingToRelocate,
+        preferredWorkModes: preferences.preferredWorkModes.split(/[\s,]+/).filter(Boolean),
+        desiredCompensation: preferences.desiredCompensation,
+        noticePeriod: preferences.noticePeriod,
       });
       if (!result.success) {
         toast.error(result.error ?? 'Failed to save preferences');
@@ -324,6 +342,46 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
                 <div>
                   <Label>Section order (comma separated)</Label>
                   <Input placeholder="summary, experience, projects, education, skills" value={preferences.defaultSectionOrder} onChange={(e) => setPreferences((p) => ({ ...p, defaultSectionOrder: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Work authorization</Label>
+                  <Input placeholder="Authorized to work in the US" value={preferences.workAuthorization} onChange={(e) => setPreferences((p) => ({ ...p, workAuthorization: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Sponsorship</Label>
+                  <Select value={preferences.requiresSponsorship} onValueChange={(v) => setPreferences((p) => ({ ...p, requiresSponsorship: v as 'unknown' | 'yes' | 'no' | 'case_by_case' }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unknown">Not set</SelectItem>
+                      <SelectItem value="no">No sponsorship needed</SelectItem>
+                      <SelectItem value="yes">Requires sponsorship</SelectItem>
+                      <SelectItem value="case_by_case">Case by case</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Relocation</Label>
+                  <Select value={preferences.willingToRelocate} onValueChange={(v) => setPreferences((p) => ({ ...p, willingToRelocate: v as 'unknown' | 'yes' | 'no' | 'case_by_case' }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unknown">Not set</SelectItem>
+                      <SelectItem value="yes">Open to relocate</SelectItem>
+                      <SelectItem value="no">Not relocating</SelectItem>
+                      <SelectItem value="case_by_case">Case by case</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Preferred work modes</Label>
+                  <Input placeholder="remote, hybrid" value={preferences.preferredWorkModes} onChange={(e) => setPreferences((p) => ({ ...p, preferredWorkModes: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Desired compensation</Label>
+                  <Input placeholder="e.g. $160k-$180k base" value={preferences.desiredCompensation} onChange={(e) => setPreferences((p) => ({ ...p, desiredCompensation: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Notice period</Label>
+                  <Input placeholder="e.g. 2 weeks" value={preferences.noticePeriod} onChange={(e) => setPreferences((p) => ({ ...p, noticePeriod: e.target.value }))} />
                 </div>
               </div>
               <div className="flex items-center justify-between rounded-lg border p-3">

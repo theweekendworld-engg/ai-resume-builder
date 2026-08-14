@@ -25,9 +25,15 @@ import { SkillsEditor } from '@/components/editor/sections/SkillsEditor';
 import { SectionOrderEditor } from '@/components/editor/sections/SectionOrderEditor';
 import { JobTargetPanel } from '@/components/editor/tools/JobTargetPanel';
 import { ScoreImprovePanel } from '@/components/editor/tools/ScoreImprovePanel';
+import { FixChecklistPanel } from '@/components/editor/tools/FixChecklistPanel';
+import { TruthfulnessPanel } from '@/components/editor/tools/TruthfulnessPanel';
+import { JobMatchPanel } from '@/components/editor/tools/JobMatchPanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
-import { initialResumeData } from '@/types/resume';
+import { DesignPanel } from '@/components/editor/tools/DesignPanel';
+import { initialResumeData, type ResumeData } from '@/types/resume';
+import { readPendingScore, clearPendingScore } from '@/lib/pendingScore';
+import { parseResumeText } from '@/actions/parseResumeText';
 
 interface EditorLayoutProps {
   resumeId: string;
@@ -40,7 +46,10 @@ const mobilePanelOptions = [
   { id: 'projects', label: 'Projects' },
   { id: 'education', label: 'Education' },
   { id: 'skills', label: 'Skills' },
+  { id: 'design', label: 'Design' },
   { id: 'score-improve', label: 'Score & Improve' },
+  { id: 'fix-checklist', label: 'Fix Checklist' },
+  { id: 'truthfulness', label: 'Truthfulness' },
   { id: 'settings', label: 'Settings' },
 ] as const;
 
@@ -52,13 +61,14 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     setJobDescription,
     latexCode,
     setLatexCode,
-    selectedTemplate,
-    setSelectedTemplate,
+    theme,
+    setTemplateId,
     atsScore,
     syncStatus,
     setSyncStatus,
     lastSyncedAt,
     setLastSyncedAt,
+    setFixChecklist,
   } = useResumeStore();
 
   const {
@@ -79,13 +89,14 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   const [tourOpen, setTourOpen] = useState(false);
 
   const initialLoadDone = useRef(false);
+  const handoffConsumed = useRef(false);
 
   useEffect(() => {
     const template = searchParams.get('template');
-    if (template && ['ats-simple', 'modern', 'classic'].includes(template)) {
-      setSelectedTemplate(template as LatexTemplateType);
+    if (template && ['ats-simple', 'modern', 'classic', 'minimal'].includes(template)) {
+      setTemplateId(template as LatexTemplateType);
     }
-  }, [searchParams, setSelectedTemplate]);
+  }, [searchParams, setTemplateId]);
 
   useEffect(() => {
     if (initialLoadDone.current) return;
@@ -100,12 +111,12 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
         if (resumeResult.data) {
           setResumeData(resumeResult.data);
-          const generated = generateLatexFromResume(resumeResult.data, selectedTemplate);
+          const generated = generateLatexFromResume(resumeResult.data, theme);
           setLatexCode(generated);
         } else {
           const emptyDraft = structuredClone(initialResumeData);
           setResumeData(emptyDraft);
-          const generated = generateLatexFromResume(emptyDraft, selectedTemplate);
+          const generated = generateLatexFromResume(emptyDraft, theme);
           setLatexCode(generated);
         }
 
@@ -128,20 +139,20 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       .finally(() => {
         setInitialLoading(false);
       });
-  }, [resumeId, selectedTemplate, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData]);
+  }, [resumeId, theme, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData]);
 
   useEffect(() => {
     if (initialLoading || activePanel === 'latex') return;
 
     const timeout = setTimeout(() => {
-      const generated = generateLatexFromResume(resumeData, selectedTemplate);
+      const generated = generateLatexFromResume(resumeData, theme);
       if (generated !== latexCode) {
         setLatexCode(generated);
       }
     }, 600);
 
     return () => clearTimeout(timeout);
-  }, [activePanel, initialLoading, latexCode, resumeData, selectedTemplate, setLatexCode]);
+  }, [activePanel, initialLoading, latexCode, resumeData, theme, setLatexCode]);
 
   useEffect(() => {
     if (initialLoading) return;
@@ -182,6 +193,52 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
     return () => clearTimeout(timeout);
   }, [atsScore?.overall, initialLoading, jobDescription, resumeData, resumeId, setLastSyncedAt, setSyncStatus, title]);
+
+  // Phase 1 -> editor handoff: consume the anonymous score stashed in
+  // sessionStorage exactly once. Seed the fix checklist always; preload the
+  // parsed resume only when the loaded resume is still empty (so we never
+  // clobber a freshly generated baseline). Clear the key after consuming.
+  useEffect(() => {
+    if (initialLoading || handoffConsumed.current) return;
+    handoffConsumed.current = true;
+
+    const pending = readPendingScore();
+    if (!pending) return;
+
+    if (pending.fixes.length > 0) {
+      setFixChecklist(pending.fixes);
+      setActivePanel('fix-checklist');
+      toast.message('Your fix checklist is ready', {
+        description: `${pending.fixes.length} item${pending.fixes.length === 1 ? '' : 's'} carried over from your free resume score.`,
+      });
+    }
+
+    const isEmptyResume = (data: ResumeData) =>
+      !data.personalInfo.fullName?.trim() &&
+      !data.personalInfo.summary?.trim() &&
+      data.experience.length === 0 &&
+      data.projects.length === 0 &&
+      data.skills.length === 0;
+
+    if (pending.extractedText.trim() && isEmptyResume(resumeData)) {
+      const text = pending.extractedText;
+      (async () => {
+        try {
+          const parsed = await parseResumeText(text);
+          setResumeData(parsed);
+          setLatexCode(generateLatexFromResume(parsed, theme));
+          toast.success('Loaded your resume from the free check.');
+        } catch {
+          toast.error('Could not auto-load your resume text. Start from your fix checklist.');
+        }
+      })();
+    }
+
+    clearPendingScore();
+    // We intentionally read resumeData/theme at consume-time only; the guard ref
+    // ensures this runs once, so we don't re-run on their changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLoading]);
 
   const handleLatexChange = useCallback(
     (newCode: string) => {
@@ -226,10 +283,18 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         return <EducationEditor />;
       case 'skills':
         return <SkillsEditor />;
+      case 'design':
+        return <DesignPanel />;
       case 'section-order':
         return <SectionOrderEditor />;
+      case 'job-match':
+        return <JobMatchPanel resumeId={resumeId} />;
       case 'score-improve':
         return <ScoreImprovePanel />;
+      case 'fix-checklist':
+        return <FixChecklistPanel />;
+      case 'truthfulness':
+        return <TruthfulnessPanel resumeId={resumeId} />;
       case 'latex':
         return (
           <LaTeXPanel
@@ -350,8 +415,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
               <div className="h-full lg:hidden">
                 <PreviewPanel
                   latexCode={latexCode}
-                  selectedTemplate={selectedTemplate}
-                  onTemplateChange={setSelectedTemplate}
+                  resumeData={resumeData}
+                  theme={theme}
                 />
               </div>
             ) : (
@@ -374,8 +439,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         <div className="hidden min-h-0 min-w-0 lg:flex lg:flex-[1_1_46%]">
           <PreviewPanel
             latexCode={latexCode}
-            selectedTemplate={selectedTemplate}
-            onTemplateChange={setSelectedTemplate}
+            resumeData={resumeData}
+            theme={theme}
           />
         </div>
       </div>

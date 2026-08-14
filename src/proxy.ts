@@ -10,8 +10,29 @@ const isPublicRoute = createRouteMatcher([
     '/sign-up(.*)',
     '/terms',
     '/privacy',
+    // The anonymous ATS score is the top of the funnel and is free with no
+    // login (PRD 06 §2.3). `anonScore.ts` is purpose-built for it — its own
+    // header reads "Anonymous, auth-free resume scoring" and it deliberately
+    // avoids requireAuth — but the route sat behind auth.protect(), so nobody
+    // could reach the thing without the account it exists to sell.
+    '/score',
+    '/api/score',
+    // Funnel telemetry for that same anonymous flow. Gating it means the
+    // acquisition funnel is invisible exactly where it matters most.
+    '/api/events/funnel',
+    // The pattern gallery exists to be looked at. It already returns notFound()
+    // in production, so auth here bought nothing and made the design system
+    // reviewable only by someone with an account.
+    '/dev/(.*)',
+]);
+
+const isSelfAuthenticatedApiRoute = createRouteMatcher([
+    '/api/extension(.*)',
+    '/api/v1(.*)',
     '/api/telegram/webhook',
     '/api/telegram/process',
+    // Stripe webhook is authenticated by signature, not a Clerk session.
+    '/api/stripe/webhook',
 ]);
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
@@ -41,7 +62,7 @@ function isAdminUserId(userId: string | null | undefined): boolean {
 }
 
 export default clerkMiddleware(async (auth, req) => {
-    if (!isPublicRoute(req)) {
+    if (!isPublicRoute(req) && !isSelfAuthenticatedApiRoute(req)) {
         const session = await auth.protect();
         const pathname = req.nextUrl.pathname;
         const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
@@ -55,7 +76,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process') && !pathname.startsWith('/api/stripe/webhook');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

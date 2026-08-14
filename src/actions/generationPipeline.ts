@@ -5,8 +5,8 @@ import { GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { compileLatex } from '@/actions/ai';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
-import { runResumeAgent } from '@/agents/resumeAgent';
 import { prisma } from '@/lib/prisma';
+import { persistClaimGroundings } from '@/lib/claimGroundingStore';
 import { storePdfArtifact } from '@/lib/pdfStorage';
 import { config } from '@/lib/config';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
@@ -18,6 +18,8 @@ import {
 } from '@/lib/resumeIdentity';
 import { generateLatexFromResume, type LatexTemplateType } from '@/templates/latex';
 import { logUsageEvent } from '@/lib/usageTracker';
+import { track } from '@/lib/track';
+import { buildReport, type ResumeCoverage } from '@/lib/resume/report';
 import type { ResumeData } from '@/types/resume';
 
 type RunGenerationOptions = {
@@ -142,6 +144,8 @@ async function saveGeneratedResumeForUser(params: {
   resumeId?: string;
   targetRole?: string | null;
   targetCompany?: string | null;
+  /** v2 only. Null clears a stale report from an earlier generation. */
+  coverageReport?: ResumeCoverage | null;
 }): Promise<string> {
   const fallbackTitle = getFallbackResumeTitle(params.resume.personalInfo.fullName, 'Generated Resume');
   const payload = params.resume as unknown as object;
@@ -182,6 +186,11 @@ async function saveGeneratedResumeForUser(params: {
         targetCompany: metadata.targetCompany,
         atsScore: metadata.atsScore,
         atsSummary: metadata.atsSummary,
+        // Overwritten on every generation, including with null. A report from
+        // a previous, different posting is worse than none: it would tell the
+        // candidate they are missing requirements from a job they are no
+        // longer applying for.
+        coverageReport: (params.coverageReport ?? Prisma.DbNull) as Prisma.InputJsonValue,
         updatedAt: new Date(),
       },
     });
@@ -222,7 +231,20 @@ async function maybeReuseExistingResume(params: {
   const resumes = await prisma.resume.findMany({
     where: {
       userId: params.userId,
-      atsScore: { gte: config.resumeReuse.minAtsScore },
+      atsScore: { gte: config.resumeReuse.minCoverageScore },
+      // v2 rows only.
+      //
+      // `atsScore` holds two incompatible scales. Before the rebuild it was
+      // keyword overlap and reliably returned ~95; now it is requirement
+      // coverage and live runs score 61-73. Filtering on the number alone
+      // therefore matched EXACTLY the pre-rebuild resumes — the reuse path was
+      // biased toward serving the documents the rebuild was written to
+      // replace, and the better the new pipeline got, the less its output
+      // could be reused.
+      //
+      // `coverageReport` is only ever written by v2, so it is the marker for
+      // which scale the score is on.
+      coverageReport: { not: Prisma.DbNull },
     },
     orderBy: { updatedAt: 'desc' },
     take: 25,
@@ -363,6 +385,42 @@ async function markFailure(params: {
   });
 }
 
+/**
+ * Generate one resume.
+ *
+ * This used to run a tool-calling agent (`src/agents/resumeAgent.ts`) in front
+ * of `generateSmartResumePipeline`, falling back to the pipeline whenever the
+ * agent failed to produce anything. That layer is gone, and removing it was a
+ * deletion rather than a migration because there was nothing in it to keep:
+ *
+ *   Its own output was discarded. The model's text result was never read —
+ *   the resume came out of the `runLegacyPipeline` tool, i.e. out of the
+ *   function below, called through one extra layer of indirection.
+ *
+ *   Its other four tools duplicated work. `parseJobDescription`,
+ *   `searchProjectsBySkillGroup`, `validateClaims` and `scoreATS` are all
+ *   steps the pipeline already runs internally (`jd_parsing` …
+ *   `claim_validation`, `ats_scoring`). When the model chose to call them we
+ *   paid for the same JD parse and the same embedding search twice and threw
+ *   one copy away.
+ *
+ *   Failure cost a round-trip and changed nothing. If the model declined to
+ *   call `runLegacyPipeline` the agent returned AGENT_EMPTY_RESULT and this
+ *   function called the pipeline directly with identical arguments — so the
+ *   model was deciding between "do the deterministic thing" and "bill us for
+ *   deciding, then do the deterministic thing".
+ *
+ * On top of that it was the repo's largest violation of CLAUDE.md rule 2: a
+ * raw AI-SDK text call on a hardcoded model id, with no numeric guard, no
+ * `ApiUsageLog` line, and no retry policy, sitting on the primary generation
+ * path. Generation is now deterministic, one model-call cheaper per resume,
+ * and fully accounted for.
+ *
+ * One thing did die with it, and it was already dead: `checkDataCompleteness`
+ * returned INSUFFICIENT_DATA for a thin profile, which this function then
+ * ignored by falling through to the pipeline anyway. Turning that into a real
+ * gate is a product decision, not a refactor — see the note in the commit.
+ */
 async function runPrimaryResumePipeline(params: {
   sessionId: string;
   userId: string;
@@ -374,33 +432,6 @@ async function runPrimaryResumePipeline(params: {
   onStepStart?: (step: SmartPipelineStep) => Promise<void> | void;
   onStepComplete?: (step: SmartPipelineStep, payload: Record<string, unknown>) => Promise<void> | void;
 }) {
-  const agentResult = await runResumeAgent({
-    jobDescription: params.jobDescription,
-    userId: params.userId,
-    sessionId: params.sessionId,
-    fallbackResumeData: params.fallbackResumeData,
-    focusAreas: params.focusAreas,
-    maxProjects: params.maxProjects,
-    onStep: async (step) => {
-      if (step.status === 'started') return;
-      if (step.tool === 'parseJobDescription') {
-        await params.onStepStart?.('jd_parsing');
-        await params.onStepComplete?.('jd_parsing', {
-          parsedJD: (step.data as { data?: { data?: { parsedJD?: unknown } } })?.data?.data?.parsedJD,
-        });
-      }
-      if (step.tool === 'runLegacyPipeline') {
-        const payload = (step.data as { data?: Record<string, unknown> })?.data ?? {};
-        await params.onStepStart?.('ats_scoring');
-        await params.onStepComplete?.('ats_scoring', payload);
-      }
-    },
-  });
-
-  if (agentResult.success) {
-    return agentResult.data;
-  }
-
   return generateSmartResumePipeline(params.jobDescription, {
     fallbackResumeData: params.fallbackResumeData,
     focusAreas: params.focusAreas,
@@ -638,8 +669,40 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         resume: finalResume,
         atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
         resumeId: session.sourceResumeId ?? options.sourceResumeId,
+        // The gap report, so the editor can show what this resume does not
+        // answer. Absent on the reuse path and on the v1 fallback, both of
+        // which produce no coverage — the panel hides rather than inventing.
+        coverageReport: pipelineResult?.coverage
+          ? buildReport({
+            coverage: pipelineResult.coverage,
+            skillGaps: pipelineResult.skillGaps ?? [],
+            advice: pipelineResult.advice ?? [],
+            dropped: pipelineResult.droppedBullets ?? [],
+            // v2's own reading, not `artifacts.parsedJD` — see the note on
+            // SmartResumeResult.brief. The two disagree and v1's is mangled.
+            brief: {
+              role: pipelineResult.brief?.role ?? '',
+              company: pipelineResult.brief?.company ?? '',
+            },
+          })
+          : null,
         ...extractParsedJDTarget(pipelineResult?.artifacts.parsedJD ?? session.parsedJD),
       });
+
+    // Backfill truthfulness chips (Tier 0/1). Best-effort: chip grounding must
+    // never fail a generation. Skipped on the reuse path (no fresh validation).
+    if (pipelineResult?.validation) {
+      try {
+        await persistClaimGroundings({
+          userId: options.userId,
+          resumeId,
+          resume: finalResume,
+          validation: pipelineResult.validation,
+        });
+      } catch (error: unknown) {
+        console.error('[claim-grounding] persist failed', error);
+      }
+    }
 
     activeStep = PipelineStep.pdf_generation;
     await prisma.generationSession.update({
@@ -687,6 +750,15 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         totalTokensUsed: totals.totalTokensUsed,
         totalCostUsd: totals.totalCostUsd,
       },
+    });
+
+    // The primary generation path had no telemetry at all. Missions needs it
+    // to auto-complete "refresh your resume", and the funnel wanted it anyway.
+    await track(session.userId, 'resume_generated', {
+      feature: 'resume',
+      sessionId: session.id,
+      reused: false,
+      atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? null,
     });
 
     return {

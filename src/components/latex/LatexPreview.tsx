@@ -57,9 +57,14 @@ export function LatexPreview({ code }: LatexPreviewProps) {
     const previewSrc = pdfDataUrl ? `${pdfDataUrl}#view=FitH&zoom=page-width` : null;
 
     return (
-        <div className="h-full w-full bg-white text-black overflow-hidden relative flex flex-col">
+        // The chrome is app UI and follows the theme; only the PDF itself is
+        // paper. This pinned `bg-white text-black` on the whole component while
+        // its own labels used `text-muted-foreground` and `text-primary` —
+        // tokens that flip with the theme — so in dark mode the status line was
+        // light grey on near-white. Same defect the Clerk widget had, mirrored.
+        <div className="relative flex h-full w-full flex-col overflow-hidden bg-background text-foreground">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 border-b bg-gray-50 print:hidden">
+            <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 print:hidden">
                 <div className="flex items-center gap-2">
                     {isCompiling && (
                         <>
@@ -68,10 +73,10 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                         </>
                     )}
                     {!isCompiling && isStale && (
-                        <span className="text-xs text-amber-600">Preview out of date</span>
+                        <span className="text-xs text-warning">Preview out of date</span>
                     )}
                     {!isCompiling && pdfDataUrl && (
-                        <span className="text-xs text-green-600">✓ Preview ready</span>
+                        <span className="text-xs text-success">✓ Preview ready</span>
                     )}
                 </div>
                 <Button
@@ -100,7 +105,9 @@ export function LatexPreview({ code }: LatexPreviewProps) {
             )}
 
             {/* PDF Preview */}
-            <div className="flex-1 overflow-auto bg-gray-100">
+            {/* A neutral mat behind the page, so the white PDF reads as paper
+                in both themes rather than as the panel background. */}
+            <div className="flex-1 overflow-auto bg-muted">
                 {previewSrc ? (
                     <iframe
                         src={previewSrc}

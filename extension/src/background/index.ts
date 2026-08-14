@@ -1,0 +1,606 @@
+import { on } from './messageBus';
+import { clearAuth, getAuthState, getToken } from './tokenStore';
+import {
+    setPageModel,
+    getPageModel,
+    setUndoEntries,
+    getUndoEntries,
+    clearUndoEntries,
+} from './tabContext';
+import { getAppBaseUrl } from './backendConfig';
+import { reconcileSessionOnPageUpdate, getSession, bindWorkspace } from './session';
+import { startConnectFlow, cancelConnectFlow, pollConnectOnce } from './connect';
+import { buildFillPlan } from '@/fill/planner';
+import type { ResolvedProfileBundle } from '@/fill/valueResolver';
+import type {
+    GenerationSessionWire,
+    SavedAnswerWire,
+    WorkspaceListItemWire,
+} from '@/shared/types/messages';
+
+type ProfileBackendBundle = {
+    profile?: {
+        fullName?: string;
+        email?: string;
+        phone?: string;
+        location?: string;
+        linkedin?: string;
+        github?: string;
+        website?: string;
+        yearsExperience?: string;
+    };
+    experiences?: unknown[];
+};
+
+let cachedBundle: ProfileBackendBundle | null = null;
+let cachedBundleAt = 0;
+
+async function getProfileBundle(): Promise<ProfileBackendBundle | null> {
+    if (cachedBundle && Date.now() - cachedBundleAt < 60_000) return cachedBundle;
+    const token = await getToken();
+    if (!token) return null;
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/me`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return null;
+        const json = (await res.json()) as { success: boolean; bundle?: ProfileBackendBundle };
+        cachedBundle = json.bundle ?? null;
+        cachedBundleAt = Date.now();
+        return cachedBundle;
+    } catch {
+        return null;
+    }
+}
+
+// MV3 service worker entry. Stays restart-safe by keeping all durable state in
+// chrome.storage.local (auth) and re-hydrating in-memory caches lazily.
+
+on('PING', async () => ({ ok: true, data: { pong: true } }));
+
+on('AUTH_GET', async () => ({ ok: true, data: await getAuthState() }));
+
+on('AUTH_CLEAR', async () => {
+    await clearAuth();
+    return { ok: true, data: { cleared: true } };
+});
+
+on('CONNECT_START', async () => {
+    const res = await startConnectFlow();
+    if (!res.ok) return { ok: false, error: res.error };
+    return { ok: true, data: { connectUrl: res.connectUrl } };
+});
+
+on('CONNECT_CANCEL', async () => {
+    await cancelConnectFlow();
+    return { ok: true, data: { cancelled: true } };
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'connect:poll') {
+        pollConnectOnce().catch(() => {
+            // pollConnectOnce already swallows transient errors; this catch is
+            // a final safety net so an unhandled rejection doesn't crash the SW.
+        });
+    }
+});
+
+on('PAGE_CONTEXT_UPDATED', async (msg, sender) => {
+    // The content script doesn't know its own tabId, so tabId on the message
+    // is a placeholder (-1). Read the real tabId off the MessageSender.
+    const realTabId = sender?.tab?.id ?? msg.tabId;
+    setPageModel(realTabId, msg.pageModel);
+    const session = await reconcileSessionOnPageUpdate(realTabId, msg.pageModel);
+    return { ok: true, data: { received: true, sessionId: session?.id ?? null } };
+});
+
+on('GET_SESSION', async (msg) => ({
+    ok: true,
+    data: await getSession(msg.tabId),
+}));
+
+on('LIST_WORKSPACES', async () => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/workspaces`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return { ok: false, error: `list_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; workspaces?: WorkspaceListItemWire[] };
+        return { ok: true, data: { workspaces: json.workspaces ?? [] } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'list_error' };
+    }
+});
+
+on('BIND_WORKSPACE', async (msg) => {
+    const session = await bindWorkspace(msg.tabId, msg.workspaceId);
+    if (session) {
+        // Best-effort upsync to the orchestrate route so the workspace mirrors
+        // session state server-side. Failure does not block the local bind.
+        const token = await getToken();
+        if (token) {
+            const base = await getAppBaseUrl();
+            const pageModel = getPageModel(msg.tabId);
+            fetch(`${base}/api/extension/session/orchestrate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    workspaceId: session.workspaceId ?? undefined,
+                    session,
+                    pageSummary: pageModel
+                        ? {
+                              url: pageModel.url,
+                              companyName: pageModel.metadata?.['companyName'] as string | undefined,
+                              roleTitle: pageModel.metadata?.['roleTitle'] as string | undefined,
+                              location: pageModel.metadata?.['location'] as string | undefined,
+                              platform: pageModel.classification.platform,
+                              pageKind: pageModel.classification.pageKind,
+                          }
+                        : undefined,
+                }),
+                keepalive: true,
+            }).catch(() => {});
+        }
+    }
+    return { ok: true, data: session };
+});
+
+on('GET_FILL_PLAN', async (msg) => {
+    const pageModel = getPageModel(msg.tabId);
+    if (!pageModel) return { ok: false, error: 'no_page_model' };
+    const bundle = await getProfileBundle();
+    if (!bundle) return { ok: false, error: 'no_profile' };
+    const plan = buildFillPlan(
+        pageModel.fields as never,
+        bundle as ResolvedProfileBundle
+    );
+    return { ok: true, data: plan };
+});
+
+on('APPLY_FILLS', async (msg) => {
+    try {
+        const pageModel = getPageModel(msg.tabId);
+        if (!pageModel) return { ok: false, error: 'no_page_model' };
+        const bundle = await getProfileBundle();
+        if (!bundle) return { ok: false, error: 'no_profile' };
+        const plan = buildFillPlan(
+            pageModel.fields as never,
+            bundle as ResolvedProfileBundle
+        );
+        const filterIds = msg.actionIds && msg.actionIds.length > 0
+            ? new Set(msg.actionIds)
+            : null;
+        const actions = plan.actions.filter((a) => {
+            if (!a.canApply) return false;
+            if (filterIds && !filterIds.has(a.id)) return false;
+            // Bulk default: only auto_fill. Individual selection allows review_required.
+            if (!filterIds && a.action !== 'auto_fill') return false;
+            return true;
+        });
+        const res = (await chrome.tabs.sendMessage(msg.tabId, {
+            type: 'CONTENT_APPLY_FILLS',
+            actions,
+        })) as { undoEntries?: unknown[]; appliedCount?: number; results?: unknown[] };
+        setUndoEntries(msg.tabId, (res?.undoEntries ?? []) as never);
+        return { ok: true, data: res };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'apply_failed',
+        };
+    }
+});
+
+on('UNDO_FILLS', async (msg) => {
+    try {
+        const entries = getUndoEntries(msg.tabId);
+        if (entries.length === 0) {
+            return { ok: true, data: { restoredCount: 0, results: [] } };
+        }
+        const res = (await chrome.tabs.sendMessage(msg.tabId, {
+            type: 'CONTENT_UNDO_FILLS',
+            undoEntries: entries,
+        })) as { restoredCount?: number; results?: unknown[] };
+        clearUndoEntries(msg.tabId);
+        return { ok: true, data: res };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'undo_failed',
+        };
+    }
+});
+
+on('SUGGEST_ANSWER', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const pageModel = tab?.id != null ? getPageModel(tab.id) : null;
+        const body = {
+            selectedTone: msg.tone,
+            question: {
+                id: msg.questionId,
+                questionText: msg.questionText,
+                typeHint: msg.typeHint,
+                sectionHeading: msg.sectionHeading,
+                locator: msg.locator,
+                answerMode: 'long_text',
+            },
+            context: {
+                sourceUrl: msg.sourceUrl || pageModel?.url,
+                platform: pageModel?.classification.platform,
+                pageKind: pageModel?.classification.pageKind,
+                visibleTitle: pageModel?.visibleTitle,
+                companyName: pageModel?.metadata?.['companyName'],
+                roleTitle: pageModel?.metadata?.['roleTitle'],
+                location: pageModel?.metadata?.['location'],
+                jobDescription: pageModel?.jobDescription?.text,
+            },
+        };
+        const res = await fetch(`${base}/api/extension/questions/suggest`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) return { ok: false, error: `suggest_failed:${res.status}` };
+        const json = (await res.json()) as { success?: boolean; drafts?: unknown[] };
+        return { ok: true, data: json };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'suggest_error',
+        };
+    }
+});
+
+on('INSERT_ANSWER', async (msg) => {
+    try {
+        const res = (await chrome.tabs.sendMessage(msg.tabId, {
+            type: 'CONTENT_INSERT_TEXT',
+            locator: msg.locator,
+            text: msg.text,
+        })) as { ok?: boolean; error?: string };
+        if (res?.ok) return { ok: true, data: { inserted: true } };
+        return { ok: false, error: res?.error ?? 'insert_failed' };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'insert_failed',
+        };
+    }
+});
+
+on('GET_PAGE_CONTEXT', async (msg) => ({
+    ok: true,
+    data: getPageModel(msg.tabId),
+}));
+
+on('REQUEST_REPARSE', async (msg) => {
+    try {
+        await chrome.tabs.sendMessage(msg.tabId, { type: 'CONTENT_REPARSE' });
+        return { ok: true, data: { requested: true, reinjected: false } };
+    } catch {
+        // Content script not present (e.g. extension reloaded without page
+        // reload). Reinject it from the manifest's content_scripts entry.
+        try {
+            const manifest = chrome.runtime.getManifest();
+            const files = manifest.content_scripts?.[0]?.js ?? [];
+            if (files.length === 0) {
+                return { ok: false, error: 'no_content_script_in_manifest' };
+            }
+            await chrome.scripting.executeScript({
+                target: { tabId: msg.tabId },
+                files,
+            });
+            return { ok: true, data: { requested: true, reinjected: true } };
+        } catch (injectErr) {
+            return {
+                ok: false,
+                error: injectErr instanceof Error ? injectErr.message : 'inject_failed',
+            };
+        }
+    }
+});
+
+on('OPEN_SIDEPANEL', async (msg) => {
+    try {
+        await chrome.sidePanel.open({ tabId: msg.tabId });
+        return { ok: true, data: { opened: true } };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'open_sidepanel_failed',
+        };
+    }
+});
+
+on('GET_PROFILE', async () => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/me`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return { ok: false, error: `profile_fetch_failed:${res.status}` };
+        const json = (await res.json()) as {
+            success: boolean;
+            bundle?: {
+                profile?: { fullName?: string; email?: string; phone?: string; location?: string };
+                experiences?: unknown[];
+            };
+        };
+        const p = json.bundle?.profile ?? {};
+        const experiencesCount = json.bundle?.experiences?.length ?? 0;
+        const bundle = {
+            fullName: p.fullName ?? '',
+            email: p.email ?? '',
+            phone: p.phone ?? '',
+            location: p.location ?? '',
+            experiencesCount,
+        };
+        const missing: string[] = [];
+        if (!bundle.fullName) missing.push('full name');
+        if (!bundle.email) missing.push('email');
+        if (!bundle.phone) missing.push('phone');
+        if (!bundle.location) missing.push('location');
+        if (bundle.experiencesCount === 0) missing.push('at least one work experience');
+        return {
+            ok: true,
+            data: { bundle, completeness: { complete: missing.length === 0, missing } },
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            error: err instanceof Error ? err.message : 'profile_fetch_error',
+        };
+    }
+});
+
+on('TELEMETRY_BATCH', async (msg) => {
+    try {
+        const token = await getToken();
+        if (!token) {
+            // No-op when disconnected; telemetry never fails loud.
+            return { ok: true, data: { accepted: false, reason: 'no_token' } };
+        }
+        const base = await getAppBaseUrl();
+        const res = await fetch(`${base}/api/extension/events`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ events: msg.events }),
+            keepalive: true,
+        });
+        return { ok: true, data: { accepted: res.ok } };
+    } catch {
+        // Drop telemetry rather than surface errors. Caller queue is bounded.
+        return { ok: true, data: { accepted: false, reason: 'network_error' } };
+    }
+});
+
+// Default to opening the side panel on action click for tabs where it's not
+// already wired (chromium quirk: per-tab setOptions is needed in some flows).
+// ────────────────────────────────────────────── the saved-answer library
+//
+// These three round-trip to /api/extension/answers. They exist so the library
+// the extension has been WRITING since day one (via questions/save) is finally
+// readable: before this, an answer could fire automatically on a form and the
+// user had no surface on which to find it, correct it, or turn it off.
+
+/** Shared preamble: every library call needs a token and a base URL. */
+async function answersEndpoint(path = ''): Promise<{ url: string; token: string } | null> {
+    const token = await getToken();
+    if (!token) return null;
+    const base = await getAppBaseUrl();
+    return { url: `${base}/api/extension/answers${path}`, token };
+}
+
+on('LIST_ANSWERS', async () => {
+    const ctx = await answersEndpoint();
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${ctx.token}` },
+        });
+        if (!res.ok) return { ok: false, error: `list_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; answers?: SavedAnswerWire[] };
+        return { ok: true, data: { answers: json.answers ?? [] } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'list_error' };
+    }
+});
+
+on('UPDATE_ANSWER', async (msg) => {
+    const ctx = await answersEndpoint(`/${encodeURIComponent(msg.answerId)}`);
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bearer ${ctx.token}`,
+                'Content-Type': 'application/json',
+            },
+            // Only send what changed, so a text edit cannot silently clear autoUse.
+            body: JSON.stringify({
+                ...(msg.answerText === undefined ? {} : { answerText: msg.answerText }),
+                ...(msg.autoUse === undefined ? {} : { autoUse: msg.autoUse }),
+            }),
+        });
+        if (!res.ok) return { ok: false, error: `update_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; answer?: SavedAnswerWire };
+        return { ok: true, data: { answer: json.answer } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'update_error' };
+    }
+});
+
+on('DELETE_ANSWER', async (msg) => {
+    const ctx = await answersEndpoint(`/${encodeURIComponent(msg.answerId)}`);
+    if (!ctx) return { ok: false, error: 'not_authenticated' };
+    try {
+        const res = await fetch(ctx.url, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${ctx.token}` },
+        });
+        if (!res.ok) return { ok: false, error: `delete_failed_${res.status}` };
+        return { ok: true, data: { deletedId: msg.answerId } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'delete_error' };
+    }
+});
+
+// ─────────────────────────────────────────────────── resume tailoring
+//
+// The backend for this has existed and been fully metered for a while; what
+// was missing was any way to reach it from the extension. Generation is
+// asynchronous and can run for tens of seconds, so the panel starts a run and
+// polls — the service worker deliberately holds no timer of its own, because
+// an MV3 worker can be evicted mid-run and a poll loop living here would
+// vanish with it. The panel owns the clock.
+
+on('TAILOR_START', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/resume/generate`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                ...(msg.jobDescription ? { jobDescription: msg.jobDescription } : {}),
+                ...(msg.companyName ? { companyName: msg.companyName } : {}),
+                ...(msg.roleTitle ? { roleTitle: msg.roleTitle } : {}),
+                ...(msg.sourceUrl ? { sourceUrl: msg.sourceUrl } : {}),
+                ...(msg.workspaceId ? { workspaceId: msg.workspaceId } : {}),
+            }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            session?: GenerationSessionWire;
+            error?: string;
+            paywall?: unknown;
+        };
+
+        if (!res.ok) {
+            // A quota refusal is a product state, not a transport failure, so
+            // it is surfaced with its own code and the server's own wording
+            // rather than collapsed into a generic error.
+            if (res.status === 402 || json.paywall) {
+                return { ok: false, error: `paywall:${json.error ?? 'Upgrade required'}` };
+            }
+            return { ok: false, error: json.error ?? `tailor_failed_${res.status}` };
+        }
+        return { ok: true, data: { session: json.session } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'tailor_error' };
+    }
+});
+
+on('TAILOR_STATUS', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(
+            `${base}/api/extension/generate/${encodeURIComponent(msg.sessionId)}/status`,
+            { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (!res.ok) return { ok: false, error: `status_failed_${res.status}` };
+        const json = (await res.json()) as { success: boolean; session?: GenerationSessionWire };
+        return { ok: true, data: { session: json.session } };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'status_error' };
+    }
+});
+
+/**
+ * Track the application on this tab.
+ *
+ * Until now `ApplicationSession.workspaceId` was always null from the
+ * extension: BIND_WORKSPACE existed and worked, but nothing in the UI could
+ * call it and there was no way to create a workspace for a job the user had
+ * not already saved on the web. Every application filled through the extension
+ * was therefore orphaned from the tracker that is supposed to follow it.
+ *
+ * Safe to press twice — `upsertExtensionWorkspace` matches an existing
+ * workspace by id, then source URL, then company+role before creating one, and
+ * reports which happened via `matchedBy`.
+ */
+on('TRACK_APPLICATION', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+
+    const pageModel = getPageModel(msg.tabId);
+    if (!pageModel) return { ok: false, error: 'no_page_context' };
+
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/workspaces/upsert`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                sourceUrl: pageModel.url,
+                sourcePlatform: pageModel.classification.platform,
+                companyName: pageModel.metadata?.['companyName'] as string | undefined,
+                roleTitle:
+                    (pageModel.metadata?.['roleTitle'] as string | undefined) ?? pageModel.heading,
+                location: pageModel.metadata?.['location'] as string | undefined,
+                jobDescription: pageModel.jobDescription?.text,
+            }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as {
+            success?: boolean;
+            workspace?: { id: string };
+            matchedBy?: string;
+            error?: string;
+        };
+        if (!res.ok || !json.workspace?.id) {
+            return { ok: false, error: json.error ?? `track_failed_${res.status}` };
+        }
+
+        // Bind locally so the rest of the session carries the workspace, and
+        // reuse the existing upsync inside bindWorkspace's caller path.
+        const session = await bindWorkspace(msg.tabId, json.workspace.id);
+        return {
+            ok: true,
+            data: { workspaceId: json.workspace.id, matchedBy: json.matchedBy, session },
+        };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'track_error' };
+    }
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.sidePanel
+        .setPanelBehavior({ openPanelOnActionClick: false })
+        .catch(() => {
+            // Some chromium variants do not expose this API; ignore.
+        });
+});

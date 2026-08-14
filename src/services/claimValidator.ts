@@ -9,13 +9,13 @@ export type ClaimValidation = {
   unsupportedMetricClaims: string[];
 };
 
-export function validateClaims(
-  resume: ResumeData,
-  sources: Array<{ id: string; text: string }>
-): ClaimValidation {
-  const sourceMetricTokens = new Set(sources.flatMap((source) => extractMetricTokens(source.text)));
-  const sourceTokens = sources.map((source) => ({ id: source.id, tokens: new Set(tokenize(source.text)) }));
-
+/**
+ * Collect the verifiable claim lines from a resume, in a single canonical place.
+ * The truthfulness chip layer (`claimGrounding`) recomputes claim identity from
+ * the persisted resume, so it MUST split lines identically to the validator —
+ * hence this shared helper.
+ */
+export function collectClaimLines(resume: ResumeData): string[] {
   const claimLines: string[] = [];
   for (const exp of resume.experience) {
     claimLines.push(...exp.description.split('\n').map((line) => line.trim()).filter(Boolean));
@@ -23,6 +23,17 @@ export function validateClaims(
   for (const project of resume.projects) {
     if (project.description.trim()) claimLines.push(project.description.trim());
   }
+  return claimLines;
+}
+
+export function validateClaims(
+  resume: ResumeData,
+  sources: Array<{ id: string; text: string }>
+): ClaimValidation {
+  const sourceMetricTokens = new Set(sources.flatMap((source) => extractMetricTokens(source.text)));
+  const sourceTokens = sources.map((source) => ({ id: source.id, tokens: new Set(tokenize(source.text)) }));
+
+  const claimLines = collectClaimLines(resume);
 
   const mappings: Record<string, string> = {};
   const unsupportedClaims: string[] = [];

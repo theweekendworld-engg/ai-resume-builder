@@ -7,14 +7,20 @@ import {
   OctagonX,
   TriangleAlert,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Toaster as Sonner } from "sonner"
 
 type ToasterProps = React.ComponentProps<typeof Sonner>
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  // Sonner's own [data-theme] vars drive the close button and borders, so a
+  // hardcoded "dark" leaves an invisible X on a light background. Rendered
+  // inside ThemeProvider (layout.tsx), so useTheme resolves here.
+  const { resolvedTheme } = useTheme()
+
   return (
     <Sonner
-      theme={"dark"}
+      theme={(resolvedTheme as ToasterProps["theme"]) ?? "light"}
       className="toaster group"
       icons={{
         success: <CircleCheck className="h-4 w-4" />,

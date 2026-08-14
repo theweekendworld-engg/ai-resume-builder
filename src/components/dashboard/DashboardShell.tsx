@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { UserButton } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   FileText,
@@ -11,6 +10,7 @@ import {
   Send,
   FileDown,
   Menu,
+  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -24,11 +24,12 @@ import { DashboardCopilot } from '@/components/dashboard/sections/DashboardCopil
 import { ProfileSection } from '@/components/dashboard/sections/ProfileSection';
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
 import { PdfHistorySection } from '@/components/dashboard/sections/PdfHistorySection';
-import { OnboardingDialog } from '@/components/dashboard/OnboardingDialog';
+import { ApplicationsSection } from '@/components/dashboard/sections/ApplicationsSection';
 import { DashboardTour, DASHBOARD_TOUR_STORAGE_KEY } from '@/components/dashboard/DashboardTour';
 
 export type DashboardSectionId =
   | 'overview'
+  | 'applications'
   | 'resumes'
   | 'copilot'
   | 'profile'
@@ -37,6 +38,7 @@ export type DashboardSectionId =
 
 const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { id: 'applications', label: 'Applications', icon: <Briefcase className="h-4 w-4" /> },
   { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
   { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
@@ -69,7 +71,25 @@ export type DashboardShellProps = {
   }>;
   usageStats: UserUsageStats;
   pdfHistory: { success: boolean; items?: PdfHistoryItem[]; error?: string };
+  applicationWorkspaces: Array<{
+    id: string;
+    sourceUrl: string;
+    sourcePlatform: string | null;
+    companyName: string | null;
+    roleTitle: string | null;
+    location: string | null;
+    applicationStatus: string;
+    fitScore: number | null;
+    fitSummary: string | null;
+    questionCount: number;
+    answeredQuestionCount: number;
+    selectedResumeId: string | null;
+    updatedAt: Date;
+    createdAt: Date;
+  }>;
+  applicationListError?: string;
   isAdmin: boolean;
+  initialSection?: DashboardSectionId;
 };
 
 export function DashboardShell({
@@ -79,15 +99,19 @@ export function DashboardShell({
   projects,
   usageStats,
   pdfHistory,
+  applicationWorkspaces,
+  applicationListError,
   isAdmin,
+  initialSection = 'overview',
 }: DashboardShellProps) {
-  const [activeSection, setActiveSection] = useState<DashboardSectionId>('overview');
+  const [activeSection, setActiveSection] = useState<DashboardSectionId>(initialSection);
   const [navOpen, setNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // The tour waits for onboarding, which now happens at `/welcome` before
+    // anyone reaches this screen.
     if (!overview.success || !overview.profile?.onboardingComplete) return;
     if (window.localStorage.getItem(DASHBOARD_TOUR_STORAGE_KEY)) return;
     const timer = window.setTimeout(() => {
@@ -97,14 +121,6 @@ export function DashboardShell({
       window.clearTimeout(timer);
     };
   }, [overview.success, overview.profile?.onboardingComplete]);
-
-  const handleOnboardingComplete = () => {
-    setOnboardingDismissed(true);
-    setTourOpen(true);
-  };
-
-  const showOnboarding =
-    overview.success && !overview.profile?.onboardingComplete && !onboardingDismissed;
 
   const navContent = (
     <nav className="flex flex-col gap-1">
@@ -127,6 +143,17 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-screen flex-col">
+      {/*
+        The SECTION bar, not the app bar.
+
+        `(app)/layout.tsx` renders `AppNav` above this now — brand, primary
+        destinations, "Tailor a resume" and the account menu. This header kept
+        its own `UserButton`, so the dashboard showed two bars and two avatars
+        stacked on top of each other.
+
+        What is left is what belongs to this page: which dashboard section you
+        are in, the mobile trigger for switching section, and the admin link.
+      */}
       <header className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-3">
         <div className="flex items-center gap-3">
           <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -152,7 +179,6 @@ export function DashboardShell({
               </Button>
             </Link>
           )}
-          <UserButton />
         </div>
       </header>
 
@@ -165,6 +191,9 @@ export function DashboardShell({
           <div className="mx-auto max-w-4xl">
             {activeSection === 'overview' && (
               <OverviewSection overview={overview} usageStats={usageStats} />
+            )}
+            {activeSection === 'applications' && (
+              <ApplicationsSection workspaces={applicationWorkspaces} listError={applicationListError} />
             )}
             {activeSection === 'resumes' && (
               <ResumesSection resumes={resumes} listError={!overview.success ? overview.error : undefined} />
@@ -179,12 +208,6 @@ export function DashboardShell({
         </main>
       </div>
 
-      {showOnboarding && (
-        <OnboardingDialog
-          profile={profile}
-          onComplete={handleOnboardingComplete}
-        />
-      )}
       <DashboardTour open={tourOpen} onOpenChange={setTourOpen} onNavigate={setActiveSection} />
     </div>
   );

@@ -45,9 +45,12 @@ export function ProposedChangesCard({ proposal, onApplyAll, onReject }: Proposed
     };
 
     const getScoreColor = (score: number) => {
-        if (score >= 80) return 'text-green-400';
-        if (score >= 60) return 'text-yellow-400';
-        return 'text-red-400';
+        // Semantic tokens, not raw 400-weight shades. A 400 is calibrated
+        // for a dark card; on the light default it lands near 1.8:1 and the
+        // score becomes unreadable at exactly the moment it matters.
+        if (score >= 80) return 'text-success';
+        if (score >= 60) return 'text-warning';
+        return 'text-destructive';
     };
 
     const changedSections = sectionConfig.filter(
@@ -108,7 +111,7 @@ export function ProposedChangesCard({ proposal, onApplyAll, onReject }: Proposed
                                     <div className="relative">
                                         {icon}
                                         {isApplied && (
-                                            <Check className="w-2.5 h-2.5 absolute -top-1 -right-1 text-green-400" />
+                                            <Check className="w-2.5 h-2.5 absolute -top-1 -right-1 text-success" />
                                         )}
                                     </div>
                                     <span>{label}</span>

@@ -1,9 +1,13 @@
 'use server';
 
-import { QdrantClient } from '@qdrant/js-client-rest';
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';
 import { config } from '@/lib/config';
+import {
+  qdrantClient,
+  isCollectionEnsured,
+  markCollectionEnsured,
+} from '@/lib/qdrantClient';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
 const COLLECTION_NAME = 'knowledge_base';
@@ -12,15 +16,11 @@ const PROJECT_EMBED_MAX_CHARS = 12000;
 const EXPERIENCE_EMBED_CHARS = 4000;
 const PROJECT_SNIPPET_LIMIT = 10;
 
-const qdrantClient = new QdrantClient({
-  url: config.qdrant.url || 'http://localhost:6333',
-  ...(config.qdrant.apiKey && { apiKey: config.qdrant.apiKey }),
-});
 
-let collectionEnsured = false;
+
 
 export async function ensureKnowledgeBaseCollection() {
-  if (collectionEnsured) return;
+  if (isCollectionEnsured()) return;
 
   const collections = await qdrantClient.getCollections();
   const exists = collections.collections.some((collection) => collection.name === COLLECTION_NAME);
@@ -61,7 +61,7 @@ export async function ensureKnowledgeBaseCollection() {
     });
   }
 
-  collectionEnsured = true;
+  markCollectionEnsured();
 }
 
 export async function generateEmbedding(params: {
@@ -91,6 +91,44 @@ export async function generateEmbedding(params: {
   );
 
   return response.data[0].embedding;
+}
+
+/**
+ * Page through points of one payload `type`, returning their `sourceId`s.
+ *
+ * Exists for the reconciliation sweep: finding a vector whose row is gone can
+ * only be done from the Qdrant side. Scrolls with `with_vector: false` — we
+ * need identity, not embeddings, and pulling 1024 floats per point to compare
+ * ids would make the sweep cost more than the drift it repairs.
+ */
+export async function scrollPointSourceIds(params: {
+  type: string;
+  limit?: number;
+}): Promise<{ pointId: string; sourceId: string }[]> {
+  const pageSize = 256;
+  const max = params.limit ?? 5_000;
+  const out: { pointId: string; sourceId: string }[] = [];
+  let offset: string | number | undefined | null = undefined;
+
+  while (out.length < max) {
+    const page = await qdrantClient.scroll(COLLECTION_NAME, {
+      filter: { must: [{ key: 'type', match: { value: params.type } }] },
+      limit: Math.min(pageSize, max - out.length),
+      offset: offset ?? undefined,
+      with_payload: { include: ['sourceId'] },
+      with_vector: false,
+    });
+
+    for (const point of page.points) {
+      const sourceId = (point.payload as { sourceId?: unknown } | null)?.sourceId;
+      if (typeof sourceId === 'string') out.push({ pointId: String(point.id), sourceId });
+    }
+
+    offset = page.next_page_offset as string | number | null | undefined;
+    if (!offset || page.points.length === 0) break;
+  }
+
+  return out;
 }
 
 export async function deleteFromQdrant(pointId: string) {

@@ -1,32 +1,84 @@
 import Link from 'next/link';
+import { CONTACT_EMAIL } from './Contact';
 
+/**
+ * The contact address is imported rather than retyped — it is published in two
+ * places on this page and the second copy is exactly where an address goes
+ * stale. Same reasoning as prices coming from `PLAN_CATALOG`.
+ */
 export function Footer() {
-  return (
-    <footer className="border-t border-border/40">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-10 text-[13px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2.5">
-            <img src="/logo.png" alt="Patronus Logo" className="h-7 w-auto drop-shadow-[0_0_6px_rgba(143,201,255,0.5)]" />
-            <p className="font-medium text-foreground/80" style={{ fontFamily: "'Sora', system-ui, sans-serif" }}>
-              Patronus
-            </p>
-          </div>
-          <p className="text-xs text-muted-foreground/60 leading-relaxed">
-            AI resume builder for faster, better job applications.
-          </p>
-        </div>
-        <div className="flex items-center gap-5">
-          <Link href="/privacy" className="transition-colors hover:text-foreground">
-            Privacy
-          </Link>
-          <Link href="/terms" className="transition-colors hover:text-foreground">
-            Terms
-          </Link>
-          <a href="mailto:support@patronus.app" className="transition-colors hover:text-foreground">
-            Contact
-          </a>
-        </div>
-      </div>
-    </footer>
-  );
+    return (
+        <footer className="border-t border-border/60 bg-background">
+            <div className="mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 lg:px-8">
+                <div className="flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="max-w-xs space-y-3">
+                        <div className="flex items-center gap-2.5">
+                            <img
+                                src="/logo.png"
+                                alt=""
+                                className="h-8 w-auto drop-shadow-[0_0_8px_hsl(190_100%_50%/0.45)]"
+                            />
+                            <p className="font-heading text-base font-bold tracking-tight text-foreground">
+                                Patronus
+                            </p>
+                        </div>
+                        <p className="text-[13px] leading-relaxed text-muted-foreground/70">
+                            The private, evidence-backed record of your working life.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-x-14 gap-y-8">
+                        <div>
+                            <p className="ledger text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground/50">
+                                Product
+                            </p>
+                            <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
+                                <Link href="/score" className="transition-colors hover:text-primary">
+                                    Check resume
+                                </Link>
+                                <Link
+                                    href="/#how-it-works"
+                                    className="transition-colors hover:text-primary"
+                                >
+                                    How it works
+                                </Link>
+                                <Link
+                                    href="/sign-up?redirect_url=/build"
+                                    className="transition-colors hover:text-primary"
+                                >
+                                    Start free
+                                </Link>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="ledger text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground/50">
+                                Company
+                            </p>
+                            <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
+                                <Link href="/privacy" className="transition-colors hover:text-primary">
+                                    Privacy
+                                </Link>
+                                <Link href="/terms" className="transition-colors hover:text-primary">
+                                    Terms
+                                </Link>
+                                <a
+                                    href={`mailto:${CONTACT_EMAIL}`}
+                                    className="transition-colors hover:text-primary"
+                                >
+                                    {CONTACT_EMAIL}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="mt-12 border-t border-border/40 pt-6">
+                    <p className="text-xs text-muted-foreground/50">
+                        Never sold, never used to train anything.
+                    </p>
+                </div>
+            </div>
+        </footer>
+    );
 }

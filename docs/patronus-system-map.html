@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral', fontFamily: 'ui-sans-serif, system-ui, sans-serif' });
+</script>
+</head>
+<body>
+<title>Patronus — how it all fits together</title>
+
+<style>
+  :root {
+    --ink: 218 32% 12%;
+    --ink-soft: 218 12% 40%;
+    --ink-faint: 218 10% 56%;
+    --paper: 40 24% 97%;
+    --card: 0 0% 100%;
+    --rule: 40 14% 88%;
+    --rule-soft: 40 14% 92%;
+    --accent: 205 78% 38%;
+    --accent-soft: 205 70% 95%;
+    --amber: 32 78% 44%;
+    --amber-soft: 38 84% 95%;
+    --moss: 152 44% 30%;
+    --moss-soft: 152 40% 95%;
+    --rust: 8 62% 46%;
+    --rust-soft: 8 70% 96%;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: 40 18% 92%;
+      --ink-soft: 40 8% 68%;
+      --ink-faint: 40 6% 52%;
+      --paper: 218 26% 9%;
+      --card: 218 22% 12%;
+      --rule: 218 16% 20%;
+      --rule-soft: 218 16% 16%;
+      --accent: 205 76% 68%;
+      --accent-soft: 205 40% 18%;
+      --amber: 38 76% 62%;
+      --amber-soft: 34 34% 17%;
+      --moss: 152 44% 60%;
+      --moss-soft: 152 26% 15%;
+      --rust: 8 66% 66%;
+      --rust-soft: 8 32% 17%;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: 40 18% 92%; --ink-soft: 40 8% 68%; --ink-faint: 40 6% 52%;
+    --paper: 218 26% 9%; --card: 218 22% 12%; --rule: 218 16% 20%; --rule-soft: 218 16% 16%;
+    --accent: 205 76% 68%; --accent-soft: 205 40% 18%;
+    --amber: 38 76% 62%; --amber-soft: 34 34% 17%;
+    --moss: 152 44% 60%; --moss-soft: 152 26% 15%;
+    --rust: 8 66% 66%; --rust-soft: 8 32% 17%;
+  }
+  :root[data-theme="light"] {
+    --ink: 218 32% 12%; --ink-soft: 218 12% 40%; --ink-faint: 218 10% 56%;
+    --paper: 40 24% 97%; --card: 0 0% 100%; --rule: 40 14% 88%; --rule-soft: 40 14% 92%;
+    --accent: 205 78% 38%; --accent-soft: 205 70% 95%;
+    --amber: 32 78% 44%; --amber-soft: 38 84% 95%;
+    --moss: 152 44% 30%; --moss-soft: 152 40% 95%;
+    --rust: 8 62% 46%; --rust-soft: 8 70% 96%;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: hsl(var(--paper));
+    color: hsl(var(--ink));
+    font: 400 16.5px/1.65 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 1.5rem 8rem; }
+
+  /* ── masthead ─────────────────────────────────────────── */
+  header.top {
+    border-bottom: 2px solid hsl(var(--ink));
+    padding: 3.5rem 0 1.25rem;
+    margin-bottom: 2.5rem;
+  }
+  header.top .kicker {
+    font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--accent));
+    margin: 0 0 0.9rem;
+  }
+  header.top h1 {
+    font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    margin: 0 0 0.7rem;
+    text-wrap: balance;
+  }
+  header.top .standfirst {
+    font-size: 1.12rem;
+    color: hsl(var(--ink-soft));
+    max-width: 46rem;
+    margin: 0;
+  }
+  header.top .meta {
+    margin-top: 1.4rem;
+    font: 400 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: hsl(var(--ink-faint));
+    display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem;
+  }
+
+  /* ── contents ─────────────────────────────────────────── */
+  nav.toc {
+    border: 1px solid hsl(var(--rule));
+    background: hsl(var(--card));
+    border-radius: 10px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 3.5rem;
+  }
+  nav.toc h2 {
+    font: 600 11px/1 ui-monospace, monospace;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: hsl(var(--ink-faint)); margin: 0 0 1rem;
+  }
+  nav.toc ol { margin: 0; padding: 0; list-style: none; counter-reset: toc; columns: 2; column-gap: 2.5rem; }
+  nav.toc li { counter-increment: toc; margin-bottom: 0.45rem; break-inside: avoid; }
+  nav.toc li::before {
+    content: counter(toc, decimal-leading-zero);
+    font: 500 11.5px/1 ui-monospace, monospace;
+    color: hsl(var(--ink-faint)); margin-right: 0.7rem;
+  }
+  nav.toc a { color: hsl(var(--ink)); text-decoration: none; border-bottom: 1px solid transparent; }
+  nav.toc a:hover { border-bottom-color: hsl(var(--accent)); }
+  @media (max-width: 640px) { nav.toc ol { columns: 1; } }
+
+  /* ── sections ─────────────────────────────────────────── */
+  section { margin-bottom: 4.5rem; scroll-margin-top: 1.5rem; }
+  section > h2 {
+    font-size: 1.75rem; line-height: 1.15; letter-spacing: -0.02em; font-weight: 700;
+    margin: 0 0 0.3rem; padding-top: 1.1rem;
+    border-top: 1px solid hsl(var(--ink));
+    display: flex; align-items: baseline; gap: 0.9rem;
+  }
+  section > h2 .num {
+    font: 500 12px/1 ui-monospace, monospace; color: hsl(var(--accent));
+    letter-spacing: 0.1em; flex: none;
+  }
+  section > .dek { color: hsl(var(--ink-soft)); margin: 0 0 1.8rem; max-width: 48rem; }
+
+  h3 {
+    font-size: 1.08rem; font-weight: 650; letter-spacing: -0.01em;
+    margin: 2.2rem 0 0.6rem;
+  }
+  h4 {
+    font: 600 12px/1 ui-monospace, monospace; letter-spacing: 0.1em; text-transform: uppercase;
+    color: hsl(var(--ink-faint)); margin: 1.8rem 0 0.7rem;
+  }
+  p { margin: 0 0 1rem; }
+  p, li { max-width: 48rem; }
+  ul, ol { padding-left: 1.15rem; margin: 0 0 1rem; }
+  li { margin-bottom: 0.35rem; }
+  strong { font-weight: 650; }
+  code {
+    font: 400 0.87em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: hsl(var(--rule-soft)); padding: 0.1em 0.36em; border-radius: 4px;
+    border: 1px solid hsl(var(--rule));
+  }
+  a { color: hsl(var(--accent)); }
+
+  /* ── diagram frame ────────────────────────────────────── */
+  figure {
+    margin: 1.6rem 0 1.9rem; border: 1px solid hsl(var(--rule));
+    background: hsl(var(--card)); border-radius: 10px; overflow: hidden;
+  }
+  figure .mermaid, figure pre.mermaid {
+    margin: 0; padding: 1.5rem 1rem; overflow-x: auto; text-align: center;
+    background: hsl(var(--card));
+  }
+  figcaption {
+    border-top: 1px solid hsl(var(--rule-soft));
+    padding: 0.65rem 1rem; font-size: 13px; color: hsl(var(--ink-faint));
+    background: hsl(var(--rule-soft) / 0.5);
+  }
+
+  /* ── tables ───────────────────────────────────────────── */
+  .scroll { overflow-x: auto; margin: 1.2rem 0 1.6rem; border: 1px solid hsl(var(--rule)); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; font-size: 14.5px; background: hsl(var(--card)); }
+  th, td { text-align: left; padding: 0.6rem 0.85rem; border-bottom: 1px solid hsl(var(--rule-soft)); vertical-align: top; }
+  th {
+    font: 600 11px/1.3 ui-monospace, monospace; letter-spacing: 0.09em; text-transform: uppercase;
+    color: hsl(var(--ink-faint)); background: hsl(var(--rule-soft) / 0.6); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { background: none; border: 0; padding: 0; font-size: 0.9em; }
+  .num-col { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── callouts ─────────────────────────────────────────── */
+  .note {
+    border-left: 3px solid; border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem; margin: 1.3rem 0; font-size: 15px;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .tag {
+    display: block; font: 600 10.5px/1 ui-monospace, monospace;
+    letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 0.5rem;
+  }
+  .note.why    { border-color: hsl(var(--accent)); background: hsl(var(--accent-soft)); }
+  .note.why .tag { color: hsl(var(--accent)); }
+  .note.trap   { border-color: hsl(var(--amber)); background: hsl(var(--amber-soft)); }
+  .note.trap .tag { color: hsl(var(--amber)); }
+  .note.rule   { border-color: hsl(var(--moss)); background: hsl(var(--moss-soft)); }
+  .note.rule .tag { color: hsl(var(--moss)); }
+  .note.gap    { border-color: hsl(var(--rust)); background: hsl(var(--rust-soft)); }
+  .note.gap .tag { color: hsl(var(--rust)); }
+
+  /* ── pills ────────────────────────────────────────────── */
+  .pill {
+    display: inline-block; font: 500 11px/1.5 ui-monospace, monospace;
+    padding: 0.1rem 0.45rem; border-radius: 999px; border: 1px solid;
+    white-space: nowrap;
+  }
+  .pill.flag  { color: hsl(var(--accent)); border-color: hsl(var(--accent) / 0.4); background: hsl(var(--accent-soft)); }
+  .pill.meter { color: hsl(var(--amber)); border-color: hsl(var(--amber) / 0.4); background: hsl(var(--amber-soft)); }
+  .pill.free  { color: hsl(var(--moss)); border-color: hsl(var(--moss) / 0.4); background: hsl(var(--moss-soft)); }
+  .pill.none  { color: hsl(var(--ink-faint)); border-color: hsl(var(--rule)); }
+
+  footer.end {
+    border-top: 2px solid hsl(var(--ink)); padding-top: 1.2rem; margin-top: 4rem;
+    font-size: 14px; color: hsl(var(--ink-faint));
+  }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="kicker">Internal reference · Patronus</p>
+  <h1>How all of it fits together</h1>
+  <p class="standfirst">
+    Every surface, what gates it, what it reads and writes, and how the browser
+    extension talks to the rest. Written to be re-read — start at the map, drop
+    into whichever section you are actually thinking about.
+  </p>
+  <div class="meta">
+    <span>8 Aug 2026</span>
+    <span>Next.js 16 · Prisma · Postgres · Qdrant · Clerk · MV3</span>
+    <span>2,038 tests</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#thesis">The one idea</a></li>
+    <li><a href="#map">The whole system</a></li>
+    <li><a href="#spine">The data spine</a></li>
+    <li><a href="#gating">Two gates: flags and plans</a></li>
+    <li><a href="#surfaces">Surface by surface</a></li>
+    <li><a href="#resume">Resume generation</a></li>
+    <li><a href="#extension">The browser extension</a></li>
+    <li><a href="#ext-wire">Extension ↔ backend wire</a></li>
+    <li><a href="#background">Background work</a></li>
+    <li><a href="#journeys">Four journeys</a></li>
+    <li><a href="#invariants">Rules that must not break</a></li>
+    <li><a href="#where">Where things live</a></li>
+  </ol>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════ 1 -->
+<section id="thesis">
+  <h2><span class="num">01</span> The one idea</h2>
+  <p class="dek">Everything below is downstream of a single sentence, so it is worth stating precisely.</p>
+
+  <p>
+    <strong>Patronus keeps the evidence-backed record of what someone actually did,
+    and everything else is generated from that record.</strong>
+    The resume, the review packet, the promotion case, the monthly summary — none
+    of them is a separate document you write. Each is a different <em>view</em>
+    over the same confirmed wins.
+  </p>
+
+  <p>
+    That is why the numbers agree with each other, and it is the whole moat.
+    A tool that only shows up at job-search time starts from a blank page and your
+    memory. This one starts from years of dated, sourced evidence.
+  </p>
+
+  <div class="note rule">
+    <span class="tag">The load-bearing write</span>
+    <p>
+      Confirming a Win writes <code>Evidence(confirmedByUser=true)</code> and
+      <code>ClaimLink(grounded)</code> in <strong>one transaction</strong>. That
+      single write is simultaneously the retention loop and the moat. Un-confirming
+      must fully reverse it, including the Qdrant vector. Any refactor that
+      decouples those two breaks the product thesis, not just a feature.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 2 -->
+<section id="map">
+  <h2><span class="num">02</span> The whole system</h2>
+  <p class="dek">Four places a user can be, one backend, one database.</p>
+
+  <figure>
+    <pre class="mermaid">
+graph TB
+    subgraph entry["Ways in"]
+        MKT["Marketing site<br/>/ · /score · /privacy"]
+        EXT["Chrome extension<br/>side panel on a job board"]
+        TG["Telegram bot<br/>quick capture"]
+        MAIL["Email<br/>digest · Month in Review"]
+    end
+
+    subgraph app["The authenticated app"]
+        HOME["/home<br/>missions"]
+        LOG["/log<br/>the Work Log"]
+        DASH["/dashboard + /editor<br/>resumes"]
+        PKT["/packets<br/>review + promotion"]
+        RAD["/radar<br/>market signal"]
+    end
+
+    subgraph core["Backend"]
+        ACT["Server actions<br/>src/actions/*"]
+        API["Extension REST<br/>/api/extension/*"]
+        JOBS["Job queue<br/>hourly cron"]
+    end
+
+    DB[("Postgres<br/>Win · Evidence · ClaimLink")]
+    VEC[("Qdrant<br/>vectors")]
+    LLM["OpenAI<br/>via generateStructured"]
+
+    MKT --> HOME
+    EXT --> API
+    TG --> ACT
+    MAIL --> LOG
+
+    HOME --> ACT
+    LOG --> ACT
+    DASH --> ACT
+    PKT --> ACT
+    RAD --> ACT
+
+    API --> ACT
+    ACT --> DB
+    ACT --> VEC
+    ACT --> LLM
+    JOBS --> DB
+    JOBS --> LLM
+    JOBS --> MAIL
+
+    style DB fill:#0b6bab,color:#fff,stroke:none
+    style VEC fill:#0b6bab,color:#fff,stroke:none
+    style LLM fill:#7a5c1e,color:#fff,stroke:none
+    </pre>
+    <figcaption>Four entry points converge on one set of server actions. The extension is the only one that speaks REST rather than calling actions directly — it lives in another origin.</figcaption>
+  </figure>
+
+  <p>
+    The important asymmetry: <strong>the app calls server actions directly</strong>
+    (they are functions), while <strong>the extension goes over HTTP</strong> to
+    <code>/api/extension/*</code>, because a Chrome extension is a different origin
+    with no Clerk session cookie. It carries a bearer token instead.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 3 -->
+<section id="spine">
+  <h2><span class="num">03</span> The data spine</h2>
+  <p class="dek">Roughly forty tables exist. Six of them matter for understanding how anything works.</p>
+
+  <figure>
+    <pre class="mermaid">
+erDiagram
+    Win ||--o{ Evidence : "proved by"
+    Win ||--o{ ImpactMetric : "quantified by"
+    Win ||--o{ ClaimLink : "cited in"
+    CaptureSignal ||--o| Win : "drafts"
+    CaptureSource ||--o{ CaptureSignal : "pulls"
+    Win }o--|| UserProfile : "belongs to"
+    ReviewPacket }o--o{ Win : "assembles"
+    Resume }o--o{ Win : "assembles"
+
+    Win {
+        string id
+        string userId
+        enum status "draft|confirmed"
+        enum sensitivity "shareable|internal|confidential"
+        enum category "shipped|improved|fixed|led|..."
+        date occurredAt
+    }
+    Evidence {
+        string winId
+        string sourceUrl
+        bool confirmedByUser "the moat write"
+    }
+    ClaimLink {
+        string winId
+        enum groundState "grounded|needs_confirmation|unsupported"
+    }
+    </pre>
+    <figcaption>A Win is the atom. Evidence proves it, ImpactMetric quantifies it, ClaimLink records where it has been cited and whether that citation is grounded.</figcaption>
+  </figure>
+
+  <h3>How a Win comes into existence</h3>
+
+  <figure>
+    <pre class="mermaid">
+flowchart LR
+    A["GitHub PR<br/>Telegram note<br/>backfill interview<br/>typed by hand"] --> B["CaptureSignal<br/>raw, deduped"]
+    B --> C["draftWins job<br/>LLM structures it"]
+    C --> D["Win status=draft"]
+    D --> E{"User confirms<br/>in /log"}
+    E -->|yes| F["Evidence.confirmedByUser = true<br/>+ ClaimLink grounded<br/>+ Qdrant vector"]
+    E -->|no| G["stays draft<br/>never used downstream"]
+    F --> H["Now visible to resumes,<br/>packets, Month in Review"]
+
+    style F fill:#1d6b46,color:#fff,stroke:none
+    style G fill:#8a8a8a,color:#fff,stroke:none
+    </pre>
+    <figcaption>Nothing downstream can see a Win until the user has confirmed it. That is the design: the product never claims something on your behalf that you have not looked at.</figcaption>
+  </figure>
+
+  <div class="note rule">
+    <span class="tag">Sensitivity is a query concern</span>
+    <p>
+      Any retrieval feeding an <em>external</em> artifact — a resume, a cover
+      letter, an application answer — filters <code>sensitivity = 'shareable'</code>
+      <strong>in the SQL</strong>. We never instruct a model to "skip confidential
+      content". Prompts are advice; a <code>WHERE</code> clause is a guarantee.
+      Tests assert the filter, not the output.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 4 -->
+<section id="gating">
+  <h2><span class="num">04</span> Two gates: flags and plans</h2>
+  <p class="dek">Every feature passes two independent checks, and confusing them causes most of the "why can't I see this" questions.</p>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TD
+    U["User opens a surface"] --> F{"Feature flag<br/>is it built and switched on?"}
+    F -->|no row / disabled| X1["404 for a stranger<br/>'not switched on yet' for a customer"]
+    F -->|on| E{"Entitlement<br/>does their plan allow it?"}
+    E -->|"limit is 0"| X2["Paywall — an upsell"]
+    E -->|"trial spent"| X3["Paywall — 'Career continues them'"]
+    E -->|"under the limit"| OK["Feature runs<br/>quota consumed"]
+
+    style OK fill:#1d6b46,color:#fff,stroke:none
+    style X1 fill:#a04030,color:#fff,stroke:none
+    style X2 fill:#8a6210,color:#fff,stroke:none
+    style X3 fill:#8a6210,color:#fff,stroke:none
+    </pre>
+    <figcaption>Flags answer "does this exist for you". Entitlements answer "are you allowed". A gated feature checks both, in that order.</figcaption>
+  </figure>
+
+  <h3>Flags — <code>src/lib/flags.ts</code></h3>
+  <p>
+    Postgres-backed, one row per flag, 60-second in-process cache. Resolution
+    order inside <code>decideFlag</code>:
+  </p>
+  <ol>
+    <li><strong>No row at all → false.</strong> This is checked <em>before</em> the allow-list, so a missing row is off for everyone including admins. Rows are seeded on boot by <code>src/instrumentation.ts</code>.</li>
+    <li><strong>On the allow-list → true</strong>, even if disabled. This is how the team sees an unreleased feature.</li>
+    <li><strong>Disabled → false.</strong></li>
+    <li><strong>Rollout ≥ 100 → true</strong>; otherwise a stable FNV-1a hash of <code>(userId, flagKey)</code> decides, so a user never flickers in and out.</li>
+  </ol>
+
+  <div class="note trap">
+    <span class="tag">The trap</span>
+    <p>
+      <code>enabled: true</code> with <code>rolloutPercent: 0</code> is <strong>off
+      for everyone</strong> outside the allow-list. Both fields have to be set.
+      The admin panel shows a "live" pill only when both are right.
+    </p>
+  </div>
+
+  <h3>Entitlements — <code>src/lib/entitlements.ts</code></h3>
+  <p>
+    Two shapes. <em>Feature gates</em> are booleans from <code>PLAN_FEATURES</code>
+    (does this plan include Radar at full depth?). <em>Metered actions</em> are
+    counters in <code>UsageQuota</code>, consumed atomically by
+    <code>gateMeteredAction</code> — a conditional <code>updateMany</code> that
+    only increments while strictly under the limit, so concurrent calls cannot
+    overshoot.
+  </p>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Metered action</th><th>Free</th><th>Career</th><th>Search</th><th>Gated at</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>tailored_generation</code></td><td class="num-col">10 total</td><td class="num-col">15/mo</td><td class="num-col">unlimited</td><td><code>clarify.ts</code>, <code>channelGenerate.ts</code>, extension</td></tr>
+        <tr><td><code>context_interview</code></td><td class="num-col">3 trial</td><td class="num-col">4/mo</td><td class="num-col">unlimited</td><td><code>backfill.ts</code></td></tr>
+        <tr><td><code>review_packet</code></td><td class="num-col">3 trial</td><td class="num-col">4/mo</td><td class="num-col">4/mo</td><td><code>packets.ts</code></td></tr>
+        <tr><td><code>month_in_review</code></td><td class="num-col">3 trial</td><td class="num-col">unlimited</td><td class="num-col">unlimited</td><td><code>monthInReview.ts</code></td></tr>
+        <tr><td><code>rubric_upload</code></td><td class="num-col">3 trial</td><td class="num-col">3/mo</td><td class="num-col">3/mo</td><td><code>packets.ts</code></td></tr>
+        <tr><td><code>win_draft</code></td><td class="num-col">30/mo</td><td class="num-col">unlimited</td><td class="num-col">unlimited</td><td><code>wins.ts</code></td></tr>
+        <tr><td><code>auto_apply</code>, <code>cover_letter</code>, <code>radar_refresh</code>, <code>tier2_grounding</code></td><td class="num-col">—</td><td class="num-col">—</td><td class="num-col">—</td><td><em>no feature built yet</em></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Free is a <strong>trial of the whole product</strong>, not a crippled subset.
+    The trial limits are <em>lifetime</em> — there is no next month that refills
+    them, which is what turns exhaustion into an upgrade prompt rather than a
+    wait. Two view-only features (full Radar, real readiness verdict) use a
+    <strong>14-day window</strong> instead of a counter, because a page refresh
+    would spend a count.
+  </p>
+
+  <div class="note why">
+    <span class="tag">Every number is an env var</span>
+    <p>
+      <code>ENTITLEMENT_FREE_TRIAL_USES</code>,
+      <code>ENTITLEMENT_FREE_RESUME_LIFETIME_CAP</code>,
+      <code>ENTITLEMENT_FREE_TRIAL_DAYS</code>,
+      <code>ENTITLEMENT_LIMIT_&lt;TIER&gt;_&lt;ACTION&gt;</code>,
+      <code>ENTITLEMENT_TOKENS_&lt;TIER&gt;</code>. Set, restart, done — no deploy.
+      <code>/admin</code> prints the live values with the variable name beside each.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 5 -->
+<section id="surfaces">
+  <h2><span class="num">05</span> Surface by surface</h2>
+  <p class="dek">Every route a signed-in user can reach, what gates it, and what it reads.</p>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Route</th><th>What it is</th><th>Flag</th><th>Reads</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/home</code></td>
+          <td>The one thing you are working toward, paced weekly</td>
+          <td><span class="pill flag">missions</span></td>
+          <td><code>Mission</code>, <code>MissionStep</code>, recomputed on read</td>
+        </tr>
+        <tr>
+          <td><code>/log</code></td>
+          <td>The Work Log — the record everything else reads</td>
+          <td><span class="pill flag">work_log</span></td>
+          <td><code>Win</code> + <code>Evidence</code> + <code>ImpactMetric</code></td>
+        </tr>
+        <tr>
+          <td><code>/log/backfill</code></td>
+          <td>Reconstruct the years before Patronus, by interview</td>
+          <td><span class="pill flag">backfill</span></td>
+          <td><code>InterviewSession</code> → drafts Wins</td>
+        </tr>
+        <tr>
+          <td><code>/log/readiness</code></td>
+          <td>Your wins mapped against a levelling rubric</td>
+          <td><span class="pill flag">review_packet</span></td>
+          <td><code>CompetencyFramework</code> × confirmed Wins</td>
+        </tr>
+        <tr>
+          <td><code>/log/review/[yyyy-mm]</code></td>
+          <td>Month in Review, the web copy of the email</td>
+          <td><span class="pill flag">work_log</span> <span class="pill meter">metered</span></td>
+          <td><code>MonthlyReview</code>, else composed on the fly</td>
+        </tr>
+        <tr>
+          <td><code>/packets</code></td>
+          <td>Review and promotion documents</td>
+          <td><span class="pill flag">review_packet</span></td>
+          <td><code>ReviewPacket</code> ← confirmed Wins</td>
+        </tr>
+        <tr>
+          <td><code>/radar</code></td>
+          <td>What the market asks for, priced and dated</td>
+          <td><span class="pill flag">career_radar</span></td>
+          <td><code>JobPosting</code>, <code>SkillSignal</code>, <code>OfferDataPoint</code></td>
+        </tr>
+        <tr>
+          <td><code>/dashboard</code>, <code>/editor</code>, <code>/build</code></td>
+          <td>Resumes — the part every account has</td>
+          <td><span class="pill none">none</span></td>
+          <td><code>Resume</code>, <code>UserExperience</code>, <code>UserProject</code></td>
+        </tr>
+        <tr>
+          <td><code>/settings/sources</code></td>
+          <td>Connect GitHub so the log fills itself</td>
+          <td><span class="pill flag">github_capture</span></td>
+          <td><code>CaptureSource</code></td>
+        </tr>
+        <tr>
+          <td><code>/settings/plan</code></td>
+          <td>Plan, quota meters, checkout</td>
+          <td><span class="pill none">none</span></td>
+          <td><code>Subscription</code>, <code>UsageQuota</code></td>
+        </tr>
+        <tr>
+          <td><code>/welcome</code></td>
+          <td>First run — collects history, never just a name</td>
+          <td><span class="pill none">never gated</span></td>
+          <td>the <code>/score</code> handoff, or an upload</td>
+        </tr>
+        <tr>
+          <td><code>/admin</code></td>
+          <td>Flags, effective limits, usage and cost</td>
+          <td><span class="pill free">ADMIN_USER_IDS</span></td>
+          <td>everything</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>How the surfaces link to each other</h3>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TD
+    LOG["/log<br/>confirmed wins"]
+
+    LOG -->|"'Generate review packet'"| PKT["/packets"]
+    LOG -->|"'Reconstruct earlier years'"| BF["/log/backfill"]
+    LOG -->|"'How am I tracking?'"| RDY["/log/readiness"]
+    BF -->|"drafts land back in"| LOG
+    PKT -->|"cites"| LOG
+    RDY -->|"maps"| LOG
+
+    LOG -->|"evidence feeds"| GEN["/build → /editor<br/>tailored resume"]
+    GEN -->|"apply with it"| EXTN["Extension<br/>on the job board"]
+    EXTN -->|"tracked application"| WS["ApplicationWorkspace"]
+    WS -->|"outcome"| HOME["/home<br/>mission progress"]
+    HOME -->|"next step"| LOG
+
+    RAD["/radar"] -.->|"'this skill is in demand<br/>and thin in your log'"| LOG
+
+    style LOG fill:#0b6bab,color:#fff,stroke:none
+    </pre>
+    <figcaption>The Work Log is the hub. Every other surface either reads from it or writes back into it — that circularity is the product, and it is the thing that does not work while the log is switched off.</figcaption>
+  </figure>
+
+  <div class="note gap">
+    <span class="tag">Known gap</span>
+    <p>
+      The resume's gap report says "nothing on your resume answers X" but does
+      not yet link into the Work Log to capture that evidence. Closing that loop
+      is the single highest-value connection still missing — it is the one place
+      the resume would <em>feed</em> the log rather than only read it.
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 6 -->
+<section id="resume">
+  <h2><span class="num">06</span> Resume generation</h2>
+  <p class="dek">Eight steps, in the order a person actually works. The interesting one is step 3.</p>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TD
+    JD["Job posting"] --> P1["1 · readPosting<br/>requirements + duties + skills"]
+    HIST["Their history<br/>experience · projects · education"] --> P2
+
+    P1 --> P2["2 · scoreBullets<br/>what does each line answer?<br/>how strong is it alone?"]
+    P2 --> P3["3 · selectBullets<br/>COVER the musts and duties first,<br/>then fill on strength"]
+    P3 --> P4["4 · writeBullets<br/>per role, numeric guard on"]
+    P3 --> P5["5 · chooseSkills<br/>evidence-gated, then grouped"]
+    P4 --> P6["6 · writeSummary<br/>never names the employer"]
+    P5 --> P6
+    P6 --> P7["7 · assemble<br/>only what earned a place"]
+    P7 --> P8["8 · computeCoverage<br/>score = requirements answered"]
+    P8 --> OUT["Resume + gap report"]
+
+    style P3 fill:#0b6bab,color:#fff,stroke:none
+    style P8 fill:#1d6b46,color:#fff,stroke:none
+    </pre>
+    <figcaption>Step 3 is the one the old pipeline did not have. Everything before it gathers; everything after it writes. Deciding is most of what resume writing is.</figcaption>
+  </figure>
+
+  <h3>Why selection is a greedy set-cover</h3>
+  <p>
+    Two passes. First, walk the must-haves and then the stated duties, and for
+    each one take the strongest unclaimed line that answers it. Only then fill
+    the remaining slots by raw strength. A merely impressive bullet loses to a
+    less impressive one that answers something the employer asked for — because
+    the resume's job is to answer the posting.
+  </p>
+
+  <h3>The score</h3>
+  <p>
+    <strong>Coverage, not keyword overlap.</strong> The share of stated
+    requirements answered by a line the candidate actually has. It cannot be
+    gamed by adding keywords, and it goes <em>down</em> when the resume gets
+    worse — drop the mentoring bullet and the mentoring requirement goes
+    unanswered. The old ATS score scored a resume with ten fabricated skills at
+    95/100.
+  </p>
+
+  <p>Coverage sees three sources of evidence, which is what stops it lying:</p>
+  <ul>
+    <li><strong>Kept bullets</strong> — what is on the page.</li>
+    <li><strong>Credentials</strong> — education and the skills section. Without this, a career switcher was told "nothing answers: Bachelor's degree" while holding one.</li>
+    <li><strong>Cut lines</strong> — evidence they have that did not fit. Reported as <em>"you have this and it did not fit — put the line back"</em>, never as a gap.</li>
+  </ul>
+
+  <div class="note rule">
+    <span class="tag">No fabricated quantities</span>
+    <p>
+      No generated artifact may contain a number, scope or outcome absent from
+      its source. Enforced by the numeric guard in <code>src/lib/ai/guard.ts</code>
+      on every writing call, with the candidate's own words as the source text.
+      Zero fabrications is the pass condition — not "a low rate".
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 7 -->
+<section id="extension">
+  <h2><span class="num">07</span> The browser extension</h2>
+  <p class="dek">Three processes that cannot call each other's functions, only pass messages. Most extension confusion is really confusion about which of the three you are in.</p>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TB
+    subgraph tab["The job board tab"]
+        CS["Content script<br/>src/content/index.ts<br/><br/>reads the DOM<br/>fills fields<br/>NO network, NO storage"]
+    end
+
+    subgraph panel["Side panel — an extension page"]
+        UI["React app<br/>src/sidepanel/*<br/><br/>5 routes<br/>NO DOM access to the tab"]
+    end
+
+    subgraph worker["Service worker"]
+        BG["src/background/index.ts<br/><br/>the ONLY thing that<br/>talks to the backend<br/>holds the auth token"]
+    end
+
+    API["Patronus backend<br/>/api/extension/*"]
+
+    CS <-->|"PAGE_CONTEXT_UPDATED<br/>CONTENT_REPARSE<br/>fill instructions"| BG
+    UI <-->|"22 message types"| BG
+    BG <-->|"HTTPS + bearer token"| API
+
+    style BG fill:#0b6bab,color:#fff,stroke:none
+    </pre>
+    <figcaption>The side panel never touches the page and never holds the token. The content script never makes a network call. Everything crosses through the worker — which is why it can be restarted at any moment without losing anything.</figcaption>
+  </figure>
+
+  <h3>The five panel routes</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Route</th><th>What it does</th><th>Backend it uses</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Apply</strong></td><td>Reads the form, plans a fill, applies it, offers undo</td><td><code>/page/analyze</code></td></tr>
+        <tr><td><strong>Tailor</strong></td><td>Generates a resume for this posting, in place</td><td><code>/resume/generate</code>, <code>/generate/[id]/status</code></td></tr>
+        <tr><td><strong>Answers</strong></td><td>The saved-answer library — matched by meaning, not exact wording</td><td><code>/answers</code>, <code>/questions/suggest</code></td></tr>
+        <tr><td><strong>Workspaces</strong></td><td>Tracked applications, one per job</td><td><code>/workspaces</code>, <code>/workspaces/upsert</code></td></tr>
+        <tr><td><strong>Settings</strong></td><td>Connection, sign-out, and which sites you have enabled</td><td><code>/me</code>, <code>/connect/*</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Permissions — and why this shape</h3>
+  <p>
+    The manifest declares <strong>nine job-board hosts</strong>, not
+    <code>&lt;all_urls&gt;</code>. Chrome renders <code>&lt;all_urls&gt;</code> to
+    the user as <em>"Read and change all your data on all websites"</em>, which is
+    an absurd install prompt for a product whose brand is not taking more than it
+    needs — and a Web Store review risk.
+  </p>
+
+  <figure>
+    <pre class="mermaid">
+flowchart TD
+    OPEN["User opens a job page"] --> Q{"Is this host in the<br/>nine declared boards?"}
+    Q -->|yes| RUN["Content script runs<br/>panel parses the page"]
+    Q -->|no| OFFER["Panel: 'Patronus is off on this site'<br/>+ Enable on jobs.example.com"]
+    OFFER --> CLICK{"User clicks"}
+    CLICK -->|grants| REQ["chrome.permissions.request<br/>this origin only"]
+    REQ --> INJECT["REQUEST_REPARSE injects<br/>the content script"]
+    INJECT --> RUN
+    CLICK -->|declines| NOTHING["Nothing happens.<br/>No access taken."]
+
+    RUN --> LATER["Settings lists granted sites<br/>with a remove button"]
+
+    style RUN fill:#1d6b46,color:#fff,stroke:none
+    style NOTHING fill:#8a8a8a,color:#fff,stroke:none
+    </pre>
+    <figcaption>Consent happens on the page the user cares about, for one origin, revocably — which is a better story than an install prompt asking for the entire web up front.</figcaption>
+  </figure>
+
+  <div class="note trap">
+    <span class="tag">Learned the hard way</span>
+    <p>
+      Narrowing the permissions <em>without</em> building that grant flow made the
+      extension dead on any unlisted board, with "Re-scan this page" as the only
+      button — and it cannot work, because there is no content script to answer.
+      If you ever narrow a permission, ship the way to widen it in the same change.
+    </p>
+  </div>
+
+  <h3>Auth: how the extension gets a token</h3>
+  <figure>
+    <pre class="mermaid">
+sequenceDiagram
+    participant P as Side panel
+    participant W as Service worker
+    participant B as Backend
+    participant T as Browser tab
+
+    P->>W: CONNECT_START
+    W->>B: POST /api/extension/connect/start
+    B-->>W: { connectUrl, grantId }
+    W-->>P: connectUrl
+    P->>T: open connectUrl
+    Note over T,B: User signs in with Clerk<br/>and approves the grant
+    loop until approved or cancelled
+        W->>B: POST /connect/poll { grantId }
+        B-->>W: pending
+    end
+    B-->>W: { accessToken }
+    W->>W: store in chrome.storage.local
+    W-->>P: AUTH_GET → connected
+    </pre>
+    <figcaption>The token lives only in the worker's storage. The panel never sees it, and the content script — the one running inside a third-party page — never comes near it.</figcaption>
+  </figure>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 8 -->
+<section id="ext-wire">
+  <h2><span class="num">08</span> Extension ↔ backend wire</h2>
+  <p class="dek">Two contracts to keep straight: messages inside the browser, REST out to the server.</p>
+
+  <h4>Messages — panel/content → worker</h4>
+  <p>
+    Defined in <code>extension/src/shared/types/messages.ts</code> as a
+    discriminated union, so a handler that forgets a case is a compile error.
+    Twenty-five kinds, grouped by what they are for:
+  </p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Group</th><th>Messages</th></tr></thead>
+      <tbody>
+        <tr><td>Auth</td><td><code>AUTH_GET</code> <code>AUTH_CLEAR</code> <code>CONNECT_START</code> <code>CONNECT_CANCEL</code></td></tr>
+        <tr><td>Page</td><td><code>PAGE_CONTEXT_UPDATED</code> <code>GET_PAGE_CONTEXT</code> <code>REQUEST_REPARSE</code> <code>OPEN_SIDEPANEL</code></td></tr>
+        <tr><td>Filling</td><td><code>GET_FILL_PLAN</code> <code>APPLY_FILLS</code> <code>UNDO_FILLS</code> <code>INSERT_ANSWER</code></td></tr>
+        <tr><td>Answers</td><td><code>LIST_ANSWERS</code> <code>SUGGEST_ANSWER</code> <code>UPDATE_ANSWER</code> <code>DELETE_ANSWER</code></td></tr>
+        <tr><td>Tailoring</td><td><code>TAILOR_START</code> <code>TAILOR_STATUS</code></td></tr>
+        <tr><td>Tracking</td><td><code>GET_SESSION</code> <code>BIND_WORKSPACE</code> <code>TRACK_APPLICATION</code> <code>LIST_WORKSPACES</code></td></tr>
+        <tr><td>Misc</td><td><code>PING</code> <code>GET_PROFILE</code> <code>TELEMETRY_BATCH</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note trap">
+    <span class="tag">Response shape</span>
+    <p>
+      Every reply is <code>{ ok: true, data }</code> or <code>{ ok: false, error }</code>.
+      <strong>Check both <code>ok</code> and <code>data</code>.</strong> A service
+      worker that restarts mid-flight can answer <code>ok</code> with nothing, and
+      trusting <code>ok</code> alone put a null plan into React state and took the
+      whole panel down to a white screen.
+    </p>
+  </div>
+
+  <h4>REST — worker → backend</h4>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/extension/connect/start</code></td><td>Begin the pairing handshake</td></tr>
+        <tr><td><code>POST /api/extension/connect/poll</code></td><td>Wait for approval, receive the token</td></tr>
+        <tr><td><code>GET&nbsp; /api/extension/me</code></td><td>Profile, completeness, plan</td></tr>
+        <tr><td><code>POST /api/extension/page/analyze</code></td><td>Page model in → fill plan + classified questions out</td></tr>
+        <tr><td><code>POST /api/extension/resume/generate</code></td><td>Kick off a tailored resume <span class="pill meter">metered</span></td></tr>
+        <tr><td><code>GET&nbsp; /api/extension/generate/[id]/status</code></td><td>Poll it</td></tr>
+        <tr><td><code>GET/POST /api/extension/answers</code></td><td>The saved-answer library</td></tr>
+        <tr><td><code>POST /api/extension/questions/suggest</code></td><td>Draft an answer for one question</td></tr>
+        <tr><td><code>POST /api/extension/questions/save</code></td><td>Keep it for next time</td></tr>
+        <tr><td><code>GET/POST /api/extension/workspaces</code></td><td>Tracked applications</td></tr>
+        <tr><td><code>POST /api/extension/session/orchestrate</code></td><td>Multi-step apply <em>(not built)</em></td></tr>
+        <tr><td><code>POST /api/extension/events</code></td><td>Batched telemetry</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    Every one of these authenticates with the bearer token, resolves the user, and
+    then calls <strong>the same server actions the web app calls</strong>. There is
+    no second implementation of tailoring or answering — which is why the extension
+    inherited the resume rebuild for free, and why it also inherited its bugs.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 9 -->
+<section id="background">
+  <h2><span class="num">09</span> Background work</h2>
+  <p class="dek">One hourly cron, a Postgres queue, and a strict rule about fan-out.</p>
+
+  <figure>
+    <pre class="mermaid">
+flowchart LR
+    CRON["Vercel cron<br/>hourly"] --> TICK["schedulePeriodicWork"]
+    TICK --> Q[("Job table<br/>dedupeKey unique")]
+    Q --> RUN["Runner claims a job"]
+
+    RUN --> H1["captureSync<br/>pull GitHub"]
+    RUN --> H2["draftWins<br/>signals → drafts"]
+    RUN --> H3["embedWin<br/>→ Qdrant"]
+    RUN --> H4["weeklyDigest"]
+    RUN --> H5["monthInReview"]
+    RUN --> H6["radarSnapshot"]
+    RUN --> H7["missionNudge"]
+    RUN --> H8["ingestBoard<br/>skillRollup"]
+    RUN --> H9["proactiveDowngrade<br/>reconcileGraph"]
+
+    style Q fill:#0b6bab,color:#fff,stroke:none
+    </pre>
+    <figcaption>Twelve handlers, one queue, one tick. Adding a job kind means three places: the kind, the handler, and the schedule — a handler with no scheduler never fires.</figcaption>
+  </figure>
+
+  <div class="note rule">
+    <span class="tag">Handlers fan out, never loop</span>
+    <p>
+      A handler that would process N users <strong>enqueues N child jobs and
+      returns</strong>. Vercel's function timeout makes this mandatory, not
+      stylistic. And idempotency is a database constraint, not a convention:
+      <code>Job.dedupeKey</code>, <code>Win.signalId</code>,
+      <code>WeeklyDigest(userId, weekStart)</code> and
+      <code>CaptureSignal(sourceId, externalId)</code> are all unique, so a
+      double-fired cron is a no-op.
+    </p>
+  </div>
+
+  <h3>Email has a hard ceiling</h3>
+  <p>
+    Three outbound messages per user per week, enforced <em>inside</em>
+    <code>sendEmail</code> so no feature can route around it. Transactional mail
+    (a magic link) is exempt — suppressing an account-access link locks someone
+    out with no recovery. Adding an email category means giving it a ceiling in
+    <code>CATEGORY_CEILING</code> and a priority rank.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 10 -->
+<section id="journeys">
+  <h2><span class="num">10</span> Four journeys</h2>
+  <p class="dek">The same system, walked end to end, the way a person meets it.</p>
+
+  <h3>A · Stranger → first resume</h3>
+  <figure>
+    <pre class="mermaid">
+sequenceDiagram
+    actor U as Visitor
+    participant S as /score
+    participant W as /welcome
+    participant B as /build
+
+    U->>S: drops a PDF
+    S->>S: extract + analyse against a posting
+    S-->>U: coverage score + real gaps
+    U->>S: "Fix all of these"
+    S->>S: stash resume text in sessionStorage
+    S->>W: /sign-up → /welcome
+    W->>W: read the stash, import history
+    W-->>U: "Got 2 roles, 1 qualification"
+    W->>B: /build
+    </pre>
+    <figcaption>The best onboarding in the product: their resume has already been read, so there is nothing to upload and nothing to type. This path was silently broken for months — Clerk's forceRedirectUrl overrode the redirect that collected the stash.</figcaption>
+  </figure>
+
+  <h3>B · The weekly loop</h3>
+  <p>
+    GitHub PRs land as <code>CaptureSignal</code> → <code>draftWins</code> turns
+    them into drafts → Friday's digest emails the drafts → one click per Win
+    confirms it → <code>Evidence + ClaimLink</code> written → the resume, the
+    packet and the Month in Review all silently get better. <strong>The user
+    never writes anything.</strong> That is the whole design: every brag-doc tool
+    that asks you to sit down and compose fails, because almost nobody sustains it.
+  </p>
+
+  <h3>C · Applying with the extension</h3>
+  <figure>
+    <pre class="mermaid">
+sequenceDiagram
+    actor U as Applicant
+    participant C as Content script
+    participant W as Worker
+    participant B as Backend
+
+    U->>C: opens a Greenhouse posting
+    C->>W: PAGE_CONTEXT_UPDATED (page model)
+    W->>B: POST /page/analyze
+    B-->>W: fill plan + classified questions
+    U->>W: Tailor → TAILOR_START
+    W->>B: POST /resume/generate (quota checked)
+    B-->>W: sessionId
+    loop poll
+        W->>B: GET /generate/[id]/status
+    end
+    B-->>W: resume + coverage report
+    U->>W: APPLY_FILLS
+    W->>C: fill instructions
+    C-->>U: form filled, undo offered
+    U->>W: TRACK_APPLICATION
+    W->>B: workspace created + bound
+    </pre>
+    <figcaption>The extension does no reasoning of its own. It reads the page, ships the model to the backend, and applies what comes back — which is why it inherits every improvement to generation automatically.</figcaption>
+  </figure>
+
+  <h3>D · Hitting a wall and paying</h3>
+  <p>
+    Free gives a few real uses of everything built. The tenth tailored resume
+    exhausts a <em>lifetime</em> cap, so <code>gateMeteredAction</code> throws an
+    <code>EntitlementError</code> carrying the paywall payload — their real
+    numbers, their real plan — and the copy says <em>"You've used all 10 Tailored
+    resumes on Free — Career continues them."</em> Because the counter is
+    lifetime, there is no next month to wait for, which is what makes it an
+    upgrade prompt instead of a pause.
+  </p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 11 -->
+<section id="invariants">
+  <h2><span class="num">11</span> Rules that must not break</h2>
+  <p class="dek">Each of these has already been violated once and cost something. They are enforced by tests or grep gates, not by memory.</p>
+
+  <div class="note rule">
+    <span class="tag">1 · Fail closed on truth</span>
+    <p>A claim that cannot be positively grounded resolves to <code>needs_confirmation</code>, never <code>grounded</code>. Errors and timeouts resolve <em>down</em>.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">2 · No model IDs, no thinking budgets, no sampling numbers at call sites</span>
+    <p>Everything resolves from a per-task map in <code>src/lib/config.ts</code> and <code>src/lib/ai/tasks.ts</code>. A call site names a <em>task</em>: <code>generateStructured({ task: 'winDraft' })</code>.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">3 · Every model call goes through <code>generateStructured</code></span>
+    <p>So validation, retry, cost logging and the numeric guard happen once, consistently. One grandfathered exception — <code>usageTracker.ts</code> owns the raw call and is the floor of the stack, not a call site.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">4 · Sensitivity is filtered in SQL, never in a prompt</span>
+    <p>See §3. Tests assert the <code>WHERE</code> clause, not the model's output.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">5 · No raw <code>Tier</code> enum in the UI</span>
+    <p><code>always_on</code> displays as "Career", <code>pro</code> as "Search". A journey test scans every user-facing string for leaked enum values and has caught real ones.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">6 · Never delete user records on downgrade</span>
+    <p>Free-tier history is hidden, never removed, and the copy says so. It is the sentence that makes leaving safe, which is what makes coming back possible.</p>
+  </div>
+
+  <div class="note rule">
+    <span class="tag">7 · Tests borrow shared state, they do not keep it</span>
+    <p>The suite runs against the database a human develops on. A test that flips a feature flag and walks away makes a feature vanish from your machine with nothing failing. <code>flagHygiene.test.ts</code> enforces this.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ 12 -->
+<section id="where">
+  <h2><span class="num">12</span> Where things live</h2>
+  <p class="dek">When you know what you want to change but not where it is.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>If you are changing…</th><th>Look in</th></tr></thead>
+      <tbody>
+        <tr><td>What a plan costs or includes</td><td><code>src/lib/plans.ts</code> — the only place a price, quota or plan name is written down</td></tr>
+        <tr><td>Whether a feature is visible</td><td><code>src/lib/flags.ts</code>, or just <code>/admin</code></td></tr>
+        <tr><td>How the resume is built</td><td><code>src/lib/resume/</code> — <code>posting</code> · <code>select</code> · <code>write</code> · <code>skills</code> · <code>coverage</code> · <code>tailor</code></td></tr>
+        <tr><td>How the resume <em>looks</em></td><td><code>src/templates/latex.ts</code> (PDF) and <code>TemplateGalleryPanel.tsx</code> (live preview) — both must change together</td></tr>
+        <tr><td>Which model does what</td><td><code>src/lib/config.ts</code> + <code>src/lib/ai/tasks.ts</code></td></tr>
+        <tr><td>Anything in the extension</td><td><code>extension/src/</code> — <code>background</code> (network) · <code>sidepanel</code> (UI) · <code>content</code> (DOM) · <code>parsers</code></td></tr>
+        <tr><td>A background job</td><td><code>src/lib/jobs/</code> — the kind, the handler, <em>and</em> the schedule</td></tr>
+        <tr><td>Colour, type, spacing</td><td><code>src/app/globals.css</code> — mirrored into the extension, with a test proving it</td></tr>
+        <tr><td>What the landing page says</td><td><code>src/components/marketing/</code> — <code>Section.tsx</code> owns the scale</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The five documents worth reading</h3>
+  <ul>
+    <li><code>CLAUDE.md</code> — the five rules and the current state, kept honest</li>
+    <li><code>docs/career-os-v3.md</code> — the strategy and why</li>
+    <li><code>docs/prd/00-09</code> — product specs; 00 is the index, 09 the value model</li>
+    <li><code>docs/design/00-02</code> — foundations, components, screens</li>
+    <li><code>docs/impl/BUILD-LOG.md</code> — what actually landed, per wave</li>
+  </ul>
+</section>
+
+<footer class="end">
+  <p>
+    Written 8 Aug 2026 against the code as it stands, not from the specs. Where
+    the two disagree, the code is what runs. If a section here stops matching
+    what you see, that gap is the bug — in one of them.
+  </p>
+</footer>
+
+</div>
+
+</body>
+</html>

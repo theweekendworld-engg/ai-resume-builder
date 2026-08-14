@@ -4,6 +4,8 @@ import { Redis } from '@upstash/redis';
 let ratelimitKb: Ratelimit | null | undefined = undefined;
 let ratelimitAi: Ratelimit | null | undefined = undefined;
 let ratelimitGitHub: Ratelimit | null | undefined = undefined;
+let ratelimitAnonScore: Ratelimit | null | undefined = undefined;
+let ratelimitFunnelEvent: Ratelimit | null | undefined = undefined;
 
 function getRedis(): Redis | null {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -51,6 +53,19 @@ function getGitHubLimiter(): Ratelimit | null {
     return ratelimitGitHub;
 }
 
+function getAnonScoreLimiter(): Ratelimit | null {
+    if (ratelimitAnonScore !== undefined) return ratelimitAnonScore;
+    const redis = getRedis();
+    ratelimitAnonScore = redis
+        ? new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(10, '1 h'),
+              analytics: true,
+          })
+        : null;
+    return ratelimitAnonScore;
+}
+
 export async function checkKbRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
     const limiter = getKbLimiter();
     if (!limiter) return { allowed: true };
@@ -73,4 +88,59 @@ export async function checkGitHubRateLimit(identifier: string): Promise<{ allowe
     const result = await limiter.limit(identifier);
     if (result.success) return { allowed: true };
     return { allowed: false, error: 'Too many GitHub requests. Please try again in a minute.' };
+}
+
+export async function checkAnonScoreRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
+    const limiter = getAnonScoreLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(identifier);
+    if (result.success) return { allowed: true };
+    return { allowed: false, error: "You've reached the free limit for now. Please try again in a little while." };
+}
+
+function getFunnelEventLimiter(): Ratelimit | null {
+    if (ratelimitFunnelEvent !== undefined) return ratelimitFunnelEvent;
+    const redis = getRedis();
+    ratelimitFunnelEvent = redis
+        ? new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(60, '1 m'),
+              analytics: false,
+          })
+        : null;
+    return ratelimitFunnelEvent;
+}
+
+export async function checkFunnelEventRateLimit(identifier: string): Promise<{ allowed: boolean }> {
+    const limiter = getFunnelEventLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(identifier);
+    return { allowed: result.success };
+}
+
+let ratelimitWinToken: Ratelimit | null | undefined = undefined;
+
+function getWinTokenLimiter(): Ratelimit | null {
+    if (ratelimitWinToken !== undefined) return ratelimitWinToken;
+    const redis = getRedis();
+    ratelimitWinToken = redis
+        ? new Ratelimit({
+              redis,
+              // PRD 01 §9.3: 20 actions/minute per token root. A digest carries
+              // at most 15 buttons, so a real human never reaches this — it is
+              // there to bound what someone who scraped a root can do with it.
+              limiter: Ratelimit.slidingWindow(20, '1 m'),
+              analytics: true,
+          })
+        : null;
+    return ratelimitWinToken;
+}
+
+/** `identifier` is the digest token root, never the full signed token. */
+export async function checkWinTokenRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
+    const limiter = getWinTokenLimiter();
+    if (!limiter) return { allowed: true };
+    const result = await limiter.limit(`win-token:${identifier}`);
+    if (result.success) return { allowed: true };
+    return { allowed: false, error: 'Too many actions from this link. Try again in a minute.' };
 }
