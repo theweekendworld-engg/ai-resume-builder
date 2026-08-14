@@ -1,0 +1,22 @@
+# The Chrome extension is a separate workspace: its own package.json, its own
+# deps (@crxjs/vite-plugin, vite), built by `bun run ext:build` from extension/.
+# Vercel builds only the Next app, so the directory is dead weight there — and
+# worse than dead weight, because a cold Vercel build tried to type-check
+# extension/manifest.config.ts and failed on a dep that is not a root
+# dependency. tsconfig.json excludes it from the build; this excludes it from
+# the upload.
+#
+# The leading slash is load-bearing: a bare `extension` matches EVERY path
+# segment of that name, which also excluded src/lib/extension/ and
+# src/app/extension/ and failed the build on `Can't resolve
+# '@/lib/extension/analyze'`. Anchor it to the repo root.
+/extension
+
+# .vercelignore supersedes .gitignore for deciding what gets uploaded, so
+# anything that must never reach a build is listed explicitly here rather than
+# inherited. Do not remove the .env lines.
+node_modules
+.next
+.env
+.env.*
+.storage

@@ -27,8 +27,12 @@ import { schedulePeriodicWork } from '@/lib/jobs/schedule';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-/** Ceiling only — the drain stops claiming at CRON_TIME_BUDGET_MS well before this. */
-export const maxDuration = 300;
+/**
+ * Ceiling only — the drain stops claiming at CRON_TIME_BUDGET_MS well before this.
+ * 60 is the Hobby-plan hard cap (Pro allows 300); keep CRON_TIME_BUDGET_MS at
+ * 45000 so a batch returns cleanly instead of being killed mid-claim.
+ */
+export const maxDuration = 60;
 
 function resolveBaseUrl(req: NextRequest): string {
     return (

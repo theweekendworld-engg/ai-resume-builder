@@ -32,9 +32,6 @@
   ],
   "exclude": [
     "node_modules",
-    "extension/dist",
-    "extension/src",
-    "extension/__tests__",
-    "extension/node_modules"
+    "extension"
   ]
 }
