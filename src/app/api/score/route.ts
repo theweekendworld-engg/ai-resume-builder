@@ -13,7 +13,15 @@ export const runtime = 'nodejs';
  * stranger's first impression of the product is a 504 — on the one surface
  * the whole funnel depends on.
  */
-export const maxDuration = 120;
+/*
+ * 60, not the 120 the note above argues for: the Vercel account is on Hobby,
+ * whose hard function ceiling is 60 and which fails the BUILD rather than
+ * clamping. So the timeout described above is live again — a two-page resume
+ * measured 53s, and anything longer 504s on the one surface the funnel depends
+ * on. This is the single strongest reason to move to Pro; restore 120 the day
+ * the plan changes.
+ */
+export const maxDuration = 60;
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 const MAX_JD_CHARS = 6000;
