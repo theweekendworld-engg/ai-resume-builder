@@ -11,6 +11,7 @@
  * where "why unavailable" is explained.
  */
 
+import { topStrength } from '@/lib/scout/fit/strength';
 import type { StoredSection } from '@/lib/agent/run';
 import {
     SCOUT_SECTION_LABELS,
@@ -136,7 +137,7 @@ function jobLines(view: ScoutRunView): Line[] {
     if (fit) {
         // The strongest direct match first: a verdict with only negatives
         // hides the thing that decides whether to apply anyway.
-        const strength = fit.matched.find((match) => match.strength !== 'partial');
+        const strength = topStrength(fit.matched);
         // What the user DID, not the posting's wording of it: "Built a
         // hybrid search engine in Go" says more than "Expertise in one or
         // more programming languages".

@@ -11,6 +11,7 @@
  * Every query filters on `userId` in its WHERE clause, including the joins.
  */
 
+import { topStrength } from '@/lib/scout/fit/strength';
 import type { ApplicationStatus, Prisma, WinStatus } from '@prisma/client';
 import { readSections, type StoredSection } from '@/lib/agent/run';
 import { canonicalCompanyKey } from '@/lib/enrichment/companyName';
@@ -143,7 +144,7 @@ export function toBoardItem(row: WorkspaceRow, run: RunResult | null): JobBoardI
         column: COLUMN_OF_STATUS[status] ?? 'to_review',
         sourceUrl: row.sourceUrl.startsWith('scout:') ? null : row.sourceUrl,
         compHint: figure ? `${figure.value} · ${hostOf(figure.sourceUrl)}` : null,
-        topStrength: fit?.matched?.find((match) => match.strength !== 'partial')?.evidence ?? null,
+        topStrength: topStrength(fit?.matched)?.evidence ?? null,
         topConcern: fit?.notFitReasons?.[0] ?? null,
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
