@@ -7,7 +7,9 @@ import { handleExtensionScout } from './handler';
 
 // Starting a run is a claim plus an enqueue; the analysis itself runs in the
 // workflow, so this returns in well under a second.
-export const maxDuration = 15;
+// Not 15: when the durable workflow cannot start, the run continues inside
+// this request via `after()`, and a Scout run takes 20–45s.
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {

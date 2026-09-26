@@ -44,6 +44,31 @@ function shouldRunInline(): boolean {
     return process.env.NODE_ENV !== 'production';
 }
 
+type Starter = (runId: string) => Promise<{ runId: string }>;
+type StagesRunner = (runId: string) => Promise<void>;
+
+const defaultStarter: Starter = async (runId) => {
+    const { handleScoutRunWorkflow } = await import('@/workflows/scoutRun');
+    return start(handleScoutRunWorkflow, [runId]);
+};
+const defaultStagesRunner: StagesRunner = async (runId) => {
+    const { runScoutStages } = await import('@/lib/scout/stages');
+    const { INLINE_DRIVER } = await import('@/lib/scout/pipeline');
+    await runScoutStages(runId, INLINE_DRIVER);
+};
+
+let starter: Starter = defaultStarter;
+let stagesRunner: StagesRunner = defaultStagesRunner;
+
+export const __testing = {
+    setStarter(next: Starter | null) {
+        starter = next ?? defaultStarter;
+    },
+    setStagesRunner(next: StagesRunner | null) {
+        stagesRunner = next ?? defaultStagesRunner;
+    },
+};
+
 /**
  * Hand the run to the workflow runtime, exactly once per claim.
  *
@@ -59,29 +84,54 @@ export async function enqueueScoutRun(runId: string, options: { force?: boolean 
     });
     if (claimed.count === 0) return;
 
+    if (shouldRunInline()) {
+        await runInRequest(runId, marker, 'dev');
+        return;
+    }
+
     try {
-        if (shouldRunInline()) {
-            const { runScoutStages } = await import('@/lib/scout/stages');
-            const { INLINE_DRIVER } = await import('@/lib/scout/pipeline');
-            // Detached: the caller is a request, and the user watches progress
-            // by polling (dashboard) or by message edits (channels).
-            void runScoutStages(runId, INLINE_DRIVER).catch((error: unknown) => {
-                console.error('[scout] inline run failed', { runId, error: String(error) });
-            });
-            return;
-        }
-        const { handleScoutRunWorkflow } = await import('@/workflows/scoutRun');
-        const run = await start(handleScoutRunWorkflow, [runId]);
+        const run = await starter(runId);
         await prisma.agentRun.updateMany({
             where: { id: runId, workflowRunId: marker },
             data: { workflowRunId: run.runId },
         });
     } catch (error) {
-        await prisma.agentRun.updateMany({
-            where: { id: runId, workflowRunId: marker },
-            data: { workflowRunId: null, status: 'failed', error: 'Could not start the analysis. Try again.' },
+        // Durable start failed. Log WHY, loudly — the first production run
+        // failed here and the reason was swallowed, which is the one thing an
+        // observable agent must never do — then run the same stages inside
+        // this request instead. A run is ~20–45s, well inside the 300s function
+        // limit; losing durability is better than losing the run.
+        console.error('[scout] workflow start failed; running in-request', {
+            runId,
+            error: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
         });
-        throw error;
+        await runInRequest(runId, marker, 'fallback');
+    }
+}
+
+/**
+ * Run the stages in the current request, kept alive past the response with
+ * `after()` where there is a request to extend (webhooks, actions, routes).
+ * Outside a request scope `after` throws, and the run proceeds detached, which
+ * is what local development always did.
+ */
+async function runInRequest(runId: string, marker: string, why: 'dev' | 'fallback'): Promise<void> {
+    await prisma.agentRun.updateMany({
+        where: { id: runId, workflowRunId: marker },
+        data: { workflowRunId: `inline:${why}:${marker.slice('queued:'.length)}` },
+    });
+    const work = () => stagesRunner(runId).catch(async (error: unknown) => {
+        console.error('[scout] in-request run failed', { runId, error: String(error) });
+        await prisma.agentRun.updateMany({
+            where: { id: runId, status: { in: ['queued', 'running'] } },
+            data: { status: 'failed', error: 'The analysis stopped unexpectedly. Try again.' },
+        }).catch(() => undefined);
+    });
+    try {
+        const { after } = await import('next/server');
+        after(work);
+    } catch {
+        void work();
     }
 }
 
@@ -134,11 +184,21 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
     });
     if (existing) {
         await track(params.userId, 'scout_run_reused', { runId: existing.id, channel: params.channel ?? 'web' });
-        // A run that never got going (start() failed) is retried, not returned dead.
-        if (existing.status === 'failed' && !existing.startedAt) {
-            await enqueueScoutRun(existing.id, { force: true }).catch(() => undefined);
-        }
+        // Rebind FIRST: a restarted run must edit the progress message the
+        // user just received, not the one from their previous attempt.
         await rebindChannel(existing, params);
+        // A run that never got going (start() failed) is retried, not returned
+        // dead, and reported as started so the channel shows progress instead
+        // of replaying the old failure. Free: it was never charged to success.
+        if (existing.status === 'failed' && !existing.startedAt) {
+            try {
+                await enqueueScoutRun(existing.id, { force: true });
+                const restarted = (await loadRun(existing.id)) ?? existing;
+                return ok({ run: toRunView(restarted), created: true });
+            } catch (error) {
+                console.error('[scout] restart failed', { runId: existing.id, error: String(error) });
+            }
+        }
         const fresh = (await loadRun(existing.id)) ?? existing;
         return ok({ run: toRunView(fresh), created: false });
     }
@@ -164,7 +224,8 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
     if (created) {
         try {
             await enqueueScoutRun(run.id);
-        } catch {
+        } catch (error) {
+            console.error('[scout] could not start run', { runId: run.id, error: String(error) });
             await refundMeteredAction(params.userId, 'link_analysis', { reason: 'scout_enqueue_failed' });
             return err('Could not start the analysis. Try again in a minute.', 'enqueue_failed');
         }
