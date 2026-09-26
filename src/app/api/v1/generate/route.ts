@@ -1,7 +1,7 @@
 import { Channel } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { processChannelGenerate } from '@/actions/channelGenerate';
+import { processChannelGenerate } from '@/services/channelGenerate';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
 import { buildApiPdfDownloadUrl } from '@/lib/pdfLinks';
 

@@ -33,7 +33,8 @@
 
 import { z } from 'zod';
 
-import { generateStructured } from '@/lib/ai/structured';
+import { generateStructured, type StructuredUsage } from '@/lib/ai/structured';
+import type { FeatureTag } from '@/lib/ai/features';
 
 // ─────────────────────────────────────────────────────────── the brief
 
@@ -257,16 +258,28 @@ export type ReadPostingResult = {
     brief: PostingBrief;
     /** Skills the model proposed that failed the filter. Useful in logs. */
     rejectedSkills: string[];
+    /**
+     * What the read cost. Callers that keep their own ledger (Scout's agent
+     * runs) charge it there; `ApiUsageLog` has it either way.
+     */
+    usage: StructuredUsage;
 };
 
 export async function readPosting(params: {
     jobDescription: string;
     userId: string;
     sessionId?: string;
+    /** Cost attribution. Defaults to the resume surface this was built for. */
+    feature?: FeatureTag;
+    /**
+     * Which model map entry reads it. Same prompt either way; Scout passes
+     * `scoutPostingRead` so the resume path's model choice is not Scout's.
+     */
+    task?: 'postingRead' | 'scoutPostingRead';
 }): Promise<ReadPostingResult> {
-    const { data } = await generateStructured({
-        task: 'postingRead',
-        feature: 'resume',
+    const { data, usage } = await generateStructured({
+        task: params.task ?? 'postingRead',
+        feature: params.feature ?? 'resume',
         userId: params.userId,
         sessionId: params.sessionId,
         schema: BriefSchema,
@@ -332,6 +345,7 @@ export async function readPosting(params: {
             responsibilities: duties.map((entry) => entry.text),
         },
         rejectedSkills,
+        usage,
     };
 }
 

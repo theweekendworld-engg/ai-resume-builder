@@ -15,17 +15,16 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
-import { Prisma, WinCategory, WinSensitivity, WinSource, WinStatus } from '@prisma/client';
+import { WinCategory, WinSensitivity, WinSource, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { isEntitlementError, gateMeteredAction, type MeteredAction } from '@/lib/entitlements';
 import { track } from '@/lib/track';
 import * as winGraph from '@/services/winGraph';
+import { confirmWinCore, createWinCore, dismissWinCore } from '@/services/wins';
 import {
-    findNearDuplicate,
     mergeProposalCode,
     parseImpactAnswer,
-    resolveOccurredAt,
     structureWin,
     toStructuredDraft,
 } from '@/services/winDrafting';
@@ -166,132 +165,19 @@ export async function createWinFromText(input: CreateWinInput): Promise<Result<W
 
     const parsed = CreateWinSchema.safeParse(input);
     if (!parsed.success) return err(invalidInput(parsed.error), 'invalid_input');
-    const { text, draft: supplied, sensitivity, sourceRef, signalId } = parsed.data;
-    const source = parsed.data.source ?? WinSource.manual;
-    const now = new Date();
 
-    // Two paths, and the distinction matters: when the caller supplies `draft`
-    // the user has already seen and corrected the structuring, so re-running the
-    // model would silently overwrite their edits — and there is no AI call to
-    // meter, because `structureDraft` already charged for it.
-    let fields: {
-        title: string;
-        narrative: string;
-        category: WinCategory;
-        skills: string[];
-        collaborators: string[];
-        confidence: number;
-        sensitivity: WinSensitivity;
-        occurredAt: Date;
-        impact: winGraph.ImpactInput | null;
-    };
-    let degraded = false;
-
-    if (supplied?.title?.trim()) {
-        const quantified = supplied.quantified ?? supplied.impact != null;
-        fields = {
-            title: supplied.title,
-            narrative: supplied.narrative ?? '',
-            category: supplied.category ?? WinCategory.shipped,
-            skills: supplied.skills ?? [],
-            collaborators: supplied.collaborators ?? [],
-            confidence: supplied.confidence ?? 0.5,
-            sensitivity: sensitivity ?? supplied.suggestedSensitivity ?? WinSensitivity.shareable,
-            occurredAt: parsed.data.occurredAt ?? supplied.occurredAt ?? now,
-            impact: quantified ? supplied.impact ?? null : null,
-        };
-    } else {
-        // Metered once, at entry — the AI structuring call is the cost (PRD 01 §10).
-        try {
-            await gateMeteredAction(userId, WIN_DRAFT_ACTION);
-        } catch (error) {
-            if (isEntitlementError(error)) return err(error.message, 'entitlement_required');
-            throw error;
-        }
-
-        let structured;
-        try {
-            structured = await structureWin({ userId, text: text as string, now });
-        } catch (error) {
-            console.error('[actions/wins] structureWin failed', {
-                error: error instanceof Error ? error.message : String(error),
-            });
-            return err('Could not structure that just now — try again', 'ai_unavailable');
-        }
-
-        const structuredDraft = structured.draft;
-        degraded = structured.degraded;
-        fields = {
-            title: structuredDraft.title,
-            narrative: structuredDraft.narrative,
-            category: structuredDraft.category,
-            skills: structuredDraft.skills,
-            collaborators: structuredDraft.collaborators,
-            confidence: structuredDraft.confidence,
-            // The user's setting always wins; the model only proposes (§4.3).
-            sensitivity: sensitivity ?? structuredDraft.suggestedSensitivity,
-            occurredAt: parsed.data.occurredAt ?? resolveOccurredAt(structuredDraft, now),
-            impact: structuredDraft.quantified ? structuredDraft.impact : null,
-        };
-    }
-
-    // PRD 01 §12: a near-duplicate is a merge proposal, not a second draft.
-    const duplicate = await findNearDuplicate({
-        userId,
-        text: text?.trim() || `${fields.title}\n${fields.narrative}`,
-        occurredAt: fields.occurredAt,
-    });
-    if (duplicate) {
+    // The whole create path — metering, structuring, the near-duplicate check,
+    // persistence, telemetry — lives in `src/services/wins.ts` so the chat bots
+    // make exactly the Win this action makes.
+    const result = await createWinCore({ userId, ...parsed.data });
+    if (!result.success) return result;
+    if (result.data.kind === 'duplicate') {
         return err(
-            `You already logged something very similar: "${duplicate.title}"`,
-            mergeProposalCode(duplicate.existingWinId),
+            `You already logged something very similar: "${result.data.title}"`,
+            mergeProposalCode(result.data.existingWinId),
         );
     }
-
-    try {
-        const win = await winGraph.createWinRecord({
-            userId,
-            title: fields.title,
-            narrative: fields.narrative,
-            occurredAt: fields.occurredAt,
-            category: fields.category,
-            sensitivity: fields.sensitivity,
-            source,
-            sourceRef: sourceRef ?? null,
-            // Passing `undefined` keeps date-based inference; an explicit value
-            // (including null) is honoured as stated.
-            ...(parsed.data.employerId !== undefined
-                ? { employerId: parsed.data.employerId }
-                : {}),
-            ...(parsed.data.projectId !== undefined
-                ? { projectId: parsed.data.projectId }
-                : {}),
-            signalId: signalId ?? null,
-            skills: fields.skills,
-            collaborators: fields.collaborators,
-            confidence: fields.confidence,
-            impact: fields.impact,
-        });
-
-        await track(userId, 'win_drafted', {
-            ...FEATURE,
-            source,
-            confidence: fields.confidence,
-            hasMetric: fields.impact !== null,
-            degraded,
-            prestructured: Boolean(supplied?.title?.trim()),
-        });
-
-        return winGraph.getWinView(userId, win.id);
-    } catch (error) {
-        // `Win.signalId` is unique: one Win per capture signal. A double-fire
-        // returns the Win that already exists rather than an error.
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && signalId) {
-            const existing = await prisma.win.findFirst({ where: { userId, signalId }, select: { id: true } });
-            if (existing) return winGraph.getWinView(userId, existing.id);
-        }
-        throw error;
-    }
+    return winGraph.getWinView(userId, result.data.winId);
 }
 
 // ═══════════════════════════════════════════════════════════════ 2. confirm
@@ -315,30 +201,13 @@ export async function confirmWin(
         return err(invalidInput(parsedEvidence.error), 'invalid_input');
     }
 
-    const before = await prisma.win.findFirst({
-        where: { id: parsedId.data, userId },
-        select: { source: true, createdAt: true, status: true },
-    });
-
-    const result = await winGraph.confirmWin({
+    return confirmWinCore({
         userId,
         winId: parsedId.data,
         patch: parsedPatch?.data,
         userSource: parsedEvidence?.data.source,
+        surface: 'web',
     });
-
-    if (result.success && before && before.status !== WinStatus.confirmed) {
-        await track(userId, 'win_confirmed', {
-            ...FEATURE,
-            source: before.source,
-            surface: 'web',
-            secondsFromDraft: Math.round((Date.now() - before.createdAt.getTime()) / 1000),
-            edited: parsedPatch !== undefined,
-            withUserEvidence: Boolean(parsedEvidence?.data.source),
-        });
-    }
-
-    return result;
 }
 
 // ═══════════════════════════════════════════════════════════════ 3. unconfirm
@@ -392,26 +261,7 @@ export async function dismissWin(winId: string, reason: DismissReason): Promise<
     const parsedReason = DismissReasonSchema.safeParse(reason);
     if (!parsedReason.success) return err('Invalid dismiss reason', 'invalid_input');
 
-    const before = await prisma.win.findFirst({
-        where: { id: parsedId.data, userId },
-        select: { source: true },
-    });
-
-    const result = await winGraph.dismissWin({
-        userId,
-        winId: parsedId.data,
-        reason: parsedReason.data,
-    });
-
-    if (result.success) {
-        await track(userId, 'win_dismissed', {
-            ...FEATURE,
-            source: before?.source ?? null,
-            reason: parsedReason.data,
-        });
-    }
-
-    return result;
+    return dismissWinCore({ userId, winId: parsedId.data, reason: parsedReason.data });
 }
 
 // ═══════════════════════════════════════════════════════════════ 6. list

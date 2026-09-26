@@ -19,7 +19,28 @@ type ApplicationWorkspaceItem = {
   selectedResumeId: string | null;
   updatedAt: Date;
   createdAt: Date;
+  /** Set when Scout analysed this job; links the row to that analysis. */
+  scoutRunId?: string | null;
+  /** Scout's verdict: strong | possible | stretch | not_a_fit | unknown. */
+  fitVerdict?: string | null;
 };
+
+const VERDICT_WORDS: Record<string, string> = {
+  strong: 'Strong fit',
+  possible: 'Possible fit',
+  stretch: 'Stretch',
+  not_a_fit: 'Not a fit',
+  unknown: 'Fit unclear',
+};
+
+/**
+ * Jobs pasted as text into Scout have no real URL; the tracker stores
+ * `scout:<id>` so the (userId, sourceUrl) unique still holds. That value is a
+ * key, not a link: it must never be rendered as one, or as text.
+ */
+function isRealUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
 
 type ApplicationsSectionProps = {
   workspaces: ApplicationWorkspaceItem[];
@@ -73,6 +94,9 @@ export function ApplicationsSection({ workspaces, listError }: ApplicationsSecti
                 <div className="rounded-lg border border-border p-3">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Fit score</p>
                   <p className="mt-1 text-lg font-semibold">{workspace.fitScore ?? '—'}</p>
+                  {workspace.fitVerdict && VERDICT_WORDS[workspace.fitVerdict] ? (
+                    <p className="text-xs text-muted-foreground">{VERDICT_WORDS[workspace.fitVerdict]}</p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border border-border p-3">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Questions</p>
@@ -91,9 +115,16 @@ export function ApplicationsSection({ workspaces, listError }: ApplicationsSecti
               )}
 
               <div className="flex flex-wrap gap-2">
-                <Link href={workspace.sourceUrl} target="_blank" rel="noreferrer">
-                  <Button variant="outline" size="sm">Open Job Page</Button>
-                </Link>
+                {workspace.scoutRunId ? (
+                  <Link href={`/scout/${workspace.scoutRunId}`}>
+                    <Button variant="outline" size="sm">Open analysis</Button>
+                  </Link>
+                ) : null}
+                {isRealUrl(workspace.sourceUrl) ? (
+                  <Link href={workspace.sourceUrl} target="_blank" rel="noreferrer">
+                    <Button variant="outline" size="sm">Open Job Page</Button>
+                  </Link>
+                ) : null}
                 {workspace.selectedResumeId && (
                   <Link href={`/editor/${workspace.selectedResumeId}`}>
                     <Button variant="outline" size="sm">Open Resume</Button>

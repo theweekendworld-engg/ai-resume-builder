@@ -92,6 +92,9 @@ const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
   'gpt-5.6-sol': { inputPer1M: 5, outputPer1M: 30 },
   'gpt-5.6-terra': { inputPer1M: 2, outputPer1M: 12 },
   'gpt-5.6-luna': { inputPer1M: 0.2, outputPer1M: 1.2 },
+  // GPT-6, launched 2026-09-23. Standard tier; Batch/Flex run luna at half this.
+  'gpt-6-sol': { inputPer1M: 2, outputPer1M: 10 },
+  'gpt-6-luna': { inputPer1M: 0.1, outputPer1M: 0.5 },
   'gpt-5.5': { inputPer1M: 5, outputPer1M: 30 },
   'gpt-5.5-pro': { inputPer1M: 30, outputPer1M: 180 },
   'gpt-5.4': { inputPer1M: 2.5, outputPer1M: 15 },
@@ -123,6 +126,8 @@ const OPENAI_PRICING_USD_PER_1M: Record<string, OpenAiPrice> = {
   'anthropic/claude-haiku-4.5': { inputPer1M: 1, outputPer1M: 5 },
   'anthropic/claude-opus-5': { inputPer1M: 5, outputPer1M: 25 },
   'openai/gpt-5.6-luna': { inputPer1M: 0.2, outputPer1M: 1.2 },
+  'openai/gpt-6-luna': { inputPer1M: 0.1, outputPer1M: 0.5 },
+  'openai/gpt-6-sol': { inputPer1M: 2, outputPer1M: 10 },
   'openai/gpt-5.6-terra': { inputPer1M: 2, outputPer1M: 12 },
 };
 

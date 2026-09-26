@@ -19,4 +19,7 @@ export const COST_TRIPWIRES_USD: Record<string, number> = {
   backfill: 0.5,
   radar: 0.03,
   tailoring: 0.2,
+  // Per analysed link, model spend only (search is billed by Tavily, not tokens).
+  scout: 0.03,
+  outreach: 0.01,
 };

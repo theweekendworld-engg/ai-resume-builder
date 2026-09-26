@@ -42,12 +42,20 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 const realFetch: FetchLike = (input, init) => globalThis.fetch(input, init);
 let fetchImpl: FetchLike = realFetch;
 
+const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+let sleepImpl: (ms: number) => Promise<void> = realSleep;
+
 export const __testing = {
   setFetch(impl: FetchLike | null) {
     fetchImpl = impl ?? realFetch;
   },
+  /** The 429 back-off waits through this, so tests do not sleep for real. */
+  setSleep(impl: ((ms: number) => Promise<void>) | null) {
+    sleepImpl = impl ?? realSleep;
+  },
   reset() {
     fetchImpl = realFetch;
+    sleepImpl = realSleep;
   },
 };
 
@@ -237,6 +245,12 @@ export async function deleteTelegramWebhook(): Promise<{ ok: boolean; error?: st
 
 const BOT_COMMANDS = [
   { command: 'start', description: 'Start the bot or link your account with a token from the dashboard' },
+  { command: 'scout', description: 'Analyse a LinkedIn job or post: /scout <link> (or just send the link)' },
+  { command: 'jobs', description: 'Your best-fit jobs to review' },
+  { command: 'applied', description: 'Jobs you applied to, and where each stands' },
+  { command: 'insights', description: 'Your saved insights from posts' },
+  { command: 'notes', description: 'Your Work Log notes and drafts' },
+  { command: 'help', description: 'Everything you can send me' },
   { command: 'generate', description: 'Start with: /generate <job description>' },
   { command: 'status', description: 'Show your latest resume generation status (linked account required)' },
   { command: 'profile', description: 'View your linked profile details' },
@@ -259,4 +273,123 @@ export async function setTelegramBotCommands(): Promise<{ ok: boolean; error?: s
     return { ok: false, error: detail };
   }
   return { ok: true };
+}
+
+// ───────────────────────────────────────────────────── detailed transport
+//
+// Added for Scout (docs/impl/06-scout-agent.md). The functions above return
+// void/boolean and hard-code legacy `Markdown`; Scout needs the sent message
+// id (to edit progress in place), HTML parse mode (legacy Markdown cannot
+// escape `_` or `*`, which job titles and comp figures contain), and to tell a
+// rate limit apart from a real failure. Additive so the digest and resume bot
+// paths keep their exact behaviour.
+
+export type TelegramParseMode = 'Markdown' | 'HTML';
+
+export type TelegramCallResult = {
+  ok: boolean;
+  messageId: number | null;
+  description: string | null;
+  /** Seconds, from a 429's `parameters.retry_after`. */
+  retryAfter: number | null;
+  /** Edit of identical content. Telegram calls it an error; it is a no-op. */
+  notModified: boolean;
+};
+
+const DetailedResponseSchema = z.object({
+  ok: z.boolean(),
+  description: z.string().optional(),
+  result: z.union([z.object({ message_id: z.number().optional() }).passthrough(), z.boolean()]).optional(),
+  parameters: z.object({ retry_after: z.number().optional() }).optional(),
+});
+
+/** Longest 429 wait we will absorb inline; longer and we give up this edit. */
+const MAX_INLINE_RETRY_SECONDS = 5;
+
+async function callTelegramOnce(method: string, body: Record<string, unknown>): Promise<TelegramCallResult> {
+  try {
+    const response = await fetchImpl(buildTelegramApiUrl(method), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const json = await response.json().catch(() => ({}));
+    const parsed = DetailedResponseSchema.safeParse(json);
+    if (!parsed.success) {
+      return { ok: false, messageId: null, description: 'invalid telegram response', retryAfter: null, notModified: false };
+    }
+    const description = parsed.data.description ?? null;
+    const notModified = /message is not modified/i.test(description ?? '');
+    const result = parsed.data.result;
+    const messageId = result && typeof result === 'object' && typeof result.message_id === 'number'
+      ? result.message_id
+      : null;
+    return {
+      ok: (response.ok && parsed.data.ok) || notModified,
+      messageId,
+      description,
+      retryAfter: parsed.data.parameters?.retry_after ?? (response.status === 429 ? 1 : null),
+      notModified,
+    };
+  } catch (error: unknown) {
+    return {
+      ok: false,
+      messageId: null,
+      description: error instanceof Error ? error.message : String(error),
+      retryAfter: null,
+      notModified: false,
+    };
+  }
+}
+
+/** One call, with a single bounded retry on 429. Never throws. */
+export async function callTelegram(method: string, body: Record<string, unknown>): Promise<TelegramCallResult> {
+  const first = await callTelegramOnce(method, body);
+  if (first.ok || first.retryAfter === null || first.retryAfter > MAX_INLINE_RETRY_SECONDS) {
+    if (!first.ok) console.warn(`Telegram ${method} failed:`, { description: first.description, retryAfter: first.retryAfter });
+    return first;
+  }
+  await sleepImpl(first.retryAfter * 1000);
+  const second = await callTelegramOnce(method, body);
+  if (!second.ok) console.warn(`Telegram ${method} failed after retry:`, { description: second.description });
+  return second;
+}
+
+export async function sendTelegramMessageDetailed(input: SendMessageInput & { parseMode?: TelegramParseMode }): Promise<TelegramCallResult> {
+  const body: Record<string, unknown> = {
+    chat_id: input.chatId,
+    text: input.text,
+    parse_mode: input.parseMode ?? 'HTML',
+    disable_web_page_preview: true,
+  };
+  if (input.replyMarkup) body.reply_markup = input.replyMarkup;
+  return callTelegram('sendMessage', body);
+}
+
+export async function editTelegramMessageDetailed(input: EditMessageInput & { parseMode?: TelegramParseMode }): Promise<TelegramCallResult> {
+  const body: Record<string, unknown> = {
+    chat_id: input.chatId,
+    message_id: input.messageId,
+    text: input.text,
+    parse_mode: input.parseMode ?? 'HTML',
+    disable_web_page_preview: true,
+  };
+  if (input.replyMarkup) body.reply_markup = input.replyMarkup;
+  return callTelegram('editMessageText', body);
+}
+
+/**
+ * Replace a sent message's inline keyboard. An empty `rows` removes it. Used
+ * to take spent buttons (a confirmed Win) off the message they sat on.
+ */
+export async function editTelegramReplyMarkup(input: {
+  chatId: string;
+  messageId: number;
+  rows: Array<Array<Record<string, unknown>>>;
+}): Promise<TelegramCallResult> {
+  return callTelegram('editMessageReplyMarkup', {
+    chat_id: input.chatId,
+    message_id: input.messageId,
+    reply_markup: { inline_keyboard: input.rows },
+  });
 }

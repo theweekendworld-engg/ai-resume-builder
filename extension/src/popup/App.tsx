@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { request } from '@/background/messageBus';
 import type { AuthState } from '@/shared/types/messages';
 import { ExternalLink, LogIn, Sparkles, Settings } from 'lucide-react';
+import { SendToPatronus } from '@/shared/ui/SendToPatronus';
 
 const DEFAULT_APP_BASE = 'http://localhost:3000';
 
@@ -65,6 +66,10 @@ export function App() {
                     <p className="mb-2 text-xs text-muted-foreground">
                         Signed in as <span className="text-foreground">{auth.email ?? auth.userId}</span>
                     </p>
+                    {/* The one-click path: most shares start from a post, not a form. */}
+                    <div className="mb-2">
+                        <SendToPatronus compact />
+                    </div>
                     <button
                         type="button"
                         onClick={openSidepanel}

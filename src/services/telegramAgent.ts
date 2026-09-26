@@ -1,7 +1,7 @@
 import { Channel, GenerationStatus } from '@prisma/client';
 import { z } from 'zod';
 import { consumeChannelLinkToken } from '@/actions/channelIdentity';
-import { processChannelGenerate } from '@/actions/channelGenerate';
+import { processChannelGenerate } from '@/services/channelGenerate';
 import { config } from '@/lib/config';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
@@ -9,6 +9,14 @@ import {
   answerTelegramCallbackQuery,
   sendTelegramMessage,
 } from '@/lib/telegram';
+import {
+  handleTelegramInboxCommand,
+  handleTelegramScoutCallback,
+  handleTelegramScoutCommand,
+  handleTelegramScoutText,
+} from '@/lib/channels/telegramInbound';
+import { parseInboxCommand, renderHelp } from '@/lib/channels/inboxCommands';
+import { sendTelegramRich } from '@/lib/channels/telegramScout';
 
 export const TelegramUpdateSchema = z.object({
   update_id: z.number().optional(),
@@ -23,12 +31,29 @@ export const TelegramUpdateSchema = z.object({
     id: z.string(),
     data: z.string().optional(),
     message: z.object({
+      message_id: z.number().optional(),
       chat: z.object({
         id: z.union([z.string(), z.number()]),
       }),
+      // The keyboard the tapped button sat on, so spent buttons can be removed
+      // without taking the others with them.
+      reply_markup: z.object({
+        inline_keyboard: z.array(z.array(z.record(z.string(), z.unknown()))),
+      }).optional(),
     }).optional(),
   }).optional(),
 });
+
+/** A verified Telegram → user link, or null. */
+async function findLinkedUserId(chatId: string): Promise<string | null> {
+  const identity = await prisma.channelIdentity.findUnique({
+    where: {
+      channel_externalId: { channel: Channel.telegram, externalId: chatId },
+    },
+    select: { userId: true, verified: true },
+  });
+  return identity?.verified ? identity.userId : null;
+}
 
 export type TelegramUpdatePayload = z.infer<typeof TelegramUpdateSchema>;
 
@@ -118,7 +143,22 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   if (callback?.data) {
     const chatId = String(callback.message?.chat.id ?? '');
     if (chatId) {
-      if (callback.data.startsWith('status:')) {
+      if (callback.data.startsWith('sc:')) {
+        // Scout buttons (answer / draft / why / refresh). Ownership of the run
+        // is checked by the service, so the user id must come from the link.
+        const userId = await findLinkedUserId(chatId);
+        if (!userId) {
+          await sendTelegramMessage({ chatId, text: 'Link your account first, then try again.' });
+        } else {
+          await handleTelegramScoutCallback(
+            chatId,
+            userId,
+            callback.data,
+            callback.message?.message_id ?? null,
+            callback.message?.reply_markup?.inline_keyboard ?? null,
+          );
+        }
+      } else if (callback.data.startsWith('status:')) {
         await sendTelegramStatus(chatId, callback.data.split(':')[1]);
       } else if (callback.data.startsWith('regen:')) {
         const sessionId = callback.data.split(':')[1];
@@ -192,10 +232,17 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     return;
   }
 
-  if (text.startsWith('/') && !/^\/(start|generate|status|profile)\b/.test(text)) {
+  // /help needs no linked account: it is how an unlinked user finds out what
+  // the bot does.
+  if (parseInboxCommand(text, { allowBare: false }) === 'help') {
+    await sendTelegramRich(chatId, renderHelp(config.app.url, { bare: false }), 'none');
+    return;
+  }
+
+  if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|help)\b/.test(text)) {
     await sendTelegramMessage({
       chatId,
-      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details',
+      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details',
     });
     return;
   }
@@ -295,6 +342,21 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     select: { id: true },
   });
 
+  // `/scout <link>` is explicit, so it wins over everything — including an
+  // open resume clarification, which it would otherwise be mistaken for.
+  if (/^\/scout\b/.test(text)) {
+    await handleTelegramScoutCommand(chatId, identity.userId, text.replace(/^\/scout\b/, '').trim());
+    return;
+  }
+
+  // Inbox lookups are explicit commands too, so they also win over an open
+  // resume clarification.
+  const inboxCommand = parseInboxCommand(text, { allowBare: false });
+  if (inboxCommand) {
+    await handleTelegramInboxCommand(chatId, identity.userId, inboxCommand);
+    return;
+  }
+
   if (isGenerateCommand && !generatePayload) {
     await sendTelegramMessage({
       chatId,
@@ -337,10 +399,19 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     return;
   }
 
+  // Scout comes AFTER the resume clarification branch above, deliberately:
+  // an open /generate clarification keeps precedence for free text, exactly as
+  // before Scout existed. With the flag on, every other message is recorded
+  // here: links, pasted posts, notes about the user's work, and replies to a
+  // Scout question.
+  if (!isGenerateCommand && await handleTelegramScoutText(chatId, identity.userId, text)) {
+    return;
+  }
+
   if (!isGenerateCommand) {
     await sendTelegramMessage({
       chatId,
-      text: 'Unsupported input. Use one of:\n/generate <job description>\n/status\n/profile',
+      text: 'Unsupported input. Use one of:\n/scout <LinkedIn job or post link>\n/generate <job description>\n/status\n/profile',
     });
     return;
   }

@@ -15,7 +15,7 @@ import { z } from 'zod';
 import { WinCategory, WinSensitivity } from '@prisma/client';
 import { generateStructured, type StructuredUsage } from '@/lib/ai/structured';
 import { extractQuantities, type GuardViolation } from '@/lib/ai/guard';
-import { searchQdrantByVector, generateEmbedding } from '@/actions/embed';
+import { searchQdrantByVector, generateEmbedding } from '@/lib/embeddings';
 import { WIN_POINT_TYPE } from '@/lib/graph/visibility';
 import type { ImpactInput, StructuredDraft } from '@/actions/wins.types';
 

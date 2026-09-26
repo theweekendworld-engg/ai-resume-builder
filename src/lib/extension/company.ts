@@ -1,4 +1,8 @@
 import { Prisma } from '@prisma/client';
+import { normalizeCompanyName, normalizeText } from '@/lib/enrichment/companyName';
+import { enrichCompany } from '@/lib/enrichment/enrich';
+import { toWireHiringSignal } from '@/lib/enrichment/hiring';
+import { mergeCompanyFields, readProvenance } from '@/lib/enrichment/merge';
 import { analyzeExtensionJobPage } from '@/lib/extension/analyze';
 import { getExtensionProfileBundle } from '@/lib/extension/profile';
 import { prisma } from '@/lib/prisma';
@@ -18,21 +22,6 @@ const PLATFORM_HOSTS = [
   'indeed.com',
   'wellfound.com',
 ];
-
-function normalizeText(value: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s.-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizeCompanyName(value: string): string {
-  return normalizeText(value)
-    .replace(/\b(inc|inc\.|llc|ltd|corp|corporation|company|co)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function uniqueStrings(values: Array<string | undefined | null>): string[] {
   const seen = new Set<string>();
@@ -168,8 +157,41 @@ function computeConfidence(params: {
   return Math.max(0.12, Math.min(0.86, Number(score.toFixed(2))));
 }
 
-function formatFreshnessLabel(updatedAt: Date) {
-  return `Refreshed on ${updatedAt.toISOString().slice(0, 10)}`;
+/**
+ * Date plus source. "Refreshed on 2026-09-05" answers when, which was the only
+ * answerable question while there was one source; it is now half the question,
+ * and the half that does not tell a user whether to trust the headcount.
+ */
+function formatFreshnessLabel(updatedAt: Date, sourceLabel?: string) {
+  const date = `Refreshed on ${updatedAt.toISOString().slice(0, 10)}`;
+  if (!sourceLabel || sourceLabel === 'job-page-derived') return `${date} · from this job page`;
+  if (sourceLabel.startsWith('provider:')) return `${date} · ${sourceLabel.slice('provider:'.length)}`;
+  if (sourceLabel === 'observed-postings') return `${date} · observed postings`;
+  return date;
+}
+
+/** Read an ISO timestamp back off `rawData`, tolerating rows that predate it. */
+function readInsightTimestamp(value: Prisma.JsonValue | null, key: string): Date | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = (value as Record<string, Prisma.JsonValue>)[key];
+  if (typeof raw !== 'string') return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
+ * The standing caveat, adjusted for what actually produced the row.
+ *
+ * The old copy asserted flatly that no third-party enrichment was used. Once a
+ * provider can fill these fields that sentence is false, and it is exactly the
+ * kind of stale reassurance a user is entitled to rely on.
+ */
+function buildSourceSummary(sourceLabel?: string): string {
+  if (sourceLabel?.startsWith('provider:')) {
+    const provider = sourceLabel.slice('provider:'.length);
+    return `Headcount, funding and revenue come from ${provider}; everything else is read off this job page. Figures are vendor estimates, not filings.`;
+  }
+  return 'Built from this job page and your saved workspace data. Treat it as guidance, not authoritative external due diligence.';
 }
 
 function readInsightArrays(value: Prisma.JsonValue | null, key: string): string[] {
@@ -230,8 +252,17 @@ export async function getExtensionCompanyInsight(params: {
     },
   });
 
-  const isFresh = cached
-    ? (Date.now() - cached.updatedAt.getTime()) < (7 * 24 * 60 * 60 * 1000)
+  // Keyed on when the JOB PAGE derivation last ran, not on `updatedAt`.
+  // Enrichment writes this row on every call (the hiring signal is recomputed
+  // each time), so `updatedAt` is now always "just now" — using it would make
+  // `isFresh` permanently false and re-run `analyzeExtensionJobPage`, a model
+  // call, on every single page view. Old rows with no stamp fall back to
+  // `updatedAt`, which is the value that stamp replaced.
+  const jobPageDerivedAt = readInsightTimestamp(cached?.rawData ?? null, 'jobPageDerivedAt')
+    ?? cached?.updatedAt
+    ?? null;
+  const isFresh = jobPageDerivedAt
+    ? (Date.now() - jobPageDerivedAt.getTime()) < (7 * 24 * 60 * 60 * 1000)
     : false;
 
   if (!cached || !isFresh || params.input.forceRefresh) {
@@ -254,9 +285,26 @@ export async function getExtensionCompanyInsight(params: {
       })
       : null;
 
+    // The job page is the weakest source of the three, so its values go through
+    // the same precedence rules as any other. Without this a JD that says "our
+    // 50-person team" silently overwrites a licensed headcount on every view.
+    const merged = mergeCompanyFields({
+      current: {
+        employeeCount: cached?.employeeCount ?? null,
+        fundingTotal: cached?.fundingTotal ?? null,
+        revenueEstimateText: cached?.revenueEstimateText ?? null,
+      },
+      currentProvenance: readProvenance(cached?.rawData),
+      incoming: { employeeCount, fundingTotal, revenueEstimateText },
+      source: 'job_page',
+      observedAt: new Date(),
+    });
+
     const rawData = {
       facts: cultureSignals.facts,
       interpretation: cultureSignals.interpretation,
+      provenance: merged.provenance as unknown as Prisma.JsonValue,
+      jobPageDerivedAt: new Date().toISOString(),
       sourceSummary: 'Built from the current job page and saved workspace metadata. No third-party enrichment provider is used in this pass.',
       fitSummary: parsedJD
         ? {
@@ -272,9 +320,9 @@ export async function getExtensionCompanyInsight(params: {
 
     const confidence = computeConfidence({
       website,
-      employeeCount,
-      fundingTotal,
-      revenueEstimateText,
+      employeeCount: merged.fields.employeeCount,
+      fundingTotal: merged.fields.fundingTotal,
+      revenueEstimateText: merged.fields.revenueEstimateText,
       cultureSignals: cultureSignals.facts,
       companyName,
     });
@@ -282,9 +330,9 @@ export async function getExtensionCompanyInsight(params: {
     const payload = {
       normalizedCompanyName,
       website,
-      employeeCount,
-      fundingTotal,
-      revenueEstimateText,
+      employeeCount: merged.fields.employeeCount,
+      fundingTotal: merged.fields.fundingTotal,
+      revenueEstimateText: merged.fields.revenueEstimateText,
       reviewSummary: cultureSignals.facts[0]
         ? `${cultureSignals.facts.join(' ')}`
         : 'Only limited trust or culture signals are available from this job page alone.',
@@ -306,6 +354,18 @@ export async function getExtensionCompanyInsight(params: {
         data: payload,
       });
   }
+
+  // Runs after the job-page write so the provider merges OVER what the page
+  // gave us rather than under it, and never throws: enrichment is an
+  // enhancement to a card the user is already looking at, and a vendor outage
+  // must not turn that card into an error. With no provider configured this
+  // still returns the hiring signal, which is computed from our own postings.
+  const enrichment = await enrichCompany({
+    companyName,
+    website,
+    geography: params.input.geography,
+    forceRefresh: params.input.forceRefresh,
+  }).catch(() => null);
 
   const bundle = jobDescription.length >= 20
     ? await getExtensionProfileBundle(params.userId)
@@ -353,19 +413,23 @@ export async function getExtensionCompanyInsight(params: {
       normalizedCompanyName,
       companyName: companyName || normalizedCompanyName,
       website: cached.website,
-      employeeCount: cached.employeeCount,
-      fundingTotal: cached.fundingTotal,
-      revenueEstimateText: cached.revenueEstimateText,
+      employeeCount: enrichment?.fields.employeeCount ?? cached.employeeCount,
+      fundingTotal: enrichment?.fields.fundingTotal ?? cached.fundingTotal,
+      revenueEstimateText: enrichment?.fields.revenueEstimateText ?? cached.revenueEstimateText,
       reviewSummary: cached.reviewSummary,
       engineeringSummary: cached.engineeringSummary,
       alumniSignalSummary: cached.alumniSignalSummary,
-      confidence: cached.confidence,
+      confidence: enrichment?.confidence ?? cached.confidence,
       freshnessDate: cached.updatedAt.toISOString(),
-      freshnessLabel: formatFreshnessLabel(cached.updatedAt),
+      freshnessLabel: formatFreshnessLabel(cached.updatedAt, enrichment?.freshnessLabel),
       facts: readInsightArrays(cached.rawData, 'facts'),
       interpretation: readInsightArrays(cached.rawData, 'interpretation'),
-      sourceSummary: 'Built from this job page and your saved workspace data. Treat it as guidance, not authoritative external due diligence.',
+      sourceSummary: buildSourceSummary(enrichment?.freshnessLabel),
+      provenance: enrichment?.provenance,
     },
+    hiring: enrichment
+      ? toWireHiringSignal(enrichment.hiring, params.input.geography ?? 'india')
+      : undefined,
     fit: fit
       ? {
         fitScore: fit.fitScore,

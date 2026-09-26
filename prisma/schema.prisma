@@ -411,6 +411,10 @@ model ApplicationWorkspace {
   applicationStatus         ApplicationStatus     @default(discovered)
   fitScore                  Int?
   fitSummary                String?
+  /// Scout's verdict: strong | possible | stretch | not_a_fit | unknown.
+  fitVerdict                String?
+  /// The Scout run that analysed this job, when it came in through Scout.
+  scoutRunId                String?               @unique
   companySnapshot           Json?
   linkedJobTargetId         String?
   latestGenerationSessionId String?
@@ -787,6 +791,8 @@ enum WinSensitivity {
 
 enum WinSource {
   manual
+  /// Sent to the Telegram or WhatsApp bot as a note.
+  chat
   github
   calendar
   linear
@@ -1412,4 +1418,164 @@ model MissionStep {
 
   @@unique([missionId, key])
   @@index([missionId, order])
+}
+
+// ─────────────────────────────────────────────────────────────── agent runs
+// docs/impl/06-scout-agent.md. A domain-agnostic run/step ledger: the user's
+// timeline and the operator's trace are the same rows.
+
+enum AgentRunStatus {
+  queued
+  running
+  /// Paused on a question only the user can answer. `pendingQuestion` holds it.
+  awaiting_input
+  succeeded
+  /// Finished, but at least one section was unavailable. Not a failure.
+  partial
+  failed
+}
+
+enum AgentStepStatus {
+  running
+  succeeded
+  /// The step ran and had nothing to say (no key configured, no data). Carries a reason.
+  unavailable
+  skipped
+  failed
+}
+
+model AgentRun {
+  id     String @id @default(cuid())
+  userId String
+  /// 'scout'. A string, not an enum: the harness is shared by future agents.
+  agent  String
+
+  /// Dedupe key for the input (normalized URL or text hash). The same link
+  /// shared twice returns the same run; refresh is explicit.
+  inputKey String
+  /// {url?, text?, source}
+  input    Json
+  /// Classified kind, null until classification runs.
+  kind     String?
+  status   AgentRunStatus @default(queued)
+  channel  Channel        @default(web)
+  /// Channel-specific handle for edit-in-place progress, e.g. {chatId, messageId}.
+  channelRef Json?
+
+  workflowRunId   String?
+  /// {id, prompt, options?, field} while status = awaiting_input.
+  pendingQuestion Json?
+  /// Answers the user has given this run, keyed by question id.
+  answers         Json @default("{}")
+  /// Section name → SectionResult. Written as each section finishes.
+  result          Json @default("{}")
+
+  costUsd   Float   @default(0)
+  stepCount Int     @default(0)
+  error     String?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  steps AgentStep[]
+
+  @@unique([userId, inputKey])
+  @@index([userId, createdAt])
+  @@index([agent, status, createdAt])
+}
+
+model AgentStep {
+  id      String          @id @default(cuid())
+  runId   String
+  name    String
+  status  AgentStepStatus @default(running)
+  attempt Int             @default(1)
+
+  /// Short human reason for unavailable / skipped / failed. Shown to the user.
+  reason    String?
+  /// [{url, title, fetchedAt}] — every external source this step read.
+  sources   Json    @default("[]")
+  output    Json?
+  error     String?
+  costUsd   Float   @default(0)
+  latencyMs Int?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, name, attempt])
+  @@index([name, status, startedAt])
+}
+
+/// Public research shared across users: company facts, comp figures,
+/// interview links. Never holds anything user-specific.
+model ResearchCache {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  kind      String
+  payload   Json
+  sources   Json     @default("[]")
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind, expiresAt])
+}
+
+/// A knowledge post the user saved. Deliberately NOT KnowledgeItem, which
+/// feeds resumes: someone else's post is not the user's evidence.
+model SavedInsight {
+  id        String   @id @default(cuid())
+  userId    String
+  runId     String?  @unique
+  url       String?
+  author    String?
+  title     String
+  takeaways Json     @default("[]")
+  tags      Json     @default("[]")
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum ContactSource {
+  linkedin_export
+  extension
+  manual
+}
+
+/// A first-degree connection, from the user's own LinkedIn data export.
+model Contact {
+  id                String        @id @default(cuid())
+  userId            String
+  fullName          String
+  profileUrl        String?
+  email             String?
+  company           String?
+  normalizedCompany String?
+  position          String?
+  connectedOn       DateTime?
+  source            ContactSource @default(linkedin_export)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@unique([userId, profileUrl])
+  @@index([userId, normalizedCompany])
+}
+
+/// Inbound-message dedupe for channels other than Telegram (which predates
+/// this and keeps `TelegramUpdateReceipt`). Webhook providers redeliver; a
+/// redelivered "analyse this link" must not start, or charge for, a second run.
+model ChannelMessageReceipt {
+  id         String   @id @default(cuid())
+  channel    Channel
+  externalId String
+  createdAt  DateTime @default(now())
+
+  @@unique([channel, externalId])
+  @@index([createdAt])
 }

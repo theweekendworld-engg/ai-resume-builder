@@ -492,6 +492,81 @@ The observation is a priority-ordered rule set with **no default branch** — no
 
 ---
 
+## Career inbox wave — 2026-09-26
+
+Orchestrator plus five builders: W (notes → Win drafts; wins service extracted
+from the actions), T (tracker sync + inbox queries), C (Telegram/WhatsApp flows
+and commands), U (Inbox UI), D (best fits in the weekly digest). Migration
+`career_inbox` adds `ApplicationWorkspace.scoutRunId`/`fitVerdict` and
+`WinSource.chat`.
+
+Gate: tsc 0 · lint 0 errors · `bun test` 2664 pass, 1 fail (`designTokenParity`,
+pre-existing) · `bun run build` succeeds. Live end-to-end on real data: note →
+draft → confirm (twice, one Evidence row); job → tracker → Applied → "Save" did
+not regress it; `/applied`, `/notes` render correctly.
+
+**Found by live runs, fixed:** Tavily's date filter emptied the interview search
+(0 → 8 real Amazon SDE II write-ups after removing it); the posting parse varied
+between runs (now shared and cached); a jobs-listing salary estimate shipped as
+role pay.
+
+**Found by the build, fixed, and a security finding:** `src/actions/embed.ts`
+was a `'use server'` module whose exports (`searchQdrantByUser(userId)`,
+`deleteFromQdrant(pointId)`, …) were public endpoints with no auth check. They
+are now plain server code in `src/lib/embeddings.ts`. **Still open:**
+`ai.ts` (`calculateATSScore`, `generateTailoredResume`, `compileLatex`),
+`generateResume.ts#parseJobDescription` and `generationPipeline.ts#runGenerationSession`
+are server actions that accept a caller-supplied `userId`.
+
+**Also this wave:** a second Claude session running Docker labs on the same
+machine removed every container (not an intrusion). The Postgres volume survived and the
+containers were recreated on it. `docker-compose.yml` still publishes Postgres
+on all interfaces with password `postgres`.
+
+---
+
+## Scout wave — 2026-09-23
+
+Orchestrator plus six parallel builders, split by file ownership:
+F1 ingest/classify/digest/openings, F2 research, F3 JD/fit/network/outreach/contacts,
+F4 Telegram + WhatsApp, F5 dashboard + settings, F6 extension.
+The orchestrator owned the schema (`AgentRun`, `AgentStep`, `ResearchCache`,
+`SavedInsight`, `Contact`, `ChannelMessageReceipt`; two migrations), the
+harness, the contracts in `src/lib/scout/types.ts`, the service, the actions
+and `/admin/runs`.
+
+| Check | Result |
+|---|---|
+| `bunx tsc --noEmit` | 0 errors |
+| `bun test` | 2553 pass, 24 skip, 1 fail (`designTokenParity`, fails identically on clean HEAD) |
+| `bun run build` | succeeds, after the fix below |
+| `bun run lint` | 0 errors |
+| `bun run ext:build` | succeeds |
+| Rule gates 1, 2, 4 | clean |
+
+**The live smoke run found what the suites could not.** Fit reported "strong
+(87)" while evidencing 2 of 12 requirements: every unit test passed because
+each one asserted the rules it was written for. It was fixed and pinned with a
+regression suite built from the real posting. See `06-scout-agent.md` §7.
+
+**The build caught what tsc and the suites could not, too.** The workflow
+step route bundles every step's import graph, and Scout's fit and Radar's comp
+band imported `computeFitScore` from `lib/extension/analyze.ts`, which imports
+a `'use server'` module. The result was "Server Actions must be async functions"
+at build time only. The pure scorer now lives in `lib/extension/fitScore.ts`
+(re-exported from `analyze.ts`). **Rule for step code: nothing a step imports
+may reach `src/actions/`.**
+
+**Integration fixes:** removed cost from the user-facing Scout view
+(`costPrivacy`); registered `actions/agentOps.ts` with `adminGating` so its
+guards are checked; carried `author`/`authorUrl` from extension to ingest;
+made the Scout model default gateway-aware; fixed the partial-preferences save
+properly (`mergePreferenceUpdate`, tested). The first fix still reset work
+modes and section order, because `normalizePreferenceInput` spreads absent keys
+as `undefined`.
+
+---
+
 ## Open blockers
 
 | # | Blocker | Since | Impact |

@@ -38,6 +38,19 @@ export const TASK_KEYS = [
     // emits the whole document, so this is a single key rather than one per
     // judgement: the point of the loop is that the judgements interact.
     'resumeAssemble',
+    // Scout (docs/impl/06-scout-agent.md). Code owns the plan; each of these
+    // is one extraction or one piece of language inside a fixed section.
+    'scoutClassify',
+    'scoutFitExplain',
+    'scoutResearchExtract',
+    'scoutDigest',
+    'outreachDraft',
+    // Requirement ↔ record-line matching inside fit: its own key so its cost
+    // is not folded into the explanation's in ApiUsageLog.
+    'scoutFitMatch',
+    // The posting read, on Scout's model. Same prompt as `postingRead`; the
+    // resume path keeps its measured model, Scout takes the cheaper one.
+    'scoutPostingRead',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];
@@ -102,6 +115,13 @@ export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 
     // Parsing structured documents into fields.
     resumeParse: 'low',
     jdParse: 'low',
+    // Scout extraction. `low` rather than `minimal`: gpt-6-luna has no
+    // `minimal` effort, and `low` is valid on both model families.
+    scoutClassify: 'low',
+    scoutResearchExtract: 'low',
+    scoutDigest: 'low',
+    scoutFitMatch: 'low',
+    scoutPostingRead: 'low',
 };
 
 export function resolveTaskReasoningEffort(

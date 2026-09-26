@@ -96,6 +96,7 @@ Four waves shipped with the tree unbuildable because `groundState.ts` and `claim
 | `docs/impl/01` | Phase 0 foundation |
 | `docs/impl/02` | Phased build plan for R1 |
 | `docs/impl/03` | Parallel build orchestration and file ownership |
+| `docs/impl/06` | Scout: the link-in agent and the shared agent harness |
 | `docs/impl/BUILD-LOG.md` | What actually landed, per wave |
 | `docs/design/00-02` | Foundations, components, screens |
 
@@ -112,7 +113,7 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   still points at a paused Supabase and the Prisma CLI reads `.env`, so CLI
   commands need an inline `DATABASE_URL`/`DIRECT_URL` override. `bun test` reads
   `.env.test` and is pinned to local.
-- **Tests:** ~1,730 pass, 0 fail, stable across repeated full runs. `bun run
+- **Tests:** ~2,550 pass, 1 known fail (`designTokenParity` dark theme, pre-existing on HEAD), stable across repeated full runs. `bun run
   lint` is at 0 errors — keep it there. `bun run build` succeeds.
 - **Mocks:** `src/__mocks__/README.md` is the map, including a COVERAGE
   BOUNDARY table of what the doubles do NOT prove. Read it before trusting a
@@ -137,6 +138,25 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   had registered handlers and no way to fire; periodic dispatch now lives in
   `src/lib/jobs/schedule.ts`. Adding a job kind means three places: the kind,
   the handler, the schedule.
+
+- **Scout** (`docs/impl/06-scout-agent.md`, flag `scout`). Share a LinkedIn
+  job, post or any link from the dashboard, Telegram, WhatsApp or the
+  extension, and get JD, fit, company, comp, interview links, networking
+  targets and on-demand outreach drafts. It runs on a generic run/step ledger
+  (`src/lib/agent/`: `AgentRun`, `AgentStep`) that the next agent should reuse,
+  not rebuild. Code owns the plan (`src/lib/scout/plan.ts`); sections fail
+  independently to `partial`; every external claim cites a URL the run
+  fetched (`SourceSet`); the model picks by index and never writes URLs or
+  evidence. Scout tasks default to **gpt-6-luna**; the resume path stays on
+  gpt-5.6-luna until its eval corpus is re-run. Research is off without
+  `TAVILY_API_KEY`. Smoke test: `bun scripts/scout-smoke.ts`. The **career
+  inbox** (`/scout`, `src/services/careerInbox.ts`) records everything sent: jobs
+  land in `ApplicationWorkspace` (never moved backwards), notes become `Win`
+  drafts (`source = chat`, confirmed only by the user), posts become
+  `SavedInsight`. See `06-scout-agent.md` §8.
+- **Workflow step code must never import `src/actions/`.** The step route
+  bundles every import, and a `'use server'` module inside it fails
+  `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).
 
 **What is not proven, and cannot be from a sandbox** — see
 `docs/impl/04-test-strategy.md` §5, the pre-launch checklist, and the mocks

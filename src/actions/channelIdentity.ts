@@ -1,5 +1,8 @@
-'use server';
-
+/**
+ * NOT a server action module (no `'use server'`): every importer is server
+ * code, and as a server action its exports were public endpoints, several of
+ * them taking a caller-supplied user id. Removed 2026-09-26.
+ */
 import { randomBytes } from 'crypto';
 import { auth } from '@clerk/nextjs/server';
 import { Channel, Prisma } from '@prisma/client';
@@ -60,6 +63,52 @@ export async function createTelegramLinkToken(): Promise<{
       token,
       expiresAt: expiresAt.toISOString(),
       deepLink: getTelegramDeepLink(token),
+    };
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create link token',
+    };
+  }
+}
+
+/**
+ * WhatsApp linking: the same 15-minute `ChannelLinkToken`, delivered as a
+ * click-to-chat link that pre-fills "link <token>". The inbound handler
+ * (`src/lib/channels/whatsappAgent.ts`) consumes it with the sender's wa_id.
+ */
+export async function createWhatsAppLinkToken(): Promise<{
+  success: boolean;
+  token?: string;
+  expiresAt?: string;
+  deepLink?: string | null;
+  error?: string;
+}> {
+  try {
+    const { userId } = await auth();
+    if (!userId) return { success: false, error: 'Not authenticated' };
+
+    const { readWhatsAppConfig, whatsAppLinkDeepLink } = await import('@/lib/whatsapp');
+    const whatsapp = readWhatsAppConfig();
+    if (!whatsapp) return { success: false, error: 'WhatsApp is not configured' };
+
+    const token = buildToken();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.channelLinkToken.create({
+      data: {
+        userId,
+        channel: Channel.whatsapp,
+        token,
+        expiresAt,
+      },
+    });
+
+    return {
+      success: true,
+      token,
+      expiresAt: expiresAt.toISOString(),
+      deepLink: whatsAppLinkDeepLink(whatsapp.publicNumber, token),
     };
   } catch (error: unknown) {
     return {
@@ -133,7 +182,11 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
       });
 
       if (existingExternal && existingExternal.userId !== tokenRow.userId) {
-        throw new Error('This Telegram account is already linked to another user');
+        throw new Error(
+          channel === Channel.whatsapp
+            ? 'This WhatsApp number is already linked to another user'
+            : 'This Telegram account is already linked to another user',
+        );
       }
 
       if (existingExternal && existingExternal.userId === tokenRow.userId) {

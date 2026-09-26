@@ -38,7 +38,7 @@ import { z } from 'zod';
 import { WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { mayEmbed, WIN_POINT_TYPE } from '@/lib/graph/visibility';
-import { deleteFromQdrant, scrollPointSourceIds } from '@/actions/embed';
+import { deleteFromQdrant, scrollPointSourceIds } from '@/lib/embeddings';
 import { deleteWinPoint, enqueueEmbedWin } from './embedWin';
 import type { JobHandler, JobResult } from '../types';
 

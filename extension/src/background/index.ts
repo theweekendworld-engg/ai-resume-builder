@@ -14,6 +14,7 @@ import { buildFillPlan } from '@/fill/planner';
 import type { ResolvedProfileBundle } from '@/fill/valueResolver';
 import type {
     GenerationSessionWire,
+    ScoutSendResultWire,
     SavedAnswerWire,
     WorkspaceListItemWire,
 } from '@/shared/types/messages';
@@ -603,4 +604,126 @@ chrome.runtime.onInstalled.addListener(() => {
         .catch(() => {
             // Some chromium variants do not expose this API; ignore.
         });
+});
+
+// ───────────────────────────────────────────────────── Send to Patronus
+//
+// Read the tab and start a Scout run (docs/impl/06-scout-agent.md). The
+// content script does the reading — it holds the DOM, and on LinkedIn it runs
+// inside the user's own logged-in session, which is the whole reason this
+// path exists. The worker only relays.
+
+type ScoutExtractionWire = {
+    url: string | null;
+    title: string | null;
+    text: string;
+    author: string | null;
+    authorUrl?: string | null;
+    kindHint: string;
+    method: string;
+};
+
+/**
+ * For tabs where our content script is not injected (a board outside the
+ * manifest's host list, reached via activeTab). Self-contained because
+ * `executeScript` serialises the function: no imports, no closures.
+ */
+async function extractViaScripting(tabId: number): Promise<ScoutExtractionWire | null> {
+    try {
+        const [result] = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+                const href = location.href;
+                const text = (document.body?.innerText || '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 100_000);
+                // A LinkedIn feed URL names no post; send text only.
+                const isFeed = /linkedin\.com\/feed\/?(\?|$)/i.test(href);
+                return {
+                    url: isFeed ? null : href,
+                    title: document.title || null,
+                    text,
+                    author: null,
+                    kindHint: 'page',
+                    method: 'body',
+                };
+            },
+        });
+        const data = result?.result as ScoutExtractionWire | undefined;
+        return data && data.text.length >= 40 ? data : null;
+    } catch {
+        return null;
+    }
+}
+
+async function extractForScoutFromTab(tabId: number): Promise<ScoutExtractionWire | null> {
+    try {
+        // frameId 0: the content script runs in every frame, and only the top
+        // frame holds the post or the job.
+        const res = (await chrome.tabs.sendMessage(tabId, { type: 'CONTENT_SCOUT_EXTRACT' }, { frameId: 0 })) as
+            | { ok: true; data: ScoutExtractionWire }
+            | { ok: false; error: string }
+            | undefined;
+        if (res?.ok) return res.data;
+        if (res && !res.ok && res.error === 'nothing_to_send') return null;
+    } catch {
+        // No content script in this tab — fall through to scripting.
+    }
+    return extractViaScripting(tabId);
+}
+
+on('SCOUT_SEND', async (msg) => {
+    const token = await getToken();
+    if (!token) return { ok: false, error: 'not_authenticated' };
+
+    const extraction = await extractForScoutFromTab(msg.tabId);
+    if (!extraction) return { ok: false, error: 'nothing_to_send' };
+
+    const base = await getAppBaseUrl();
+    try {
+        const res = await fetch(`${base}/api/extension/scout`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ...(extraction.url ? { url: extraction.url } : {}),
+                ...(extraction.title ? { title: extraction.title.slice(0, 500) } : {}),
+                text: extraction.text,
+                kindHint: extraction.kindHint,
+                ...(extraction.author ? { author: extraction.author.slice(0, 200) } : {}),
+                ...(extraction.authorUrl ? { authorUrl: extraction.authorUrl } : {}),
+            }),
+        });
+        const json = (await res.json().catch(() => ({}))) as Partial<Omit<ScoutSendResultWire, 'sent'>> & {
+            success?: boolean;
+            error?: string;
+            code?: string;
+            paywall?: unknown;
+        };
+
+        if (!res.ok) {
+            if (res.status === 401) return { ok: false, error: 'not_authenticated' };
+            // A quota refusal is a product state, not a failure (see TAILOR_START).
+            if (res.status === 402 || json.paywall) {
+                return { ok: false, error: `paywall:${json.error ?? 'Upgrade required'}` };
+            }
+            if (res.status === 403) return { ok: false, error: 'scout_not_available' };
+            return { ok: false, error: json.error ?? `scout_failed_${res.status}` };
+        }
+
+        const data: ScoutSendResultWire = {
+            runId: json.runId ?? '',
+            created: Boolean(json.created),
+            status: json.status ?? 'queued',
+            headline: json.headline ?? 'Sent to Patronus',
+            dashboardUrl: json.dashboardUrl ?? `${base}/scout`,
+            sent: {
+                kindHint: extraction.kindHint,
+                method: extraction.method,
+                textLength: extraction.text.length,
+                url: extraction.url,
+                author: extraction.author,
+            },
+        };
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'scout_error' };
+    }
 });

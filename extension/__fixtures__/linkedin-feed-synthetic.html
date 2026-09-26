@@ -1,0 +1,51 @@
+<!-- SYNTHETIC FIXTURE: LinkedIn feed structure (Send to Patronus). No .expected.json on purpose: the ATS pipeline harness must not pick this up; assertions live in __tests__/parsers/scoutExtract.test.ts. -->
+<html>
+<head><title>Feed | LinkedIn</title></head>
+<body>
+<header id="global-nav"><nav><a href="/feed/">Home</a><a href="/mynetwork/">My Network</a><a href="/jobs/">Jobs</a></nav></header>
+<main class="scaffold-layout__main">
+  <div class="scaffold-finite-scroll__content">
+    <div data-id="urn:li:activity:7240000000000000001" class="feed-shared-update-v2" id="post-a">
+      <div class="update-components-actor">
+        <a class="update-components-actor__meta-link" href="https://www.linkedin.com/in/priya-sharma-eng/?miniProfileUrn=abc">
+          <span class="update-components-actor__title"><span aria-hidden="true">Priya Sharma</span><span class="visually-hidden">Priya Sharma</span></span>
+        </a>
+        <span class="update-components-actor__description">Engineering Manager at Razorpay</span>
+      </div>
+      <div class="feed-shared-inline-show-more-text">
+        <div class="update-components-text">
+          <span dir="ltr">We're hiring backend engineers in Bengaluru! 🚀<br><br>
+          Looking for SDE II folks with 3+ years in Go or Java, strong on distributed systems and payments.<br>
+          Hybrid, 3 days in office. DM me or apply below.<br><br>
+          hashtag<a href="/feed/hashtag/hiring">#hiring</a> hashtag<a href="/feed/hashtag/backend">#backend</a></span>
+          <button class="feed-shared-inline-show-more-text__see-more-less-toggle">…see more</button>
+        </div>
+      </div>
+      <div class="social-details-social-counts">1,204 reactions · 87 comments</div>
+      <div class="feed-shared-social-action-bar"><button>Like</button><button>Comment</button><button>Repost</button><button>Send</button></div>
+      <div class="comments-comments-list"><article>Great opportunity! Interested.</article></div>
+    </div>
+
+    <div data-id="urn:li:activity:7240000000000000002" class="feed-shared-update-v2" id="post-b">
+      <div class="update-components-actor">
+        <a class="update-components-actor__meta-link" href="https://www.linkedin.com/in/arjun-k/">
+          <span class="update-components-actor__title"><span aria-hidden="true">Arjun Kumar</span><span class="visually-hidden">Arjun Kumar</span></span>
+        </a>
+      </div>
+      <div class="update-components-text">
+        <span dir="ltr">Three things I learned preparing for system design interviews at Stripe: start from the data model, say your assumptions out loud, and always size the problem before drawing boxes.</span>
+      </div>
+      <div data-urn="urn:li:share:7239999999999999999" class="update-components-mini-update-v2" id="reshared">
+        <div class="update-components-text"><span dir="ltr">Original post: our interview loop has four rounds including a practical coding exercise.</span></div>
+      </div>
+    </div>
+
+    <div class="feed-shared-update-v2" id="post-c">
+      <div class="update-components-actor"><span class="update-components-actor__name">Acme Corp</span></div>
+      <div class="update-components-text"><span dir="ltr">Acme raised a Series B to expand the engineering team across India and Singapore this year.</span></div>
+    </div>
+  </div>
+</main>
+<aside class="scaffold-layout__aside"><div>Add to your feed · Promoted · LinkedIn News: top stories today in tech and business across the country</div></aside>
+</body>
+</html>

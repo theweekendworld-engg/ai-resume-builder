@@ -37,7 +37,12 @@ import type { EnqueueFn, JobContext, JobHandler, JobResultObject } from '@/lib/j
 import { isDigestDue, safeTimeZone, weekStartFor, type IsoWeekday } from '@/lib/time';
 import { selectDigestDrafts } from '@/lib/capture/draftRun';
 import { sendEmail, getAppUrl } from '@/lib/email/send';
+import { inboxCounts, topFits } from '@/services/careerInbox';
+import type { JobBoardItem } from '@/lib/inbox/types';
+import type { FitVerdict } from '@/lib/scout/types';
 import {
+    MAX_DIGEST_BEST_FITS,
+    type DigestBestFits,
     digestFooterSummary,
     digestInlineKeyboard,
     digestSubject,
@@ -613,6 +618,78 @@ async function createDigestRow(userId: string, weekStart: Date, channel: Channel
 // Composition
 // ---------------------------------------------------------------------------
 
+// ── Best fits this week (career inbox) ──────────────────────────────────────
+//
+// ENRICH-ONLY. This block is composed inside `composeDigestData`, which runs
+// only after the zero-signal check has already decided a digest is going out.
+// A week with no Win drafts but three great jobs still sends NOTHING: the
+// digest is the Work Log ritual, the notification budget is three messages a
+// week (`src/lib/notifications/budget.ts`), and a jobs-only email would spend
+// one of them on something the user can already see in Telegram and the
+// inbox. The block rides along; it never buys a send of its own.
+//
+// No model call: every word is a stored field, so the numeric guard has
+// nothing to check and nothing to trip.
+
+export type InboxReader = {
+    topFits: (userId: string, opts: { sinceDays: number; limit: number }) => Promise<JobBoardItem[]>;
+    toReview: (userId: string) => Promise<number>;
+};
+
+const defaultInboxReader: InboxReader = {
+    topFits: (userId, opts) => topFits(userId, opts),
+    toReview: async (userId) => (await inboxCounts(userId)).toReview,
+};
+
+let inboxReader: InboxReader = defaultInboxReader;
+
+export const __testing = {
+    setInboxReader(next: InboxReader | null) {
+        inboxReader = next ?? defaultInboxReader;
+    },
+};
+
+const VERDICT_LABEL: Record<FitVerdict, string | null> = {
+    strong: 'Strong fit',
+    possible: 'Possible fit',
+    stretch: 'Stretch',
+    not_a_fit: 'Not a fit',
+    unknown: null,
+};
+
+function cityOf(location: string | null): string | null {
+    const city = location?.split(',')[0]?.trim();
+    return city ? city : null;
+}
+
+/**
+ * The block, or undefined. Never throws: a failure here must cost the user a
+ * paragraph, not their digest.
+ */
+export async function composeBestFits(userId: string, appUrl: string): Promise<DigestBestFits | undefined> {
+    try {
+        if (!(await isEnabled(userId, 'scout'))) return undefined;
+        const items = await inboxReader.topFits(userId, { sinceDays: DIGEST_WINDOW_DAYS, limit: MAX_DIGEST_BEST_FITS });
+        if (items.length === 0) return undefined;
+        const waiting = await inboxReader.toReview(userId).catch(() => items.length);
+        return {
+            items: items.slice(0, MAX_DIGEST_BEST_FITS).map((item) => ({
+                role: item.role?.trim() || 'Role',
+                company: item.company?.trim() || null,
+                verdictLabel: item.verdict ? VERDICT_LABEL[item.verdict] : null,
+                score: item.fitScore,
+                city: cityOf(item.location),
+                url: item.runId ? `${appUrl}/scout/${item.runId}` : `${appUrl}/scout`,
+            })),
+            waiting,
+            inboxUrl: `${appUrl}/scout`,
+        };
+    } catch (error: unknown) {
+        console.warn('[weekly_digest] best fits skipped', { userId, error: error instanceof Error ? error.message : String(error) });
+        return undefined;
+    }
+}
+
 type DraftRow = Pick<Win, 'id' | 'title' | 'narrative' | 'source' | 'sourceRef'> & { confidence: number };
 
 async function composeDigestData(input: {
@@ -650,6 +727,8 @@ async function composeDigestData(input: {
         });
     }
 
+    const bestFits = await composeBestFits(input.userId, appUrl);
+
     return {
         dateRange: formatDateRange(input.weekStart, weekEnd, input.timezone),
         sendDateLabel: formatSendDate(input.now, input.timezone),
@@ -660,6 +739,7 @@ async function composeDigestData(input: {
         totalConfirmed: summary.success ? summary.data.totalConfirmed : 0,
         streakWeeks: summary.success ? summary.data.streakWeeks : 0,
         cadenceNote: input.cadenceNote,
+        ...(bestFits ? { bestFits } : {}),
     };
 }
 
@@ -842,6 +922,10 @@ async function refreshDigestMessage(input: {
     const summary = await winGraph.getLogSummary({ userId: input.userId });
     const remaining = items.filter((item) => item.state === 'draft').length;
 
+    // Recomputed rather than stored: the row has no column for it, and an
+    // edit that silently dropped the block would make one tap look like it
+    // deleted the user's job list.
+    const bestFits = await composeBestFits(input.userId, getAppUrl());
     const view = {
         headline: remaining === 0 ? 'That is the week, done.' : digestSubject(items.length),
         items,
@@ -849,6 +933,7 @@ async function refreshDigestMessage(input: {
         footer: summary.success
             ? digestFooterSummary(summary.data.totalConfirmed, summary.data.streakWeeks)
             : '',
+        ...(bestFits ? { bestFits } : {}),
     };
 
     await editTelegramMessageText({

@@ -31,7 +31,13 @@ export type ExtensionEventType =
     | 'tailor.started'
     | 'tailor.finished'
     | 'tailor.paywalled'
-    | 'tailor.pdf_opened';
+    | 'tailor.pdf_opened'
+    // "Send to Patronus". `method` in the payload says whether the LinkedIn
+    // selectors hit or the density fallback had to rescue them — a rising
+    // fallback share is the early warning that LinkedIn changed its DOM.
+    | 'scout.sent'
+    | 'scout.paywalled'
+    | 'scout.failed';
 
 type EventEnvelope = {
     type: ExtensionEventType;

@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { isAdminUserId } from '@/lib/adminAuth';
 
 const SRC = join(import.meta.dir, '..');
-const ADMIN_MODULES = ['actions/admin.ts', 'actions/ops.ts'];
+const ADMIN_MODULES = ['actions/admin.ts', 'actions/ops.ts', 'actions/agentOps.ts'];
 
 function exportedActions(source: string): { name: string; guarded: boolean }[] {
     const out: { name: string; guarded: boolean }[] = [];

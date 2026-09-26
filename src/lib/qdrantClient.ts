@@ -1,8 +1,9 @@
 /**
  * The Qdrant client, and the seam for swapping it in tests.
  *
- * Lives here rather than in `src/actions/embed.ts` for a hard reason: that file
- * is `'use server'`, and Next only permits async function exports from a server
+ * Lives here rather than beside the embedding code (formerly the `'use server'`
+ * file `src/actions/embed.ts`, now `src/lib/embeddings.ts`) for a hard reason: that file
+ * was `'use server'`, and Next only permits async function exports from a server
  * module. A client singleton and its test seam are neither, so putting them
  * there compiles under `tsc` and then fails the Next build — the kind of error
  * a type-check will not catch for you.

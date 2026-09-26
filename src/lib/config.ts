@@ -72,6 +72,15 @@ export function resolveModelGateway(
 
 const gateway = resolveModelGateway();
 
+/**
+ * Scout's default model id, spelled the way the configured gateway names it.
+ * OpenRouter namespaces by lab (`openai/gpt-6-luna`); OpenAI does not. Getting
+ * this wrong is a 404 at request time that reads like a bad key, so the
+ * default follows the gateway instead of relying on someone setting
+ * OPENAI_MODEL_SCOUT correctly.
+ */
+const scoutDefaultModel = gateway.provider === "openrouter" ? "openai/gpt-6-luna" : "gpt-6-luna";
+
 export const config = {
     openai: {
         /**
@@ -160,6 +169,19 @@ export const config = {
             // the document in one pass, and it is the one place where a weaker
             // model shows up as a worse resume rather than a slower one.
             resumeAssemble: process.env.OPENAI_MODEL_RESUME_ASSEMBLE || process.env.OPENAI_MODEL_GENERAL || "gpt-5.6-luna",
+            // Scout. Defaults to gpt-6-luna ($0.10/$0.50 per 1M, launched
+            // 2026-09-23) and deliberately does NOT read OPENAI_MODEL_GENERAL:
+            // the resume path stays on the model its eval corpus measured,
+            // while Scout — new, extraction-heavy, high-volume — takes the
+            // cheaper one. One env var moves all five. See
+            // docs/impl/06-scout-agent.md §3.
+            scoutClassify: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            scoutFitExplain: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            scoutResearchExtract: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            scoutDigest: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            outreachDraft: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            scoutFitMatch: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            scoutPostingRead: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
         },
         /**
          * Embeddings keep their own credentials, and that is load-bearing.

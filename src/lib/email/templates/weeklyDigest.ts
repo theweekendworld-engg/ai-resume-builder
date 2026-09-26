@@ -15,6 +15,7 @@
  */
 
 import {
+    bulletList,
     button,
     buttonRow,
     divider,
@@ -64,7 +65,60 @@ export type WeeklyDigestData = {
      * TELL the user we dropped their cadence; this line is how.
      */
     cadenceNote?: string;
+    /**
+     * The career inbox's best fits this week (docs/impl/06-scout-agent.md).
+     * Absent unless the user has Scout and something was worth showing. Data,
+     * not prose: rendered by `bestFitLine`, never by a model.
+     */
+    bestFits?: DigestBestFits;
 };
+
+export type DigestBestFit = {
+    role: string;
+    company: string | null;
+    /** "Possible fit", already worded by the caller. */
+    verdictLabel: string | null;
+    score: number | null;
+    city: string | null;
+    url: string;
+};
+
+export type DigestBestFits = {
+    items: DigestBestFit[];
+    /** Jobs still to review in the inbox, including the ones above. */
+    waiting: number;
+    inboxUrl: string;
+};
+
+/** At most three lines: this is a pointer to the inbox, not a second inbox. */
+export const MAX_DIGEST_BEST_FITS = 3;
+
+/** "Backend Engineer @ Nightfall AI · Possible fit (56) · Bengaluru" */
+export function bestFitLine(item: DigestBestFit): string {
+    const what = item.company ? `${item.role} @ ${item.company}` : item.role;
+    const verdict = item.verdictLabel
+        ? `${item.verdictLabel}${item.score === null ? '' : ` (${item.score})`}`
+        : item.score === null ? null : `Fit ${item.score}`;
+    return [what, verdict, item.city].filter(Boolean).join(' · ');
+}
+
+export function bestFitsWaitingLine(waiting: number): string {
+    return `${waiting} ${waiting === 1 ? 'job' : 'jobs'} waiting in your inbox`;
+}
+
+function bestFitBlocks(fits: DigestBestFits): EmailBlock[] {
+    const items = fits.items.slice(0, MAX_DIGEST_BEST_FITS);
+    if (items.length === 0) return [];
+    return [
+        divider(),
+        eyebrow('Best fits this week'),
+        bulletList(items.map((item) => [{ text: bestFitLine(item), href: item.url }])),
+        paragraph(
+            [`${bestFitsWaitingLine(Math.max(fits.waiting, items.length))}. `, { text: 'Open your inbox', href: fits.inboxUrl }],
+            { muted: true, small: true },
+        ),
+    ];
+}
 
 export type DigestNudgeData = {
     /** How many weeks running we have found nothing. */
@@ -171,6 +225,8 @@ export const weeklyDigestTemplate: TemplateDefinition<WeeklyDigestData> = {
             );
         }
 
+        if (data.bestFits) blocks.push(...bestFitBlocks(data.bestFits));
+
         blocks.push(
             divider(),
             section([
@@ -267,6 +323,7 @@ export type TelegramDigestView = {
     items: TelegramDigestItem[];
     overflow: number;
     footer: string;
+    bestFits?: DigestBestFits;
 };
 
 const STATE_PREFIX: Record<TelegramDigestItem['state'], string> = {
@@ -300,6 +357,19 @@ export function renderTelegramDigest(view: TelegramDigestView): string {
     });
 
     if (view.overflow > 0) lines.push(`+${view.overflow} more waiting in your log.`, '');
+
+    const fits = view.bestFits?.items.slice(0, MAX_DIGEST_BEST_FITS) ?? [];
+    if (view.bestFits && fits.length > 0) {
+        lines.push('*Best fits this week*');
+        // Legacy Markdown links: [text](url). The text is escaped; the URL is
+        // ours (APP_URL + run id), so it carries no user-controlled brackets.
+        for (const item of fits) lines.push(`• [${escapeTelegramMarkdown(bestFitLine(item))}](${item.url})`);
+        lines.push(
+            `[${escapeTelegramMarkdown(bestFitsWaitingLine(Math.max(view.bestFits.waiting, fits.length)))}](${view.bestFits.inboxUrl})`,
+            '',
+        );
+    }
+
     lines.push(`_${escapeTelegramMarkdown(view.footer)}_`);
     return lines.join('\n').trim();
 }
@@ -317,6 +387,7 @@ export function toTelegramView(data: WeeklyDigestData): TelegramDigestView {
         })),
         overflow: data.overflow,
         footer: digestFooterSummary(data.totalConfirmed, data.streakWeeks),
+        bestFits: data.bestFits,
     };
 }
 

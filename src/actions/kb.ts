@@ -9,8 +9,8 @@ import {
   deleteFromQdrant,
   searchQdrantByUser,
   upsertKnowledgeItemEmbedding,
-} from '@/actions/embed';
-import { extractKeywords } from '@/actions/ai';
+} from '@/lib/embeddings';
+import { extractKeywords } from '@/lib/resumeAi';
 
 const MAX_CONTENT_LENGTH = 5000;
 const MAX_QUERY_LENGTH = 1000;

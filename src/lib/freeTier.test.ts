@@ -54,7 +54,7 @@ const NOT_A_TRIAL: MeteredAction[] = ['win_draft'];
  * as `NO_FEATURE_YET` in `entitlementWiring.test.ts` — when one of them gets
  * built, it moves out of both.
  */
-const UNBUILT: MeteredAction[] = ['auto_apply', 'tier2_grounding', 'radar_refresh', 'cover_letter'];
+const UNBUILT: MeteredAction[] = ['auto_apply', 'tier2_grounding', 'radar_refresh'];
 
 describe('free gets a taste of everything that exists', () => {
     test.each(

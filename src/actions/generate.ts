@@ -2,7 +2,7 @@
 
 import { z } from 'zod';
 import { initialResumeData, ResumeData } from '@/types/resume';
-import { generateTailoredResume } from '@/actions/ai';
+import { generateTailoredResume } from '@/lib/resumeAi';
 import { createResume } from '@/actions/resume';
 import { saveJobTargetToCloud } from '@/actions/jobTargets';
 import { getUserProfile } from '@/actions/profile';

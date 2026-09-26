@@ -122,6 +122,17 @@ export const SERVER_EVENTS = [
     // whether people rebuild after changing a preference — if they never do,
     // the gap panel's warning is not landing.
     'resume_regenerated',
+
+    // Scout — docs/impl/06-scout-agent.md
+    'scout_run_started',
+    /** Same link shared again: the dedupe key worked and nothing was charged. */
+    'scout_run_reused',
+    'scout_run_finished',
+    'scout_question_answered',
+    'scout_draft_created',
+    'scout_contacts_imported',
+    // Career inbox
+    'inbox_job_status_changed',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];

@@ -17,6 +17,16 @@ export const UserGenerationPreferencesSchema = z.object({
   preferredWorkModes: z.array(WorkModePreferenceSchema).max(3).default([]),
   desiredCompensation: z.string().max(200).default(''),
   noticePeriod: z.string().max(120).default(''),
+  // ── Job-search preferences (Scout, docs/impl/06-scout-agent.md) ──────────
+  // Fit reads these; when one it needs is empty, Scout asks once on the
+  // channel the link came from and writes the answer back here.
+  /** e.g. ["Backend Engineer", "SDE II"]. Empty means "not stated", never "anything". */
+  targetRoles: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+  /** Cities or regions, e.g. ["Bengaluru", "Remote India"]. */
+  targetLocations: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+  /** Free text as the user says it: "₹40 LPA", "$180k base". Never converted. */
+  minCompensationText: z.string().max(120).default(''),
+  companySizePreference: z.enum(['any', 'startup', 'mid', 'large']).default('any'),
 });
 
 export type UserGenerationPreferences = z.infer<typeof UserGenerationPreferencesSchema>;
@@ -54,4 +64,32 @@ export function parseUserGenerationPreferences(value: unknown): UserGenerationPr
   }
 
   return defaultUserGenerationPreferences;
+}
+
+/**
+ * The stored preferences after a PARTIAL update.
+ *
+ * Zod 4 applies `.default()` inside `.partial()`, so a parsed partial input
+ * carries a default for every key the caller omitted. Merging it wholesale
+ * meant saving one field reset every other preference to its default. Only
+ * keys the caller actually sent, with a defined value, may overwrite what is
+ * stored: `sent` is the caller's raw object, `parsed` the validated values.
+ */
+export function mergePreferenceUpdate(
+  existing: unknown,
+  sent: unknown,
+  parsed: Record<string, unknown>,
+): UserGenerationPreferences {
+  const sentKeys = new Set(
+    sent && typeof sent === 'object' && !Array.isArray(sent)
+      ? Object.entries(sent as Record<string, unknown>)
+        .filter(([, value]) => value !== undefined)
+        .map(([key]) => key)
+      : [],
+  );
+  const update = Object.fromEntries(Object.entries(parsed).filter(([key]) => sentKeys.has(key)));
+  const stored = existing && typeof existing === 'object' && !Array.isArray(existing)
+    ? existing as Record<string, unknown>
+    : {};
+  return parseUserGenerationPreferences({ ...defaultUserGenerationPreferences, ...stored, ...update });
 }

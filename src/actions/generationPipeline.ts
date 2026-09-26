@@ -1,9 +1,12 @@
-'use server';
-
+/**
+ * NOT a server action module (no `'use server'`): every importer is server
+ * code, and as a server action its exports were public endpoints, several of
+ * them taking a caller-supplied user id. Removed 2026-09-26.
+ */
 import { auth } from '@clerk/nextjs/server';
 import { GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { compileLatex } from '@/actions/ai';
+import { compileLatex } from '@/lib/resumeAi';
 import { generateSmartResumePipeline, type SmartPipelineStep, type SmartResumeArtifactSeed } from '@/actions/generateResume';
 import { prisma } from '@/lib/prisma';
 import { persistClaimGroundings } from '@/lib/claimGroundingStore';

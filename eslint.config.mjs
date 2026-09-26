@@ -13,6 +13,10 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/app/.well-known/workflow/**",
+    // The extension's Vite output. Minified bundles rename components to
+    // lowercase identifiers, which rules-of-hooks then reports as hooks called
+    // outside a component: errors about code nobody wrote, from any rebuild.
+    "extension/dist/**",
   ]),
   // ADR-6 has teeth: every structured model call goes through src/lib/ai/.
   // Importing the raw OpenAI client or the AI SDK's generateObject anywhere else

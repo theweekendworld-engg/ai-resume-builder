@@ -22,6 +22,8 @@ export const FEATURE_TAGS = [
     'grounding',
     'backfill',
     'onboarding',
+    'scout',
+    'outreach',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];

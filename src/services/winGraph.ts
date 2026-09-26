@@ -69,6 +69,9 @@ export const MAX_PAGE_SIZE = 100;
 export const EVIDENCE_KIND_BY_SOURCE: Record<WinSource, EvidenceKind> = {
     [WinSource.github]: EvidenceKind.repo,
     [WinSource.manual]: EvidenceKind.metric_confirmed,
+    // A note sent to the bot is the user's own statement, exactly like typing
+    // it into the Work Log; the channel it arrived on changes nothing about it.
+    [WinSource.chat]: EvidenceKind.metric_confirmed,
     [WinSource.ambient]: EvidenceKind.metric_confirmed,
     [WinSource.calendar]: EvidenceKind.document,
     [WinSource.linear]: EvidenceKind.document,
@@ -83,6 +86,7 @@ const IMPACT_SOURCE_BY_WIN_SOURCE: Record<WinSource, string> = {
     [WinSource.import]: 'import',
     [WinSource.backfill]: 'interview',
     [WinSource.manual]: 'manual',
+    [WinSource.chat]: 'manual',
     [WinSource.ambient]: 'manual',
     [WinSource.calendar]: 'manual',
     [WinSource.linear]: 'manual',

@@ -1,24 +1,26 @@
 import { auth } from '@clerk/nextjs/server';
 import { Channel } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { processChannelGenerate } from '@/actions/channelGenerate';
+import { processChannelGenerate } from '@/services/channelGenerate';
 
+/**
+ * Session-only. This route used to accept `channel` and `externalId` from the
+ * body and, for a non-web channel, resolve the user from a Telegram/WhatsApp
+ * chat id, so any signed-in caller could generate as another user by naming
+ * their chat. Chat channels reach generation through their own verified
+ * webhooks (`src/services/telegramAgent.ts`), never through this route.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const requestedChannel = typeof body?.channel === 'string' ? body.channel : 'web';
-    const channel = requestedChannel === Channel.telegram || requestedChannel === Channel.whatsapp || requestedChannel === Channel.email
-      ? requestedChannel
-      : Channel.web;
-
-    const authUserId = channel === Channel.web ? (await auth()).userId : undefined;
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
 
     const result = await processChannelGenerate({
       sessionId: body?.sessionId,
-      userId: authUserId,
+      userId,
       sourceResumeId: body?.sourceResumeId,
-      channel,
-      externalId: body?.externalId,
+      channel: Channel.web,
       message: body?.message,
       fallbackResumeData: body?.fallbackResumeData,
       maxQuestions: body?.maxQuestions,

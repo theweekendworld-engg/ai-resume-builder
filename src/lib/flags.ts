@@ -21,6 +21,7 @@ export const FEATURE_FLAGS = [
     'backfill',
     'career_radar',
     'missions',
+    'scout',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];

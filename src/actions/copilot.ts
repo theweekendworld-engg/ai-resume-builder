@@ -10,7 +10,7 @@ import {
     parseWithRetry,
 } from '@/lib/aiSchemas';
 import { trackedChatCompletion } from '@/lib/usageTracker';
-import { improveText, extractKeywords } from '@/actions/ai';
+import { improveText, extractKeywords } from '@/lib/resumeAi';
 import { requireAuth } from '@/lib/auth';
 
 export interface CopilotContext {

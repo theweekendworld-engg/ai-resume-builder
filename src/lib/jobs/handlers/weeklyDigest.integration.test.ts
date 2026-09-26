@@ -71,6 +71,7 @@ const {
     handleDigestCallback,
     preDigestSyncDedupeKey,
     WEEKLY_DIGEST_JOB_KIND,
+    __testing: digestTesting,
 } = await import('./weeklyDigest');
 
 const DAY = 86_400_000;
@@ -764,3 +765,128 @@ describe('pre-digest capture sync', () => {
         expect(typeof result.digestDispatchJobId).toBe('string');
     });
 });
+
+// ═════════════════════════════════════════════ best fits (career inbox)
+
+describe('best fits this week', () => {
+    const board = (runId: string, overrides: Record<string, unknown> = {}) => ({
+        workspaceId: `ws-${runId}`,
+        runId,
+        company: 'Nightfall AI',
+        role: 'Backend Engineer',
+        location: 'Bengaluru, Karnataka, India',
+        workMode: null,
+        fitScore: 56,
+        verdict: 'possible' as const,
+        status: 'analyzed' as const,
+        column: 'to_review' as const,
+        sourceUrl: null,
+        compHint: null,
+        topStrength: null,
+        topConcern: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...overrides,
+    });
+
+    let readerCalls = 0;
+    function installReader(opts: { fail?: boolean } = {}) {
+        readerCalls = 0;
+        digestTesting.setInboxReader({
+            topFits: async () => {
+                readerCalls += 1;
+                if (opts.fail) throw new Error('inbox down');
+                return [board('run1'), board('run2', { company: 'Amazon', role: 'SDE II', fitScore: 81, verdict: 'strong' })];
+            },
+            toReview: async () => 4,
+        });
+    }
+
+    async function allowScout(userIds: string[]): Promise<void> {
+        const row = await prisma.featureFlag.findUnique({ where: { key: 'scout' } });
+        const existing = Array.isArray(row?.allowUserIds) ? (row!.allowUserIds as string[]) : [];
+        await prisma.featureFlag.upsert({
+            where: { key: 'scout' },
+            create: { key: 'scout', enabled: false, rolloutPercent: 0, allowUserIds: userIds },
+            update: { allowUserIds: [...new Set([...existing, ...userIds])] },
+        });
+        invalidateFlagCache();
+    }
+
+    afterEach(() => digestTesting.setInboxReader(null));
+
+    test('enriches a digest that was going out anyway, linking into the inbox', async () => {
+        installReader();
+        const userId = await seedUser('fits-email');
+        await allowScout([userId]);
+        await makeWin({ userId });
+
+        await send(userId);
+
+        expect(sent).toHaveLength(1);
+        expect(sent[0].text).toContain('Best fits this week');
+        expect(sent[0].text).toContain('Backend Engineer @ Nightfall AI · Possible fit (56) · Bengaluru');
+        expect(sent[0].text).toContain('4 jobs waiting in your inbox');
+        expect(sent[0].html).toContain(`${APP_URL}/scout/run1`);
+        expect(sent[0].html).toContain(`${APP_URL}/scout/run2`);
+    });
+
+    test('is absent without the scout flag, and the inbox is not even read', async () => {
+        installReader();
+        const userId = await seedUser('fits-noflag');
+        await makeWin({ userId });
+
+        await send(userId);
+
+        expect(sent).toHaveLength(1);
+        expect(sent[0].text).not.toContain('Best fits this week');
+        expect(readerCalls).toBe(0);
+    });
+
+    test('never causes a send on its own: jobs without Win drafts send nothing', async () => {
+        installReader();
+        const userId = await seedUser('fits-quiet');
+        await allowScout([userId]);
+
+        const result = (await send(userId)) as Record<string, unknown>;
+
+        expect(result.skipped).toBe('no_signals');
+        expect(sent).toHaveLength(0);
+        expect(readerCalls).toBe(0);
+    });
+
+    test('an inbox failure costs the paragraph, not the digest', async () => {
+        installReader({ fail: true });
+        const userId = await seedUser('fits-fail');
+        await allowScout([userId]);
+        await makeWin({ userId });
+
+        const result = (await send(userId)) as Record<string, unknown>;
+
+        expect(result.winCount).toBe(1);
+        expect(sent).toHaveLength(1);
+        expect(sent[0].text).not.toContain('Best fits this week');
+    });
+
+    test('telegram carries the block, and an in-place edit keeps it', async () => {
+        installReader();
+        const userId = await seedUser('fits-tg', { digestChannel: Channel.telegram });
+        const chatId = `chat-${userId}`;
+        await prisma.channelIdentity.create({
+            data: { userId, channel: Channel.telegram, externalId: chatId, verified: true },
+        });
+        await allowScout([userId]);
+        await makeWin({ userId });
+
+        await send(userId);
+        expect(mocks.telegram.sent).toHaveLength(1);
+        expect(mocks.telegram.sent[0].text).toContain('Best fits this week');
+        expect(mocks.telegram.sent[0].text).toContain(`${APP_URL}/scout/run1`);
+
+        const digest = await prisma.weeklyDigest.findFirstOrThrow({ where: { userId } });
+        await handleDigestCallback({ data: `d:c0:${digest.id}`, chatId, messageId: 7 });
+        expect(mocks.telegram.edits).toHaveLength(1);
+        expect(mocks.telegram.edits[0].text).toContain('Best fits this week');
+    });
+});
+

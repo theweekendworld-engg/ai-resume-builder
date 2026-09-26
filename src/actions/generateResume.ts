@@ -1,11 +1,14 @@
-'use server';
-
+/**
+ * NOT a server action module (no `'use server'`): every importer is server
+ * code, and as a server action its exports were public endpoints, several of
+ * them taking a caller-supplied user id. Removed 2026-09-26.
+ */
 import { auth } from '@clerk/nextjs/server';
 import { KnowledgeType, type UserProject, type Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { z } from 'zod';
-import { calculateATSScore } from '@/actions/ai';
-import { generateEmbedding, searchQdrantByVector } from '@/actions/embed';
+import { calculateATSScore } from '@/lib/resumeAi';
+import { generateEmbedding, searchQdrantByVector } from '@/lib/embeddings';
 import { parseWithRetry, ResumeDataSchema } from '@/lib/aiSchemas';
 import { config } from '@/lib/config';
 import { tailorViaLoop } from '@/lib/resume/assembleAdapter';

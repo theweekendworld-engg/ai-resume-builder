@@ -2,6 +2,7 @@ import type { Message, NormalizedPageModel } from '@/shared/types/messages';
 import { parseCurrentPage } from '@/parsers';
 import { applyFillActions, undoFillEntries, type UndoEntry } from '@/fill/executor';
 import type { FillAction } from '@/fill/planner';
+import { extractForScout } from '@/parsers/scoutExtract';
 
 // As of Phase 1 slice 2, the parser is a proper ES module imported here and
 // bundled by Vite into the content script. The legacy IIFE globals are gone.
@@ -75,6 +76,29 @@ function scheduleParse(delayMs = 350): void {
     }, delayMs);
 }
 
+// The element the user last pressed on, so "Send to Patronus" can send the
+// post they were interacting with rather than guessing from scroll position.
+// Only honoured while fresh and still on screen: a post clicked five minutes
+// and three screens ago is not the one they mean now.
+const ANCHOR_TTL_MS = 60_000;
+let lastAnchor: { el: Element; at: number } | null = null;
+document.addEventListener(
+    'pointerdown',
+    (event) => {
+        if (event.target instanceof Element) lastAnchor = { el: event.target, at: Date.now() };
+    },
+    { capture: true, passive: true },
+);
+
+function freshAnchor(): Element | null {
+    if (!lastAnchor || Date.now() - lastAnchor.at > ANCHOR_TTL_MS) return null;
+    const { el } = lastAnchor;
+    if (!el.isConnected) return null;
+    const rect = el.getBoundingClientRect();
+    const onScreen = rect.bottom > 0 && rect.top < (window.innerHeight || 0);
+    return onScreen ? el : null;
+}
+
 // Listen for explicit reparse / apply / undo requests from the background.
 // All DOM mutation lives in the content script — the background worker
 // orchestrates but doesn't touch the page.
@@ -85,6 +109,14 @@ chrome.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
         lastSerialized = '';
         scheduleParse(0);
         sendResponse({ ok: true });
+        return false;
+    }
+    if (msg.type === 'CONTENT_SCOUT_EXTRACT') {
+        // Only the top frame answers: the manifest injects into every frame,
+        // and an iframe's answer (an ad, a login widget) is never the post.
+        if (window.top !== window) return false;
+        const extraction = extractForScout({ anchor: freshAnchor() });
+        sendResponse(extraction ? { ok: true, data: extraction } : { ok: false, error: 'nothing_to_send' });
         return false;
     }
     if (msg.type === 'CONTENT_APPLY_FILLS') {

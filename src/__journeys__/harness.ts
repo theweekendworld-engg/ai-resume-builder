@@ -176,7 +176,7 @@ export async function purge(runId: string): Promise<void> {
 
 /**
  * The collection the app writes to. Mirrors `COLLECTION_NAME` in
- * `src/actions/embed.ts`, which is not exported. ADR-5's move to a
+ * `src/lib/embeddings.ts`, which is not exported. ADR-5's move to a
  * `QDRANT_COLLECTION` env var and 1024 dims (P0.6) never happened; if it does,
  * this must follow or every vector assertion here silently passes on an empty
  * collection.

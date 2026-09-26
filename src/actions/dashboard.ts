@@ -39,6 +39,8 @@ export type ApplicationWorkspaceListResult = {
     applicationStatus: string;
     fitScore: number | null;
     fitSummary: string | null;
+    fitVerdict: string | null;
+    scoutRunId: string | null;
     questionCount: number;
     answeredQuestionCount: number;
     selectedResumeId: string | null;
@@ -201,13 +203,17 @@ export async function listApplicationWorkspaces(): Promise<ApplicationWorkspaceL
       workspaces: workspaces.map((workspace) => ({
         id: workspace.id,
         sourceUrl: workspace.sourceUrl,
-        sourcePlatform: workspace.sourcePlatform,
+        // Rows Scout filed from pasted text carry the platform 'scout'; say
+        // where they came from rather than the internal slug.
+        sourcePlatform: workspace.sourcePlatform === 'scout' ? 'shared with Patronus' : workspace.sourcePlatform,
         companyName: workspace.companyName,
         roleTitle: workspace.roleTitle,
         location: workspace.location,
         applicationStatus: workspace.applicationStatus,
         fitScore: workspace.fitScore,
         fitSummary: workspace.fitSummary,
+        fitVerdict: workspace.fitVerdict,
+        scoutRunId: workspace.scoutRunId,
         questionCount: workspace._count.questions,
         answeredQuestionCount: workspace.questions.filter((question) => Boolean(question.finalAnswer?.trim())).length,
         selectedResumeId: workspace.selectedResumeId,

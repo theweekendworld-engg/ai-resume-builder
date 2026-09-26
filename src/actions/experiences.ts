@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { deleteExperienceEmbedding, upsertExperienceEmbedding } from '@/actions/embed';
+import { deleteExperienceEmbedding, upsertExperienceEmbedding } from '@/lib/embeddings';
 
 const ExperienceSchema = z.object({
   company: z.string().min(1).max(300),

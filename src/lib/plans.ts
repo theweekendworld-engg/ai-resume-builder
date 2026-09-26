@@ -447,6 +447,8 @@ export const METERED_ACTIONS = [
   'rubric_upload',
   'radar_refresh',
   'cover_letter',
+  // Scout (docs/impl/06-scout-agent.md): one analysed link or post.
+  'link_analysis',
 ] as const;
 
 export type MeteredAction = (typeof METERED_ACTIONS)[number];
@@ -572,6 +574,7 @@ export const METERED_ACTION_LABELS: Record<MeteredAction, string> = {
   rubric_upload: 'Rubric uploads',
   radar_refresh: 'On-demand Radar refreshes',
   cover_letter: 'Cover letters and outreach',
+  link_analysis: 'Analysed job links and posts',
 };
 
 const PERIOD: QuotaScope = 'period';
@@ -630,6 +633,11 @@ const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
       // loop we refuse to gate. Not a trial — it never becomes an upsell.
       win_draft: period(30),
 
+      // Scout. Outreach drafts are the `cover_letter` meter ("Cover letters
+      // and outreach"), which is built now that Scout drafts referral asks.
+      cover_letter: trial(uses),
+      link_analysis: trial(uses),
+
       // ── Not built ────────────────────────────────────────────────────────
       //
       // A trial of a feature that does not exist is not generous, it is noise:
@@ -640,7 +648,6 @@ const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
       auto_apply: period(0),
       tier2_grounding: period(0),
       radar_refresh: period(0),
-      cover_letter: period(0),
     };
   },
   always_on: {
@@ -654,6 +661,7 @@ const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
     rubric_upload: period(3),
     radar_refresh: period(1),
     cover_letter: period(3),
+    link_analysis: period(30),
   },
   pro: {
     tailored_generation: unlimited,
@@ -666,6 +674,7 @@ const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
     rubric_upload: period(3),
     radar_refresh: unlimited,
     cover_letter: unlimited,
+    link_analysis: unlimited,
   },
   team: {
     tailored_generation: unlimited,
@@ -678,6 +687,7 @@ const PLAN_METERED_LIMITS: Record<Tier, Record<MeteredAction, MeteredLimit>> = {
     rubric_upload: unlimited,
     radar_refresh: unlimited,
     cover_letter: unlimited,
+    link_analysis: unlimited,
   },
 };
 
@@ -785,9 +795,10 @@ export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
   { label: 'ATS score and fix', values: ['Score only', 'Score and fix', 'Score and fix'] },
   { label: 'Extension fit-score and autofill', values: ['Included', 'Included', 'Included'] },
   { label: 'Multi-step apply orchestration', values: ['—', '—', 'Included'], built: false },
-  // The extension recognises a cover-letter QUESTION and answers it from the
-  // library. There is no cover-letter generator, which is what this row sells.
-  { label: 'Cover letters and outreach', values: ['—', '3 per month', 'Unlimited'], built: false },
+  // Scout drafts referral asks, recruiter notes and cold emails on demand
+  // (`src/lib/scout/outreach.ts`), metered as `cover_letter`. Free's cell is
+  // the lifetime trial every built metered action gets.
+  { label: 'Cover letters and outreach', values: ['3 free', '3 per month', 'Unlimited'] },
   { label: 'Interview prep', values: ['—', '—', 'Included'], built: false },
   { label: 'Negotiation mission', values: ['—', '—', 'Included'], built: false },
   { label: 'Full export', values: ['Included', 'Included', 'Included'] },

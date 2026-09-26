@@ -20,7 +20,7 @@ import { v5 as uuidv5 } from 'uuid';
 import { z } from 'zod';
 import { WinSensitivity, WinStatus, type Win } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { deleteFromQdrant, generateEmbedding, upsertToQdrant } from '@/actions/embed';
+import { deleteFromQdrant, generateEmbedding, upsertToQdrant } from '@/lib/embeddings';
 import { buildDedupeKey, enqueue } from '@/lib/jobs/runner';
 import type { EnqueueResult, JobHandler, JobResultObject } from '@/lib/jobs/types';
 import { WIN_POINT_TYPE, mayEmbed } from '@/lib/graph/visibility';

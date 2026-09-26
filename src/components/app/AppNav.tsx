@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { Compass, FileText, Home, Menu, NotebookPen, Radar, Sparkles } from 'lucide-react';
+import { Compass, FileText, Home, Inbox, Menu, NotebookPen, Radar, Sparkles } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -34,7 +34,7 @@ import { cn } from '@/lib/utils';
  * — opt out. A focus surface with a global header stops being one.
  */
 
-export type NavDestination = 'home' | 'log' | 'resumes' | 'packets' | 'radar';
+export type NavDestination = 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
 
 const DESTINATIONS: Record<
     NavDestination,
@@ -45,10 +45,13 @@ const DESTINATIONS: Record<
     resumes: { href: '/dashboard', label: 'Resumes', icon: FileText },
     packets: { href: '/packets', label: 'Packets', icon: Compass },
     radar: { href: '/radar', label: 'Radar', icon: Radar },
+    // The route stays /scout (links in chat messages point there); the
+    // surface is the inbox now: jobs, insights, companies, notes.
+    scout: { href: '/scout', label: 'Inbox', icon: Inbox },
 };
 
 /** Order is the user's mental model, not the object's key order. */
-const ORDER: NavDestination[] = ['home', 'log', 'resumes', 'packets', 'radar'];
+const ORDER: NavDestination[] = ['home', 'log', 'scout', 'resumes', 'packets', 'radar'];
 
 /**
  * Paths that render their own full-screen chrome.
@@ -192,6 +195,13 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                                     className="mt-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                                 >
                                     Resume defaults
+                                </Link>
+                                <Link
+                                    href="/settings/job-search"
+                                    onClick={() => setOpen(false)}
+                                    className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                                >
+                                    Job-search preferences
                                 </Link>
                                 <Link
                                     href="/settings/plan"

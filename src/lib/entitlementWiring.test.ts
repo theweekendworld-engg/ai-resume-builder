@@ -39,8 +39,6 @@ const NO_FEATURE_YET: Record<string, string> = {
         'Radar builds its corpus on read; there is no on-demand refresh entry point to meter.',
     tier2_grounding:
         'Grounding runs one tier today. `claimGrounding` has no second-tier path to charge for.',
-    cover_letter:
-        'No cover-letter generator exists. The extension classifies a cover-letter QUESTION, which is a different thing and is not metered.',
 };
 
 function walk(dir: string, out: string[] = []): string[] {

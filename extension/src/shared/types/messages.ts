@@ -200,6 +200,26 @@ export type GenerationSessionWire = {
     match?: GenerationMatchWire;
 };
 
+/**
+ * What "Send to Patronus" returns to the panel/popup. `created: false` means
+ * this link was already analysed and the existing run came back, uncharged.
+ */
+export type ScoutSendResultWire = {
+    runId: string;
+    created: boolean;
+    status: 'queued' | 'running' | 'awaiting_input' | 'succeeded' | 'partial' | 'failed';
+    headline: string;
+    dashboardUrl: string;
+    /** What the extension read, so the panel can say "sent the post by …". */
+    sent: {
+        kindHint: string;
+        method: string;
+        textLength: number;
+        url: string | null;
+        author: string | null;
+    };
+};
+
 export type Message =
     | { type: 'PING' }
     | { type: 'AUTH_GET' }
@@ -247,6 +267,8 @@ export type Message =
           locator?: Record<string, unknown>;
           sourceUrl?: string;
       }
+    /** Read the tab (post, job or article) and start a Scout run on it. */
+    | { type: 'SCOUT_SEND'; tabId: number }
     | {
           type: 'INSERT_ANSWER';
           tabId: number;

@@ -23,6 +23,7 @@ import { ResumesSection } from '@/components/dashboard/sections/ResumesSection';
 import { DashboardCopilot } from '@/components/dashboard/sections/DashboardCopilot';
 import { ProfileSection } from '@/components/dashboard/sections/ProfileSection';
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
+import { WhatsAppSection } from '@/components/dashboard/sections/WhatsAppSection';
 import { PdfHistorySection } from '@/components/dashboard/sections/PdfHistorySection';
 import { ApplicationsSection } from '@/components/dashboard/sections/ApplicationsSection';
 import { DashboardTour, DASHBOARD_TOUR_STORAGE_KEY } from '@/components/dashboard/DashboardTour';
@@ -42,7 +43,7 @@ const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode 
   { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
   { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
-  { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" /> },
+  { id: 'telegram', label: 'Telegram & WhatsApp', icon: <Send className="h-4 w-4" /> },
   { id: 'pdf', label: 'PDF History', icon: <FileDown className="h-4 w-4" /> },
 ];
 
@@ -81,6 +82,8 @@ export type DashboardShellProps = {
     applicationStatus: string;
     fitScore: number | null;
     fitSummary: string | null;
+    fitVerdict: string | null;
+    scoutRunId: string | null;
     questionCount: number;
     answeredQuestionCount: number;
     selectedResumeId: string | null;
@@ -202,7 +205,12 @@ export function DashboardShell({
             {activeSection === 'profile' && (
               <ProfileSection profile={profile} projects={projects} />
             )}
-            {activeSection === 'telegram' && <TelegramSection />}
+            {activeSection === 'telegram' && (
+              <div className="space-y-6">
+                <TelegramSection />
+                <WhatsAppSection />
+              </div>
+            )}
             {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
           </div>
         </main>

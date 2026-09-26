@@ -22,7 +22,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { computeFitScore } from '@/lib/extension/analyze';
+import { computeFitScore } from '@/lib/extension/fitScore';
 import type { Seniority } from '@/lib/radar/role';
 
 /** §4 — five reads as curation, more reads as a job board. */

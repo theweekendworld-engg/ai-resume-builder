@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
 import { ProjectSource } from '@prisma/client';
-import { deleteFromQdrant, generateEmbedding, searchQdrantByVector, upsertProjectEmbedding } from '@/actions/embed';
+import { deleteFromQdrant, generateEmbedding, searchQdrantByVector, upsertProjectEmbedding } from '@/lib/embeddings';
 
 const ProjectInputSchema = z.object({
   name: z.string().min(1).max(300),

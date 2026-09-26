@@ -4,7 +4,7 @@ import { updateTag } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { defaultUserGenerationPreferences, parseUserGenerationPreferences, UserGenerationPreferencesSchema } from '@/lib/userPreferences';
+import { mergePreferenceUpdate, parseUserGenerationPreferences, UserGenerationPreferencesSchema } from '@/lib/userPreferences';
 import { Prisma } from '@prisma/client';
 
 const ProfileInputSchema = z.object({
@@ -191,24 +191,12 @@ export async function updateUserPreferences(input: unknown): Promise<{
       where: { userId },
       select: { preferences: true },
     });
-    const normalizedInput = normalizePreferenceInput(parsed.data);
-
-    const existingPreferencesObject = (
-      existing?.preferences && typeof existing.preferences === 'object' && !Array.isArray(existing.preferences)
-        ? existing.preferences
-        : {}
-    ) as Record<string, unknown>;
-    const inputPreferencesObject = (
-      normalizedInput && typeof normalizedInput === 'object' && !Array.isArray(normalizedInput)
-        ? normalizedInput
-        : {}
-    ) as Record<string, unknown>;
-
-    const mergedPreferences = parseUserGenerationPreferences({
-      ...defaultUserGenerationPreferences,
-      ...existingPreferencesObject,
-      ...inputPreferencesObject,
-    });
+    // Only keys the caller sent may change; see `mergePreferenceUpdate`.
+    const mergedPreferences = mergePreferenceUpdate(
+      existing?.preferences,
+      input,
+      normalizePreferenceInput(parsed.data) as Record<string, unknown>,
+    );
 
     await prisma.userProfile.upsert({
       where: { userId },

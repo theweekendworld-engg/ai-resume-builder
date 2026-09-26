@@ -581,6 +581,12 @@ export const ExtensionCompanyInsightRequestSchema = z.object({
   roleTitle: z.string().max(500).optional(),
   sourceUrl: z.string().url().max(3000).optional(),
   jobDescription: z.string().max(100000).optional(),
+  /**
+   * Which geography the hiring question is about. Defaults to India because
+   * that is the question this was built for; the machinery is not India-specific
+   * (see GEOGRAPHY_BUCKETS in `src/lib/enrichment/hiring.ts`).
+   */
+  geography: z.string().max(64).optional(),
   forceRefresh: z.boolean().default(false),
 }).superRefine((value, ctx) => {
   if (!value.workspaceId && !value.companyName && !value.sourceUrl) {
@@ -591,6 +597,59 @@ export const ExtensionCompanyInsightRequestSchema = z.object({
     });
   }
 });
+
+/**
+ * The observed-hiring answer, or an explained refusal.
+ *
+ * A discriminated union rather than a nullable signal, because "we do not have
+ * enough postings to say" and "they do not hire there" are different answers
+ * and the client must not be able to render one as the other. The `reason` is
+ * carried so the UI can say why it declined rather than showing a blank.
+ */
+export const ExtensionHiringSignalSchema = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    geography: z.string(),
+    verdict: z.enum(['hires_there', 'no_observed_hiring']),
+    matched: z.number().int().min(0),
+    placeable: z.number().int().min(0),
+    total: z.number().int().min(0),
+    share: z.number().min(0).max(1),
+    windowStart: z.string().datetime(),
+    windowEnd: z.string().datetime(),
+    latestMatchAt: z.string().datetime().nullable(),
+    buckets: z.array(z.object({ bucket: z.string(), n: z.number().int().min(0) })).default([]),
+    citations: z.array(z.object({
+      title: z.string(),
+      location: z.string().nullable(),
+      absoluteUrl: z.string(),
+      postedAt: z.string().datetime().nullable(),
+    })).default([]),
+    /** What the claim is scoped to. Must be rendered with a negative verdict. */
+    scope: z.literal('observed_public_boards'),
+    /** Ready-to-send sentence with the n, window and scope already inside it. */
+    statement: z.string(),
+  }),
+  z.object({
+    ok: z.literal(false),
+    geography: z.string(),
+    reason: z.enum(['no_postings', 'no_placeable_locations', 'insufficient_for_absence']),
+    total: z.number().int().min(0),
+    placeable: z.number().int().min(0),
+    needed: z.number().int().min(0).optional(),
+    statement: z.string(),
+  }),
+]);
+
+/** Field name → where that field came from. See `src/lib/enrichment/types.ts`. */
+export const ExtensionFieldProvenanceSchema = z.record(
+  z.string(),
+  z.object({
+    source: z.enum(['job_page', 'provider', 'observed_postings']),
+    provider: z.string().optional(),
+    observedAt: z.string().datetime(),
+  }),
+);
 
 export const ExtensionCompanyInsightResponseSchema = z.object({
   success: z.literal(true),
@@ -611,6 +670,8 @@ export const ExtensionCompanyInsightResponseSchema = z.object({
     facts: z.array(z.string()).default([]),
     interpretation: z.array(z.string()).default([]),
     sourceSummary: z.string(),
+    /** Per-field attribution. Absent on rows written before enrichment. */
+    provenance: ExtensionFieldProvenanceSchema.optional(),
   }),
   fit: z.object({
     fitScore: z.number().int().min(0).max(100).nullable().optional(),
@@ -621,6 +682,8 @@ export const ExtensionCompanyInsightResponseSchema = z.object({
     missingSkills: z.array(z.string()).default([]),
   }).optional(),
   workspace: ExtensionWorkspaceSnapshotSchema.optional(),
+  /** Absent when no geography was asked about. */
+  hiring: ExtensionHiringSignalSchema.optional(),
 });
 
 export type ExtensionPlatform = z.infer<typeof ExtensionPlatformSchema>;
@@ -645,8 +708,57 @@ export type ExtensionResumeGenerateResponse = z.infer<typeof ExtensionResumeGene
 export type ExtensionJobMatch = z.infer<typeof ExtensionJobMatchSchema>;
 export type ExtensionCompanyInsightRequest = z.infer<typeof ExtensionCompanyInsightRequestSchema>;
 export type ExtensionCompanyInsightResponse = z.infer<typeof ExtensionCompanyInsightResponseSchema>;
+export type ExtensionHiringSignal = z.infer<typeof ExtensionHiringSignalSchema>;
 export type ExtensionSavedAnswer = z.infer<typeof ExtensionSavedAnswerSchema>;
 export type ExtensionSavedAnswerListResponse = z.infer<typeof ExtensionSavedAnswerListResponseSchema>;
 export type ExtensionSavedAnswerUpdateRequest = z.infer<typeof ExtensionSavedAnswerUpdateRequestSchema>;
 export type ExtensionSavedAnswerUpdateResponse = z.infer<typeof ExtensionSavedAnswerUpdateResponseSchema>;
 export type ExtensionSavedAnswerDeleteResponse = z.infer<typeof ExtensionSavedAnswerDeleteResponseSchema>;
+
+// ─────────────────────────────────────────────────────────── Scout (send page)
+//
+// "Send to Patronus" (docs/impl/06-scout-agent.md §4). The extension reads the
+// page in the user's own logged-in tab — the reliable path for LinkedIn posts,
+// which often refuse a logged-out fetch — and hands the text to Scout.
+
+export const ExtensionScoutKindHintSchema = z.enum([
+  'linkedin_post',
+  'linkedin_job',
+  'linkedin_article',
+  'job_page',
+  'page',
+]);
+
+export const ExtensionScoutSendRequestSchema = z.object({
+  /**
+   * The post's permalink when the extension found one, else the page URL.
+   * Optional on purpose: on a LinkedIn feed with no resolvable permalink, the
+   * page URL is `/feed/` for every post, and sending it would dedupe every post
+   * the user ever shares into one run. Without a URL the run is keyed on text.
+   */
+  url: z.string().url().max(3000).optional(),
+  title: z.string().max(500).optional(),
+  text: z.string().trim().max(100_000).optional(),
+  kindHint: ExtensionScoutKindHintSchema.optional(),
+  /** Post author as shown in the user's tab; the network section's first target. */
+  author: z.string().trim().max(200).optional(),
+  authorUrl: z.string().url().max(1000).optional(),
+}).superRefine((value, ctx) => {
+  if (!value.url && !value.text) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Send a url or the page text', path: ['text'] });
+  }
+});
+
+export const ExtensionScoutSendResponseSchema = z.object({
+  success: z.literal(true),
+  runId: z.string(),
+  /** False when this link was already analysed: the same run is returned, uncharged. */
+  created: z.boolean(),
+  status: z.enum(['queued', 'running', 'awaiting_input', 'succeeded', 'partial', 'failed']),
+  headline: z.string(),
+  dashboardUrl: z.string().url(),
+});
+
+export type ExtensionScoutKindHint = z.infer<typeof ExtensionScoutKindHintSchema>;
+export type ExtensionScoutSendRequest = z.infer<typeof ExtensionScoutSendRequestSchema>;
+export type ExtensionScoutSendResponse = z.infer<typeof ExtensionScoutSendResponseSchema>;

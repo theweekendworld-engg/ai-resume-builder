@@ -190,6 +190,7 @@ describe('THESIS 1 — confirm writes the evidence pair; un-confirm reverses all
         expect(EVIDENCE_KIND_BY_SOURCE).toEqual({
             github: EvidenceKind.repo,
             manual: EvidenceKind.metric_confirmed,
+            chat: EvidenceKind.metric_confirmed,
             ambient: EvidenceKind.metric_confirmed,
             calendar: EvidenceKind.document,
             linear: EvidenceKind.document,

@@ -1,4 +1,14 @@
-'use server';
+/**
+ * Embeddings and the Qdrant knowledge base: plain server code, NOT server
+ * actions.
+ *
+ * This lived at `src/actions/embed.ts` under `'use server'`, which made every
+ * export a public HTTP endpoint with no auth check: `searchQdrantByUser` took
+ * any userId, `deleteFromQdrant` any point id. Nothing in the browser ever
+ * called them; every caller is server code. Moved here (2026-09-26) so none of
+ * it is reachable from outside, and so workflow steps can import it: a
+ * `'use server'` module inlined into a step route fails the build.
+ */
 
 import { v4 as uuidv4 } from 'uuid';
 import { KnowledgeType, type UserProject, type KnowledgeItem, type UserExperience } from '@prisma/client';

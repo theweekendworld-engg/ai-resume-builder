@@ -280,5 +280,11 @@ describe('comparison table', () => {
     expect(byLabel.get('Connected sources')?.[0]).toBe(String(sourceLimit(Tier.free)));
     expect(byLabel.get('Connected sources')?.[1]).toBe(String(sourceLimit(Tier.always_on)));
     expect(byLabel.get('Log history')?.[0]).toContain(String(logHistoryDays(Tier.free)));
+    expect(byLabel.get('Cover letters and outreach')?.[0]).toContain(
+      String(meteredLimit(Tier.free, 'cover_letter').limit)
+    );
+    expect(byLabel.get('Cover letters and outreach')?.[1]).toContain(
+      String(meteredLimit(Tier.always_on, 'cover_letter').limit)
+    );
   });
 });
