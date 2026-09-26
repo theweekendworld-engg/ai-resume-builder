@@ -32,6 +32,7 @@ import {
     quotedIn,
     resolvePick,
     toCachedPage,
+    hostOf,
 } from '@/lib/research/verify';
 import type { ScoutSection } from '@/lib/scout/section';
 import type { CompData, CompFigure } from '@/lib/scout/types';
@@ -88,7 +89,6 @@ export function isSalaryPage(url: string): boolean {
     return false;
 }
 
-const PAY_WORD = /\b(salary|salaries|pay|paid|compensation|comp|ctc|lpa|tc|base|package|stipend|per (year|annum|month)|\/yr|a year|offer)\b/i;
 const ROLE_WORD = /\b(engineer|engineering|developer|sde|swe|programmer|architect|l[3-8]|e[3-7]|ic[1-6]|staff|principal|senior|sr\.?|junior|jr\.?|lead)\b/i;
 /** Level tokens that, if a label claims them, its quote must contain. */
 const LEVEL_TOKENS = /\b(i{1,3}|iv|[1-4]|l[3-8]|e[3-7]|ic[1-6]|senior|sr|staff|principal|junior|jr|lead)\b/gi;
@@ -104,9 +104,14 @@ export function contextSupports(figure: { value: string; label: string; context:
     if (context.length < 12 || context.length > 400) return false;
     if (!quotedIn(context, page)) return false;
     if (!quotedIn(figure.value, context)) return false;
-    if (!PAY_WORD.test(context) || !ROLE_WORD.test(context)) return false;
+    // No pay word is required IN the quote: on a salary table the word
+    // "salary" is the column header, not the row ("| SDE IIL5 | $60.2K |").
+    // The page is already a salary page (isSalaryPage), which supplies it.
+    // Live run 2026-09-26: four correct levels.fyi figures were dropped by this.
+    if (!ROLE_WORD.test(context)) return false;
     const claimed = figure.label.match(LEVEL_TOKENS) ?? [];
-    const contextLower = context.toLowerCase();
+    // levels.fyi glues level codes: "SDE IIL5". Split "IIL5" → "II L5".
+    const contextLower = context.toLowerCase().replace(/\b(i{1,3}|iv)(l\d|e\d|ic\d)\b/g, '$1 $2');
     return claimed.every((token) => new RegExp(`\\b${token.toLowerCase().replace('.', '\\.')}\\b`).test(contextLower));
 }
 
@@ -187,21 +192,27 @@ export function verifyFigures(
     results: readonly SearchResult[],
     extracted: z.infer<typeof ExtractSchema>,
     fetchedAt: string,
-): { figures: CompFigure[]; dropped: number; pagesUsed: SearchResult[] } {
+): { figures: CompFigure[]; dropped: number; droppedReasons: string[]; pagesUsed: SearchResult[] } {
     const figures: CompFigure[] = [];
     const used = new Map<string, SearchResult>();
     let dropped = 0;
+    const droppedReasons: string[] = [];
     for (const figure of extracted.figures) {
         const result = resolvePick(results, figure.resultIndex);
         if (!result) { dropped += 1; continue; }
         const page = pageText(result);
-        const ok = /\d/.test(figure.value)
-            && isSalaryPage(result.url)
-            && mentionsCompany(`${result.title}\n${page}`, company)
-            && quotedIn(figure.value, page)
-            && contextSupports(figure, page)
-            && numbersSupported([figure.value, figure.label], page);
-        if (!ok) { dropped += 1; continue; }
+        const failed = !/\d/.test(figure.value) ? 'no digits'
+            : !isSalaryPage(result.url) ? 'not a salary page'
+            : !mentionsCompany(`${result.title}\n${page}`, company) ? 'company not named'
+            : !quotedIn(figure.value, page) ? 'value not on page'
+            : !contextSupports(figure, page) ? 'context does not support it'
+            : !numbersSupported([figure.value, figure.label], page) ? 'numbers not supported'
+            : null;
+        if (failed) {
+            dropped += 1;
+            droppedReasons.push(`${failed}: ${figure.value} @ ${hostOf(result.url)}`);
+            continue;
+        }
         if (figures.some((existing) => existing.value === figure.value && existing.sourceUrl === result.url)) continue;
         figures.push({
             label: figure.label,
@@ -214,7 +225,7 @@ export function verifyFigures(
         used.set(result.url, result);
         if (figures.length >= MAX_FIGURES) break;
     }
-    return { figures, dropped, pagesUsed: [...used.values()] };
+    return { figures, dropped, droppedReasons, pagesUsed: [...used.values()] };
 }
 
 // ─────────────────────────────────────────────────────────────── section
@@ -279,7 +290,9 @@ export const compSection: ScoutSection<'comp'> = async (ctx) => {
                 prompt: `Company: ${target.company}\nRole: ${role}${city ? `\nLocation: ${city}` : ''}\n\nResults:\n${numberedResults(results)}`,
             });
             const verified = verifyFigures(target.company, results, data, fetchedAt);
-            ctx.step.log('comp figures verified', { kept: verified.figures.length, dropped: verified.dropped });
+            // Why each figure was dropped: the only way to tell "no data" from
+            // "the verifier is too strict" in production logs.
+            ctx.step.log('comp figures verified', { kept: verified.figures.length, dropped: verified.dropped, reasons: verified.droppedReasons.slice(0, 6) });
             figures = verified.figures;
             await writeResearch({
                 key,

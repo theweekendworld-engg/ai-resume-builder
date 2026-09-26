@@ -277,6 +277,23 @@ describe('comp', () => {
         expect(outcome.status === 'ok' ? outcome.data.figures : outcome.status === 'unavailable' ? outcome.data?.figures ?? [] : []).toEqual([]);
     });
 
+    // Live run 2026-09-26: a real levels.fyi table row for Amazon SDE II was
+    // dropped because the row has no pay word and glues "IIL5" together.
+    test('a salary-table row is valid context, glued level codes included', async () => {
+        const table = page(
+            'https://www.levels.fyi/companies/acme/salaries/software-engineer/locations/chennai-metropolitan-area',
+            'Acme Software Engineer Salaries in Chennai',
+            'Level Name | Total | Base | Stock (/yr) | Bonus\n| SDE IIL5 | $60.2K | $44.9K | $14.5K | $774 |',
+        );
+        providerTesting.setProvider(fakeProvider(() => ({ kind: 'ok', results: [table], costUsd: 0.008 })).provider);
+        const { ctx } = makeCtx(() => ({
+            figures: [{ resultIndex: 1, label: 'SDE II total compensation, Chennai', value: '$60.2K', context: '| SDE IIL5 | $60.2K | $44.9K | $14.5K | $774 |' }],
+        }));
+        const outcome = await compSection(ctx);
+        expect(outcome.status).toBe('ok');
+        if (outcome.status === 'ok') expect(outcome.data.figures.map((figure) => figure.value)).toEqual(['$60.2K']);
+    });
+
     test('a label may not claim a level its quote does not state', async () => {
         providerTesting.setProvider(fakeProvider(() => ({ kind: 'ok', results: [levels], costUsd: 0.008 })).provider);
         const { ctx } = makeCtx(() => ({
