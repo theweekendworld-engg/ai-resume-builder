@@ -16,6 +16,7 @@
  * working.
  */
 
+import { orderStrengths } from '@/lib/scout/fit/strength';
 import type { DraftFormat, DraftTarget, FitData, JdData, OutreachDraft, ScoutRunView } from '@/lib/scout/types';
 import type { DraftFormatCode, DraftTargetCode, JobStatusCode, Line, ScoutAction } from '@/lib/channels/types';
 import { JOB_ACTION_LABELS, type JobAction, type JobBoardItem } from '@/lib/inbox/types';
@@ -285,7 +286,7 @@ export function renderWhyNotFit(view: ScoutRunView): Line[] {
     const unique = [...new Set(reasons)].slice(0, 8);
     if (unique.length === 0) return [text('Nothing here rules you out.')];
     const lines: Line[] = [[{ text: 'Why this may not fit', bold: true }], ...unique.map((reason) => text(`• ${reason}`))];
-    const strengths = data.matched.filter((match) => match.strength !== 'partial').slice(0, 3);
+    const strengths = orderStrengths(data.matched).filter((match) => match.strength !== 'partial').slice(0, 3);
     if (strengths.length > 0) {
         lines.push([], [{ text: 'What you already have', bold: true }]);
         for (const match of strengths) lines.push(text(`• ${shorten(match.text, 90)}`));

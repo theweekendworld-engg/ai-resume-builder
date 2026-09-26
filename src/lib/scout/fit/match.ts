@@ -93,6 +93,23 @@ export function isSoftRequirement(text: string, skills: readonly string[] = []):
     return !HARD_SIGNAL.test(rest);
 }
 
+/**
+ * Tools every working engineer uses and almost no record mentions. A live
+ * Eltropy run listed "Experience with version control systems, such as Git"
+ * as a reason not to apply. Absent from a resume is not absent from the
+ * person, so a requirement that is ONLY baseline tooling is not scored.
+ * Anything else named alongside it keeps the requirement hard.
+ */
+const BASELINE_TOOLS = /\b(?:git|github|gitlab|bitbucket|version control(?: systems?)?|source control(?: management)?|jira|confluence|agile|scrum|kanban|sdlc|linux|unix|command[\s-]line|shell|ms office|microsoft office|google workspace|ide|vs ?code)\b/gi;
+const BASELINE_FILLER = /\b(?:experience|experienced|with|in|of|using|use|familiarity|familiar|knowledge|proficiency|proficient|working|good|basic|strong|understanding|tools?|systems?|such|as|like|e\.?g\.?|and|or|the|a|an|etc|methodolog\w*|practices?|environment|based|development|workflows?)\b/gi;
+
+export function isBaselineRequirement(text: string): boolean {
+    if (!BASELINE_TOOLS.test(text)) return false;
+    BASELINE_TOOLS.lastIndex = 0;
+    const rest = text.replace(BASELINE_TOOLS, ' ').replace(BASELINE_FILLER, ' ').replace(/[^a-z0-9+#]+/gi, ' ').trim();
+    return rest.length === 0;
+}
+
 // ───────────────────────────────────────────────────────────────── tenure
 
 /** Words that restate "time served" without adding a condition to it. */
@@ -178,7 +195,7 @@ export function planMatching(jd: JdData, record: MatchRecord): MatchPlan {
             plan.pureTenure.set(requirement.id, tenure);
             continue;
         }
-        if (!tenure && isSoftRequirement(requirement.text, jd.skills)) {
+        if (!tenure && (isBaselineRequirement(requirement.text) || isSoftRequirement(requirement.text, jd.skills))) {
             plan.soft.push(requirement);
             continue;
         }
