@@ -136,7 +136,10 @@ describe('inbound', () => {
     test('a short reply answers the open question', async () => {
         const answers: string[] = [];
         depsTesting.setDeps(fakeDeps({
-            findOpenQuestionRun: async () => view({ status: 'awaiting_input' }),
+            findOpenQuestionRun: async () => view({
+                status: 'awaiting_input',
+                pendingQuestion: { id: 'pref.location', step: 'fit', prompt: 'Where are you based?', askedAt: new Date().toISOString() },
+            }),
             answerScoutQuestion: async (_u, _r, value) => {
                 answers.push(value);
                 return { success: true, data: view() };
@@ -145,6 +148,23 @@ describe('inbound', () => {
         await processWhatsAppMessage(inbound({ text: 'Bengaluru' }));
         expect(answers).toEqual(['Bengaluru']);
         expect(started).toHaveLength(0);
+    });
+
+    test('a work note while an option question is open is new input, not the answer', async () => {
+        const answers: string[] = [];
+        depsTesting.setDeps(fakeDeps({
+            findOpenQuestionRun: async () => view({
+                status: 'awaiting_input',
+                pendingQuestion: { id: 'pref.relocate', step: 'fit', prompt: 'Relocate?', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+            }),
+            answerScoutQuestion: async (_u, _r, value) => {
+                answers.push(value);
+                return { success: true, data: view() };
+            },
+        }));
+        await processWhatsAppMessage(inbound({ text: 'Shipped the retry queue today, deliveries now back off instead of dropping' }));
+        expect(answers).toEqual([]);
+        expect(started).toHaveLength(1);
     });
 
     test('a button reply runs the Scout action', async () => {

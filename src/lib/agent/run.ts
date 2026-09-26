@@ -37,6 +37,8 @@ export type PendingQuestion = {
     prompt: string;
     /** When present, the channel renders buttons instead of asking for text. */
     options?: { value: string; label: string }[];
+    /** ISO time the run paused on it. Set by `pauseForInput`. */
+    askedAt?: string;
 };
 
 /**
@@ -276,9 +278,11 @@ export async function setRunKind(runId: string, kind: string): Promise<void> {
 }
 
 export async function pauseForInput(runId: string, question: PendingQuestion): Promise<void> {
+    // `askedAt` lets channels tell a reply from new input (answerMatch.ts).
+    const asked = { ...question, askedAt: new Date().toISOString() };
     await prisma.agentRun.update({
         where: { id: runId },
-        data: { status: 'awaiting_input', pendingQuestion: question as unknown as Prisma.InputJsonValue },
+        data: { status: 'awaiting_input', pendingQuestion: asked as unknown as Prisma.InputJsonValue },
     });
 }
 

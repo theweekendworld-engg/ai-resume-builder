@@ -67,6 +67,14 @@ afterAll(async () => {
     await prisma.channelIdentity.deleteMany({ where: { userId: USER } });
 });
 
+const RELOCATE = {
+    id: 'pref.relocate', step: 'fit', prompt: 'Would you relocate?',
+    options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }, { value: 'case_by_case', label: 'Depends on the role' }],
+    askedAt: new Date().toISOString(),
+};
+/** An open-ended question asked just now. */
+const OPEN_LOCATION = () => ({ id: 'pref.location', step: 'fit', prompt: 'Where are you based?', askedAt: new Date().toISOString() });
+
 describe('routing', () => {
     test('a shared link starts Scout with the progress message id', async () => {
         await processTelegramUpdate(textUpdate('https://www.linkedin.com/jobs/view/4455902670'));
@@ -114,7 +122,7 @@ describe('routing', () => {
     test('a short reply answers an open Scout question', async () => {
         const answers: string[] = [];
         depsTesting.setDeps(fakeDeps({
-            findOpenQuestionRun: async () => view({ status: 'awaiting_input' }),
+            findOpenQuestionRun: async () => view({ status: 'awaiting_input', pendingQuestion: OPEN_LOCATION() }),
             answerScoutQuestion: async (_u, _r, value) => {
                 answers.push(value);
                 return { success: true, data: view() };
@@ -137,17 +145,33 @@ describe('routing', () => {
         expect(telegram.sent[0].text).toContain('Recording that');
     });
 
-    test('a note while a Scout question is open is the answer, not a new run', async () => {
+    // Production, 2026-09-26: a work note sent while "Would you relocate?"
+    // was open was recorded as the answer, and the note was lost.
+    test('a note while an option question is open starts a new run, and the question stays open', async () => {
         const answers: string[] = [];
         depsTesting.setDeps(fakeDeps({
-            findOpenQuestionRun: async () => view({ status: 'awaiting_input' }),
+            findOpenQuestionRun: async () => view({ status: 'awaiting_input', pendingQuestion: RELOCATE }),
             answerScoutQuestion: async (_u, _r, value) => {
                 answers.push(value);
                 return { success: true, data: view() };
             },
         }));
-        await processTelegramUpdate(textUpdate('open to Pune but not Chennai'));
-        expect(answers).toEqual(['open to Pune but not Chennai']);
+        await processTelegramUpdate(textUpdate('Cut webhook latency by moving Scout runs onto the workflow runtime'));
+        expect(answers).toEqual([]);
+        expect(started).toHaveLength(1);
+    });
+
+    test('"yeah" answers the open option question with its canonical value', async () => {
+        const answers: string[] = [];
+        depsTesting.setDeps(fakeDeps({
+            findOpenQuestionRun: async () => view({ status: 'awaiting_input', pendingQuestion: RELOCATE }),
+            answerScoutQuestion: async (_u, _r, value) => {
+                answers.push(value);
+                return { success: true, data: view() };
+            },
+        }));
+        await processTelegramUpdate(textUpdate('yeah'));
+        expect(answers).toEqual(['yes']);
         expect(started).toHaveLength(0);
     });
 

@@ -4,6 +4,7 @@
  * ours to handle.
  */
 
+import { matchAnswer } from '@/lib/channels/answerMatch';
 import { config } from '@/lib/config';
 import { classifyInbound, startFailureText, TINY_HELP } from '@/lib/channels/inbound';
 import { renderInboxCommand, type InboxCommand } from '@/lib/channels/inboxCommands';
@@ -83,8 +84,11 @@ export async function handleTelegramScoutText(chatId: string, userId: string, te
     }
     if (intent === 'reply' || intent === 'tiny') {
         const open = await deps.findOpenQuestionRun(userId);
-        if (open) {
-            const answered = await deps.answerScoutQuestion(userId, open.id, text);
+        // Only a message that plausibly answers the question is taken as the
+        // answer; anything else is new input (a note must never be swallowed).
+        const value = open?.pendingQuestion ? matchAnswer(open.pendingQuestion, text) : null;
+        if (open && value !== null) {
+            const answered = await deps.answerScoutQuestion(userId, open.id, value);
             await say(chatId, answered.success ? 'Got it. Updating the fit…' : answered.error);
             return true;
         }
