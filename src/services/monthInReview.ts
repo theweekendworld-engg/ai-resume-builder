@@ -141,8 +141,11 @@ export function isMonthInReviewDue(
     prefs: { timezone: string; digestHour: number },
     now: Date = new Date(),
 ): boolean {
+    // Day-level for the daily tick (see isDigestDue): due in the first week
+    // of the month, local time. The MonthlyReview unique keeps it to one per
+    // month; the week lets a missed tick recover instead of losing the month.
     const parts = zonedParts(now, prefs.timezone);
-    return parts.day === 1 && parts.hour === prefs.digestHour;
+    return parts.day <= 7;
 }
 
 // ═══════════════════════════════════════════════════════════════ loading

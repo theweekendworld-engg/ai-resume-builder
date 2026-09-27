@@ -177,9 +177,11 @@ afterAll(() => {
 // ═════════════════════════════════════════════════════════════ eligibility
 
 describe('who gets one', () => {
-    test('only on the 1st, only at the users own hour, only if they still want it', async () => {
+    // Day-level since 2026-09-27 (daily tick): due in the first week of the
+    // month at any hour; the digest hour no longer gates it.
+    test('in the first week of the month, at any hour, only if they still want it', async () => {
         const wanted = await seedUser({ label: 'due', wins: 3, digestHour: 9 });
-        const wrongHour = await seedUser({ label: 'hour', wins: 3, digestHour: 17 });
+        const otherHour = await seedUser({ label: 'hour', wins: 3, digestHour: 17 });
         const optedOut = await seedUser({ label: 'off', wins: 3, monthlyReview: false });
         const unsubscribed = await seedUser({ label: 'unsub', wins: 3, unsubscribedAll: true });
 
@@ -187,13 +189,17 @@ describe('who gets one', () => {
         const ids = due.map((entry) => entry.userId);
 
         expect(ids).toContain(wanted);
-        expect(ids).not.toContain(wrongHour);
+        expect(ids).toContain(otherHour);
         expect(ids).not.toContain(optedOut);
         expect(ids).not.toContain(unsubscribed);
         expect(due.find((entry) => entry.userId === wanted)?.periodKey).toBe('2026-07');
 
-        // Not the 1st.
-        const notDue = await dueUsers(new Date('2026-08-02T09:00:00.000Z'), 5_000);
+        // A missed tick on the 1st is recovered on the 2nd.
+        const recovered = await dueUsers(new Date('2026-08-02T03:00:00.000Z'), 5_000);
+        expect(recovered.map((entry) => entry.userId)).toContain(wanted);
+
+        // Mid-month is not due.
+        const notDue = await dueUsers(new Date('2026-08-15T03:00:00.000Z'), 5_000);
         expect(notDue.map((entry) => entry.userId)).not.toContain(wanted);
     });
 

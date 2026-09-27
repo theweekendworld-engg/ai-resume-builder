@@ -6,6 +6,7 @@ import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { START_FREE_HREF } from './links';
 
 /**
  * ── Two changes worth explaining ────────────────────────────────────────────
@@ -32,8 +33,9 @@ const LINKS = [
     { href: '/score', label: 'Check resume' },
     { href: '/#how-it-works', label: 'How it works' },
     { href: '/#features', label: 'Features' },
+    { href: '/#pricing', label: 'Pricing' },
     { href: '/#faq', label: 'Questions' },
-    { href: '/#pricing', label: 'Contact' },
+    { href: '/#contact', label: 'Contact' },
 ];
 
 export function Navbar() {
@@ -92,7 +94,7 @@ export function Navbar() {
 
                 <div className="flex items-center gap-2">
                     <SignedOut>
-                        <SignInButton mode="redirect" forceRedirectUrl="/dashboard">
+                        <SignInButton mode="redirect" fallbackRedirectUrl="/dashboard">
                             <Button
                                 variant="ghost"
                                 size="sm"
@@ -102,7 +104,7 @@ export function Navbar() {
                             </Button>
                         </SignInButton>
                         <Link
-                            href="/sign-up?redirect_url=/build"
+                            href={START_FREE_HREF}
                             className="mk-btn mk-btn-sm hidden sm:inline-flex"
                         >
                             Start free
@@ -143,7 +145,7 @@ export function Navbar() {
                     ))}
                     <SignedOut>
                         <Link
-                            href="/sign-up?redirect_url=/build"
+                            href={START_FREE_HREF}
                             onClick={() => setOpen(false)}
                             className="mk-btn mt-5 w-full"
                         >

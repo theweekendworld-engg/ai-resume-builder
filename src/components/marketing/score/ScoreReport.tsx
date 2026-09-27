@@ -1,6 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
 import {
     ArrowRight,
     ShieldCheck,
@@ -17,14 +19,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { AnonScoreReport, ScoreBand, ScoreFix } from '@/lib/anonScoreSchema';
 import { trackFunnelEvent } from '@/lib/funnelEvents';
+import { clearPendingScore } from '@/lib/pendingScore';
 
 /**
- * No `?redirect_url=`. It read as the handoff's destination for months and
- * never was one — Clerk's `forceRedirectUrl` on the sign-up page takes
- * precedence over the query parameter, so every user who got here landed
- * wherever that pointed regardless of what this said. The destination lives in
- * exactly one place now, `src/app/sign-up/[[...sign-up]]/page.tsx`, and it is
- * `/welcome`, which reads the stash written just below.
+ * "Fix all" keeps the result SERVER-side (`/api/score/stash`) and carries its
+ * id through sign-up as `?stash=`. sessionStorage is only a fast path now: it
+ * is per tab, so an email-verification tab lost it, and that was the default
+ * path (audit 2026-09-27, B). `/welcome` opens the resume with the fixes.
  */
 const SIGNUP_URL = '/sign-up';
 const PENDING_SCORE_KEY = 'patronus:pendingScore';
@@ -156,20 +157,48 @@ interface ScoreReportProps {
 
 export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps) {
     const router = useRouter();
+    const { isSignedIn } = useAuth();
+    const [saving, setSaving] = useState(false);
     const meta = BAND_META[report.band];
 
     const sortedFixes = [...report.fixes].sort(
         (a, b) => PRIORITY_META[a.priority].order - PRIORITY_META[b.priority].order
     );
 
-    const handleFixAll = () => {
+    const handleFixAll = async () => {
+        if (saving) return;
         trackFunnelEvent('score_cta_clicked', {
             score: report.overall,
             band: report.band,
             fixCount: report.fixes.length,
         });
+        setSaving(true);
+        // Fast path for this tab, and the fallback if the server copy fails.
         stashPendingScore(report, extractedText);
-        router.push(SIGNUP_URL);
+        let stashId: string | null = null;
+        try {
+            const res = await fetch('/api/score/stash', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ extractedText, fixes: report.fixes, score: report.overall }),
+            });
+            const data = (await res.json().catch(() => null)) as { success?: boolean; id?: string } | null;
+            if (res.ok && data?.success && data.id) stashId = data.id;
+        } catch {
+            // Offline or blocked: the sessionStorage copy still carries it in this tab.
+        }
+        // Signed in already: no account to make, open the resume straight away.
+        if (isSignedIn) {
+            router.push(stashId ? `/welcome?stash=${stashId}` : '/welcome');
+            return;
+        }
+        router.push(stashId ? `${SIGNUP_URL}?stash=${stashId}` : SIGNUP_URL);
+    };
+
+    const handleFromScratch = () => {
+        // "From scratch" must not reopen the resume they just checked.
+        clearPendingScore();
+        router.push(isSignedIn ? '/dashboard' : SIGNUP_URL);
     };
 
     return (
@@ -361,18 +390,19 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                         Fix all of these in one click
                     </h3>
                     <p className="max-w-md text-sm text-muted-foreground">
-                        Create a free account and we&apos;ll open your resume in the builder with
-                        these fixes ready to apply.
+                        {isSignedIn
+                            ? 'We will open this resume in the editor with these fixes ready to apply.'
+                            : 'Create a free account and we will open this resume in the editor with these fixes ready to apply.'}
                     </p>
                     <div className="flex flex-col gap-3 sm:flex-row">
-                        <Button size="lg" className="group gap-2" onClick={handleFixAll}>
-                            Fix all of these in one click
+                        <Button size="lg" className="group gap-2" onClick={() => void handleFixAll()} disabled={saving}>
+                            {saving ? 'Opening your resume…' : 'Fix all of these in one click'}
                             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                         </Button>
                         <Button
                             size="lg"
                             variant="outline"
-                            onClick={() => router.push(SIGNUP_URL)}
+                            onClick={handleFromScratch}
                         >
                             Build a resume from scratch
                         </Button>
@@ -389,7 +419,8 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
 
             <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Your file is processed in memory and never stored.
+                Your file is processed in memory. If you choose Fix all, we keep the text for 24 hours
+                so it can open after you sign up.
             </p>
         </div>
     );

@@ -8,6 +8,7 @@ import { Guarantees } from '@/components/marketing/Guarantees';
 import { Features } from '@/components/marketing/Features';
 import { Provenance } from '@/components/marketing/Provenance';
 import { Faq } from '@/components/marketing/Faq';
+import { Pricing } from '@/components/marketing/Pricing';
 import { Contact } from '@/components/marketing/Contact';
 import { ClosingCta } from '@/components/marketing/ClosingCta';
 
@@ -22,12 +23,11 @@ import { ClosingCta } from '@/components/marketing/ClosingCta';
  *
  * ── Pricing ─────────────────────────────────────────────────────────────────
  *
- * `<Pricing />` used to sit where `<Contact />` now does. Its plan cards read
- * from `PLAN_CATALOG`, but the Stripe Prices behind Career and Search do not
- * exist yet (CLAUDE.md, "what is not proven"), so the page was quoting numbers
- * nothing could actually charge. The component is intact and still covered by
- * `pricing.test.ts` — restoring it is this import plus one line below, on the
- * day those Price objects are created.
+ * `<Pricing />` is back (2026-09-27). Payments are not live yet, so the paid
+ * columns say "Opening soon" instead of linking to checkout — but the prices
+ * are public: a visitor deciding whether to invest in a record deserves to
+ * know what it will cost, and a payment gateway's review requires a visible
+ * price list. Contact is its own section again rather than standing in for it.
  *
  * ── Rhythm ──────────────────────────────────────────────────────────────────
  *
@@ -52,6 +52,7 @@ export default async function MarketingHomePage() {
       <Guarantees />
       <Features />
       <Provenance />
+      <Pricing />
       <Faq />
       <Contact />
       <ClosingCta />

@@ -202,6 +202,54 @@ async function saveGeneratedResumeForUser(params: {
   });
 }
 
+/**
+ * Which Resume a finished generation writes into.
+ *
+ * A generation or refine that targets a BASE resume (no `baseResumeId`) that
+ * already has content writes into a per-job COPY instead, never over the base:
+ * tailoring your master resume for job A used to replace the master
+ * (audit 2026-09-27, F). With a tracked job, the copy for that job is reused;
+ * without one (the editor's "Refine for this job"), each refine is its own copy
+ * and the editor moves the user to it. A copy may be overwritten in place, and
+ * an empty base is simply filled.
+ *
+ * Returns undefined when there is no source, meaning "create a new resume",
+ * which is what a from-scratch generation has always done.
+ */
+export async function resolveGenerationWriteTarget(params: {
+  userId: string;
+  sourceResumeId?: string | null;
+  workspaceId?: string | null;
+}): Promise<string | undefined> {
+  if (!params.sourceResumeId) return undefined;
+  const source = await prisma.resume.findFirst({
+    where: { id: params.sourceResumeId, userId: params.userId },
+    select: { id: true, baseResumeId: true, content: true, title: true },
+  });
+  if (!source) return undefined;
+  if (source.baseResumeId) return source.id;
+  if (source.content === null) return source.id;
+
+  if (params.workspaceId) {
+    const existing = await prisma.resume.findFirst({
+      where: { userId: params.userId, baseResumeId: source.id, workspaceId: params.workspaceId },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+  }
+  const copy = await prisma.resume.create({
+    data: {
+      userId: params.userId,
+      title: source.title,
+      baseResumeId: source.id,
+      workspaceId: params.workspaceId ?? null,
+    },
+    select: { id: true },
+  });
+  return copy.id;
+}
+
 async function getSessionUsageTotals(sessionId: string) {
   const totals = await prisma.apiUsageLog.aggregate({
     where: { sessionId, status: 'success' },
@@ -464,6 +512,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       draftResume: true,
       resultResumeId: true,
       sourceResumeId: true,
+      workspaceId: true,
       atsScore: true,
       startedAt: true,
     },
@@ -671,7 +720,11 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         userId: options.userId,
         resume: finalResume,
         atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
-        resumeId: session.sourceResumeId ?? options.sourceResumeId,
+        resumeId: await resolveGenerationWriteTarget({
+          userId: options.userId,
+          sourceResumeId: session.sourceResumeId ?? options.sourceResumeId,
+          workspaceId: session.workspaceId,
+        }),
         // The gap report, so the editor can show what this resume does not
         // answer. Absent on the reuse path and on the v1 fallback, both of
         // which produce no coverage — the panel hides rather than inventing.
@@ -716,6 +769,19 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
         stepStartedAt: new Date(),
       },
     });
+
+    // The tracked job now points at the resume made for it, so the tracker,
+    // the inbox and the extension can all open it.
+    if (session.workspaceId) {
+      await prisma.applicationWorkspace.updateMany({
+        where: { id: session.workspaceId, userId: options.userId },
+        data: { selectedResumeId: resumeId },
+      });
+      await prisma.resume.updateMany({
+        where: { id: resumeId, userId: options.userId, workspaceId: null, NOT: { baseResumeId: null } },
+        data: { workspaceId: session.workspaceId },
+      });
+    }
 
     const latex = generateLatexFromResume(finalResume, template);
     const compiled = await compileLatex(latex, {

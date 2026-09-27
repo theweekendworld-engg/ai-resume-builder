@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createWhatsAppLinkToken, listChannelIdentities } from '@/actions/channelIdentity';
+import { Channel } from '@prisma/client';
+import { createWhatsAppLinkToken, listChannelIdentities, unlinkChannelForSession } from '@/actions/channelIdentity';
 import { isWhatsAppConfigured } from '@/lib/whatsapp';
 
 export async function GET() {
@@ -25,5 +26,15 @@ export async function POST() {
     return NextResponse.json(result, { status });
   }
 
+  return NextResponse.json(result);
+}
+
+/** Unlink the signed-in user's WhatsApp number. Session-only. */
+export async function DELETE() {
+  const result = await unlinkChannelForSession(Channel.whatsapp);
+  if (!result.success) {
+    const status = result.error === 'Not authenticated' ? 401 : 400;
+    return NextResponse.json(result, { status });
+  }
   return NextResponse.json(result);
 }

@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { CONTACT_EMAIL } from './Contact';
+import { CONTACT_EMAIL, OPERATOR, OPERATOR_LOCATION } from './Contact';
+import { POLICY_LINKS, START_FREE_HREF } from './links';
 
 /**
  * The contact address is imported rather than retyped — it is published in two
@@ -43,7 +44,7 @@ export function Footer() {
                                     How it works
                                 </Link>
                                 <Link
-                                    href="/sign-up?redirect_url=/build"
+                                    href={START_FREE_HREF}
                                     className="transition-colors hover:text-primary"
                                 >
                                     Start free
@@ -56,12 +57,11 @@ export function Footer() {
                                 Company
                             </p>
                             <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
-                                <Link href="/privacy" className="transition-colors hover:text-primary">
-                                    Privacy
-                                </Link>
-                                <Link href="/terms" className="transition-colors hover:text-primary">
-                                    Terms
-                                </Link>
+                                {POLICY_LINKS.map((link) => (
+                                    <Link key={link.href} href={link.href} className="transition-colors hover:text-primary">
+                                        {link.label}
+                                    </Link>
+                                ))}
                                 <a
                                     href={`mailto:${CONTACT_EMAIL}`}
                                     className="transition-colors hover:text-primary"
@@ -75,7 +75,7 @@ export function Footer() {
 
                 <div className="mt-12 border-t border-border/40 pt-6">
                     <p className="text-xs text-muted-foreground/50">
-                        Never sold, never used to train anything.
+                        Never sold, never used to train anything. Operated by {OPERATOR}, {OPERATOR_LOCATION}.
                     </p>
                 </div>
             </div>

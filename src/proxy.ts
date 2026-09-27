@@ -10,6 +10,11 @@ const isPublicRoute = createRouteMatcher([
     '/sign-up(.*)',
     '/terms',
     '/privacy',
+    // Policy and pricing pages a payment gateway's KYC review reads logged out.
+    '/pricing',
+    '/contact',
+    '/refund-policy',
+    '/shipping-policy',
     // The anonymous ATS score is the top of the funnel and is free with no
     // login (PRD 06 §2.3). `anonScore.ts` is purpose-built for it — its own
     // header reads "Anonymous, auth-free resume scoring" and it deliberately
@@ -17,6 +22,8 @@ const isPublicRoute = createRouteMatcher([
     // could reach the thing without the account it exists to sell.
     '/score',
     '/api/score',
+    // The free-check result kept across sign-up (src/lib/scoreStash.ts).
+    '/api/score/stash',
     // Funnel telemetry for that same anonymous flow. Gating it means the
     // acquisition funnel is invisible exactly where it matters most.
     '/api/events/funnel',
@@ -33,6 +40,19 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/telegram/process',
     // Stripe webhook is authenticated by signature, not a Clerk session.
     '/api/stripe/webhook',
+    // ── Found 2026-09-27 (docs/audit/2026-09-27-user-flow-audit.html §C) ────
+    // Each of these authenticates ITSELF and was 404'd by auth.protect() for
+    // every caller without a Clerk session, which is every caller they have:
+    //   cron tick: Bearer CRON_SECRET. Blocked, no scheduled job ever ran.
+    //   magic links: a signed single-purpose token. Blocked, every email
+    //     Confirm/Dismiss button went to sign-in.
+    //   unsubscribe: a signed token; must work logged out (and by law).
+    //   email / WhatsApp webhooks: Svix / Meta HMAC signatures.
+    '/api/cron/tick',
+    '/w/(.*)',
+    '/api/email/unsubscribe',
+    '/api/email/webhook',
+    '/api/whatsapp/webhook',
 ]);
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN

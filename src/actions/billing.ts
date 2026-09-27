@@ -13,6 +13,7 @@ import type {
   Url,
 } from '@/actions/billing.types';
 import { config } from '@/lib/config';
+import { BILLING_UNAVAILABLE_COPY, checkoutAvailable } from '@/lib/billing/provider';
 import {
   evaluateProactiveDowngrade,
   getEntitlementSnapshot,
@@ -45,7 +46,7 @@ import {
   priceIdToTier,
   resolvePeriodEnd,
   slotForStripePriceId,
-  stripeConfigured,
+  stripeKeyConfigured,
   stripeCustomerId,
   toPriceKey,
   type BillingPlan,
@@ -121,7 +122,7 @@ export async function startCheckout(
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
   if (!isPriceKey(plan)) return err('Unknown plan.', 'bad_plan');
-  if (!stripeConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
+  if (!checkoutAvailable()) return err(BILLING_UNAVAILABLE_COPY, 'billing_unavailable');
 
   const priceId = stripePriceId(plan);
   if (!priceId) {
@@ -204,7 +205,7 @@ export async function createCheckoutSession(plan: BillingPlan): Promise<Result<U
 export async function reconcileCheckout(sessionId: string): Promise<Result<{ planName: string }>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
-  if (!stripeConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
+  if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
   if (!sessionId || sessionId === 'cancelled') return err('No checkout to reconcile.', 'no_session');
 
   try {
@@ -248,7 +249,7 @@ export async function reconcileCheckout(sessionId: string): Promise<Result<{ pla
 export async function createBillingPortalSession(): Promise<Result<Url>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
-  if (!stripeConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
+  if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   const sub = await prisma.subscription.findFirst({
     where: { userId, stripeCustomerId: { not: '' } },
@@ -328,10 +329,14 @@ export async function getPlanPageData(): Promise<Result<PlanPageData>> {
     career: toSubscriptionView(career),
     search: toSubscriptionView(search),
     enforced: snapshot.enforced,
-    billingConfigured: stripeConfigured(),
+    billingConfigured: checkoutAvailable(),
+    // The portal and cancel/refund need only a key and a customer to exist.
+    portalAvailable: stripeKeyConfigured() && Boolean(career?.active || search?.active),
     downgradeOffer: offer,
     refundEligibleUntil: iso(refundWindowEnd(career)),
-    canAddSearch: !search?.active,
+    // Search sits on top of Career (enforced in startCheckout). Offering it to
+    // someone without Career only produced a guaranteed rejection.
+    canAddSearch: Boolean(career?.active) && !search?.active,
   });
 }
 
@@ -394,7 +399,7 @@ export async function turnOffSearch(
     });
   }
 
-  if (state.search.stripeSubId && stripeConfigured()) {
+  if (state.search.stripeSubId && stripeKeyConfigured()) {
     try {
       const stripe = getStripe();
       await stripe.subscriptions.update(state.search.stripeSubId, {
@@ -450,7 +455,7 @@ export async function reactivateSearch(): Promise<Result<{ url: string | null }>
   const daysSinceOff = await daysSinceSearchOff(userId);
 
   if (state.search?.cancelAtPeriodEnd && state.search.stripeSubId) {
-    if (stripeConfigured()) {
+    if (stripeKeyConfigured()) {
       try {
         const stripe = getStripe();
         await stripe.subscriptions.update(state.search.stripeSubId, {
@@ -522,7 +527,7 @@ export async function cancelPlan(input: {
   const target = slot === 'search' ? state.search : state.career;
   if (!target?.active) return err('There is nothing to cancel.', 'not_subscribed');
 
-  if (target.stripeSubId && stripeConfigured()) {
+  if (target.stripeSubId && stripeKeyConfigured()) {
     try {
       const stripe = getStripe();
       await stripe.subscriptions.update(target.stripeSubId, { cancel_at_period_end: true });
@@ -563,7 +568,7 @@ export async function cancelPlan(input: {
 export async function requestRefund(): Promise<Result<{ refunded: boolean }>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
-  if (!stripeConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
+  if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   const { career } = await getSubscriptionState(userId);
   if (!career?.active || !career.stripeSubId) return err('Nothing to refund.', 'not_subscribed');

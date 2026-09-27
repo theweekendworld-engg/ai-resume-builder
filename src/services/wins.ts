@@ -18,6 +18,7 @@ import { gateMeteredAction, isEntitlementError, type MeteredAction } from '@/lib
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { track } from '@/lib/track';
+import { kickQueue } from '@/lib/jobs/kick';
 import * as winGraph from '@/services/winGraph';
 import { findNearDuplicate, resolveOccurredAt, structureWin } from '@/services/winDrafting';
 import type { DismissReason, StructuredDraft, WinPatch, WinView } from '@/actions/wins.types';
@@ -44,6 +45,12 @@ export type CreateWinCoreInput = {
     projectId?: string | null;
     /** Joins the structuring call's ApiUsageLog row to a caller's run. */
     sessionId?: string;
+    /**
+     * Skip the near-duplicate check. Set only when the user has seen the
+     * "looks like <existing>" prompt and chosen "Keep both": the check exists
+     * to ask that question, not to refuse the answer.
+     */
+    force?: boolean;
 };
 
 export type CreatedWin =
@@ -134,7 +141,7 @@ export async function createWinCore(input: CreateWinCoreInput): Promise<Result<C
     }
 
     // PRD 01 §12: a near-duplicate is a merge proposal, not a second draft.
-    const duplicate = await findNearDuplicate({
+    const duplicate = input.force ? null : await findNearDuplicate({
         userId,
         text: text?.trim() || `${fields.title}\n${fields.narrative}`,
         occurredAt: fields.occurredAt,
@@ -196,6 +203,41 @@ export async function createWinCore(input: CreateWinCoreInput): Promise<Result<C
     }
 }
 
+// ──────────────────────────────────────────────────────── create + confirm
+
+export type LoggedWin =
+    | { kind: 'logged'; winId: string; confirmed: boolean }
+    | { kind: 'duplicate'; existingWinId: string; title: string };
+
+/**
+ * The Work Log's "Log it": create the Win and, when the user explicitly
+ * confirmed a structured draft they saw, confirm it through `confirmWinCore`,
+ * the one rule-5 transaction. Before this a hand-logged Win stayed a draft
+ * while the UI said "Logged", and every downstream flow (packets, reviews,
+ * resumes) silently left it out.
+ *
+ * If the confirm fails the draft stands and `confirmed` is false, so the
+ * caller can say "saved as a draft" rather than claim it was logged.
+ */
+export async function logWinCore(
+    input: CreateWinCoreInput & { confirm?: boolean },
+): Promise<Result<LoggedWin>> {
+    const { confirm, ...createInput } = input;
+    const created = await createWinCore(createInput);
+    if (!created.success) return created;
+    if (created.data.kind === 'duplicate') return ok(created.data);
+
+    if (!confirm) return ok({ kind: 'logged', winId: created.data.winId, confirmed: false });
+    const confirmed = await confirmWinCore({ userId: input.userId, winId: created.data.winId, surface: 'web' });
+    if (!confirmed.success) {
+        console.warn('[services/wins] confirm-on-create failed; the draft stands', {
+            winId: created.data.winId,
+            error: confirmed.error,
+        });
+    }
+    return ok({ kind: 'logged', winId: created.data.winId, confirmed: confirmed.success });
+}
+
 // ───────────────────────────────────────────────────────────── confirm
 
 /** Where a confirmation came from. Telemetry only; the write is identical. */
@@ -220,6 +262,14 @@ export async function confirmWinCore(params: {
         patch: params.patch,
         userSource: params.userSource,
     });
+
+    // Confirming enqueues `embed_win` (winGraph.confirmWin). Drain it now
+    // instead of at the daily cron, so the Win is searchable in minutes. Not
+    // under test: a kick drains the real queue, which in an integration test
+    // would run whatever else is pending in the local database.
+    if (result.success && process.env.NODE_ENV !== 'test') {
+        await kickQueue('win_confirmed');
+    }
 
     if (result.success && before && before.status !== WinStatus.confirmed) {
         await track(userId, 'win_confirmed', {

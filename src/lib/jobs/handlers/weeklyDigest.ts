@@ -36,7 +36,7 @@ import { buildDedupeKey, enqueue } from '@/lib/jobs/runner';
 import type { EnqueueFn, JobContext, JobHandler, JobResultObject } from '@/lib/jobs/types';
 import { isDigestDue, safeTimeZone, weekStartFor, type IsoWeekday } from '@/lib/time';
 import { selectDigestDrafts } from '@/lib/capture/draftRun';
-import { sendEmail, getAppUrl } from '@/lib/email/send';
+import { ensureEmailPreference, getAppUrl, sendEmail } from '@/lib/email/send';
 import { inboxCounts, topFits } from '@/services/careerInbox';
 import type { JobBoardItem } from '@/lib/inbox/types';
 import type { FitVerdict } from '@/lib/scout/types';
@@ -129,9 +129,12 @@ export function digestDedupeKey(userId: string, weekStart: Date): string {
  * use the `[weeklyDigest, digestDay, digestHour]` index instead of scanning.
  */
 export function candidateDigestDays(now: Date): IsoWeekday[] {
-    const utcIso = ((now.getUTCDay() + 6) % 7) + 1; // 1 = Mon … 7 = Sun
-    const shift = (delta: number): IsoWeekday => (((utcIso - 1 + delta + 7) % 7) + 1) as IsoWeekday;
-    return [shift(-1), shift(0), shift(1)];
+    // Every day. `isDigestDue` is "on or after the digest day this week"
+    // (daily tick, 2026-09-27), so a Monday-digest user is still a candidate on
+    // Friday if the week's digest has not gone yet. The WeeklyDigest unique and
+    // the claim in sendOne keep it to one per week.
+    void now;
+    return [1, 2, 3, 4, 5, 6, 7] as IsoWeekday[];
 }
 
 // ---------------------------------------------------------------------------
@@ -387,6 +390,14 @@ export const weeklyDigestHandler: JobHandler = async (payload, ctx): Promise<Job
 async function dispatch(limit: number, ctx: JobContext): Promise<JobResultObject> {
     const now = new Date();
 
+    // Self-heal missing preference rows. They were only ever created by a
+    // first email send or by visiting an unlinked settings page, so in practice
+    // no user was ever a digest candidate. The schema defaults are the
+    // consent model (a missing row is "never expressed an opinion").
+    await backfillEmailPreferences(ctx).catch((error: unknown) => {
+        ctx.log('email preference backfill failed', { error: String(error) });
+    });
+
     const candidates = await prisma.emailPreference.findMany({
         where: {
             weeklyDigest: true,
@@ -553,12 +564,18 @@ async function sendOne(
             : await deliverEmail({ userId, digest, data, ctx });
 
     if (!delivered.ok) {
-        // Release the claim so the retry re-composes rather than recording a
-        // week as sent that never arrived.
+        // Release the claim so a later attempt re-composes rather than recording
+        // a week as sent that never arrived.
         await prisma.weeklyDigest.updateMany({
             where: { id: digest.id },
             data: { sentAt: null },
         });
+        // A suppression (preferences, budget, email not configured) is an
+        // answer, not a failure: throwing made the runner retry it until the
+        // job died, which is exactly what the comment in deliverEmail forbids.
+        if (delivered.reason.startsWith('suppressed:')) {
+            return { skipped: delivered.reason, digestId: digest.id };
+        }
         throw new Error(`weekly_digest: delivery failed (${delivered.reason})`);
     }
 
@@ -1004,4 +1021,16 @@ async function sendNudge(
 
     ctx.log('empty-week nudge sent', { userId: input.userId, quietWeeks: input.quietWeeks });
     return { digestId: input.digest.id, nudge: true, quietWeeks: input.quietWeeks, winCount: 0 };
+}
+
+/** Create default EmailPreference rows for users who have none. Bounded per tick. */
+async function backfillEmailPreferences(ctx: JobContext, limit = 200): Promise<void> {
+    const missing = await prisma.$queryRaw<{ userId: string }[]>`
+        SELECT p."userId" FROM "UserProfile" p
+        LEFT JOIN "EmailPreference" e ON e."userId" = p."userId"
+        WHERE e."userId" IS NULL
+        LIMIT ${limit}
+    `;
+    for (const row of missing) await ensureEmailPreference(row.userId);
+    if (missing.length) ctx.log('email preferences created', { count: missing.length });
 }

@@ -24,6 +24,10 @@ export async function register(): Promise<void> {
     // every runtime it builds for, so this guard is required, not defensive.
     if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
+    // Say loudly, at boot, which switched-on features cannot work here.
+    const { logConfigHealth } = await import('@/lib/health');
+    logConfigHealth();
+
     try {
         const { ensureFlagsSeeded } = await import('@/lib/flags');
         await ensureFlagsSeeded();

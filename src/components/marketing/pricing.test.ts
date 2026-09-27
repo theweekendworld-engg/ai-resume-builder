@@ -18,6 +18,9 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN } from '@/lib/plans';
+import { pricingHighlights } from './Pricing';
+import { PAYOFFS } from './Features';
+import { POLICY_LINKS, START_FREE_HREF } from './links';
 
 const MARKETING_DIR = import.meta.dir;
 
@@ -36,13 +39,9 @@ function read(file: string): string {
 }
 
 /**
- * Every component rendered on the marketing home page.
- *
- * `Pricing.tsx` is deliberately NOT in this list any more. It is no longer on
- * the page — the Stripe Prices behind Career and Search do not exist yet, so
- * `<Contact />` stands in its place until they do. The component and the
- * catalog tests below survive because it is coming back; scanning it for
- * unearned claims when nobody can read it would be scanning dead code.
+ * Every component rendered on the marketing home page, plus the pieces the
+ * public policy pages render. `Pricing.tsx` is back on the page (2026-09-27):
+ * prices are public, paid columns say "Opening soon".
  *
  * Keep this list in step with `src/app/(marketing)/page.tsx`. A section that
  * renders to a logged-out visitor and is missing from here is a section that
@@ -58,6 +57,7 @@ const PAGE_SOURCES = [
     'Provenance.tsx',
     'Faq.tsx',
     'Contact.tsx',
+    'Pricing.tsx',
     'ClosingCta.tsx',
     'Navbar.tsx',
     'Footer.tsx',
@@ -113,5 +113,73 @@ describe('marketing claims only what is built', () => {
         // Strategy v3 repositioned away from "apply in minutes".
         expect(PAGE_SOURCES).not.toMatch(/apply in minutes/i);
         expect(PAGE_SOURCES).not.toMatch(/land more interviews/i);
+    });
+});
+
+describe('marketing does not advertise what a new user cannot use (audit 2026-09-27)', () => {
+    test('no WhatsApp and no Chrome Web Store until they are live', () => {
+        expect(PAGE_SOURCES).not.toMatch(/whatsapp/i);
+        expect(PAGE_SOURCES).not.toMatch(/chrome web store|chromewebstore|chrome\.google\.com\/webstore/i);
+    });
+
+    test('the false GitHub auto-drafting claims are gone', () => {
+        expect(PAGE_SOURCES).not.toMatch(/merged pull requests come back as drafted wins/i);
+        expect(PAGE_SOURCES).not.toMatch(/drafted from your own merged pull requests/i);
+        expect(PAGE_SOURCES).not.toMatch(/it drafts from your actual work/i);
+    });
+
+    test('"pricing by request" is gone now that prices are public', () => {
+        expect(PAGE_SOURCES).not.toMatch(/not publishing a price list/i);
+        expect(PAGE_SOURCES).not.toMatch(/by request/i);
+    });
+
+    test('features that are off for new users are marked coming soon', () => {
+        const soon = new Set(PAYOFFS.filter((item) => item.soon).map((item) => item.title));
+        for (const title of ['Review and promotion packets', 'Level readiness', 'A weekly ritual that maintains itself']) {
+            expect(soon.has(title)).toBe(true);
+        }
+        // The live ones really are live today.
+        expect(soon.has('A resume assembled from evidence')).toBe(false);
+    });
+
+    test('pricing highlights label every unlaunched capability', () => {
+        const all = Object.values(pricingHighlights()).flat();
+        for (const pattern of [/packet/i, /readiness/i, /month in review/i, /autofill/i, /analysed for fit/i]) {
+            const item = all.find((entry) => pattern.test(entry.text));
+            expect(item?.soon).toBe(true);
+        }
+        expect(all.some((entry) => /github/i.test(entry.text) && !entry.soon)).toBe(false);
+    });
+
+    test('limits in the pricing copy come from the catalog, not literals', () => {
+        const src = read('Pricing.tsx');
+        expect(src).toContain('meteredLimit');
+        expect(src).toContain('freeResumeCap');
+        expect(src).not.toMatch(/'\d+ tailored resumes/);
+    });
+
+    test('no raw plan-tier identifiers are shown', () => {
+        expect(PAGE_SOURCES).not.toMatch(/\balways_on\b|Tier\./);
+    });
+
+    test('"Start free" never drops a new user onto the builder', () => {
+        expect(PAGE_SOURCES).not.toMatch(/redirect_url=\/build/);
+        expect(START_FREE_HREF.startsWith('/sign-up')).toBe(true);
+    });
+
+    test('the footer links every policy page a payment review looks for', () => {
+        const hrefs: string[] = POLICY_LINKS.map((link) => link.href);
+        for (const path of ['/pricing', '/terms', '/privacy', '/refund-policy', '/shipping-policy', '/contact']) {
+            expect(hrefs).toContain(path);
+        }
+        expect(read('Footer.tsx')).toContain('POLICY_LINKS');
+    });
+
+    test('there is one support address', () => {
+        const legal = ['terms', 'privacy', 'refund-policy', 'shipping-policy', 'contact']
+            .map((page) => readFileSync(join(MARKETING_DIR, '..', '..', 'app', '(marketing)', page, 'page.tsx'), 'utf8'))
+            .join('\n');
+        expect(legal).not.toMatch(/support@patronus\.app/);
+        expect(PAGE_SOURCES).not.toMatch(/support@patronus\.app/);
     });
 });

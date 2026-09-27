@@ -1,41 +1,38 @@
-import { Check, GitBranch, Pencil } from 'lucide-react';
+import { Check, Pencil, ScanSearch } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
 import { Reveal } from './Reveal';
 
 /**
  * The mechanism, and why it survives contact with a busy week.
  *
- * The whole design bet (strategy v3 §2) is that capture must be *confirming*,
- * never *writing*. Anything that asks a person to compose prose about
- * themselves on a Tuesday is a habit that dies in three weeks. So the steps
- * are ordered by how little they ask: the machine drafts, you tap ✓, and
- * writing is the fallback rather than the mechanism.
- *
- * Numbered because this genuinely is a sequence — the draft has to exist
- * before there is anything to confirm.
+ * The steps describe what a NEW user can do today, in the order they do it:
+ * check, tailor, log. The earlier version led with "it drafts from your
+ * actual work" (GitHub), which no new user could reach while the capture
+ * engine was not running (audit 2026-09-27). Automatic drafting returns to
+ * step one when it is live; until then it is named as coming soon.
  */
 
 const STEPS = [
     {
         n: '01',
-        icon: GitBranch,
-        title: 'It drafts from your actual work',
-        body: 'Connect GitHub and merged pull requests become candidate wins — title, metric, and a link to the PR, already filled in.',
-        note: 'GitHub today. More sources as they earn their place.',
+        icon: ScanSearch,
+        title: 'Check the resume you have',
+        body: 'Upload it and get a score with a prioritised list of fixes, before you create an account. Sign up to keep working on it in the editor.',
+        note: 'Free, no card. PDF or DOCX.',
     },
     {
         n: '02',
-        icon: Check,
-        title: 'You confirm in seconds',
-        body: 'A short weekly review: keep, edit, or dismiss. Confirming is one tap, and it is the only step the habit depends on.',
-        note: 'The whole ritual is built to take about 90 seconds.',
+        icon: Pencil,
+        title: 'Tailor it to any job',
+        body: 'Paste a job posting and get a version built for it from your own history. If something is missing, it asks you rather than making it up.',
+        note: 'Nothing is invented. Figures are copied, never generated.',
     },
     {
         n: '03',
-        icon: Pencil,
-        title: 'You add what code cannot see',
-        body: 'The mentoring, the design review you turned around, the incident you ran. Type a rough note and it comes back structured — your numbers untouched.',
-        note: 'Nothing is invented. Figures are copied, never generated.',
+        icon: Check,
+        title: 'Log wins as they happen',
+        body: 'The incident you ran, the design review you turned around, the number you moved. Type a rough note and it comes back structured — your numbers untouched — and the next resume draws on it.',
+        note: 'Drafting wins from GitHub automatically is coming soon.',
     },
 ];
 
@@ -46,16 +43,15 @@ export function HowItWorks() {
                 eyebrow="How it works"
                 title={
                     <>
-                        You confirm. <span className="text-primary">We do the writing.</span>
+                        You bring the facts. <span className="text-primary">We do the writing.</span>
                     </>
                 }
                 lead={
                     <>
-                        The record that makes a good resume has to already exist when you need
-                        it. Every tool that asks you to sit down and compose one fails for the same
-                        reason. This one drafts from what you already did and leaves you the part
-                        that takes a moment — so by the time you need a resume, the evidence is
-                        there.
+                        The record that makes a good resume has to already exist when you need it.
+                        Start with the resume you have, fix it, tailor it — and keep the record
+                        going with a sentence whenever something is worth remembering, so by the
+                        time the next search or review comes, the evidence is there.
                     </>
                 }
             />

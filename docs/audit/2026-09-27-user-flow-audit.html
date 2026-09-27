@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patronus — User flow &amp; friction audit (27 Sep 2026)</title>
+<style>
+  :root {
+    --bg: #fbfaf7; --ink: #1c1b19; --muted: #6b6760; --line: #e4e0d8; --card: #ffffff;
+    --ok: #1f7a4d; --ok-bg: #e7f4ec; --warn: #a15c00; --warn-bg: #fdf1dc;
+    --bad: #b3261e; --bad-bg: #fbe9e7; --off: #7a7670; --off-bg: #efede9; --accent: #2f4fd6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", Inter, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 48px 28px 96px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 22px; margin: 56px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); letter-spacing: -0.01em; }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: #f1efe9; padding: 1px 5px; border-radius: 4px; }
+  a { color: var(--accent); }
+  .grid { display: grid; gap: 14px; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 860px) { .g4, .g3, .g2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .stat .n { font-size: 30px; font-weight: 650; line-height: 1.1; }
+  .stat .l { color: var(--muted); font-size: 13px; }
+  .verdict { background: #1c1b19; color: #f6f3ec; border-radius: 14px; padding: 22px 24px; margin: 18px 0 8px; }
+  .verdict b { color: #fff; }
+  .verdict code { background: #3a3833; color: #f6f3ec; }
+  .verdict ol { margin: 10px 0 0 18px; padding: 0; }
+  .verdict li { margin: 6px 0; }
+  .pill { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; padding: 1px 8px; border-radius: 999px; vertical-align: 1px; white-space: nowrap; }
+  .ok { color: var(--ok); background: var(--ok-bg); } .warn { color: var(--warn); background: var(--warn-bg); }
+  .bad { color: var(--bad); background: var(--bad-bg); } .off { color: var(--off); background: var(--off-bg); }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f4f2ec; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  .flow { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 16px 0; }
+  .flow h3 { margin-top: 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 10px 0; }
+  .steps li { counter-increment: s; position: relative; padding: 4px 0 4px 34px; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 5px; width: 22px; height: 22px; border-radius: 50%; background: #f1efe9; font-size: 12px; font-weight: 650; display: grid; place-items: center; }
+  .fr { margin: 10px 0 0; padding: 0; list-style: none; }
+  .fr li { padding: 8px 0 8px 0; border-top: 1px dashed var(--line); }
+  .fr li:first-child { border-top: 0; }
+  .ev { color: var(--muted); font-size: 12.5px; }
+  .kv { display: grid; grid-template-columns: 150px 1fr; gap: 4px 14px; font-size: 14px; margin: 6px 0 4px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0 12px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 22px; height: 0; border-top: 3px solid; display: inline-block; }
+  svg text { font-family: ui-sans-serif, -apple-system, "Segoe UI", Inter, sans-serif; }
+  .toc { columns: 2; font-size: 14px; margin: 8px 0 0; }
+  @media (max-width: 860px) { .toc { columns: 1; } }
+  .prio h3 { display: flex; gap: 10px; align-items: baseline; }
+  .prio .why { color: var(--muted); font-size: 13.5px; }
+  details summary { cursor: pointer; font-weight: 600; margin: 8px 0; }
+  .callout { border-left: 3px solid var(--accent); background: #eef1fd; padding: 10px 14px; border-radius: 6px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Patronus — user flows, how they connect, and where people fall out</h1>
+<p class="sub">Audit of production (commit <code>5a4910e</code>) · 27 Sep 2026 · sources: the code (file:line cited throughout), the production database (read-only), production runtime logs, and live requests against <code>aicv.theweekendworld.com</code>.</p>
+
+<div class="verdict">
+  <b>Verdict.</b> Adoption is not being lost to small friction. A new person who arrives today <b>cannot reach the product the site promises</b>, and three independent failures make sure of it:
+  <ol>
+    <li><b>The engine has never run.</b> The daily cron hits <code>/api/cron/tick</code>, which the login middleware answers with 404. No digest, email, GitHub sync, embedding, Radar snapshot or nudge has ever executed in production. The two queued jobs from March are still <code>pending</code>.</li>
+    <li><b>The promise is switched off.</b> The landing page sells the Work Log (“merged pull requests come back as drafted wins”). For a new user that feature is either behind an off flag, dependent on the dead engine, or both. What they actually get is a paste-a-job-description resume wizard.</li>
+    <li><b>Every handoff drops the user.</b> Score → sign-up loses the fixes. Sign-in loses every deep link. Onboarding sends people to a JD box with an empty profile. Scout knows the job but can't make the resume. Four screens show the same job with different numbers.</li>
+  </ol>
+  <p style="margin-top:12px">So the first job is <b>not new features</b>. It is making one path true end-to-end, and switching off or removing the promises that aren't.</p>
+</div>
+
+<div class="grid g4" style="margin-top:18px">
+  <div class="card stat"><div class="n">5</div><div class="l">accounts in production, <b>3 are the founder</b> and 1 is a test account</div></div>
+  <div class="card stat"><div class="n">0 / 3</div><div class="l">outside sign-ups who reached any value: no resume, no generation, no history</div></div>
+  <div class="card stat"><div class="n">0</div><div class="l">emails ever sent · Wins confirmed · capture sources · extension users · paying subscriptions</div></div>
+  <div class="card stat"><div class="n">5 / 10</div><div class="l">finished resume generations that failed (3 “JD too short”, 2 PDF storage)</div></div>
+</div>
+
+<h2 id="toc">Contents</h2>
+<ol class="toc">
+  <li><a href="#map">The system map: every flow and how they connect</a></li>
+  <li><a href="#reality">What production actually shows</a></li>
+  <li><a href="#journey">The new-user journey, minute by minute</a></li>
+  <li><a href="#flows">Flow-by-flow audit (13 flows)</a></li>
+  <li><a href="#patterns">Seven cross-cutting patterns</a></li>
+  <li><a href="#heat">Friction heatmap</a></li>
+  <li><a href="#plan">What to do, in order</a></li>
+  <li><a href="#stop">What to stop doing</a></li>
+  <li><a href="#measure">What to measure (you currently measure nothing)</a></li>
+  <li><a href="#appx">Appendix: routes, environment, evidence</a></li>
+</ol>
+
+<!-- ───────────────────────────────────────────────────────────── MAP -->
+<h2 id="map">1 · The system map</h2>
+<p>Every user-facing flow, the paths between them, and the state of each piece <b>in production today</b>. Line colour is the state of the connection, box outline the state of the flow.</p>
+<div class="legend">
+  <span><i class="sw" style="border-color:#1f7a4d"></i>works</span>
+  <span><i class="sw" style="border-color:#c07a00"></i>works with major friction</span>
+  <span><i class="sw" style="border-color:#b3261e"></i>broken / drops the user</span>
+  <span><i class="sw" style="border-color:#9a968f;border-top-style:dashed"></i>switched off / never runs</span>
+</div>
+<div class="card" style="padding:8px;overflow-x:auto">
+<svg viewBox="0 0 1400 900" width="100%" role="img" aria-label="Patronus flow map">
+  <defs>
+    <marker id="aG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1f7a4d"/></marker>
+    <marker id="aO" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c07a00"/></marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b3261e"/></marker>
+    <marker id="aX" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9a968f"/></marker>
+    <style>
+      .col { font-size: 13px; font-weight: 700; fill: #6b6760; letter-spacing: .08em; }
+      .t { font-size: 14px; font-weight: 650; fill: #1c1b19; }
+      .s { font-size: 11.5px; fill: #6b6760; }
+      .bx { fill: #fff; stroke-width: 2.2; rx: 10; }
+      .G { stroke: #1f7a4d; } .O { stroke: #c07a00; } .R { stroke: #b3261e; } .X { stroke: #9a968f; stroke-dasharray: 6 4; fill: #f6f5f2; }
+      .e { fill: none; stroke-width: 2; }
+      .eG { stroke: #1f7a4d; } .eO { stroke: #c07a00; } .eR { stroke: #b3261e; } .eX { stroke: #9a968f; stroke-dasharray: 6 5; }
+      .lbl { font-size: 11px; fill: #b3261e; font-weight: 600; }
+      .lblO { font-size: 11px; fill: #a15c00; font-weight: 600; }
+    </style>
+  </defs>
+
+  <!-- column headers -->
+  <text x="40" y="30" class="col">ACQUIRE</text>
+  <text x="270" y="30" class="col">ENTER</text>
+  <text x="510" y="30" class="col">HOME</text>
+  <text x="760" y="30" class="col">GET VALUE</text>
+  <text x="1110" y="30" class="col">CHANNELS</text>
+
+  <!-- ACQUIRE -->
+  <rect x="30" y="60" width="190" height="70" class="bx O"/><text x="44" y="88" class="t">Landing page /</text><text x="44" y="108" class="s">sells the Work Log · no pricing</text>
+  <rect x="30" y="170" width="190" height="70" class="bx G"/><text x="44" y="198" class="t">Free ATS check /score</text><text x="44" y="218" class="s">works · 53s on 2 pages (60s cap)</text>
+
+  <!-- ENTER -->
+  <rect x="260" y="60" width="200" height="70" class="bx O"/><text x="274" y="88" class="t">Sign-up / Sign-in</text><text x="274" y="108" class="s">sign-in drops all deep links</text>
+  <rect x="260" y="200" width="200" height="80" class="bx O"/><text x="274" y="228" class="t">/welcome onboarding</text><text x="274" y="248" class="s">import → prefs → (mission)</text><text x="274" y="266" class="s">no Resume is created</text>
+
+  <!-- HOME -->
+  <rect x="500" y="60" width="210" height="80" class="bx O"/><text x="514" y="88" class="t">/dashboard  (“Resumes”)</text><text x="514" y="108" class="s">7 sub-sections · empty state</text><text x="514" y="126" class="s">“Welcome back, there”</text>
+  <rect x="500" y="190" width="210" height="60" class="bx X"/><text x="514" y="216" class="t">/home Missions</text><text x="514" y="236" class="s">flag off · nudges never run</text>
+  <rect x="500" y="290" width="210" height="60" class="bx O"/><text x="514" y="316" class="t">Plan / billing</text><text x="514" y="336" class="s">no Stripe in prod · $2 &lt; $5 tiers</text>
+
+  <!-- VALUE -->
+  <rect x="750" y="60" width="260" height="80" class="bx O"/><text x="764" y="88" class="t">Resume builder /build → editor</text><text x="764" y="108" class="s">paste JD by hand · refine overwrites master</text><text x="764" y="126" class="s">5 of 10 prod runs failed</text>
+  <rect x="750" y="170" width="260" height="70" class="bx G"/><text x="764" y="198" class="t">Inbox / Scout /scout</text><text x="764" y="218" class="s">works (flag: founder only) · no “tailor”</text>
+  <rect x="750" y="270" width="260" height="70" class="bx R"/><text x="764" y="298" class="t">Work Log /log</text><text x="764" y="318" class="s">on for all · drafts need dead engine</text>
+  <rect x="750" y="370" width="125" height="60" class="bx X"/><text x="762" y="396" class="t">Packets</text><text x="762" y="414" class="s">flag off</text>
+  <rect x="885" y="370" width="125" height="60" class="bx X"/><text x="897" y="396" class="t">Radar</text><text x="897" y="414" class="s">off · no data</text>
+  <rect x="750" y="450" width="125" height="60" class="bx X"/><text x="762" y="476" class="t">Backfill</text><text x="762" y="494" class="s">flag off</text>
+  <rect x="885" y="450" width="125" height="60" class="bx X"/><text x="897" y="476" class="t">Month review</text><text x="897" y="494" class="s">never sent</text>
+  <rect x="750" y="530" width="260" height="56" class="bx X"/><text x="764" y="555" class="t">GitHub capture /settings/sources</text><text x="764" y="573" class="s">first sync never runs · no desktop link</text>
+
+  <!-- CHANNELS -->
+  <rect x="1100" y="60" width="260" height="80" class="bx O"/><text x="1114" y="88" class="t">Telegram bot</text><text x="1114" y="108" class="s">~7 steps to link · no unlink</text><text x="1114" y="126" class="s">links to wrong account silently</text>
+  <rect x="1100" y="170" width="260" height="60" class="bx X"/><text x="1114" y="196" class="t">WhatsApp</text><text x="1114" y="216" class="s">not configured in prod · still advertised</text>
+  <rect x="1100" y="260" width="260" height="80" class="bx R"/><text x="1114" y="288" class="t">Chrome extension</text><text x="1114" y="308" class="s">no install link anywhere</text><text x="1114" y="326" class="s">resume never linked to its job</text>
+  <rect x="1100" y="370" width="260" height="70" class="bx O"/><text x="1114" y="398" class="t">Job tracker (4 surfaces)</text><text x="1114" y="418" class="s">same rows, different numbers</text>
+
+  <!-- ENGINE -->
+  <rect x="30" y="650" width="1330" height="220" rx="14" fill="#fbe9e7" stroke="#b3261e" stroke-width="2"/>
+  <text x="50" y="680" class="t" style="fill:#b3261e">Background engine: never executed in production</text>
+  <text x="50" y="700" class="s">Vercel cron (daily 03:xx UTC) → /api/cron/tick → Clerk auth.protect() → 404. Logs: 2 requests in 7 days, both 404. Job table: 2 embed_win rows pending since March.</text>
+  <rect x="50" y="720" width="170" height="54" class="bx R"/><text x="62" y="744" class="t">cron tick</text><text x="62" y="762" class="s">404 at middleware</text>
+  <rect x="245" y="720" width="170" height="54" class="bx X"/><text x="257" y="744" class="t">weekly digest</text><text x="257" y="762" class="s">+ no Resend key</text>
+  <rect x="440" y="720" width="170" height="54" class="bx X"/><text x="452" y="744" class="t">capture sync</text><text x="452" y="762" class="s">never scheduled</text>
+  <rect x="635" y="720" width="170" height="54" class="bx X"/><text x="647" y="744" class="t">embed / dedupe</text><text x="647" y="762" class="s">queue never drains</text>
+  <rect x="830" y="720" width="170" height="54" class="bx X"/><text x="842" y="744" class="t">month / radar</text><text x="842" y="762" class="s">hour 8 ≠ hour 3</text>
+  <rect x="1025" y="720" width="160" height="54" class="bx X"/><text x="1037" y="744" class="t">mission nudges</text><text x="1037" y="762" class="s">hour 8 ≠ hour 3</text>
+  <rect x="1205" y="720" width="140" height="54" class="bx R"/><text x="1215" y="744" class="t">/w/ magic links</text><text x="1215" y="762" class="s">behind login</text>
+  <text x="50" y="810" class="s">Workflow runtime (user-watched runs: Scout, resume generation, packets) was dead too until 26 Sep: the pinned 4.2 beta was retired. Upgraded to 4.8.9; verified live.</text>
+  <text x="50" y="830" class="s">Even with the cron fixed: the default digest slot (Friday 16:00 UTC) is never at 03:xx, users have no EmailPreference row, and no Resend key exists in production.</text>
+
+  <!-- EDGES -->
+  <!-- acquire → enter -->
+  <path d="M220,95 L258,95" class="e eO" marker-end="url(#aO)"/>
+  <path d="M125,170 L125,152 L240,152 L240,112 L258,112" class="e eG" marker-end="url(#aG)"/>
+  <path d="M220,212 C240,212 240,240 258,240" class="e eR" marker-end="url(#aR)"/>
+  <text x="200" y="272" class="lbl">fixes lost</text>
+  <!-- enter → welcome / home -->
+  <path d="M360,130 L360,198" class="e eO" marker-end="url(#aO)"/>
+  <path d="M460,95 L498,95" class="e eO" marker-end="url(#aO)"/>
+  <text x="466" y="52" class="lblO">sign-in always → dashboard</text>
+  <!-- welcome → builder, routed under the home column -->
+  <path d="M460,262 L730,262 L730,128 L748,128" class="e eR" marker-end="url(#aR)"/>
+  <text x="520" y="280" class="lbl">→ /build with an empty profile</text>
+  <!-- home → value -->
+  <path d="M710,82 L748,82" class="e eO" marker-end="url(#aO)"/>
+  <path d="M710,118 C728,118 728,196 748,196" class="e eG" marker-end="url(#aG)"/>
+  <path d="M605,140 L605,188" class="e eX" marker-end="url(#aX)"/>
+  <!-- scout ↛ builder -->
+  <path d="M1010,196 C1045,196 1045,112 1012,112" class="e eR" marker-end="url(#aR)"/>
+  <text x="1016" y="160" class="lbl">no “tailor” link</text>
+  <!-- channels -->
+  <path d="M1100,110 L1012,186" class="e eG" marker-end="url(#aG)"/>
+  <path d="M1100,296 L1012,222" class="e eO" marker-end="url(#aO)"/>
+  <path d="M1010,232 C1060,240 1060,392 1098,398" class="e eG" marker-end="url(#aG)"/>
+  <path d="M1100,322 C1078,340 1078,414 1098,418" class="e eR" marker-end="url(#aR)"/>
+  <!-- engine feeds the value column (one clean connector, not one per job) -->
+  <path d="M880,648 L880,590" class="e eX" marker-end="url(#aX)"/>
+  <text x="890" y="626" class="s">feeds Work Log, Packets, Radar, reviews, digests</text>
+  <path d="M1275,720 C1275,600 1040,560 1012,318" class="e eR" marker-end="url(#aR)"/>
+  <text x="1080" y="600" class="lbl">email actions</text>
+</svg>
+</div>
+<p class="ev">Box outline = flow state; line = the handoff between two flows. The pink band is everything that depends on scheduled work — the part of the product that is supposed to run without the user, which is the part that makes Patronus different from a resume builder.</p>
+
+<!-- ───────────────────────────────────────────────────────────── REALITY -->
+<h2 id="reality">2 · What production actually shows</h2>
+<div class="grid g2">
+  <div class="card">
+    <h3 style="margin-top:0">Users and activation</h3>
+    <table>
+      <tr><th>Measure</th><th>Value</th></tr>
+      <tr><td>Profiles</td><td>5: 3 founder accounts (14 Mar), 1 unnamed (14 Mar), 1 unnamed (17 Mar), 1 unnamed (23 Jun)</td></tr>
+      <tr><td>Outside users who uploaded a resume</td><td><b>0 of 3</b> (no name saved, no history, no generation)</td></tr>
+      <tr><td>Resumes / users with one</td><td>2 / 2 (both founder)</td></tr>
+      <tr><td>Resume generations</td><td>11, all on 14 Mar: 5 completed, 5 failed, 1 stuck “generating”</td></tr>
+      <tr><td>Resume imports</td><td>0 ever</td></tr>
+      <tr><td>Wins / confirmed</td><td>0 / 0 (one test Win, deleted)</td></tr>
+      <tr><td>Capture sources · extension users · paid subs</td><td>0 · 0 · 0</td></tr>
+      <tr><td>Telegram links</td><td>1 (founder)</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">The engine and the gates</h3>
+    <table>
+      <tr><th>Measure</th><th>Value</th></tr>
+      <tr><td>Emails ever sent</td><td><b>0</b> (no <code>RESEND_API_KEY</code> in prod)</td></tr>
+      <tr><td>Weekly digests</td><td>0</td></tr>
+      <tr><td><code>/api/cron/tick</code></td><td>404 at the middleware; 2 calls in 7 days</td></tr>
+      <tr><td>Job queue</td><td>2 <code>embed_win</code> pending since March</td></tr>
+      <tr><td>Flags on for everyone</td><td><code>work_log</code>, <code>github_capture</code></td></tr>
+      <tr><td>Flags off for everyone</td><td>missions, review_packet, career_radar, backfill, weekly_digest, month_in_review (scout: founder only)</td></tr>
+      <tr><td>Stripe in prod</td><td>no <code>STRIPE_*</code> keys or Price ids: nothing can be bought</td></tr>
+      <tr><td>Funnel events ever recorded</td><td>9, all Scout, all from 26 Sep. <b>No landing, sign-up or activation event exists.</b></td></tr>
+    </table>
+  </div>
+</div>
+<div class="callout"><b>Read this before the flow list.</b> There is no adoption data to optimise, because there are no users and no instrumentation. Every friction below is inferred from the code and from walking the flows, not from watching people fail. The first outside users will teach more than this document, <i>but only if the path is fixed first and events are recorded</i>.</div>
+
+<!-- ───────────────────────────────────────────────────────────── JOURNEY -->
+<h2 id="journey">3 · The new-user journey, as it happens today</h2>
+<p>The most likely path of someone who heard about Patronus and gave it ten minutes.</p>
+<table>
+  <tr><th style="width:120px">Moment</th><th>What they do</th><th>What happens</th><th style="width:110px">State</th></tr>
+  <tr><td>0:00</td><td>Land on <code>/</code>. Read “start with the record”.</td><td>Hero sells the Work Log and GitHub drafting. No pricing (the section says “by request”).</td><td><span class="pill warn">promise</span></td></tr>
+  <tr><td>0:30</td><td>“Check your resume — free” → upload PDF.</td><td>Score in ~20–53 s. Good report, clear fixes. <b>This is the one flow that delivers.</b></td><td><span class="pill ok">works</span></td></tr>
+  <tr><td>1:30</td><td>“Fix all of these in one click” → sign-up.</td><td>Clerk sign-up, email code. If verification opens a new tab, the stashed fixes (sessionStorage) are gone.</td><td><span class="pill warn">fragile</span></td></tr>
+  <tr><td>3:00</td><td><code>/welcome</code>: “We kept the resume you just checked” → Use it.</td><td>It parses the resume into history, then <b>clears the fixes</b>. No resume document is created.</td><td><span class="pill bad">promise broken</span></td></tr>
+  <tr><td>3:30</td><td>Preferences (length, tone, summary).</td><td>Three questions they have no reason to answer yet.</td><td><span class="pill warn">friction</span></td></tr>
+  <tr><td>4:00</td><td>Lands on <code>/build</code>.</td><td>“Paste the full job description.” They came to fix <i>their</i> resume and are now asked for a job. The fixes are nowhere.</td><td><span class="pill bad">dead end</span></td></tr>
+  <tr><td>5:00</td><td>Click “Work Log” (the thing the site sold).</td><td>“No wins match · Log the first one.” The “Connect GitHub, we'll draft 90 days in about a minute” empty state can never render (<code>sourceConnected</code> hard-coded true).</td><td><span class="pill bad">broken</span></td></tr>
+  <tr><td>6:00</td><td>If they find <code>/settings/sources</code> (mobile only) and connect GitHub…</td><td>Repos saved, a sync job queued — <b>and never run</b>. No drafts, ever.</td><td><span class="pill bad">broken</span></td></tr>
+  <tr><td>7:00</td><td>Type a win by hand.</td><td>Two model calls and two meter charges; saved as a <b>draft</b> while the toast says “Logged”; left out of packets and reviews until confirmed through a popover.</td><td><span class="pill warn">friction</span></td></tr>
+  <tr><td>Next Friday</td><td>(expects the promised digest)</td><td>Nothing. No email is ever sent.</td><td><span class="pill bad">silent</span></td></tr>
+</table>
+<p>The three outside accounts match this story exactly: they signed up and never saved a name or an item of history.</p>
+
+<!-- ───────────────────────────────────────────────────────────── FLOWS -->
+<h2 id="flows">4 · Flow-by-flow audit</h2>
+<p>Severity: <span class="pill bad">blocker</span> breaks the promise or loses the user · <span class="pill warn">major</span> costs real effort or trust · <span class="pill off">minor</span> polish. Evidence in grey.</p>
+
+<!-- A -->
+<div class="flow">
+  <h3>A · Landing page <span class="pill warn">major</span></h3>
+  <div class="kv"><div>Entry</div><div><code>/</code> (public); signed-in users bounce to <code>/dashboard</code></div><div>Goes to</div><div><code>/score</code>, <code>/sign-up?redirect_url=/build</code></div></div>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>Sells what a new user cannot get.</b> Hero, How it works and FAQ sell the Work Log and GitHub drafting; every “Start free” lands on a JD-paste resume wizard.<div class="ev">Faq.tsx:37 · HowItWorks.tsx:22-24 · Navbar.tsx:105 · layout.tsx:19-31</div></li>
+    <li><span class="pill warn">major</span> <b>No pricing</b>, and the nav item “Contact” scrolls to a section saying prices are by request, while <code>/settings/plan</code> publishes $5 and $2.<div class="ev">page.tsx:23-30 · Contact.tsx:61-74 · plans.ts catalog</div></li>
+    <li><span class="pill warn">major</span> <b>Advertises features that are off</b>: packets, rubric mapping, weekly digest, the extension (which has no install link).<div class="ev">Features.tsx · grep chromewebstore: 0 hits</div></li>
+    <li><span class="pill off">minor</span> Two support addresses (gmail on the site, support@patronus.app in terms/privacy).<div class="ev">Contact.tsx:36 · terms/page.tsx:7</div></li>
+  </ul>
+</div>
+
+<!-- B -->
+<div class="flow">
+  <h3>B · Free ATS check <code>/score</code> → sign-up <span class="pill bad">blocker</span></h3>
+  <ol class="steps"><li>Upload PDF/DOCX, optional JD</li><li>Score in 20–53 s (Hobby cap 60 s)</li><li>“Fix all of these in one click” → stash in <code>sessionStorage</code> → <code>/sign-up</code></li><li><code>/welcome</code> “Use it” imports history, <b>clears the stash</b></li></ol>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>The one-click-fix promise is broken on the default path.</b> The stash is cleared in <code>/welcome</code> before <code>/build</code> or the editor can read it; the <code>score_to_signup</code> metric never fires.<div class="ev">ScoreReport.tsx:361-366 · WelcomeFlow.tsx:151-162 · BuildWizard.tsx:159,179 · EditorLayout.tsx:201-237</div></li>
+    <li><span class="pill warn">major</span> <b>Per-tab storage</b>: email verification in a new tab loses the resume; re-upload at <code>/welcome</code> accepts PDF only, so DOCX users are stuck.<div class="ev">pendingScore.ts:30 · ResumeUploadZone.tsx:219,249</div></li>
+    <li><span class="pill warn">major</span> Rate-limit and timeout toasts are dead ends with no sign-up path; long resumes 504.<div class="ev">rateLimit.ts:98 · api/score/route.ts:16-24</div></li>
+    <li><span class="pill off">minor</span> Copy says PDF only though DOCX is accepted.<div class="ev">AtsCheckerClient.tsx:56,169</div></li>
+  </ul>
+</div>
+
+<!-- C -->
+<div class="flow">
+  <h3>C · Sign-up / sign-in <span class="pill bad">blocker</span></h3>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>Sign-in discards every deep link</b> (<code>forceRedirectUrl="/dashboard"</code>): the extension connect flow, email links, <code>/home</code> — all land on the dashboard.<div class="ev">sign-in/page.tsx:16 · Navbar.tsx:95 · extension/connect/page.tsx:44</div></li>
+    <li><span class="pill bad">blocker</span> <b>Routes that must be public are behind login</b>: <code>/api/cron/tick</code> (the engine), <code>/w/[token]</code> (every email action), <code>/api/email/unsubscribe</code> (legal requirement), <code>/api/email/webhook</code>, <code>/api/whatsapp/webhook</code>. Verified live: all 404.<div class="ev">proxy.ts:6-36,65-66</div></li>
+    <li><span class="pill warn">major</span> Two accounts under one email are easy to create (it happened to the founder) and nothing warns or merges.<div class="ev">prod: 2 profiles, same email</div></li>
+    <li><span class="pill off">minor</span> Unfinished onboarding is never resumed.<div class="ev">onboardingComplete read only by /welcome and the tour</div></li>
+  </ul>
+</div>
+
+<!-- D -->
+<div class="flow">
+  <h3>D · First run <code>/welcome</code> <span class="pill bad">blocker</span></h3>
+  <ol class="steps"><li>History: use the checked resume / upload a PDF / “I'll add it later”</li><li>Preferences: length, tone, summary</li><li>Mission (only if missions flag)</li><li>Redirect to <code>next</code>, else <code>/home</code>, else <b><code>/build</code></b></li></ol>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>Ends at a JD box with nothing to show.</b> The import fills history but creates no Resume; the user who came with a resume leaves onboarding without one.<div class="ev">onboarding.ts:65-111,152-180</div></li>
+    <li><span class="pill bad">blocker</span> <b>“Add history later” → generate against an empty profile</b>, burning one of ten free generations; the comment claiming the builder is “where history gets added” is false.<div class="ev">onboarding.ts:152 · channelGenerate.ts:174-243,286</div></li>
+    <li><span class="pill warn">major</span> Preference questions before any value; they are edited later in three different places.<div class="ev">ResumeDefaultsStep.tsx · settings/resume · ProfileSection.tsx:311-329</div></li>
+    <li><span class="pill off">minor</span> Four dead onboarding components.<div class="ev">StepBackground/Generate/Import/Template.tsx</div></li>
+  </ul>
+</div>
+
+<!-- E -->
+<div class="flow">
+  <h3>E · Home, nav and dashboard <span class="pill warn">major</span></h3>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>No settings page is reachable on desktop.</b> Resume defaults, Job search, Plan, Sources and Notifications exist only in the mobile sheet (<code>md:hidden</code>) or nowhere.<div class="ev">AppNav.tsx:122,157,186-213</div></li>
+    <li><span class="pill warn">major</span> <b>Two homes.</b> Nav logo and onboarding point to <code>/home</code> when missions is on; sign-in, <code>/</code> and redirects point to <code>/dashboard</code>. The nav item “Resumes” opens Overview, not My Resumes.<div class="ev">home/page.tsx:14-17 · dashboard/page.tsx:24</div></li>
+    <li><span class="pill warn">major</span> <b>Empty dashboard has no next step</b>: “Welcome back, there”, zero counters, no CTA, no remaining-quota figure.<div class="ev">OverviewSection.tsx:23-35,75-84</div></li>
+    <li><span class="pill warn">major</span> The global “Answer clarification” banner opens a blank <code>/build</code> step 1; the pending question can't be answered.<div class="ev">GlobalGenerationBanner.tsx:124-130 · BuildWizard.tsx:76</div></li>
+    <li><span class="pill off">minor</span> Flag-off pages offer only “Back to your resumes” — no waitlist, no request access.<div class="ev">FeatureUnavailable.tsx:83-104</div></li>
+  </ul>
+</div>
+
+<!-- F -->
+<div class="flow">
+  <h3>F · Resume builder and editor <span class="pill warn">major</span></h3>
+  <ol class="steps"><li>Copy the JD from the job site by hand, paste into <code>/build</code></li><li>0–3 clarification questions</li><li>~9 progress stages over SSE</li><li>Open editor → 14 panels → export via a third-party LaTeX service</li></ol>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>50% of production generations failed</b>: “JD too short” (3, all from Telegram) and PDF storage (2, since patched — verify).<div class="ev">GenerationSession rows, 14 Mar</div></li>
+    <li><span class="pill bad">blocker</span> <b>Refining for a job overwrites the master resume</b> — no per-job copy.<div class="ev">generationPipeline.ts:669-674</div></li>
+    <li><span class="pill warn">major</span> Charged before the questions; abandoning mid-clarification still costs a free resume; Telegram “Regenerate” charges again.<div class="ev">channelGenerate.ts:286,353-358 · telegramAgent.ts:163-183</div></li>
+    <li><span class="pill warn">major</span> A dropped connection shows “Generation failed” while the job succeeds server-side.<div class="ev">BuildWizard.tsx:265-279</div></li>
+    <li><span class="pill warn">major</span> Edited PDFs aren't saved to PDF history; the ATS score appears in three different panels.<div class="ev">EditorLayout.tsx:251-263</div></li>
+    <li><span class="pill off">minor</span> Editor clarifications can't be skipped; reloads restore the JD with an appended clarification block.<div class="ev">JobTargetEditor.tsx:522-535 · jobTargets.ts:103-113</div></li>
+  </ul>
+</div>
+
+<!-- G -->
+<div class="flow">
+  <h3>G · Work Log <code>/log</code> <span class="pill bad">blocker</span></h3>
+  <ol class="steps"><li>Log a win (⌘K) → auto-structure after 800 ms</li><li>“Log it” → saved as <b>draft</b></li><li>Review queue confirm / dismiss</li><li>Confirmed wins feed packets, reviews, resumes</li></ol>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>The first-run “Connect GitHub” state can never show</b>: <code>sourceConnected: true</code> is hard-coded for real data.<div class="ev">components/log/data-source.ts:256-262 · LogScreen.tsx:383</div></li>
+    <li><span class="pill bad">blocker</span> <b>Review-queue edits, recategorise and undo are not saved</b> (handlers not passed). Undo shows pending while the DB says confirmed.<div class="ev">LogScreen.tsx:431-437 · review-queue.tsx:294,358,437</div></li>
+    <li><span class="pill warn">major</span> <b>Every capture costs two model calls and two meter units</b> (the structured draft isn't passed), so Free gets ~15 not 30.<div class="ev">LogScreen.tsx:300-305 · services/wins.ts:69-111</div></li>
+    <li><span class="pill warn">major</span> Hand-logged wins are drafts but the toast says “Logged”; they are excluded from packets and reviews and absent from the queue.<div class="ev">winGraph.ts:534 · LogScreen.tsx:341-348</div></li>
+    <li><span class="pill warn">major</span> The source typed in the Confirm popover is discarded; a duplicate throws away the user's text with no merge UI.<div class="ev">WinDrawer.tsx:242 · LogScreen.tsx:209-216,306-308</div></li>
+  </ul>
+</div>
+
+<!-- H -->
+<div class="flow">
+  <h3>H · GitHub capture <span class="pill bad">blocker</span></h3>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>The first sync never runs</b> — it is queued and the queue never drains. “In about a minute” is false twice (never, and Free syncs 30 days not 90).<div class="ev">actions/capture.ts:346-356 · runner.ts:451-477 · sources-screen.tsx:146</div></li>
+    <li><span class="pill warn">major</span> Needs GitHub linked in Clerk first; the error has no link; missing <code>repo</code> scope is only logged, never told.<div class="ev">actions/capture.ts:217-223</div></li>
+    <li><span class="pill warn">major</span> No scheduled sync exists at all; “the next one runs automatically” is false.<div class="ev">actions/capture.ts:379-382</div></li>
+  </ul>
+</div>
+
+<!-- I -->
+<div class="flow">
+  <h3>I · Weekly digest &amp; Month in Review (the retention loop) <span class="pill bad">blocker</span></h3>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>Cannot fire, five independent ways</b>: cron 404 · flag off · no Resend key · no <code>EmailPreference</code> rows (created only on first send or by visiting an unlinked page) · the default slot (Fri 16:00 UTC) is never reached by a 03:xx daily tick.<div class="ev">weeklyDigest.ts:190-223,410 · email/send.ts:330 · schema.prisma:743-745</div></li>
+    <li><span class="pill bad">blocker</span> Email buttons are GET links behind login; link scanners can confirm or dismiss wins the user never saw.<div class="ev">w/[token]/page.tsx:24-28 · winTokens.ts:504-515</div></li>
+    <li><span class="pill warn">major</span> A budget-suppressed digest is thrown and retried as a failure; Telegram digests bypass the 3/week budget.<div class="ev">weeklyDigest.ts:555-562,775-780,808</div></li>
+    <li><span class="pill warn">major</span> Month in Review is metered <b>per page view</b> (3 views exhausts Free), its own flag is checked nowhere, and nothing enqueues it.<div class="ev">actions/monthInReview.ts:72 · page.tsx:34</div></li>
+  </ul>
+</div>
+
+<!-- J -->
+<div class="flow">
+  <h3>J · Packets · Backfill · Missions · Radar <span class="pill off">switched off</span></h3>
+  <ul class="fr">
+    <li><span class="pill warn">major</span> <b>Built, off for everyone, and partly dependent on the dead engine.</b> Radar's data (<code>JobPosting</code>, <code>SkillSignal</code>) is written only by jobs that are never dispatched; mission nudges need 08:00 UTC; month review is never enqueued.<div class="ev">ingestBoard.ts:189 · skillRollup.ts · schedule.ts:32,56</div></li>
+    <li><span class="pill warn">major</span> Packets are charged before the workflow starts with no refund on failure; only confirmed wins count, so hand-logged drafts are silently missing.<div class="ev">actions/packets.ts:256-261,303-313</div></li>
+    <li><span class="pill warn">major</span> Mission steps depend on flags that are off and carry hints but no links; no target date is ever set, so “paced week by week” can't be.<div class="ev">catalog.ts:148,186,266 · HomeScreen.tsx:90-92,313</div></li>
+    <li><span class="pill off">minor</span> Readiness and backfill are reachable from one empty state each; several “See plans” links go to the Clerk profile instead of the plan page.<div class="ev">PacketList.tsx:40 · ReadinessScreen.tsx:143 · RadarScreen.tsx:287</div></li>
+  </ul>
+</div>
+
+<!-- K -->
+<div class="flow">
+  <h3>K · Scout / Career Inbox <span class="pill ok">works</span> <span class="pill warn">major gaps</span></h3>
+  <ol class="steps"><li>Paste a link, post or note (or send it to the bot)</li><li>20–45 s analysis: JD, fit, pay, company, interview write-ups, people</li><li>Job lands in the tracker; notes become Work Log drafts</li></ol>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>Scout can't build the resume</b> for the job it just analysed, although the JD is already stored. The user must copy it into <code>/build</code> by hand. This is the single biggest missed connection in the product.<div class="ev">no /build or processChannelGenerate in scout/inbox/channels · track.ts:124</div></li>
+    <li><span class="pill warn">major</span> Notes and “other” links consume one of Free's 3 link analyses (charged before classification); Refresh charges again.<div class="ev">services/scout.ts:207,262</div></li>
+    <li><span class="pill warn">major</span> Only founder accounts have the flag; the empty states advertise WhatsApp, which is not configured.<div class="ev">JobsBoard.tsx:247 · CareerInbox.tsx:58</div></li>
+  </ul>
+</div>
+
+<!-- L -->
+<div class="flow">
+  <h3>L · Telegram · WhatsApp · Chrome extension <span class="pill warn">major</span></h3>
+  <ul class="fr">
+    <li><span class="pill bad">blocker</span> <b>The extension has no install path</b> — no Web Store listing, no link; it is load-unpacked only. The dashboard tells users to “open a job page in the browser extension”.<div class="ev">ApplicationsSection.tsx:70 · extension/README.md</div></li>
+    <li><span class="pill warn">major</span> <b>Telegram linking is ~7 steps inside 15 minutes</b>; the server returns a one-tap deep link that the UI ignores; status doesn't refresh.<div class="ev">TelegramSection.tsx:46-47,59-66,90 · channelIdentity.ts:31-36</div></li>
+    <li><span class="pill warn">major</span> <b>Linking to the wrong account fails silently</b> (“Your account is already linked”) and there is no unlink anywhere.<div class="ev">channelIdentity.ts:184-190 · telegramAgent.ts:283-294</div></li>
+    <li><span class="pill warn">major</span> An open <code>/generate</code> clarification swallows every later message (no expiry, no skip); bot copy only mentions <code>/generate</code>.<div class="ev">telegramAgent.ts:368-400,262,292</div></li>
+    <li><span class="pill warn">major</span> Extension: the connect page auto-approves whatever Clerk session is active; tailored resumes are never linked to the job; nothing ever marks a job applied.<div class="ev">extension/connect/page.tsx:42-90 · TailorRoute.tsx:100-105 · orchestrate/route.ts:108</div></li>
+    <li><span class="pill off">minor</span> WhatsApp is advertised in four places and not configured.<div class="ev">DashboardShell.tsx:46 · WhatsAppSection.tsx:81-92</div></li>
+  </ul>
+</div>
+
+<!-- M -->
+<div class="flow">
+  <h3>M · Job tracker and plans <span class="pill warn">major</span></h3>
+  <ul class="fr">
+    <li><span class="pill warn">major</span> <b>One table, four surfaces</b> (dashboard Applications, Inbox board, extension list, <code>/jobs</code>): different fit numbers, different status words, and only the Inbox can change status — which is flag-gated, so most users can't mark a job applied at all.<div class="ev">careerInbox.ts:4-9,141-142 · inbox.ts:73-80 · ApplicationsSection.tsx:50-52</div></li>
+    <li><span class="pill bad">blocker</span> <b>Nothing can be purchased</b>: no Stripe keys or Price ids in production. “Add Search · $2” is offered to free users and always rejected; disabled buttons give no reason; the top tier costs less than the middle one.<div class="ev">billing.ts:127-153,334 · PlanScreen.tsx:230-279 · stripe.ts:50</div></li>
+    <li><span class="pill warn">major</span> The designed paywalls (PW1–PW7) are never rendered; blocked users see raw red text with no plan link on the resume path.<div class="ev">components/paywall/* unused · BuildWizard.tsx:698-703</div></li>
+  </ul>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── PATTERNS -->
+<h2 id="patterns">5 · Seven cross-cutting patterns</h2>
+<div class="grid g2">
+  <div class="card"><h3 style="margin-top:0">1. The “always-on” half of the product has never been on</h3><p>Patronus's difference from a resume builder is that it works <i>without</i> the user: drafting wins from GitHub, the Friday digest, the monthly review, Radar, nudges. All of it runs through one cron that has never reached its handler, a schedule tuned for an hourly tick that became daily, and an email provider that isn't configured. <b>The product's thesis has not been tested even once.</b></p></div>
+  <div class="card"><h3 style="margin-top:0">2. Promise ≠ delivery</h3><p>Marketing, empty states, settings and pricing copy promise things that don't happen: “in about a minute”, “the next sync runs automatically”, “the Friday review”, “fixes ready to apply”, “Weekly digest: Included”, WhatsApp. Each is small; together they teach users that the product's words can't be trusted.</p></div>
+  <div class="card"><h3 style="margin-top:0">3. Handoffs are where users are lost</h3><p>Score → sign-up → welcome → build; sign-in → deep link; Scout → resume; extension → tracker → resume; Telegram → the right account. Most individual screens are well built; <b>the joins between them are where state is dropped</b>.</p></div>
+  <div class="card"><h3 style="margin-top:0">4. Too many surfaces, no spine</h3><p>Seven dashboard sections, an Inbox with five tabs, a Work Log, a builder, an editor with 14 panels, four job-tracker views, three places to set preferences, two homes. There is no single “here is what to do next” anywhere, and settings aren't reachable on desktop.</p></div>
+  <div class="card"><h3 style="margin-top:0">5. Charged before value</h3><p>Generation charges before clarification questions; Scout charges before it knows a note isn't a job; Month in Review charges per view; packets charge before the workflow starts; captures charge twice. On a Free tier measured in single digits, these burn the trial before the user sees the payoff.</p></div>
+  <div class="card"><h3 style="margin-top:0">6. Configuration drift between code and production</h3><p>Stripe, Resend and WhatsApp are unconfigured; the workflow SDK was a retired beta; public routes weren't public; the schedule assumed a cron that no longer exists. Nothing checks, at deploy time, that the environment can actually run the features that are switched on.</p></div>
+  <div class="card"><h3 style="margin-top:0">7. Blind</h3><p>No landing, sign-up, onboarding or activation event has ever been recorded. The product cannot currently tell you where anyone leaves — which is why an audit like this has to be done by reading code.</p></div>
+  <div class="card"><h3 style="margin-top:0">What works, and should be the spine</h3><p>The free ATS check converts attention into a reason to sign up. Scout (link in → fit, pay, interviews, people out, in chat) is the most complete, most “agentic” experience in the product and was verified end-to-end in production on 26 Sep. The Telegram bot, once linked, is genuinely low-friction.</p></div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── HEAT -->
+<h2 id="heat">6 · Friction heatmap</h2>
+<table>
+  <tr><th>Flow</th><th>Steps to first value</th><th>Works today?</th><th>Worst issue</th><th>Reach (who sees it)</th></tr>
+  <tr><td>Free ATS check</td><td>2</td><td><span class="pill ok">yes</span></td><td>fixes lost at sign-up</td><td>every visitor</td></tr>
+  <tr><td>Sign-up → welcome</td><td>~8</td><td><span class="pill warn">partly</span></td><td>ends at a JD box, no resume</td><td>every sign-up</td></tr>
+  <tr><td>Resume builder</td><td>4–7 + manual JD copy</td><td><span class="pill warn">partly</span></td><td>50% failure; overwrites master</td><td>every activated user</td></tr>
+  <tr><td>Work Log (manual)</td><td>3</td><td><span class="pill warn">partly</span></td><td>drafts ≠ logged; edits lost</td><td>everyone (flag on)</td></tr>
+  <tr><td>GitHub capture</td><td>~6, desktop-hidden</td><td><span class="pill bad">no</span></td><td>first sync never runs</td><td>everyone (flag on)</td></tr>
+  <tr><td>Weekly digest</td><td>0 (automatic)</td><td><span class="pill bad">no</span></td><td>five independent blockers</td><td>nobody</td></tr>
+  <tr><td>Scout / Inbox</td><td>3 (web) · 1 (chat)</td><td><span class="pill ok">yes</span></td><td>no “tailor resume”</td><td>founder only</td></tr>
+  <tr><td>Telegram</td><td>~7 to link, then 1</td><td><span class="pill ok">yes</span></td><td>wrong-account link, no unlink</td><td>users who find it</td></tr>
+  <tr><td>Chrome extension</td><td>load-unpacked</td><td><span class="pill bad">no install</span></td><td>no distribution</td><td>nobody</td></tr>
+  <tr><td>Packets · Radar · Missions · Backfill</td><td>—</td><td><span class="pill off">off</span></td><td>depend on dead engine</td><td>nobody</td></tr>
+  <tr><td>Paid plans</td><td>—</td><td><span class="pill bad">no</span></td><td>no Stripe in prod</td><td>nobody can pay</td></tr>
+</table>
+
+<!-- ───────────────────────────────────────────────────────────── PLAN -->
+<h2 id="plan">7 · What to do, in order</h2>
+<p>Ordered by <i>(users affected × how badly) ÷ effort</i>. Tier 0 is roughly a day of work and unblocks most of the product.</p>
+
+<div class="prio card">
+  <h3>Tier 0 — make the machine run <span class="pill bad">this week</span></h3>
+  <ol>
+    <li><b>Public routes</b>: add <code>/api/cron/tick</code>, <code>/w/(.*)</code>, <code>/api/email/unsubscribe</code>, <code>/api/email/webhook</code>, <code>/api/whatsapp/webhook</code> to the self-authenticated list in <code>src/proxy.ts</code>. Verify each returns its own 401, not 404. <span class="why">Unblocks the entire engine and every email action.</span></li>
+    <li><b>A real schedule</b>: either an external hourly pinger (e.g. a free uptime service calling the tick with the bearer) or rewrite <code>schedule.ts</code> for one daily tick (no hour matching; digest due = “this local day, not yet sent”). Enqueue the jobs nothing enqueues: month review, ingest, skill rollup, a daily capture sync. <span class="why">Otherwise fixing the route still leaves most jobs dead.</span></li>
+    <li><b>Configure email</b> (Resend key + <code>EMAIL_FROM</code>) and <b>create <code>EmailPreference</code> at sign-up</b> with the browser's timezone. <span class="why">Zero emails is zero retention loop.</span></li>
+    <li><b>Kick a drain on user actions</b> that expect speed (GitHub repo save, confirm → embed) with <code>after()</code>, so first value doesn't wait for a cron at all.</li>
+    <li><b>A deploy-time health check</b> that fails loudly when an on-flag's dependency is missing (flag on + no key, cron route not reachable, workflow start failing). <span class="why">Pattern 6 caused four production outages this week.</span></li>
+  </ol>
+</div>
+
+<div class="prio card" style="margin-top:14px">
+  <h3>Tier 1 — one path, end to end, that keeps its promise <span class="pill warn">next 2 weeks</span></h3>
+  <ol>
+    <li><b>Score → a fixed resume, no detours.</b> Keep the stash until the editor applies it (server-side, not sessionStorage); onboarding creates a Resume from the imported file and lands <i>in the editor with the fix checklist open</i>. Preferences move to later. <span class="why">This is the only acquisition flow that works; right now it ends in a JD box.</span></li>
+    <li><b>Fix sign-in redirects</b> (honour <code>redirect_url</code>) so extension connect and email links work.</li>
+    <li><b>“Tailor my resume for this job” from Scout</b> — on the run page and as a Telegram button — using the JD Scout already stored, creating a <i>per-job copy</i> linked to the tracker row. <span class="why">Joins the product's best feature to its monetised one.</span></li>
+    <li><b>Never overwrite the master</b> on refine; per-job resumes.</li>
+    <li><b>One home with a “next step”</b>: pick <code>/home</code> or <code>/dashboard</code>, delete the other route's references, and make the empty state a single action (“Upload your resume” → “Check it against a job” → “Log this week”). Put settings in the desktop nav.</li>
+    <li><b>Telegram in one tap</b>: use the deep link the server already returns, refresh status, show which account is linked, add unlink. Detect two accounts under one email at sign-in.</li>
+  </ol>
+</div>
+
+<div class="prio card" style="margin-top:14px">
+  <h3>Tier 2 — stop punishing trial users <span class="pill warn">next 2 weeks</span></h3>
+  <ol>
+    <li>Charge <b>at value, not at intent</b>: generation after clarifications; Scout after classification (notes and “other” are free); Month in Review once per month, not per view; packets only after the workflow starts; one charge per capture.</li>
+    <li>Refund on abandonment and failure everywhere the extension already does.</li>
+    <li>Wire the existing paywall components; every block shows the plan that unlocks it with a working link.</li>
+    <li>Configure Stripe (Prices + keys) <i>or</i> remove prices from the product until it is; fix “Add Search” for free users and the $2 &lt; $5 ladder.</li>
+  </ol>
+</div>
+
+<div class="prio card" style="margin-top:14px">
+  <h3>Tier 3 — make the Work Log worth the promise <span class="pill off">month</span></h3>
+  <ol>
+    <li>Fix the first-run state (<code>sourceConnected</code>), save review-queue edits/undo, pass the structured draft, keep the Confirm source, add merge on duplicate.</li>
+    <li>Decide what “logged” means: a hand-typed win should be confirmed (the user wrote it), not a draft behind a popover.</li>
+    <li>Make magic-link actions POST (or require a tap on the landing page) so scanners can't act.</li>
+    <li>One tracker: the Inbox board becomes the only place jobs live; dashboard Applications and the extension list link into it and share its fit numbers and status control.</li>
+  </ol>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── STOP -->
+<h2 id="stop">8 · What to stop doing</h2>
+<div class="grid g3">
+  <div class="card"><b>Stop adding surfaces.</b> Radar, Missions, Packets, Backfill and Month in Review are built and invisible. Each new feature adds a promise the engine can't yet keep. Freeze feature work until Tier 0–1 ship.</div>
+  <div class="card"><b>Stop advertising what's off.</b> Remove WhatsApp, the extension, packets and the digest from marketing and empty states until each works for a new user — or show them honestly as “coming”.</div>
+  <div class="card"><b>Stop shipping without a new-user walkthrough.</b> Every issue in section 3 is visible in ten minutes as a brand-new account. Make “sign up fresh and reach value” a release check, done in production.</div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────── MEASURE -->
+<h2 id="measure">9 · What to measure (the minimum)</h2>
+<p>Today the only recorded events are Scout's. Before any growth work, record these eight, server-side, with <code>userId</code> and <code>source</code>:</p>
+<table>
+  <tr><th>Event</th><th>Question it answers</th></tr>
+  <tr><td><code>landing_viewed</code> · <code>score_completed</code></td><td>Does the free check turn visitors into intent?</td></tr>
+  <tr><td><code>signup_completed</code> (with <code>from=score|landing|extension</code>)</td><td>Which door works?</td></tr>
+  <tr><td><code>resume_imported</code></td><td>Do people give us their history?</td></tr>
+  <tr><td><code>first_value</code> (first fixed resume exported, or first Scout result, or first confirmed Win)</td><td>Activation — the single number to move.</td></tr>
+  <tr><td><code>channel_linked</code></td><td>Does the low-friction channel get adopted?</td></tr>
+  <tr><td><code>week2_return</code> (any action 7–14 days after sign-up)</td><td>Does anything bring people back?</td></tr>
+  <tr><td><code>digest_sent</code> → <code>digest_action</code></td><td>Does the retention loop actually loop?</td></tr>
+  <tr><td><code>paywall_shown</code> → <code>checkout_completed</code></td><td>Is anyone willing to pay, and where?</td></tr>
+</table>
+
+<!-- ───────────────────────────────────────────────────────────── APPENDIX -->
+<h2 id="appx">10 · Appendix</h2>
+<details open><summary>Production environment vs what the code needs</summary>
+<table>
+  <tr><th>Integration</th><th>Code reads</th><th>In production?</th><th>Effect</th></tr>
+  <tr><td>Stripe</td><td><code>STRIPE_SECRET_KEY</code>, <code>STRIPE_WEBHOOK_SECRET</code>, <code>STRIPE_PRICE_CAREER_MONTHLY</code>, <code>STRIPE_PRICE_SEARCH_MONTHLY</code></td><td><span class="pill bad">none</span></td><td>no purchase possible</td></tr>
+  <tr><td>Email</td><td><code>RESEND_API_KEY</code>, <code>EMAIL_FROM</code></td><td><span class="pill bad">none</span></td><td>0 emails ever</td></tr>
+  <tr><td>WhatsApp</td><td><code>WHATSAPP_*</code></td><td><span class="pill bad">none</span></td><td>advertised, unavailable</td></tr>
+  <tr><td>Rate limiting</td><td><code>UPSTASH_REDIS_REST_URL</code></td><td><span class="pill warn">none</span></td><td>falls back to per-instance limits</td></tr>
+  <tr><td>Research</td><td><code>TAVILY_API_KEY</code></td><td><span class="pill ok">dev key</span></td><td>works; ~1k credits/month</td></tr>
+  <tr><td>Workflow runtime</td><td><code>workflow</code> package</td><td><span class="pill ok">4.8.9</span></td><td>was a retired beta until 26 Sep</td></tr>
+  <tr><td>Telegram</td><td><code>TELEGRAM_*</code></td><td><span class="pill ok">yes</span></td><td>works</td></tr>
+</table>
+</details>
+<details><summary>Every route and how it is reached</summary>
+<table>
+  <tr><th>Route</th><th>From the nav?</th><th>Otherwise reached from</th></tr>
+  <tr><td><code>/</code>, <code>/score</code></td><td>marketing nav</td><td>hero, footer</td></tr>
+  <tr><td><code>/welcome</code></td><td>no</td><td>post-sign-up only</td></tr>
+  <tr><td><code>/dashboard</code></td><td>“Resumes” (always)</td><td>many</td></tr>
+  <tr><td><code>/home</code></td><td>only if missions</td><td>logo, onboarding</td></tr>
+  <tr><td><code>/build</code></td><td>“Tailor a resume” (always)</td><td>empty states</td></tr>
+  <tr><td><code>/editor/*</code></td><td>no</td><td>resume cards; <code>/editor/new</code> just redirects to <code>/build</code></td></tr>
+  <tr><td><code>/log</code></td><td>Work Log (flag on)</td><td>digest, Radar, Notes</td></tr>
+  <tr><td><code>/log/readiness</code> · <code>/log/backfill</code> · <code>/log/review/*</code></td><td>no</td><td>one empty state each · email only</td></tr>
+  <tr><td><code>/packets/*</code> · <code>/radar</code></td><td>only if flag</td><td>—</td></tr>
+  <tr><td><code>/scout</code>, <code>/scout/[id]</code></td><td>“Inbox” (flag)</td><td>chat links, extension</td></tr>
+  <tr><td><code>/settings/resume · job-search · plan</code></td><td><b>mobile sheet only</b></td><td>a few in-app links</td></tr>
+  <tr><td><code>/settings/sources</code></td><td>no</td><td>a Work Log empty state that never renders</td></tr>
+  <tr><td><code>/settings/notifications</code></td><td>no</td><td>email footer only (which never sends)</td></tr>
+  <tr><td><code>/w/[token]</code></td><td>no</td><td>email only — <b>behind login</b></td></tr>
+  <tr><td><code>/admin/runs</code></td><td>no</td><td>effectively unreachable</td></tr>
+</table>
+</details>
+<details><summary>Method and limits</summary>
+<p>Three independent code walks (acquisition/activation, core loops, job-search/channels) with file:line evidence; read-only production queries on 27 Sep 2026; production runtime logs; live HTTP checks; the end-to-end Scout test run on 26 Sep. Not covered: the web UI in a real browser (the Chrome extension was not connected), real email clients, the Chrome Web Store, and any user research — there are no outside users to research.</p>
+</details>
+
+</main>
+</body>
+</html>

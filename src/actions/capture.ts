@@ -12,6 +12,7 @@
  * asset the whole product is built on.
  */
 
+import { kickQueue } from '@/lib/jobs/kick';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import {
@@ -354,6 +355,9 @@ export async function saveRepoSelection(repos: string[]): Promise<Result<{ jobId
             priority: initial ? 10 : 80,
         },
     );
+    // Start the sync now. Waiting for the daily cron made "we'll draft your
+    // work in about a minute" a promise the product could not keep.
+    await kickQueue('repo_selection_saved');
 
     return ok({ jobId: job.jobId, initial });
 }
@@ -378,7 +382,7 @@ export async function syncSourceNow(kind: CaptureSourceKind = CaptureSourceKind.
 
     // §3.3 — manual refresh is rate-limited to one per hour.
     if (source.lastSyncedAt && Date.now() - source.lastSyncedAt.getTime() < MANUAL_SYNC_COOLDOWN_MS) {
-        return err('Already synced in the last hour — the next one runs automatically', 'rate_limited');
+        return err('Already synced in the last hour. Sources also sync automatically once a day.', 'rate_limited');
     }
 
     const job = await enqueue(
@@ -389,6 +393,7 @@ export async function syncSourceNow(kind: CaptureSourceKind = CaptureSourceKind.
             priority: 50,
         },
     );
+    await kickQueue('sync_now');
 
     return ok({ jobId: job.jobId });
 }

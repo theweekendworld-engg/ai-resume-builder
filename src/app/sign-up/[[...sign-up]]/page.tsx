@@ -1,6 +1,8 @@
 import { SignUp } from '@clerk/nextjs';
 import { clerkAuthAppearance } from '@/lib/clerkAppearance';
 import { parseInternalPath } from '@/lib/safeNext';
+import { welcomeUrl } from '@/lib/redirectTarget';
+import { isStashId } from '@/lib/scoreStash';
 
 /**
  * Sign-up.
@@ -34,11 +36,16 @@ import { parseInternalPath } from '@/lib/safeNext';
 export default async function SignUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ redirect_url?: string }>;
+  searchParams: Promise<{ redirect_url?: string; stash?: string }>;
 }) {
   const params = await searchParams;
   const next = parseInternalPath(params.redirect_url);
-  const welcome = next ? `/welcome?next=${encodeURIComponent(next)}` : '/welcome';
+  // `/score`'s "Fix all" result, kept server-side (src/lib/scoreStash.ts). It
+  // rides the URL AND a cookie, so email verification in a new tab keeps it.
+  const stash = isStashId(params.stash) ? params.stash : null;
+  const welcome = welcomeUrl({ next, stash });
+  // An existing account that signs in from here still gets the checked resume.
+  const signInDestination = stash ? welcome : next ?? '/dashboard';
 
   return (
     <div className="relative min-h-screen bg-background">
@@ -49,11 +56,11 @@ export default async function SignUpPage({
             appearance={clerkAuthAppearance}
             routing="path"
             path="/sign-up"
-            signInUrl="/sign-in"
+            signInUrl={stash ? `/sign-in?stash=${stash}` : '/sign-in'}
             forceRedirectUrl={welcome}
             fallbackRedirectUrl={welcome}
-            signInForceRedirectUrl={next ?? '/dashboard'}
-            signInFallbackRedirectUrl={next ?? '/dashboard'}
+            signInForceRedirectUrl={signInDestination}
+            signInFallbackRedirectUrl={signInDestination}
           />
         </div>
       </div>

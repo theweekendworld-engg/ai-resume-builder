@@ -104,16 +104,53 @@ describe('routing', () => {
         expect((started[0].input as { text: string }).text).toContain('We are hiring');
     });
 
-    test('an open resume clarification keeps precedence over Scout', async () => {
+    // Audit 2026-09-27: an open /generate clarification swallowed EVERY later
+    // message, a job link sent days later included. Now a link goes to Scout,
+    // and the open question is mentioned so it is not forgotten.
+    test('a job link during an open resume clarification goes to Scout, and the question is mentioned', async () => {
+        const session = await prisma.generationSession.create({
+            data: {
+                userId: USER, jobDescription: 'jd', channel: Channel.telegram, status: GenerationStatus.awaiting_clarification,
+                clarifications: { questions: [{ id: 'q1', question: 'Have you used Kafka?', gap: 'Kafka' }], answers: {} },
+            },
+        });
+        try {
+            await processTelegramUpdate(textUpdate('https://www.linkedin.com/jobs/view/4455902670'));
+            expect(started).toHaveLength(1);
+            expect(telegram.sent.at(-1)?.text).toContain('Have you used Kafka?');
+        } finally {
+            await prisma.generationSession.delete({ where: { id: session.id } });
+        }
+    });
+
+    test('a short, recent reply still answers the open resume clarification', async () => {
         const session = await prisma.generationSession.create({
             data: { userId: USER, jobDescription: 'jd', channel: Channel.telegram, status: GenerationStatus.awaiting_clarification, clarifications: {} },
         });
         try {
-            await processTelegramUpdate(textUpdate('https://www.linkedin.com/jobs/view/4455902670'));
+            await processTelegramUpdate(textUpdate('yes, 2 years of Kafka at Plivo'));
             expect(started).toHaveLength(0);
             // The clarification branch answered (this empty payload is invalid, so it errors),
             // proving the message went there and not to Scout.
             expect(telegram.sent.at(-1)?.text).toContain('Clarification state is invalid');
+        } finally {
+            await prisma.generationSession.delete({ where: { id: session.id } });
+        }
+    });
+
+    test('"skip" skips the clarification instead of being stored as the answer', async () => {
+        const session = await prisma.generationSession.create({
+            data: {
+                userId: USER, jobDescription: 'jd', channel: Channel.telegram, status: GenerationStatus.awaiting_clarification,
+                clarifications: { questions: [{ id: 'q1', question: 'Have you used Kafka?', gap: 'Kafka' }], answers: {} },
+            },
+        });
+        try {
+            await processTelegramUpdate(textUpdate('skip'));
+            expect(started).toHaveLength(0);
+            const fresh = await prisma.generationSession.findUniqueOrThrow({ where: { id: session.id } });
+            const answers = (fresh.clarifications as { answers?: Record<string, string> } | null)?.answers ?? {};
+            expect(answers.q1).not.toBe('skip');
         } finally {
             await prisma.generationSession.delete({ where: { id: session.id } });
         }

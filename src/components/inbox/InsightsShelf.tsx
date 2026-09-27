@@ -39,7 +39,7 @@ export function InsightsShelf({ state, items }: { state: InboxState; items: Insi
                 icon={BookOpen}
                 title="Your reading shelf is empty"
                 description="Send a LinkedIn post worth keeping to the bot, or paste it above. Patronus keeps the takeaways here, away from your Work Log."
-                action={{ label: 'Link Telegram or WhatsApp', href: '/dashboard?section=telegram' }}
+                action={{ label: 'Link Telegram', href: '/dashboard?section=telegram' }}
             />
         );
     }

@@ -34,11 +34,11 @@ import { Reveal } from './Reveal';
 const QUESTIONS = [
     {
         q: 'Do I have to write something every week?',
-        a: 'No — that is the failure mode we designed around. Merged pull requests come back as drafted wins with the title, metric and link already filled in, and your job is to keep, edit or dismiss them. Writing is the fallback for the things code cannot see, not the mechanism.',
+        a: 'No. Log a win when something happens — one rough sentence is enough, and it comes back structured with your numbers untouched. Automatic drafting from merged pull requests is coming soon; when it is live, your job becomes keep, edit or dismiss.',
     },
     {
         q: 'What can it draft from today?',
-        a: 'GitHub. That is the honest answer — one source, working properly, rather than a list of logos where most of the connectors are aspirational. Anything else goes in as a rough note and comes back structured, with your numbers untouched.',
+        a: 'Your own notes. That is the honest answer: type what happened and it comes back structured. GitHub is the first automatic source and is coming soon — one source working properly, rather than a list of logos where most of the connectors are aspirational.',
     },
     {
         q: 'Can it invent a number to make me look better?',
@@ -62,7 +62,7 @@ const QUESTIONS = [
     },
     {
         q: 'What does it cost?',
-        a: `Keeping the log is free and always will be. Beyond that we are not publishing a price list yet — write to ${CONTACT_EMAIL} with what you are trying to do and we will tell you plainly, including if the free tier already covers it.`,
+        a: `Keeping the log is free and always will be, and the free plan works today. The paid plans and their prices are listed under Pricing above; they open soon. If you are unsure which you need, write to ${CONTACT_EMAIL}.`,
     },
 ];
 

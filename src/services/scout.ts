@@ -29,6 +29,7 @@ import { err, ok, type Result } from '@/lib/result';
 import { scoutInputKey } from '@/lib/scout/inputKey';
 import { SCOUT_AGENT, type DraftFormat, type DraftTarget, type OutreachDraft, type ScoutInput, type ScoutRunSummary, type ScoutRunView } from '@/lib/scout/types';
 import { toRunSummary, toRunView } from '@/lib/scout/view';
+import { METER_KEY, readMeter, recordCharge, refreshCharge, refundCharge } from '@/lib/scout/metering';
 import { track } from '@/lib/track';
 
 /**
@@ -191,12 +192,26 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
         // dead, and reported as started so the channel shows progress instead
         // of replaying the old failure. Free: it was never charged to success.
         if (existing.status === 'failed' && !existing.startedAt) {
+            // Its unit was refunded when the start failed; the retry is the
+            // analysis the user gets, so it takes one again. Kinds that turn
+            // out not to be jobs still get it back at classify.
+            const meter = readMeter(existing.result);
+            if (!meter || meter.refunded) {
+                try {
+                    await gateMeteredAction(params.userId, 'link_analysis');
+                } catch (error) {
+                    if (isEntitlementError(error)) return err(error.message, 'entitlement_required');
+                    throw error;
+                }
+                await recordCharge(existing.id);
+            }
             try {
                 await enqueueScoutRun(existing.id, { force: true });
                 const restarted = (await loadRun(existing.id)) ?? existing;
                 return ok({ run: toRunView(restarted), created: true });
             } catch (error) {
                 console.error('[scout] restart failed', { runId: existing.id, error: String(error) });
+                await refundCharge(existing.id, params.userId, 'scout_enqueue_failed');
             }
         }
         const fresh = (await loadRun(existing.id)) ?? existing;
@@ -222,11 +237,14 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
     if (!created) await refundMeteredAction(params.userId, 'link_analysis', { reason: 'scout_dedupe_race' });
 
     if (created) {
+        // The receipt goes on BEFORE the run starts, so classification can
+        // hand the unit back for non-job kinds (see src/lib/scout/metering.ts).
+        await recordCharge(run.id);
         try {
             await enqueueScoutRun(run.id);
         } catch (error) {
             console.error('[scout] could not start run', { runId: run.id, error: String(error) });
-            await refundMeteredAction(params.userId, 'link_analysis', { reason: 'scout_enqueue_failed' });
+            await refundCharge(run.id, params.userId, 'scout_enqueue_failed');
             return err('Could not start the analysis. Try again in a minute.', 'enqueue_failed');
         }
         await track(params.userId, 'scout_run_started', {
@@ -261,17 +279,30 @@ export async function refreshScoutRun(userId: string, runId: string): Promise<Re
     if (!run) return err('Not found', 'not_found');
     if (run.status === 'running' || run.status === 'queued') return ok(toRunView(run));
 
-    try {
-        await gateMeteredAction(userId, 'link_analysis');
-    } catch (error) {
-        if (isEntitlementError(error)) return err(error.message, 'entitlement_required');
-        throw error;
+    // Refreshing a job within 7 days of its last charge is free; a non-job run
+    // is always free (src/lib/scout/metering.ts: `refreshCharge`).
+    const charge = refreshCharge(run);
+    if (charge) {
+        try {
+            await gateMeteredAction(userId, 'link_analysis');
+        } catch (error) {
+            if (isEntitlementError(error)) return err(error.message, 'entitlement_required');
+            throw error;
+        }
+        await recordCharge(run.id);
     }
 
-    const names = Object.keys((run.result as Record<string, unknown> | null) ?? {}).filter((key) => key !== 'drafts');
+    // `drafts` and the meter receipt are not sections and must survive.
+    const names = Object.keys((run.result as Record<string, unknown> | null) ?? {})
+        .filter((key) => key !== 'drafts' && key !== METER_KEY);
     await invalidateSections(run.id, names);
     await prisma.agentRun.update({ where: { id: run.id }, data: { error: null, pendingQuestion: Prisma.DbNull } });
-    await enqueueScoutRun(run.id, { force: true });
+    try {
+        await enqueueScoutRun(run.id, { force: true });
+    } catch (error) {
+        if (charge) await refundCharge(run.id, userId, 'scout_refresh_enqueue_failed');
+        throw error;
+    }
     return ok(toRunView((await loadRun(run.id)) ?? run));
 }
 

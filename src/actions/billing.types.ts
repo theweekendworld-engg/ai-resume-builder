@@ -56,7 +56,10 @@ export interface PlanPageData {
   search: SubscriptionView | null;
   /** True once `ENTITLEMENTS_ENFORCE=true`. Soft mode says so out loud. */
   enforced: boolean;
+  /** A purchase can be started today (a provider with a working checkout). */
   billingConfigured: boolean;
+  /** An existing subscription can be managed (portal, cancel, refund). */
+  portalAvailable: boolean;
   downgradeOffer: DowngradeOffer | null;
   /** ISO date; present only inside the 14-day annual refund window. */
   refundEligibleUntil: string | null;

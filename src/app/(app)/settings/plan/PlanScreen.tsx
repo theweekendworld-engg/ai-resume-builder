@@ -24,6 +24,7 @@ import {
   priceFor,
   type PriceKey,
 } from '@/lib/plans';
+import { BILLING_UNAVAILABLE_COPY } from '@/lib/billing/provider';
 import { cn } from '@/lib/utils';
 
 import { CancelDialog, downloadJson } from './CancelDialog';
@@ -38,10 +39,10 @@ import { CancelDialog, downloadJson } from './CancelDialog';
  *
  * Nothing here renders a `Tier` value. Names come from `PLAN_CATALOG`.
  */
-export function PlanScreen({ data }: { data: PlanPageData }) {
+export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData; checkoutNotice?: string | null }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [notice, setNotice] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(checkoutNotice);
 
   async function go(key: string, run: () => Promise<{ url: string } | null>) {
     setBusy(key);
@@ -220,14 +221,25 @@ export function PlanScreen({ data }: { data: PlanPageData }) {
           Change plan
         </h2>
 
+        {/* No provider can take money yet: say so, instead of rendering
+            buttons that are silently disabled or fail on click. */}
+        {!data.billingConfigured ? (
+          <p
+            role="status"
+            className={cn(typeStyles.body, 'mt-4 rounded-lg border border-border px-4 py-3 text-foreground')}
+          >
+            {BILLING_UNAVAILABLE_COPY}
+          </p>
+        ) : null}
+
         <div className="mt-4 flex flex-wrap gap-3">
-          {!career?.active
+          {data.billingConfigured && !career?.active
             ? CAREER_PLAN.prices.map((price) => (
                 <Button
                   key={price.key}
                   type="button"
                   variant={price.recommended ? 'default' : 'outline'}
-                  disabled={busy === price.key || !data.billingConfigured}
+                  disabled={busy === price.key}
                   onClick={() => onCheckout(price.key)}
                 >
                   {CAREER_PLAN.name} · {price.label}
@@ -235,11 +247,11 @@ export function PlanScreen({ data }: { data: PlanPageData }) {
               ))
             : null}
 
-          {data.canAddSearch ? (
+          {data.billingConfigured && data.canAddSearch ? (
             <Button
               type="button"
-              variant={career?.active ? 'default' : 'outline'}
-              disabled={busy === 'search_monthly' || !data.billingConfigured}
+              variant="default"
+              disabled={busy === 'search_monthly'}
               onClick={() => onCheckout('search_monthly')}
             >
               Add {SEARCH_PLAN.name} · {priceFor('search_monthly').label}
@@ -272,14 +284,16 @@ export function PlanScreen({ data }: { data: PlanPageData }) {
         </h2>
 
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onPortal}
-            disabled={busy === 'portal' || !data.billingConfigured}
-          >
-            Update payment and invoices
-          </Button>
+          {data.portalAvailable ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onPortal}
+              disabled={busy === 'portal'}
+            >
+              Update payment and invoices
+            </Button>
+          ) : null}
           <Button type="button" variant="outline" onClick={onExport} disabled={busy === 'export'}>
             Export everything
           </Button>

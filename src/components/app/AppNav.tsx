@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { Compass, FileText, Home, Inbox, Menu, NotebookPen, Radar, Sparkles } from 'lucide-react';
+import { Compass, FileText, Home, Inbox, Menu, NotebookPen, Radar, Sparkles, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -150,6 +150,12 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                             <span className="sm:hidden">Tailor</span>
                         </Link>
                     </Button>
+                    {/* Settings were mobile-sheet only; desktop had no way in (audit §E). */}
+                    <Button asChild variant="ghost" size="icon" className="hidden md:inline-flex" aria-label="Settings">
+                        <Link href="/settings">
+                            <Settings className="size-4" aria-hidden />
+                        </Link>
+                    </Button>
                     <HydratedUserButton />
 
                     <Sheet open={open} onOpenChange={setOpen}>
@@ -209,6 +215,20 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                                     className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                                 >
                                     Plan &amp; billing
+                                </Link>
+                                <Link
+                                    href="/settings/notifications"
+                                    onClick={() => setOpen(false)}
+                                    className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                                >
+                                    Notifications
+                                </Link>
+                                <Link
+                                    href="/settings"
+                                    onClick={() => setOpen(false)}
+                                    className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                                >
+                                    All settings
                                 </Link>
                             </nav>
                         </SheetContent>

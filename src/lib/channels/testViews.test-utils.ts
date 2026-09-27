@@ -71,5 +71,7 @@ export function inertInboxDeps() {
         listJobBoard: async () => [],
         listInsights: async () => [],
         listChatNotes: async () => [],
+        tailorResumeForRun: async () => ({ success: false as const, error: 'n/a' }),
+        nextGenerationQuestion: async () => null,
     };
 }

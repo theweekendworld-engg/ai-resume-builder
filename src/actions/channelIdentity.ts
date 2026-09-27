@@ -8,6 +8,22 @@ import { auth } from '@clerk/nextjs/server';
 import { Channel, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { accountLabel } from '@/lib/channels/accountLabel';
+
+/**
+ * A chat already linked to a DIFFERENT Patronus account. Carried as a code
+ * with the other user id, so the bot can name the account (masked) instead of
+ * the old "Your account is already linked", which hid the conflict: the chat
+ * kept filing everything into the other account and nothing said so.
+ */
+class LinkConflictError extends Error {
+  constructor(readonly otherUserId: string, channel: Channel) {
+    super(channel === Channel.whatsapp
+      ? 'This WhatsApp number is already linked to another Patronus account'
+      : 'This Telegram account is already linked to another Patronus account');
+    this.name = 'LinkConflictError';
+  }
+}
 
 type ChannelIdentityDTO = {
   id: string;
@@ -146,6 +162,9 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
   userId?: string;
   identity?: ChannelIdentityDTO;
   error?: string;
+  /** `linked_to_other`: the chat belongs to `otherUserId`, not the token's user. */
+  code?: 'linked_to_other' | 'invalid_token';
+  otherUserId?: string;
 }> {
   const parsed = ConsumeLinkTokenSchema.safeParse(input ?? {});
   if (!parsed.success) {
@@ -168,7 +187,7 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
     });
 
     if (!tokenRow) {
-      return { success: false, error: 'Invalid or expired link token' };
+      return { success: false, error: 'Invalid or expired link token', code: 'invalid_token' };
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -182,11 +201,7 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
       });
 
       if (existingExternal && existingExternal.userId !== tokenRow.userId) {
-        throw new Error(
-          channel === Channel.whatsapp
-            ? 'This WhatsApp number is already linked to another user'
-            : 'This Telegram account is already linked to another user',
-        );
+        throw new LinkConflictError(existingExternal.userId, channel);
       }
 
       if (existingExternal && existingExternal.userId === tokenRow.userId) {
@@ -230,9 +245,48 @@ export async function consumeChannelLinkToken(input: unknown): Promise<{
       identity: result,
     };
   } catch (error: unknown) {
+    if (error instanceof LinkConflictError) {
+      return { success: false, error: error.message, code: 'linked_to_other', otherUserId: error.otherUserId };
+    }
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to consume link token',
     };
   }
+}
+
+/** Masked "Name · a•••@gmail.com" for a user, from their profile. */
+export async function describeAccount(userId: string): Promise<string> {
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: { fullName: true, email: true },
+  });
+  return accountLabel(profile);
+}
+
+/**
+ * Unlink the signed-in user's chat on `channel`. Session-only: the user id
+ * comes from Clerk, never from the caller. Idempotent (0 when nothing was
+ * linked).
+ */
+export async function unlinkChannelForSession(channel: Channel): Promise<{ success: boolean; removed?: number; error?: string }> {
+  const { userId } = await auth();
+  if (!userId) return { success: false, error: 'Not authenticated' };
+  const { count } = await prisma.channelIdentity.deleteMany({ where: { userId, channel } });
+  return { success: true, removed: count };
+}
+
+/**
+ * Unlink a chat by its external id: the bot's `/unlink`. The caller is the
+ * webhook, which Telegram authenticated with the secret header, and the chat
+ * id is the one the message came from, so the sender can only unlink itself.
+ */
+export async function unlinkChatByExternalId(channel: Channel, externalId: string): Promise<{ removed: number; userId: string | null }> {
+  const identity = await prisma.channelIdentity.findUnique({
+    where: { channel_externalId: { channel, externalId } },
+    select: { userId: true },
+  });
+  if (!identity) return { removed: 0, userId: null };
+  const { count } = await prisma.channelIdentity.deleteMany({ where: { channel, externalId } });
+  return { removed: count, userId: identity.userId };
 }

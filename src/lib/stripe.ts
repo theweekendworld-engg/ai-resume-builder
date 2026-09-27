@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { Tier } from '@prisma/client';
+import { stripeCheckoutReady } from '@/lib/billing/provider';
 import {
   isPriceKey,
   priceKeyForStripeId,
@@ -47,8 +48,21 @@ export function toPriceKey(plan: BillingPlan): PriceKey | null {
 
 let client: Stripe | null = null;
 
+/**
+ * Can Stripe SELL: a key and the Career price id. With a key alone every
+ * checkout failed with "No price configured", behind a button that looked live.
+ */
 export function stripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
+  return stripeCheckoutReady();
+}
+
+/**
+ * Can Stripe be TALKED TO: the key alone. The webhook and the billing portal
+ * need only this — an existing subscription must keep reconciling even if a
+ * Price env var is removed.
+ */
+export function stripeKeyConfigured(): boolean {
+  return Boolean(process.env.STRIPE_SECRET_KEY?.trim());
 }
 
 export function getStripe(): Stripe {

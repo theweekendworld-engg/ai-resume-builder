@@ -34,6 +34,7 @@ import { DesignPanel } from '@/components/editor/tools/DesignPanel';
 import { initialResumeData, type ResumeData } from '@/types/resume';
 import { readPendingScore, clearPendingScore } from '@/lib/pendingScore';
 import { parseResumeText } from '@/actions/parseResumeText';
+import { getScoreStashFixes } from '@/actions/onboarding';
 
 interface EditorLayoutProps {
   resumeId: string;
@@ -201,6 +202,22 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
   useEffect(() => {
     if (initialLoading || handoffConsumed.current) return;
     handoffConsumed.current = true;
+
+    // Server-side stash first (`?stash=` from onboarding or /welcome): it
+    // survives new tabs and does not depend on this tab's sessionStorage.
+    const stashId = searchParams?.get('stash');
+    if (stashId) {
+      void getScoreStashFixes(stashId).then((result) => {
+        if (!result.success || result.data.fixes.length === 0) return;
+        setFixChecklist(result.data.fixes);
+        setActivePanel('fix-checklist');
+        toast.message('Your fix checklist is ready', {
+          description: `${result.data.fixes.length} item${result.data.fixes.length === 1 ? '' : 's'} from your free resume score.`,
+        });
+      });
+      clearPendingScore();
+      return;
+    }
 
     const pending = readPendingScore();
     if (!pending) return;

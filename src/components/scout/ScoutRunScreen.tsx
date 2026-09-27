@@ -25,6 +25,7 @@ import { QuestionCard } from './QuestionCard';
 import { CONTENT_SECTIONS, SectionCard, type DraftRequest } from './SectionCards';
 import { StepTimeline } from './StepTimeline';
 import { EntitlementNotice } from './EntitlementNotice';
+import { TailorButton } from './TailorButton';
 
 const POLL_MS = 2_000;
 
@@ -193,6 +194,10 @@ export function ScoutRunScreen({
                 {run.pendingQuestion && run.status === 'awaiting_input' ? (
                     <QuestionCard question={run.pendingQuestion} pending={answering} error={answerError} onAnswer={onAnswer} />
                 ) : null}
+
+                {/* The job is filed and the posting is read: turn it into a resume
+                    here instead of copying the JD into the builder by hand. */}
+                {canDraft && track && !live ? <TailorButton runId={run.id} /> : null}
 
                 {run.kind === 'other' && run.status !== 'failed' ? (
                     <section className="surface-work rounded-xl border border-border bg-card p-5">

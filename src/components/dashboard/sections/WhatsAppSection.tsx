@@ -70,6 +70,10 @@ export function WhatsAppSection() {
     return <Skeleton className="h-32 rounded-xl" />;
   }
 
+  // Not configured: say nothing. A card explaining that a channel does not
+  // exist is still an advertisement for it (audit 2026-09-27, flow L).
+  if (!status?.configured) return null;
+
   return (
     <Card>
       <CardHeader>
@@ -78,19 +82,13 @@ export function WhatsAppSection() {
           WhatsApp
         </CardTitle>
         <CardDescription>
-          {!status?.configured
-            ? 'WhatsApp is not set up on this Patronus instance yet.'
-            : status.linked
+          {status.linked
               ? `Linked to ${maskNumber(status.identity?.externalId ?? '')}`
               : 'Send job and post links from WhatsApp and get the analysis back in the chat.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!status?.configured ? (
-          <p className="text-sm text-muted-foreground">
-            Telegram works today. WhatsApp needs a Meta Business number, which an administrator has to connect.
-          </p>
-        ) : status.linked ? (
+        {status.linked ? (
           <p className="text-sm text-muted-foreground">
             Send any LinkedIn job or post link to the Patronus WhatsApp number to analyse it.
           </p>

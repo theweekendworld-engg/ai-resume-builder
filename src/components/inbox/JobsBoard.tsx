@@ -244,8 +244,8 @@ export function JobsBoard({ state, items }: { state: InboxState; items: JobBoard
             <EmptyState
                 icon={Briefcase}
                 title="No jobs yet"
-                description="Send a job link to @Patronus_resume_bot on Telegram, or paste one above, and it lands here scored against your record."
-                action={{ label: 'Link Telegram or WhatsApp', href: '/dashboard?section=telegram' }}
+                description="Send a job link to the Patronus bot on Telegram, or paste one above, and it lands here scored against your record."
+                action={{ label: 'Link Telegram', href: '/dashboard?section=telegram' }}
                 secondary={{ label: 'Set your job-search preferences', href: '/settings/job-search' }}
             />
         );

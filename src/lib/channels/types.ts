@@ -32,6 +32,8 @@ export type ScoutAction =
      */
     | { kind: 'confirm_win'; winId: string; label: string }
     | { kind: 'dismiss_win'; winId: string; label: string }
+    /** Tailor a resume for the run's job, from the JD Scout already stored. */
+    | { kind: 'tailor'; label: string }
     /** A plain link. Telegram renders a URL button; WhatsApp puts it in the text. */
     | { kind: 'open'; label: string; url: string };
 

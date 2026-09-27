@@ -114,7 +114,8 @@ describe('inbound', () => {
         const token = 'ab'.repeat(16);
         await prisma.channelLinkToken.create({ data: { userId: USER, channel: Channel.whatsapp, token, expiresAt: new Date(Date.now() + 60_000) } });
         await processWhatsAppMessage(inbound({ text: `link ${token}` }));
-        expect(mock.texts.at(-1)).toContain('WhatsApp linked');
+        expect(mock.texts.at(-1)).toContain('Linked to');
+        expect(mock.texts.at(-1)).toContain('Send me');
         const identity = await prisma.channelIdentity.findUnique({ where: { channel_externalId: { channel: Channel.whatsapp, externalId: WA_ID } } });
         expect(identity).toMatchObject({ userId: USER, verified: true });
         const consumed = await prisma.channelLinkToken.findFirst({ where: { token } });

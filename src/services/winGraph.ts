@@ -840,6 +840,25 @@ export async function dismissWin(params: {
     return ok(undefined);
 }
 
+/**
+ * Undo a dismissal: back to `draft`, exactly where it was before. Nothing to
+ * reverse on the evidence side: a dismissed Win holds none (dismissWin
+ * un-confirms first), and restoring does not confirm.
+ */
+export async function restoreDismissedWin(params: { userId: string; winId: string }): Promise<Result<WinView>> {
+    const { userId, winId } = params;
+    const updated = await prisma.win.updateMany({
+        where: { id: winId, userId, status: WinStatus.dismissed },
+        data: { status: WinStatus.draft, dismissedReason: null },
+    });
+    if (updated.count === 0) {
+        const exists = await prisma.win.findFirst({ where: { id: winId, userId }, select: { status: true } });
+        if (!exists) return err('Win not found', 'not_found');
+        // Already restored (double undo): the state the user wants is the state it is in.
+    }
+    return getWinView(userId, winId);
+}
+
 // ═══════════════════════════════════════════ archive / unarchive / delete
 
 /**

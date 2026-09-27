@@ -26,6 +26,8 @@ export interface ConnectGithubPanelProps {
     onDefer?: () => void;
     connecting?: 'public' | 'full' | null;
     error?: string | null;
+    /** A way out of the error, e.g. "Open account settings" when GitHub isn't linked yet. */
+    errorAction?: { href: string; label: string } | null;
     className?: string;
 }
 
@@ -34,6 +36,7 @@ export function ConnectGithubPanel({
     onDefer,
     connecting = null,
     error = null,
+    errorAction = null,
     className,
 }: ConnectGithubPanelProps) {
     return (
@@ -42,7 +45,8 @@ export function ConnectGithubPanel({
                 <Github className="h-8 w-8" aria-hidden />
                 <h1 className="text-2xl font-medium">{GITHUB_CONSENT.heading}</h1>
                 <p className="text-balance text-muted-foreground">
-                    We read your merged pull requests and code reviews to draft your weekly wins.
+                    We read your merged pull requests and code reviews and draft them as wins for you to
+                    review. The first sync starts right away; after that it runs once a day.
                 </p>
             </header>
 
@@ -77,7 +81,19 @@ export function ConnectGithubPanel({
                 </Button>
             </div>
 
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {error ? (
+                <p className="text-sm text-destructive">
+                    {error}
+                    {errorAction ? (
+                        <>
+                            {' '}
+                            <a href={errorAction.href} className="font-medium underline underline-offset-4">
+                                {errorAction.label}
+                            </a>
+                        </>
+                    ) : null}
+                </p>
+            ) : null}
 
             {/* Refusal is not a dead end (§A2). */}
             {onDefer ? (

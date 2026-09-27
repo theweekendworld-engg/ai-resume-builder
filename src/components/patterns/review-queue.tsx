@@ -74,7 +74,22 @@ export interface ReviewQueueProps {
   onDismiss?: (win: WinRecord) => void | Promise<void>;
   onEdit?: (win: WinRecord, nextTitle: string) => void;
   onRecategorize?: (win: WinRecord, category: WinCategoryValue) => void;
-  onUndo?: (entry: { winId: string; action: UndoEntry['action'] }) => void;
+  /**
+   * Persist an undo. Carries what it restores (`previousCategory`,
+   * `previousTitle`), so the caller can write it back — without them an undo
+   * only ever changed the screen, never the record.
+   */
+  onUndo?: (entry: {
+    winId: string;
+    action: UndoEntry['action'];
+    previousCategory?: WinCategoryValue;
+    previousTitle?: string;
+  }) => void;
+  /**
+   * Bulk confirm in one call ("Confirm all"). When absent, bulk falls back to
+   * one `onConfirm` per row. Resolves with the ids that failed.
+   */
+  onConfirmMany?: (wins: WinRecord[]) => Promise<{ failed: { winId: string; error: string }[] }>;
   onOpen?: (win: WinRecord) => void;
   onMenuAction?: (win: WinRecord, action: WinCardMenuAction) => void;
   /** Fires once the completion state has dwelled and the block has unmounted. */
@@ -85,6 +100,23 @@ export interface ReviewQueueProps {
   /** Suppress toasts. Toasts are on by default; §7.2 specifies one per confirm. */
   toasts?: boolean;
   className?: string;
+}
+
+/**
+ * One bulk-confirm response → one settled result per row, in row order, so a
+ * single "Confirm all" call reports failures exactly where `Promise.allSettled`
+ * over N calls used to.
+ */
+export function settleBulkConfirm(
+  targetIds: readonly string[],
+  failed: readonly { winId: string; error: string }[],
+): PromiseSettledResult<undefined>[] {
+  const failedById = new Map(failed.map((entry) => [entry.winId, entry.error]));
+  return targetIds.map((id) =>
+    failedById.has(id)
+      ? { status: 'rejected' as const, reason: new Error(failedById.get(id)) }
+      : { status: 'fulfilled' as const, value: undefined },
+  );
 }
 
 /**
@@ -106,6 +138,7 @@ export function ReviewQueue({
   onEdit,
   onRecategorize,
   onUndo,
+  onConfirmMany,
   onOpen,
   onMenuAction,
   onDone,
@@ -291,7 +324,12 @@ export function ReviewQueue({
     setExiting(false);
     setActiveId(entry.winId);
     announce('Undone.');
-    onUndo?.({ winId: entry.winId, action: entry.action });
+    onUndo?.({
+      winId: entry.winId,
+      action: entry.action,
+      previousCategory: entry.previousCategory,
+      previousTitle: entry.previousTitle,
+    });
   }, [announce, onUndo]);
 
   const confirmRow = React.useCallback(
@@ -369,9 +407,20 @@ export function ReviewQueue({
       announce(`${kind === 'confirm' ? 'Confirming' : 'Dismissing'} ${targets.length} wins.`);
 
       const handler = kind === 'confirm' ? onConfirm : onDismiss;
-      const results = await Promise.allSettled(
-        targets.map((target) => Promise.resolve(handler?.(target)))
-      );
+      let results: PromiseSettledResult<unknown>[];
+      if (kind === 'confirm' && onConfirmMany) {
+        // One call for the whole screen, not N parallel confirms.
+        try {
+          const outcome = await onConfirmMany(targets);
+          results = settleBulkConfirm(targets.map((target) => target.id), outcome.failed);
+        } catch (error) {
+          results = targets.map(() => ({ status: 'rejected' as const, reason: error }));
+        }
+      } else {
+        results = await Promise.allSettled(
+          targets.map((target) => Promise.resolve(handler?.(target)))
+        );
+      }
 
       const nextStatuses: Record<string, RowStatus> = {};
       const nextErrors: Record<string, string> = {};
@@ -412,7 +461,7 @@ export function ReviewQueue({
           : `${ok} ${kind === 'confirm' ? 'logged' : 'dismissed'}, ${failed} failed. Retry from the row.`
       );
     },
-    [items, isActionable, announce, onConfirm, onDismiss, pushUndo]
+    [items, isActionable, announce, onConfirm, onConfirmMany, onDismiss, pushUndo]
   );
 
   const startEdit = React.useCallback(

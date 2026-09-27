@@ -591,10 +591,14 @@ describe('dispatch', () => {
         ).toBe(0);
     });
 
-    test('a user in a different local slot is not due', async () => {
+    test('a user whose digest day is later this week is not due yet', async () => {
+        const today = nowIsoWeekday();
+        // Sunday is the last ISO weekday: nothing is "later this week".
+        if (today === 7) return;
+        void nowUtcHour;
         const userId = await seedUser('not-due', {
-            digestDay: ((nowIsoWeekday() + 2) % 7) + 1,
-            digestHour: (nowUtcHour() + 5) % 24,
+            digestDay: today + 1,
+            digestHour: 16,
         });
         await enableFlagFor([userId]);
 

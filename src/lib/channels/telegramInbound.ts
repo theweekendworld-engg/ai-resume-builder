@@ -172,7 +172,7 @@ export async function handleTelegramScoutCallback(
         await say(chatId, 'Scout is not available on your account yet.');
         return true;
     }
-    const reply = await executeScoutAction(userId, action, deps);
+    const reply = await executeScoutAction(userId, action, deps, { channel: 'telegram' });
     if (reply.settled && messageId) {
         await editTelegramReplyMarkup({ chatId, messageId, rows: withoutSpentButtons(keyboard ?? [], data) });
     }

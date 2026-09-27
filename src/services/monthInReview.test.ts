@@ -260,11 +260,16 @@ describe('periods', () => {
         expect(previousPeriodFor('Etc/UTC', later)).toEqual(JULY);
     });
 
-    test('due only on the 1st, at the users own digest hour', () => {
+    // Day-level since 2026-09-27 (daily tick): the first local week of the
+    // month, any hour; the MonthlyReview unique keeps it to one per month.
+    test('due in the first local week of the month, at any hour', () => {
         const prefs = { timezone: 'America/New_York', digestHour: 9 };
         expect(isMonthInReviewDue(prefs, new Date('2026-08-01T13:00:00.000Z'))).toBe(true);
-        expect(isMonthInReviewDue(prefs, new Date('2026-08-01T14:00:00.000Z'))).toBe(false);
-        expect(isMonthInReviewDue(prefs, new Date('2026-08-02T13:00:00.000Z'))).toBe(false);
+        expect(isMonthInReviewDue(prefs, new Date('2026-08-01T14:00:00.000Z'))).toBe(true);
+        expect(isMonthInReviewDue(prefs, new Date('2026-08-07T13:00:00.000Z'))).toBe(true);
+        expect(isMonthInReviewDue(prefs, new Date('2026-08-08T13:00:00.000Z'))).toBe(false);
+        // 03:00Z on Aug 1 is still July 31 in New York: not yet due there.
+        expect(isMonthInReviewDue(prefs, new Date('2026-08-01T03:00:00.000Z'))).toBe(false);
     });
 });
 

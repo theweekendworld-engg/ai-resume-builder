@@ -104,7 +104,7 @@ export function EvidenceTicker() {
 
             <Reveal delay={120}>
                 <p className="mt-9 text-center text-xs text-muted-foreground/50">
-                    Example entries. Yours are drafted from your own merged pull requests.
+                    Example entries. Yours come from the wins you log.
                 </p>
             </Reveal>
         </section>

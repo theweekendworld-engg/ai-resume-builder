@@ -53,6 +53,7 @@ export default async function OpsPage() {
     }
 
     const breaches = snap.cost.filter((c) => c.breached);
+    const unhealthy = snap.health.filter((check) => !check.ok);
     const totalDead = snap.jobs.reduce((n, j) => n + j.dead, 0);
 
     return (
@@ -71,6 +72,25 @@ export default async function OpsPage() {
                     </Link>
                 </div>
             </header>
+
+            <Section title="Config health" hint="What the switched-on features need, by name. A failing check means users hit that failure.">
+                {unhealthy.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">All checks pass.</p>
+                ) : (
+                    <table className="w-full">
+                        <thead><tr><Th>Check</Th><Th>Impact</Th><Th>Set</Th></tr></thead>
+                        <tbody>
+                            {unhealthy.map((check) => (
+                                <tr key={check.id}>
+                                    <Td tone={check.severity === 'error' ? 'danger' : 'warning'}>{check.id}</Td>
+                                    <Td>{check.impact}</Td>
+                                    <Td tone="muted">{check.fix}</Td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
+            </Section>
 
             {(breaches.length > 0 || totalDead > 0) && (
                 <div className="mb-8 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm">

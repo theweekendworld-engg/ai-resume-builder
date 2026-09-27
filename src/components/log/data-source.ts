@@ -25,6 +25,7 @@ import type {
   ListEmployers,
   ListWins,
   LogSummary,
+  RestoreWin,
   StructuredDraft,
   StructureDraft,
   UnarchiveWin,
@@ -101,6 +102,8 @@ export interface LogDataSource {
   unconfirmWin: UnconfirmWin;
   updateWin: UpdateWin;
   dismissWin: DismissWin;
+  /** Undo a dismissal from the review queue. */
+  restoreWin: RestoreWin;
   bulkConfirm: BulkConfirm;
   createWinFromText: CreateWinFromText;
 
@@ -127,6 +130,7 @@ const fixtureDataSource: LogDataSource = {
   dismissWin: fixtures.dismissWin,
   bulkConfirm: fixtures.bulkConfirm,
   createWinFromText: fixtures.createWinFromText,
+  restoreWin: fixtures.restoreWin,
   structureDraft: fixtures.structureDraft,
   addImpact: fixtures.addImpact,
   archiveWin: fixtures.archiveWin,
@@ -175,7 +179,10 @@ const SYNC_STAGES: ProgressStage[] = [
  * calls in a `Promise.all`; the `scenario` argument is fixture-only and drops
  * out with the fixtures.
  */
-export async function loadLogSnapshot(scenario: LogScenario = 'default'): Promise<LogSnapshot> {
+export async function loadLogSnapshot(
+  scenario: LogScenario = 'default',
+  surface?: LogSurfaceState,
+): Promise<LogSnapshot> {
   const [pageResult, summaryResult, employerResult] = await Promise.all([
     logData.listWins({}, undefined, fixtures.FIXTURE_PAGE_SIZE),
     logData.getLogSummary(),
@@ -251,15 +258,19 @@ export async function loadLogSnapshot(scenario: LogScenario = 'default'): Promis
     };
   }
 
+  // Real data: the connector state comes from `CaptureSource` rows. It used
+  // to be hard-coded `sourceConnected: true`, which made the "Connect GitHub"
+  // first run unreachable for every new user (audit 2026-09-27, §G). The page
+  // passes the real surface in; fixtures keep their pinned demo state.
   return {
     page,
     summary,
-    surface: {
+    surface: surface ?? {
       sourceConnected: true,
       sync: { state: 'idle', lastSyncedAt: new Date('2026-07-31T16:02:00.000Z') },
       plan: 'free',
     },
     employers,
-    samples: [],
+    samples: surface && !surface.sourceConnected && page.items.length === 0 ? fixtures.sampleWins() : [],
   };
 }

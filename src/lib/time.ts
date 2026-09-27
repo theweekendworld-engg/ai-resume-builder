@@ -105,13 +105,23 @@ export function weekStartFor(tz: string, now: Date = new Date()): Date {
     return new Date(localMidnightAsUtc - offset * 60_000);
 }
 
-/** True when `now` falls in the user's configured digest slot. */
+/**
+ * True when the user's digest is due at this tick: their local weekday is ON
+ * OR AFTER their digest day in the current ISO week.
+ *
+ * Day-level, not hour-level. The tick is daily (Vercel Hobby), so matching an
+ * exact hour meant the default slot (Friday 16:00 UTC) was never due at a
+ * 03:xx UTC tick, and no digest could ever be sent. "On or after" means a
+ * missed tick is recovered the next day; the handler's one-digest-per-week
+ * unique (`WeeklyDigest(userId, weekStart)`) keeps it to one send.
+ * `digestHour` is kept in the signature for callers, and is informational.
+ */
 export function isDigestDue(
     prefs: { timezone: string; digestDay: number; digestHour: number },
     now: Date = new Date(),
 ): boolean {
     const p = zonedParts(now, prefs.timezone);
-    return p.weekday === prefs.digestDay && p.hour === prefs.digestHour;
+    return p.weekday >= prefs.digestDay;
 }
 
 /** Human-readable next slot, for the settings preview line. */

@@ -10,7 +10,7 @@ import {
   priceIdToTier,
   resolvePeriodEnd,
   slotForStripePriceId,
-  stripeConfigured,
+  stripeKeyConfigured,
   stripeCustomerId,
 } from '@/lib/stripe';
 import { track } from '@/lib/track';
@@ -129,7 +129,7 @@ async function applyPaymentFailure(invoice: Stripe.Invoice): Promise<void> {
 }
 
 export async function POST(req: NextRequest) {
-  if (!stripeConfigured() || !process.env.STRIPE_WEBHOOK_SECRET) {
+  if (!stripeKeyConfigured() || !process.env.STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Stripe webhook not configured' }, { status: 503 });
   }
 

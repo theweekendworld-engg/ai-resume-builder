@@ -9,6 +9,7 @@
  *   sc:s:<runId>:<statusCode>           move the job along the tracker
  *   sc:c:<winId>                        confirm a Work Log draft
  *   sc:x:<winId>                        dismiss a Work Log draft
+ *   sc:t:<runId>                        tailor a resume for the run's job
  *
  * Indexes and single-letter codes rather than values: an option value such as
  * "willing_to_relocate_case_by_case" would overflow the Telegram limit. The
@@ -21,6 +22,8 @@ import type { DraftFormat, DraftTarget, FitData, JdData, OutreachDraft, ScoutRun
 import type { DraftFormatCode, DraftTargetCode, JobStatusCode, Line, ScoutAction } from '@/lib/channels/types';
 import { JOB_ACTION_LABELS, type JobAction, type JobBoardItem } from '@/lib/inbox/types';
 import type { Result } from '@/lib/result';
+import type { TailorStart } from '@/services/tailor';
+import { config } from '@/lib/config';
 
 export const SCOUT_ACTION_PREFIX = 'sc:';
 
@@ -54,7 +57,8 @@ export type DecodedScoutAction =
     | { kind: 'refresh'; runId: string }
     | { kind: 'status'; runId: string; status: JobAction }
     | { kind: 'confirm_win'; winId: string }
-    | { kind: 'dismiss_win'; winId: string };
+    | { kind: 'dismiss_win'; winId: string }
+    | { kind: 'tailor'; runId: string };
 
 export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { kind: 'open' }>): string {
     switch (action.kind) {
@@ -72,6 +76,8 @@ export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { 
             return `sc:c:${action.winId}`;
         case 'dismiss_win':
             return `sc:x:${action.winId}`;
+        case 'tailor':
+            return `sc:t:${runId}`;
     }
 }
 
@@ -103,6 +109,8 @@ export function decodeScoutAction(data: string): DecodedScoutAction | null {
             return { kind: 'confirm_win', winId: id };
         case 'x':
             return { kind: 'dismiss_win', winId: id };
+        case 't':
+            return { kind: 'tailor', runId: id };
         default:
             return null;
     }
@@ -124,6 +132,9 @@ export type ScoutActionDeps = {
     setJobStatus: (userId: string, ref: { runId: string } | { workspaceId: string }, action: JobAction) => Promise<Result<JobBoardItem>>;
     confirmWinForUser: (userId: string, winId: string) => Promise<Result<{ winId: string; title: string }>>;
     dismissWinForUser: (userId: string, winId: string) => Promise<Result<void>>;
+    tailorResumeForRun: (userId: string, runId: string, channel: 'web' | 'telegram' | 'whatsapp') => Promise<Result<TailorStart>>;
+    /** The next unanswered clarification of a generation session, or null. */
+    nextGenerationQuestion: (userId: string, sessionId: string) => Promise<string | null>;
 };
 
 /**
@@ -140,12 +151,16 @@ function text(value: string): Line {
 }
 
 async function defaultDeps(): Promise<ScoutActionDeps> {
-    const [service, inbox, wins] = await Promise.all([
+    const [service, inbox, wins, tailor, generation] = await Promise.all([
         import('@/services/scout'),
         import('@/services/careerInbox'),
         import('@/services/wins'),
+        import('@/services/tailor'),
+        import('@/lib/channels/generationQuestion'),
     ]);
     return {
+        tailorResumeForRun: tailor.tailorResumeForRun,
+        nextGenerationQuestion: generation.nextGenerationQuestion,
         getScoutRun: service.getScoutRun,
         answerScoutQuestion: service.answerScoutQuestion,
         draftScoutOutreach: service.draftScoutOutreach,
@@ -191,6 +206,7 @@ export async function executeScoutAction(
     userId: string,
     action: DecodedScoutAction,
     deps?: ScoutActionDeps,
+    context: { channel: 'telegram' | 'whatsapp' } = { channel: 'telegram' },
 ): Promise<ScoutActionReply> {
     const svc = deps ?? (await defaultDeps());
 
@@ -245,7 +261,68 @@ export async function executeScoutAction(
             if (!dismissed.success) return { lines: [text(dismissed.error)] };
             return { lines: [text('Dismissed. It will not appear in your Work Log.')], settled: true };
         }
+        case 'tailor':
+            return tailorReply(userId, action.runId, svc, context.channel);
     }
+}
+
+/** The one link that unblocks a refused generation. */
+export function nextStepFor(code: string | undefined): ScoutAction | null {
+    const app = config.app.url.replace(/\/$/, '');
+    if (code === 'entitlement_required') return { kind: 'open', label: 'See plans', url: `${app}/settings/plan` };
+    if (code === 'no_base_resume' || code === 'empty_profile') {
+        return { kind: 'open', label: 'Add your resume', url: `${app}/dashboard?section=profile` };
+    }
+    return null;
+}
+
+/**
+ * "✍️ Tailor resume": the job's JD is already stored, so no copy-paste.
+ * The finished resume arrives through the generation notifier; a question the
+ * generator needs first is asked right here, and answered by replying.
+ */
+async function tailorReply(
+    userId: string,
+    runId: string,
+    svc: ScoutActionDeps,
+    channel: 'telegram' | 'whatsapp',
+): Promise<ScoutActionReply> {
+    const started = await svc.tailorResumeForRun(userId, runId, channel);
+    if (!started.success) {
+        // Every refusal gets the way forward, keyed on the service's code, not its wording.
+        const next = nextStepFor(started.code);
+        return { lines: [text(started.error)], actions: next ? [next] : undefined, runId };
+    }
+    const run = await svc.getScoutRun(userId, runId);
+    const label = run.success ? jobLabelFromView(run.data) : 'this job';
+
+    if (started.data.status === 'completed') {
+        const url = started.data.resumeId ? `${config.app.url}/editor/${started.data.resumeId}` : null;
+        return {
+            lines: [text(`Your resume for ${label} is ready.`)],
+            actions: url ? [{ kind: 'open', label: 'Open resume', url }] : undefined,
+            runId,
+        };
+    }
+    if (started.data.status === 'awaiting_clarification') {
+        const question = started.data.nextQuestion?.question
+            ?? await svc.nextGenerationQuestion(userId, started.data.sessionId);
+        if (channel === 'whatsapp') {
+            return {
+                lines: [text(`Tailoring your resume for ${label}. One detail first: answer it in Patronus.`)],
+                actions: [{ kind: 'open', label: 'Answer in Patronus', url: `${config.app.url}/build` }],
+                runId,
+            };
+        }
+        return {
+            lines: [
+                text(`Tailoring your resume for ${label}. One detail first:`),
+                [{ text: question ?? 'Reply with anything the job asks for that your record does not show yet.', bold: true }],
+                [{ text: 'Reply here, or send "skip all" to go ahead without.', italic: true }],
+            ],
+        };
+    }
+    return { lines: [text(`Tailoring your resume for ${label}. I will send it here when it is ready, usually within a minute.`)] };
 }
 
 /** A job's short label from a run view, for replies that have no board item. */

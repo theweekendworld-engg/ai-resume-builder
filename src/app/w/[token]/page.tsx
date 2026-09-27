@@ -7,26 +7,27 @@ import { getAppUrl } from '@/lib/email/send';
 import { track } from '@/lib/track';
 import { prisma } from '@/lib/prisma';
 import {
-    applyDigestAction,
     resolveWinToken,
     verifyWinToken,
     type ApplyOutcome,
     type ResolveFailureReason,
 } from '@/lib/winTokens';
 import { UndoForm } from '@/components/notifications/UndoForm';
+import { ApplyLinkForm } from '@/components/notifications/ApplyLinkForm';
 
 /**
  * `/w/[token]` — the magic-link landing (design/02 §K4, PRD 01 §9.3).
  *
- * Logged out, mobile first, one screen. The 20-second promise depends on this
- * page doing the write itself: by the time it paints, the Win is already logged.
+ * Logged out, mobile first, one screen: the Win and ONE button.
  *
- * A GET that mutates is unusual and deliberate — an email button cannot POST.
- * The consequences are handled in `src/lib/winTokens.ts`: the action is
- * recorded in a ledger, so a mail-client prefetch, a double tap and a refresh
- * all converge on the same state and the same page.
+ * The GET writes nothing. It used to perform the confirm itself, which was
+ * safe only while the route was (accidentally) behind the login wall. Public,
+ * every mail-security scanner that opens links would confirm Wins nobody
+ * tapped, and confirming writes Evidence (CLAUDE.md rule 5). The tap calls
+ * `applyFromDigestLink`, which re-verifies the token; the ledger in
+ * `src/lib/winTokens.ts` still makes a double tap converge.
  *
- * `force-dynamic` because a cached render would be a cached mutation.
+ * `force-dynamic`: the page reflects the Win's current state.
  */
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -112,18 +113,27 @@ export default async function MagicLinkPage({
         redirect(`${appUrl}/log?win=${encodeURIComponent(win.id)}&src=digest`);
     }
 
-    const outcome = await applyDigestAction(resolved.resolved, { surface: 'email' });
-
-    if (outcome.outcome === 'failed') {
+    // Already done (in the app, or an earlier tap)? Say so, with undo.
+    // Otherwise show the Win and the one button that performs the action.
+    const action = payload.action === 'dismiss' ? 'dismiss' : 'confirm';
+    const alreadyDone = (action === 'confirm' && win.status === WinStatus.confirmed)
+        || (action === 'dismiss' && win.status === WinStatus.dismissed);
+    if (!alreadyDone && query.undone !== '1') {
         return (
-            <Shell headline="That did not save" tone="neutral">
-                <p className="text-sm text-muted-foreground">{outcome.error}</p>
+            <Shell headline={action === 'confirm' ? 'Log this win?' : 'Not a win?'} tone="neutral">
+                <p className="mt-3 text-balance text-lg font-medium leading-snug text-foreground">{win.title}</p>
+                <ApplyLinkForm token={token} action={action} />
                 <LogLink appUrl={appUrl} />
             </Shell>
         );
     }
 
-    const undone = query.undone === '1' || outcome.outcome === 'undone';
+    const outcome: Exclude<ApplyOutcome, { outcome: 'failed' }> = {
+        outcome: 'already_done',
+        action,
+        win: { id: win.id, title: win.title, status: win.status },
+    };
+    const undone = query.undone === '1';
     const view = describeOutcome(outcome, undone);
 
     return (
@@ -190,7 +200,7 @@ function describeOutcome(
                 : 'You already told us this was not a win.'
             : confirmed
               ? null
-              : "We won't draft anything like it again.",
+              : 'It will not show up in your log.',
         canUndo: true,
     };
 }

@@ -16,7 +16,8 @@
 
 import { matchAnswer } from '@/lib/channels/answerMatch';
 import { Channel } from '@prisma/client';
-import { consumeChannelLinkToken } from '@/actions/channelIdentity';
+import { consumeChannelLinkToken, describeAccount, unlinkChatByExternalId } from '@/actions/channelIdentity';
+import { UNLINK_CONFIRM, alreadyLinkedText, conflictText, linkedText, notLinkedText, unlinkedText } from '@/lib/channels/linkCopy';
 import { config } from '@/lib/config';
 import { classifyInbound, startFailureText, TINY_HELP } from '@/lib/channels/inbound';
 import { parseInboxCommand, renderInboxCommand } from '@/lib/channels/inboxCommands';
@@ -54,15 +55,38 @@ export async function processWhatsAppMessage(message: WhatsAppInbound): Promise<
     const link = LINK_COMMAND.exec(text);
     if (link) {
         const result = await consumeChannelLinkToken({ channel: Channel.whatsapp, token: link[1].toLowerCase(), externalId: to });
-        await say(to, result.success
-            ? 'WhatsApp linked. Send me any LinkedIn job or post link and I will analyse it.'
-            : `Link failed: ${result.error ?? 'unknown error'}. Generate a new link from ${dashboardUrl()}`);
+        if (result.success) {
+            await say(to, linkedText(await describeAccount(result.userId ?? ''), { bare: true }));
+        } else if (result.code === 'linked_to_other' && result.otherUserId) {
+            await say(to, conflictText({ otherAccount: await describeAccount(result.otherUserId), app: 'WhatsApp', unlinkCommand: '"unlink"' }));
+        } else {
+            const current = await linkedUserId(to);
+            await say(to, current
+                ? alreadyLinkedText(await describeAccount(current))
+                : `That link did not work: ${result.error ?? 'unknown error'}. Get a fresh one at ${dashboardUrl()}`);
+        }
+        return;
+    }
+
+    // Unlink needs a second word to confirm: WhatsApp replies cannot carry
+    // a button on this path, and unlinking by accident is worse than one
+    // extra word.
+    if (/^unlink$/i.test(text)) {
+        const current = await linkedUserId(to);
+        await say(to, current
+            ? `${UNLINK_CONFIRM}\n\nLinked to: ${await describeAccount(current)}\n\nReply "unlink yes" to confirm.`
+            : 'This number is not linked to Patronus.');
+        return;
+    }
+    if (/^unlink\s+yes$/i.test(text)) {
+        const { removed } = await unlinkChatByExternalId(Channel.whatsapp, to);
+        await say(to, removed > 0 ? unlinkedText(dashboardUrl()) : 'This number is not linked to Patronus.');
         return;
     }
 
     const userId = await linkedUserId(to);
     if (!userId) {
-        await say(to, `This WhatsApp number is not linked to Patronus yet. Link it here: ${dashboardUrl()}`);
+        await say(to, notLinkedText(dashboardUrl(), 'WhatsApp'));
         return;
     }
 
@@ -77,7 +101,7 @@ export async function processWhatsAppMessage(message: WhatsAppInbound): Promise<
         if (action) {
             // WhatsApp cannot edit a sent message, so spent buttons stay on
             // screen; a second tap is safe because confirm is idempotent.
-            const reply = await executeScoutAction(userId, action, deps);
+            const reply = await executeScoutAction(userId, action, deps, { channel: 'whatsapp' });
             if (reply.actions?.length) {
                 await sendWhatsAppRich(to, { lines: reply.lines, actions: reply.actions }, reply.runId ?? 'none', 'Update it later:');
             } else {

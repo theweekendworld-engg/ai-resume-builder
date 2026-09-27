@@ -14,7 +14,7 @@ import { auth } from '@clerk/nextjs/server';
 import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { parseJobDescription } from '@/actions/generateResume';
-import { gateMeteredAction, isEntitlementError } from '@/lib/entitlements';
+import { gateMeteredAction, isEntitlementError, refundMeteredAction } from '@/lib/entitlements';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
@@ -31,7 +31,30 @@ type ClarificationPayload = {
   questions: ClarificationQuestion[];
   answers: Record<string, string>;
   gaps: string[];
+  /**
+   * The unit is waived for this session (a regeneration of a recent one).
+   * Carried here because the charge happens when generation STARTS, which for
+   * a session with questions is in `continueSession`, long after the decision.
+   */
+  free?: boolean;
 };
+
+/** Where `continueSession` appends the answers to the JD. */
+export const CLARIFICATION_MARKER = '\n\nCandidate clarifications (verified user input):';
+
+/**
+ * The job description as the user wrote it, without the clarification block
+ * the pipeline appended. The editor used to reload the enriched text, so the
+ * user saw their own answers pasted into the posting.
+ */
+export function stripClarificationBlock(jobDescription: string): string {
+  const index = jobDescription.indexOf(CLARIFICATION_MARKER);
+  return index >= 0 ? jobDescription.slice(0, index) : jobDescription;
+}
+
+/** A free regeneration is allowed for this many copies of one posting in a day. */
+export const FREE_REGEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const FREE_REGEN_MAX_PER_WINDOW = 3;
 
 const ChannelGenerateSchema = z.object({
   sessionId: z.string().cuid().optional(),
@@ -56,6 +79,12 @@ const ChannelGenerateSchema = z.object({
    */
   skip: z.boolean().optional(),
   skipAll: z.boolean().optional(),
+  /**
+   * Regenerate from an earlier session of the SAME user. Within 24h, and at
+   * most `FREE_REGEN_MAX_PER_WINDOW` copies of that posting, the new session
+   * is not charged: redoing a result you did not like is not a second job.
+   */
+  regenerateOfSessionId: z.string().cuid().optional(),
 })
   // A message is still required for everything that is not a skip — the
   // opening request carries the job description, and answering a question
@@ -77,6 +106,12 @@ export type ChannelGenerateResponse = {
   pdfId?: string;
   pdfUrl?: string;
   error?: string;
+  /**
+   * Machine-readable reason on failure: `entitlement_required`,
+   * `empty_profile`, `enqueue_failed`, `not_found`. Lets each surface show
+   * the right next step (a plan link, an upload CTA) instead of raw text.
+   */
+  code?: string;
 };
 
 function normalizeText(value: string): string {
@@ -138,7 +173,7 @@ function readClarificationPayload(value: Prisma.JsonValue | null): Clarification
     ? obj.gaps.filter((value): value is string => typeof value === 'string')
     : [];
 
-  return { questions, answers, gaps };
+  return { questions, answers, gaps, ...(obj.free === true ? { free: true } : {}) };
 }
 
 function buildClarificationContext(payload: ClarificationPayload): string {
@@ -243,6 +278,103 @@ async function buildGenerationContextText(params: {
   };
 }
 
+/**
+ * Is there anything to tailor FROM? A user who skipped history in onboarding
+ * and pasted a JD used to spend one of ten free generations on a resume built
+ * from nothing (audit 2026-09-27, D). Checked before any charge.
+ */
+export async function hasGenerationContext(userId: string, fallbackResumeData?: ResumeData): Promise<boolean> {
+  if (fallbackResumeData && (fallbackResumeData.experience?.length || fallbackResumeData.projects?.length)) return true;
+  const [experiences, projects, resumes] = await Promise.all([
+    prisma.userExperience.count({ where: { userId } }),
+    prisma.userProject.count({ where: { userId } }),
+    prisma.resume.count({ where: { userId, NOT: { content: { equals: Prisma.DbNull } } } }),
+  ]);
+  return experiences + projects + resumes > 0;
+}
+
+type Enqueuer = (sessionId: string, options?: { force?: boolean }) => Promise<unknown>;
+let enqueuer: Enqueuer = enqueueGenerationSession;
+
+/**
+ * Test seam. The local queue runs the real pipeline on a detached timer, which
+ * in a test would fire model and LaTeX calls after the test has finished.
+ */
+export const __testing = {
+  setEnqueuer(next: Enqueuer | null) {
+    enqueuer = next ?? enqueueGenerationSession;
+  },
+};
+
+type Charge = { ok: true } | { ok: false; error: string; code: string };
+
+/** One `tailored_generation` unit, or the plan's own refusal. */
+async function chargeGeneration(userId: string): Promise<Charge> {
+  try {
+    await gateMeteredAction(userId, 'tailored_generation');
+    return { ok: true };
+  } catch (error: unknown) {
+    if (isEntitlementError(error)) return { ok: false, error: error.message, code: 'entitlement_required' };
+    throw error;
+  }
+}
+
+async function refundGeneration(userId: string, reason: string): Promise<void> {
+  await refundMeteredAction(userId, 'tailored_generation', { reason }).catch((error: unknown) => {
+    console.error('[channelGenerate] refund failed', { userId, reason, error: String(error) });
+  });
+}
+
+/**
+ * Hand a session to the queue, and undo the charge if that fails: the user
+ * must never pay for a generation that did not start.
+ */
+async function enqueueCharged(params: {
+  userId: string;
+  sessionId: string;
+  charged: boolean;
+  force?: boolean;
+}): Promise<ChannelGenerateResponse> {
+  try {
+    await enqueuer(params.sessionId, params.force ? { force: true } : undefined);
+    return { success: true, sessionId: params.sessionId, status: 'generating' };
+  } catch (error: unknown) {
+    if (params.charged) await refundGeneration(params.userId, 'generation_enqueue_failed');
+    await prisma.generationSession.updateMany({
+      where: { id: params.sessionId, userId: params.userId },
+      data: {
+        status: GenerationStatus.failed,
+        errorMessage: error instanceof Error ? error.message : 'Failed to start generation',
+      },
+    });
+    return {
+      success: false,
+      sessionId: params.sessionId,
+      code: 'enqueue_failed',
+      error: 'Could not start the generation. Nothing was charged — try again in a minute.',
+    };
+  }
+}
+
+/** Free when regenerating one of the user's own sessions from the last day. */
+async function isFreeRegeneration(userId: string, seedSessionId: string | undefined): Promise<boolean> {
+  if (!seedSessionId) return false;
+  const seed = await prisma.generationSession.findFirst({
+    where: { id: seedSessionId, userId },
+    select: { createdAt: true, jobDescription: true },
+  });
+  if (!seed) return false;
+  const since = new Date(Date.now() - FREE_REGEN_WINDOW_MS);
+  if (seed.createdAt < since) return false;
+  const baseJd = stripClarificationBlock(seed.jobDescription);
+  const recent = await prisma.generationSession.findMany({
+    where: { userId, createdAt: { gte: since } },
+    select: { jobDescription: true },
+  });
+  const sameJob = recent.filter((session) => stripClarificationBlock(session.jobDescription) === baseJd).length;
+  return sameJob < FREE_REGEN_MAX_PER_WINDOW;
+}
+
 async function resolveUserId(params: {
   userId?: string;
   channel: Channel;
@@ -280,17 +412,31 @@ async function startNewSession(params: {
   sourceResumeId?: string;
   fallbackResumeData?: ResumeData;
   maxQuestions: number;
+  /** The tracked job this generation is for (Scout / tracker). Owner-checked. */
+  workspaceId?: string;
+  /** Waive the unit (a recent regeneration). */
+  free?: boolean;
 }): Promise<ChannelGenerateResponse> {
-  // Entitlement gate: one tailored-generation unit per initiated generation.
-  try {
-    await gateMeteredAction(params.userId, 'tailored_generation');
-  } catch (error: unknown) {
-    if (isEntitlementError(error)) {
-      return { success: false, error: error.message };
-    }
-    throw error;
+  // Nothing to tailor from: say so BEFORE anything is charged or parsed.
+  if (!(await hasGenerationContext(params.userId, params.fallbackResumeData))) {
+    return {
+      success: false,
+      code: 'empty_profile',
+      error: 'Add your experience first: upload your resume or add a role to your profile, so there is something real to tailor.',
+    };
   }
 
+  // A workspace id is only honoured when it is the caller's own.
+  const workspaceId = params.workspaceId
+    ? (await prisma.applicationWorkspace.findFirst({
+      where: { id: params.workspaceId, userId: params.userId },
+      select: { id: true },
+    }))?.id
+    : undefined;
+
+  // Charged when generation STARTS, not when it is requested. A session with
+  // questions is charged in `continueSession`, once they are answered or
+  // skipped, so abandoning at the questions costs nothing (audit §F).
   const [parsedJD, context] = await Promise.all([
     parseJobDescription({
       jobDescription: params.message,
@@ -315,6 +461,7 @@ async function startNewSession(params: {
     data: {
       userId: params.userId,
       sourceResumeId: params.sourceResumeId,
+      workspaceId,
       channel: params.channel,
       jobDescription: params.message,
       parsedJD: parsedJD as Prisma.InputJsonValue,
@@ -325,6 +472,7 @@ async function startNewSession(params: {
         questions,
         answers: {},
         gaps,
+        ...(params.free ? { free: true } : {}),
       } as Prisma.InputJsonValue,
       currentStep: PipelineStep.reuse_check,
       stepStartedAt: new Date(),
@@ -343,20 +491,17 @@ async function startNewSession(params: {
     };
   }
 
-  try {
-    await enqueueGenerationSession(session.id);
-    return {
-      success: true,
-      sessionId: session.id,
-      status: 'generating',
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      sessionId: session.id,
-      error: error instanceof Error ? error.message : 'Failed to generate resume',
-    };
+  if (!params.free) {
+    const charge = await chargeGeneration(params.userId);
+    if (!charge.ok) {
+      await prisma.generationSession.update({
+        where: { id: session.id },
+        data: { status: GenerationStatus.failed, errorMessage: charge.error },
+      });
+      return { success: false, sessionId: session.id, error: charge.error, code: charge.code };
+    }
   }
+  return enqueueCharged({ userId: params.userId, sessionId: session.id, charged: !params.free });
 }
 
 async function continueSession(params: {
@@ -464,6 +609,33 @@ async function continueSession(params: {
   const clarificationContext = buildClarificationContext(mergedPayload);
   const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;
 
+  // Claim the transition with a conditional update: two submits of the last
+  // answer (a double tap, a Telegram retry) start — and charge — once.
+  const claimed = await prisma.generationSession.updateMany({
+    where: { id: session.id, status: GenerationStatus.awaiting_clarification },
+    data: { status: GenerationStatus.generating },
+  });
+  if (claimed.count === 0) {
+    return { success: true, sessionId: session.id, status: 'generating' };
+  }
+
+  // The unit is charged here: generation is about to start.
+  if (!mergedPayload.free) {
+    const charge = await chargeGeneration(params.userId);
+    if (!charge.ok) {
+      // Put the session back where it was, so the answers are not lost and
+      // the user can continue after upgrading.
+      await prisma.generationSession.update({
+        where: { id: session.id },
+        data: {
+          status: GenerationStatus.awaiting_clarification,
+          clarifications: payload as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return { success: false, sessionId: session.id, error: charge.error, code: charge.code };
+    }
+  }
+
   await prisma.generationSession.update({
     where: { id: session.id },
     data: {
@@ -481,20 +653,7 @@ async function continueSession(params: {
     },
   });
 
-  try {
-    await enqueueGenerationSession(session.id, { force: true });
-    return {
-      success: true,
-      sessionId: session.id,
-      status: 'generating',
-    };
-  } catch (error: unknown) {
-    return {
-      success: false,
-      sessionId: session.id,
-      error: error instanceof Error ? error.message : 'Failed to generate resume after clarifications',
-    };
-  }
+  return enqueueCharged({ userId: params.userId, sessionId: session.id, charged: !mergedPayload.free, force: true });
 }
 
 export async function processChannelGenerate(input: unknown): Promise<ChannelGenerateResponse> {
@@ -539,5 +698,31 @@ export async function processChannelGenerate(input: unknown): Promise<ChannelGen
     sourceResumeId: parsed.data.sourceResumeId,
     fallbackResumeData: parsed.data.fallbackResumeData as ResumeData | undefined,
     maxQuestions: parsed.data.maxQuestions,
+    free: await isFreeRegeneration(userId, parsed.data.regenerateOfSessionId),
+  });
+}
+
+/**
+ * Start a generation for a user the CALLER has already established, linked to
+ * a tracked job. For `src/services/tailor.ts`; never reachable from a request
+ * without that caller's own authentication.
+ */
+export async function startGenerationForUser(params: {
+  userId: string;
+  channel: Channel;
+  message: string;
+  sourceResumeId: string;
+  workspaceId: string;
+  fallbackResumeData?: ResumeData;
+  maxQuestions?: number;
+}): Promise<ChannelGenerateResponse> {
+  return startNewSession({
+    userId: params.userId,
+    channel: params.channel,
+    message: params.message,
+    sourceResumeId: params.sourceResumeId,
+    workspaceId: params.workspaceId,
+    fallbackResumeData: params.fallbackResumeData,
+    maxQuestions: params.maxQuestions ?? 3,
   });
 }

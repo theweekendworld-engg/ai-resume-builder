@@ -1,6 +1,8 @@
 import Link from 'next/link';
-import { ArrowRight, Check, ChevronDown, GitPullRequest } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Link2 } from 'lucide-react';
+import { freeResumeCap } from '@/lib/plans';
 import { cn } from '@/lib/utils';
+import { START_FREE_HREF } from './links';
 import { marketingContainer, marketingType } from './Section';
 import { Ambience, Reveal } from './Reveal';
 
@@ -92,9 +94,10 @@ export function Hero() {
 
                 <Reveal delay={160}>
                     <p className={cn(marketingType.lead, 'mx-auto mt-7 max-w-2xl')}>
-                        Every other tool writes your resume from a blank page and your memory. This
-                        one assembles it from work you logged and confirmed — so each line traces
-                        back to something real, and{' '}
+                        Check your resume free and get a fix list. Fix it in the editor, then tailor
+                        it to any job by pasting the posting in. Log your wins in a sentence as they
+                        happen, and the next resume draws on them — each line traces back to
+                        something you confirmed, and{' '}
                         <span className="font-semibold text-foreground">nothing is invented.</span>
                     </p>
                 </Reveal>
@@ -115,15 +118,15 @@ export function Hero() {
                         Check your resume — free
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>
-                    <Link href="/sign-up?redirect_url=/build" className="mk-btn-ghost w-full sm:w-auto">
-                        Build one from your work
+                    <Link href={START_FREE_HREF} className="mk-btn-ghost w-full sm:w-auto">
+                        Start free
                     </Link>
                 </Reveal>
 
                 <Reveal delay={320}>
                     <p className="mx-auto mt-7 max-w-lg text-[13px] leading-relaxed text-muted-foreground/70">
-                        No sign-up to check · 10 tailored resumes free · Never sold, never used to
-                        train anything
+                        No sign-up to check · {freeResumeCap()} tailored resumes free · Never sold,
+                        never used to train anything
                     </p>
                 </Reveal>
 
@@ -163,7 +166,7 @@ export function Hero() {
                                         />
                                         <span>you confirmed this</span>
                                         <span aria-hidden>·</span>
-                                        <GitPullRequest className="h-3 w-3" aria-hidden />
+                                        <Link2 className="h-3 w-3" aria-hidden />
                                         <span>{line.source}</span>
                                     </p>
                                 </li>

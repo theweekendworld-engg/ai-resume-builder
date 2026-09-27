@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { ArrowRight, BarChart3, Chrome, FileText, ListChecks, Repeat2 } from 'lucide-react';
+import { ArrowRight, BarChart3, FileText, ListChecks, Repeat2, ScanSearch } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
 import { Reveal } from './Reveal';
+import { START_FREE_HREF } from './links';
 
 /**
  * What the log turns into.
@@ -16,36 +17,50 @@ import { Reveal } from './Reveal';
  * order of how impressive each one is.
  */
 
-const PAYOFFS = [
+/**
+ * `soon` = built, not yet switched on for a new user. Those cards stay on the
+ * page, because they are where the record is going, but they say so. Before
+ * 2026-09-27 every one of them read as a shipped feature (audit, flow A).
+ */
+export const PAYOFFS: ReadonlyArray<{
+    icon: typeof FileText;
+    title: string;
+    body: string;
+    proof: string;
+    soon?: boolean;
+}> = [
+    {
+        icon: ScanSearch,
+        title: 'A resume check with the fixes spelled out',
+        body: 'Upload your resume and get a score with a prioritised list of what to change — no account needed. Sign up to fix it in the editor.',
+        proof: 'The same coverage analysis the paid product uses.',
+    },
+    {
+        icon: BarChart3,
+        title: 'A resume assembled from evidence',
+        body: 'Paste any job posting and get a version tailored to it, built from your history and the wins you logged instead of a blank page — then scored for ATS parsing before you send it.',
+        proof: 'Numbers are copied from your record, never generated.',
+    },
     {
         icon: FileText,
         title: 'Review and promotion packets',
         body: 'Six or twelve months of confirmed wins, grouped into themes and written into a document you can hand to a manager. Every line traces back to a win you confirmed.',
         proof: 'Free plan includes a brag doc; paid plans add performance-review and promotion formats.',
+        soon: true,
     },
     {
         icon: ListChecks,
         title: 'Level readiness',
-        body: 'Upload your company’s leveling rubric and see your wins mapped against it — including the competencies where the evidence is thin.',
+        body: 'Paste your company’s leveling rubric and see your wins mapped against it — including the competencies where the evidence is thin.',
         proof: '“One instance of cross-team influence in eight months” is a more useful sentence than a score.',
+        soon: true,
     },
     {
         icon: Repeat2,
         title: 'A weekly ritual that maintains itself',
-        body: 'A short digest of what we noticed, and a monthly review written only from what you confirmed. If a paragraph cannot be grounded in the log, it is dropped rather than padded.',
+        body: 'A short weekly digest of what we noticed, and a monthly review written only from what you confirmed. If a paragraph cannot be grounded in the log, it is dropped rather than padded.',
         proof: 'Nothing is generated about a month you did not log.',
-    },
-    {
-        icon: BarChart3,
-        title: 'A resume assembled from evidence',
-        body: 'When you do search, the resume is built from dated, evidence-linked wins instead of a blank page and your memory — then scored for ATS parsing before you send it.',
-        proof: 'Tools that only show up at search time start from nothing.',
-    },
-    {
-        icon: Chrome,
-        title: 'Apply without retyping',
-        body: 'The browser extension fills applications from your profile, drafts the long-form answers, and remembers them — so the second time a form asks why you want to work somewhere, it is already answered.',
-        proof: 'Saved answers match by meaning, not exact wording.',
+        soon: true,
     },
 ];
 
@@ -89,6 +104,11 @@ export function Features() {
                             </span>
                             <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {item.title}
+                                {item.soon ? (
+                                    <span className="ml-2 align-middle rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                        Coming soon
+                                    </span>
+                                ) : null}
                             </h3>
                             <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                                 {item.body}
@@ -117,7 +137,7 @@ export function Features() {
                         Keeping a log is free, permanently. The payoffs are there when you need
                         them.
                     </p>
-                    <Link href="/sign-up?redirect_url=/build" className="mk-btn group mt-6">
+                    <Link href={START_FREE_HREF} className="mk-btn group mt-6">
                         Start free
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>

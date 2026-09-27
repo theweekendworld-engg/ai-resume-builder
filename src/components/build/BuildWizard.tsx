@@ -16,6 +16,17 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
+import { ResumeUploadZone } from '@/components/resume-import/ResumeUploadZone';
+import { getProfileReadinessState, startOnboardingFromUpload } from '@/actions/onboarding';
+import type { ParsedResumeData } from '@/lib/aiSchemas';
+
+/**
+ * A plan-limit refusal reads like "You've used all 10 Tailored resumes on Free
+ * — Career continues them." It deserves a way forward, not just red text.
+ */
+function isPlanLimitMessage(message: string): boolean {
+  return /\b(on free|career continues|search continues|upgrade|your plan|plan limit|continues them)\b/i.test(message);
+}
 import { toast } from 'sonner';
 
 type StreamDetails = {
@@ -79,6 +90,10 @@ export function BuildWizard() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Never generate against an empty profile: the resume would have nothing
+  // true in it and it would spend a free tailored resume (audit 2026-09-27, D).
+  const [readiness, setReadiness] = useState<'unknown' | 'ready' | 'empty'>('unknown');
+  const [addingHistory, setAddingHistory] = useState(false);
   const [currentStep, setCurrentStep] = useState<PipelineStepId | null>(null);
   const [stepDetails, setStepDetails] = useState<StreamDetails | null>(null);
   const [atsEstimate, setAtsEstimate] = useState<number | null>(null);
@@ -158,6 +173,32 @@ export function BuildWizard() {
   useEffect(() => {
     setPendingImport(readPendingScore());
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    void getProfileReadinessState().then((result) => {
+      if (!mounted) return;
+      setReadiness(result.success && !result.data.hasHistory ? 'empty' : 'ready');
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const onHistoryUploaded = async (parsed: ParsedResumeData) => {
+    setAddingHistory(true);
+    const result = await startOnboardingFromUpload(parsed);
+    setAddingHistory(false);
+    if (!result.success) {
+      toast.error(result.error ?? 'Could not read that resume.');
+      return;
+    }
+    setReadiness('ready');
+    const roles = result.data.outcome.experiences;
+    toast.success(roles > 0 ? `Added ${roles} role${roles === 1 ? '' : 's'} to your history.` : 'Added your resume.', {
+      description: 'Now paste the job description and we will tailor it.',
+    });
+  };
 
   const startResumeImport = () => {
     if (!pendingImport || importing) return;
@@ -301,6 +342,10 @@ export function BuildWizard() {
     const trimmed = jobDescription.trim();
     if (!trimmed) {
       toast.error('Paste a job description to continue.');
+      return;
+    }
+    if (readiness === 'empty' && !syncGitHub) {
+      toast.error('Add your work history first: upload your resume above.');
       return;
     }
 
@@ -524,6 +569,26 @@ export function BuildWizard() {
               </CardContent>
             </Card>
           )}
+          {readiness === 'empty' && !pendingImport && (
+            <Card className="border-primary/30 bg-primary/5">
+              <CardHeader>
+                <CardTitle>First, your work history</CardTitle>
+                <CardDescription>
+                  A tailored resume is built from what you have actually done, and your profile is empty. Upload your
+                  current resume (PDF) and we will read your roles and projects in. It takes about a minute.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {addingHistory ? (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Reading your resume…
+                  </p>
+                ) : (
+                  <ResumeUploadZone compact onParsed={(parsed) => void onHistoryUploaded(parsed)} />
+                )}
+              </CardContent>
+            </Card>
+          )}
           <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
           <Card>
             <CardHeader>
@@ -540,7 +605,11 @@ export function BuildWizard() {
                 rows={14}
               />
               <div className="flex justify-end">
-                <Button onClick={beginGeneration} disabled={isPending || !jobDescription.trim()}>
+                <Button
+                  onClick={beginGeneration}
+                  disabled={isPending || !jobDescription.trim() || (readiness === 'empty' && !syncGitHub)}
+                  title={readiness === 'empty' && !syncGitHub ? 'Add your work history first' : undefined}
+                >
                   {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   Build baseline resume
                 </Button>
@@ -698,7 +767,14 @@ export function BuildWizard() {
               {error && (
                 <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertCircle className="mt-0.5 h-4 w-4" />
-                  <p>{error}</p>
+                  <div className="space-y-1">
+                    <p>{error}</p>
+                    {isPlanLimitMessage(error) && (
+                      <Link href="/settings/plan" className="font-medium underline underline-offset-4">
+                        See plans
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
 

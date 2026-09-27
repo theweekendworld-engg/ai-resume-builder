@@ -43,7 +43,10 @@ const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode 
   { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
   { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
-  { id: 'telegram', label: 'Telegram & WhatsApp', icon: <Send className="h-4 w-4" /> },
+  // WhatsApp is named only where it is configured; production has no
+  // WHATSAPP_* variables, and the old "Telegram & WhatsApp" promised a
+  // channel nobody could link.
+  { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" /> },
   { id: 'pdf', label: 'PDF History', icon: <FileDown className="h-4 w-4" /> },
 ];
 

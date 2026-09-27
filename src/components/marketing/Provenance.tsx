@@ -22,7 +22,7 @@ const GUARANTEES = [
     {
         icon: Fingerprint,
         title: 'Every claim traces to a win',
-        body: 'Each line of a generated packet carries the wins it came from. If a sentence has no source, it does not ship.',
+        body: 'Each line of a generated resume carries the wins it came from. If a sentence has no source, it does not ship.',
     },
     {
         icon: FileWarning,

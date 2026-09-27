@@ -125,23 +125,25 @@ describe('localHourFor / localDayFor', () => {
 describe('isDigestDue', () => {
     const prefs = { timezone: KOLKATA, digestDay: 5, digestHour: 16 }; // Friday 16:00 IST
 
-    test('fires in the configured local slot', () => {
-        // Friday 16:30 IST = 11:00Z.
-        expect(isDigestDue(prefs, new Date('2026-07-31T11:00:00Z'))).toBe(true);
+    // Day-level since 2026-09-27: the production tick is daily at 03:xx UTC,
+    // and an exact-hour match meant the default slot could never be due.
+    test('is due at the daily tick on the digest day, at any hour', () => {
+        // Friday 08:30 IST (the 03:00Z tick).
+        expect(isDigestDue(prefs, new Date('2026-07-31T03:00:00Z'))).toBe(true);
     });
 
-    test('does not fire an hour early or late', () => {
-        expect(isDigestDue(prefs, new Date('2026-07-31T10:00:00Z'))).toBe(false);
-        expect(isDigestDue(prefs, new Date('2026-07-31T12:00:00Z'))).toBe(false);
+    test('is not due before the digest day in the week', () => {
+        expect(isDigestDue(prefs, new Date('2026-07-30T03:00:00Z'))).toBe(false);
     });
 
-    test('does not fire on the wrong day', () => {
-        expect(isDigestDue(prefs, new Date('2026-07-30T11:00:00Z'))).toBe(false);
+    test('a missed tick is recovered later in the same week', () => {
+        // Saturday: still due (the WeeklyDigest unique keeps it to one send).
+        expect(isDigestDue(prefs, new Date('2026-08-01T03:00:00Z'))).toBe(true);
     });
 
-    test('the same UTC instant is due for one zone and not another', () => {
-        // This is the whole point of deriving rather than storing a timestamp.
-        const instant = new Date('2026-07-31T11:00:00Z');
+    test('the local day is what counts, so zones differ near midnight', () => {
+        // 20:00Z Thursday is already Friday 01:30 in Kolkata.
+        const instant = new Date('2026-07-30T20:00:00Z');
         expect(isDigestDue({ timezone: KOLKATA, digestDay: 5, digestHour: 16 }, instant)).toBe(true);
         expect(isDigestDue({ timezone: UTC, digestDay: 5, digestHour: 16 }, instant)).toBe(false);
     });

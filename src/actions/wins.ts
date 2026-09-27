@@ -21,7 +21,7 @@ import { err, ok, type Result } from '@/lib/result';
 import { isEntitlementError, gateMeteredAction, type MeteredAction } from '@/lib/entitlements';
 import { track } from '@/lib/track';
 import * as winGraph from '@/services/winGraph';
-import { confirmWinCore, createWinCore, dismissWinCore } from '@/services/wins';
+import { confirmWinCore, dismissWinCore, logWinCore } from '@/services/wins';
 import {
     mergeProposalCode,
     parseImpactAnswer,
@@ -106,6 +106,8 @@ const CreateWinSchema = z
         signalId: z.string().max(64).optional(),
         employerId: z.string().max(64).nullable().optional(),
         projectId: z.string().max(64).nullable().optional(),
+        confirm: z.boolean().optional(),
+        force: z.boolean().optional(),
     })
     // A Win needs words from somewhere: either raw text to structure, or a
     // structured title the user has already seen and approved.
@@ -169,7 +171,9 @@ export async function createWinFromText(input: CreateWinInput): Promise<Result<W
     // The whole create path — metering, structuring, the near-duplicate check,
     // persistence, telemetry — lives in `src/services/wins.ts` so the chat bots
     // make exactly the Win this action makes.
-    const result = await createWinCore({ userId, ...parsed.data });
+    // "Log it" on a draft the user saw and edited IS the confirmation; the
+    // service routes it through the one rule-5 transaction (logWinCore).
+    const result = await logWinCore({ userId, ...parsed.data });
     if (!result.success) return result;
     if (result.data.kind === 'duplicate') {
         return err(
@@ -178,6 +182,19 @@ export async function createWinFromText(input: CreateWinInput): Promise<Result<W
         );
     }
     return winGraph.getWinView(userId, result.data.winId);
+}
+
+// ═══════════════════════════════════════════════════════════════ 1b. restore
+
+/** Undo a dismissal from the review queue. */
+export async function restoreWin(winId: string): Promise<Result<WinView>> {
+    const userId = await requireUserId();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+
+    const parsedId = WinIdSchema.safeParse(winId);
+    if (!parsedId.success) return err('Invalid win id', 'invalid_input');
+
+    return winGraph.restoreDismissedWin({ userId, winId: parsedId.data });
 }
 
 // ═══════════════════════════════════════════════════════════════ 2. confirm

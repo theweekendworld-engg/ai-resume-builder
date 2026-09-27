@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useResumeStore } from '@/store/resumeStore';
 import { calculateATSScore } from '@/actions/ai';
 import { processChannelGenerate } from '@/actions/channelGenerate';
@@ -57,6 +59,7 @@ interface JobTargetEditorProps {
 }
 
 export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
+  const currentResumeId = resumeId;
   const {
     resumeData,
     jobDescription,
@@ -71,7 +74,10 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
   const [isPending, startTransition] = useTransition();
   const [isCalculating, setIsCalculating] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  /** Set when the failure is the plan limit, so the box can link to plans. */
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [clarificationSessionId, setClarificationSessionId] = useState<string | null>(null);
   const [clarificationQuestion, setClarificationQuestion] = useState<{ id: string; question: string; gap: string } | null>(null);
@@ -117,6 +123,14 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
 
     if (!nextResume) {
       throw new Error('Generation did not return resume data');
+    }
+
+    // The refine wrote into a per-job copy (the base is never overwritten):
+    // move the user to it rather than showing the copy's content under the
+    // base resume's URL.
+    if (resumeId && resumeId !== currentResumeId) {
+      router.push(`/editor/${resumeId}?tailored=1`);
+      return;
     }
 
     setResumeData(nextResume);
@@ -194,6 +208,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
     }
 
     setError(null);
+    setErrorCode(null);
     setSuccess(null);
     setIsGenerating(true);
     setClarificationSessionId(null);
@@ -214,6 +229,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to generate. Please try again.');
+        setErrorCode(result.code ?? null);
         if (clarificationSessionId) {
           markGenerationFailed(result.error ?? 'Failed to generate. Please try again.');
         }
@@ -263,13 +279,20 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
     });
   };
 
-  const handleSubmitClarification = () => {
-    if (!clarificationSessionId || !clarificationAnswer.trim()) {
-      setError('Answer the clarification question to continue.');
+  /**
+   * Answer, skip this question, or skip all remaining ones. Mirrors the
+   * builder: a required text box asks people to invent an answer, and on a
+   * product whose promise is that nothing is made up, that is the wrong ask.
+   */
+  const handleSubmitClarification = (mode: 'answer' | 'skip' | 'skipAll' = 'answer') => {
+    if (!clarificationSessionId) return;
+    if (mode === 'answer' && !clarificationAnswer.trim()) {
+      setError('Answer the question, or skip it.');
       return;
     }
 
     setError(null);
+    setErrorCode(null);
     setSuccess(null);
     setIsGenerating(true);
 
@@ -277,13 +300,16 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
       const result = await processChannelGenerate({
         channel: 'web' as const,
         sessionId: clarificationSessionId,
-        message: clarificationAnswer.trim(),
+        ...(mode === 'answer' ? { message: clarificationAnswer.trim() } : {}),
+        ...(mode === 'skip' ? { skip: true } : {}),
+        ...(mode === 'skipAll' ? { skipAll: true } : {}),
         fallbackResumeData: resumeData,
       });
 
       if (!result.success) {
         setIsGenerating(false);
         setError(result.error ?? 'Failed to apply clarification.');
+        setErrorCode(result.code ?? null);
         markGenerationFailed(result.error ?? 'Failed to apply clarification.');
         return;
       }
@@ -301,6 +327,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
       }
 
       if (result.status === 'generating') {
+        setClarificationQuestion(null);
         trackGenerationSession({
           sessionId: clarificationSessionId,
           status: 'generating',
@@ -491,9 +518,17 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
           )}
 
           {error && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4 flex-shrink-0" />
-              {error}
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>
+                {error}
+                {errorCode === 'entitlement_required' ? (
+                  <>
+                    {' '}
+                    <Link href="/settings/plan" className="font-medium underline">See plans</Link>
+                  </>
+                ) : null}
+              </span>
             </div>
           )}
           {success && (
@@ -520,7 +555,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
                 />
               </div>
               <Button
-                onClick={handleSubmitClarification}
+                onClick={() => handleSubmitClarification('answer')}
                 disabled={isBusy || !clarificationAnswer.trim()}
                 className="w-full"
               >
@@ -533,6 +568,28 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
                   'Continue Generation'
                 )}
               </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={isBusy}
+                  onClick={() => handleSubmitClarification('skip')}
+                >
+                  Skip this
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1"
+                  disabled={isBusy}
+                  onClick={() => handleSubmitClarification('skipAll')}
+                >
+                  Skip all and generate
+                </Button>
+              </div>
             </div>
           )}
 

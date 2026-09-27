@@ -142,6 +142,14 @@ export type CreateWinInput = {
     sensitivity?: WinSensitivity;
     source?: WinSource;
     sourceRef?: string;
+    /**
+     * The user explicitly logged this ("Log it" on a draft they saw and
+     * edited): create AND confirm, through the same rule-5 transaction as
+     * every other confirmation. Drafts from sources and chat never set it.
+     */
+    confirm?: boolean;
+    /** "Keep both" after a near-duplicate prompt. */
+    force?: boolean;
     /** Set by capture connectors; enforces one Win per signal. */
     signalId?: string;
     /**
@@ -278,6 +286,9 @@ export type ListWins = (
 ) => Promise<Result<WinPage>>;
 
 /** Partial success is normal — inspect `failed`. */
+/** Undo a dismissal: back to draft. */
+export type RestoreWin = (winId: string) => Promise<Result<WinView>>;
+
 export type BulkConfirm = (winIds: string[]) => Promise<Result<BulkResult>>;
 
 export type GetLogSummary = (range?: { from?: Date; to?: Date }) => Promise<Result<LogSummary>>;

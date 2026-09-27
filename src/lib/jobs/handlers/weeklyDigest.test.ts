@@ -56,24 +56,10 @@ function row(overrides: Partial<DigestHistoryRow> = {}): DigestHistoryRow {
 // ───────────────────────────────────────────────────────── who might be due
 
 describe('candidateDigestDays', () => {
-    test('returns yesterday, today and tomorrow in ISO weekday terms', () => {
-        // 2026-07-31 is a Friday → ISO 5.
-        expect(candidateDigestDays(new Date('2026-07-31T12:00:00Z'))).toEqual([4, 5, 6]);
-    });
-
-    test('wraps across the week boundary in both directions', () => {
-        // Monday → Sun, Mon, Tue.
-        expect(candidateDigestDays(new Date('2026-08-03T00:30:00Z'))).toEqual([7, 1, 2]);
-        // Sunday → Sat, Sun, Mon.
-        expect(candidateDigestDays(new Date('2026-08-02T23:30:00Z'))).toEqual([6, 7, 1]);
-    });
-
-    test('three days is enough to cover every real timezone offset', () => {
-        // −12:00 through +14:00 can only ever shift the local day by one.
-        for (let hour = 0; hour < 24; hour += 1) {
-            const now = new Date(Date.UTC(2026, 6, 31, hour));
-            expect(new Set(candidateDigestDays(now)).size).toBe(3);
-        }
+    // Since 2026-09-27 the tick is daily and due-ness is "on or after the
+    // digest day this week", so any digest day can still be due today.
+    test('every weekday is a candidate', () => {
+        expect(candidateDigestDays(new Date('2026-07-31T03:00:00Z'))).toEqual([1, 2, 3, 4, 5, 6, 7]);
     });
 });
 

@@ -35,7 +35,11 @@ import { Reveal } from './Reveal';
 /** The single published address. Change it here and the footer follows. */
 export const CONTACT_EMAIL = 'jaimauryatech@gmail.com';
 
-const SUBJECT = encodeURIComponent('Patronus — pricing');
+const SUBJECT = encodeURIComponent('Patronus');
+
+/** Who runs this. Shown on the contact page and in the legal pages. */
+export const OPERATOR = 'Jai Shankar (individual)';
+export const OPERATOR_LOCATION = 'India';
 
 /**
  * What a reader actually wants to know before they write, answered so the
@@ -51,26 +55,26 @@ const NOTES = [
         body: 'Downgrade and the paid surfaces are hidden. Your wins, evidence and confirmations stay exactly where they are.',
     },
     {
-        title: 'Tell us what you need it for',
-        body: 'Review packets, level readiness, a search that starts next month — what it costs depends on which of those you actually use.',
+        title: 'A reply within two business days',
+        body: 'Billing, a data-deletion request, a bug, or a question about whether the free plan covers what you need — a person reads every message.',
     },
 ];
 
 export function Contact() {
     return (
-        <Section id="pricing" tone="raised">
+        <Section id="contact" tone="raised">
             <SectionIntro
-                eyebrow="Pricing · by request"
+                eyebrow="Contact"
                 title={
                     <>
-                        Let’s talk about <span className="text-primary">what it’s worth.</span>
+                        Questions? <span className="text-primary">Write to a person.</span>
                     </>
                 }
                 lead={
                     <>
-                        We are not publishing a price list yet. Write to us with what you are trying
-                        to do and we will tell you plainly what it costs — and whether the free tier
-                        already covers it.
+                        Patronus is run by {OPERATOR}, based in {OPERATOR_LOCATION}. Write with
+                        anything — billing, your data, a bug, or whether the free plan already
+                        covers what you need.
                     </>
                 }
             />
@@ -109,7 +113,7 @@ export function Contact() {
                     </a>
 
                     <p className="mt-6 text-xs text-muted-foreground/60">
-                        A person reads this. Expect a reply, not a sequence.
+                        A person reads this. Expect a reply within two business days.
                     </p>
                 </div>
             </Reveal>

@@ -8,6 +8,7 @@
  * deliberately one page with everything on it.
  */
 
+import { configHealth, type HealthCheck } from '@/lib/health';
 import { JobStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
@@ -65,6 +66,8 @@ export type OpsSnapshot = {
     cost: FeatureCostRow[];
     email: EmailHealthRow[];
     funnel: ActivationFunnel;
+    /** Env checks (names only) plus the engine's own pulse. */
+    health: HealthCheck[];
 };
 
 function since(hours: number): Date {
@@ -196,7 +199,8 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
     await requireAdminUserId();
     const from = since(windowHours);
 
-    const [jobs, dead, cost, email, funnel] = await Promise.all([
+    const [oldestPending, jobs, dead, cost, email, funnel] = await Promise.all([
+        prisma.job.findFirst({ where: { status: JobStatus.pending, runAt: { lte: new Date() } }, orderBy: { runAt: 'asc' }, select: { runAt: true } }),
         jobHealth(from),
         prisma.job.findMany({
             where: { status: JobStatus.dead },
@@ -209,5 +213,19 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
         activationFunnel(),
     ]);
 
-    return { generatedAt: new Date(), windowHours, jobs, dead, cost, email, funnel };
+    // The engine's pulse: a due job waiting more than 36h means the daily tick
+    // is not draining (the 2026-09-27 failure: jobs pending since March).
+    const waitingHours = oldestPending ? (Date.now() - oldestPending.runAt.getTime()) / 3_600_000 : 0;
+    const health: HealthCheck[] = [
+        {
+            id: 'queue_draining',
+            ok: waitingHours < 36,
+            severity: 'error',
+            impact: `The oldest due job has waited ${Math.round(waitingHours)}h: the cron tick is not draining the queue.`,
+            fix: 'Check /api/cron/tick returns 401 (not 404) without a bearer, and CRON_SECRET',
+        },
+        ...configHealth(),
+    ];
+
+    return { generatedAt: new Date(), windowHours, jobs, dead, cost, email, funnel, health };
 }

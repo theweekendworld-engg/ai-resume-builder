@@ -6,6 +6,7 @@ import { MonthInReviewDocument } from '@/components/review/MonthInReviewDocument
 import { isEnabled } from '@/lib/flags';
 import { parsePeriodKey, periodLabel } from '@/services/monthInReview';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
+import { EntitlementNotice } from '@/components/scout/EntitlementNotice';
 
 /**
  * `/log/review/[yyyy-mm]` — design/02 §E.
@@ -37,6 +38,14 @@ export default async function MonthInReviewPage({ params }: { params: Promise<Pa
 
     const { 'yyyy-mm': periodKey } = await params;
     const result = await getMonthInReview(periodKey);
+    if (!result.success && result.code === 'entitlement_required') {
+        // An upsell with a way forward, not the error boundary or a 404.
+        return (
+            <main className="mx-auto w-full max-w-[720px] px-4 py-10 sm:px-6">
+                <EntitlementNotice message={result.error} entitlement />
+            </main>
+        );
+    }
     if (!result.success) notFound();
 
     return <MonthInReviewDocument review={result.data} />;

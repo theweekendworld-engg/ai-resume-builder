@@ -153,3 +153,40 @@ describe('execution', () => {
         expect(await executeScoutAction('u', { kind: 'dismiss_win', winId: 'w' }, dismissed)).toMatchObject({ settled: true });
     });
 });
+
+describe('tailor', () => {
+    test('the tailor action round-trips and fits in 64 bytes', () => {
+        const data = encodeScoutAction(RUN_ID, { kind: 'tailor', label: '' });
+        expect(Buffer.byteLength(data)).toBeLessThanOrEqual(64);
+        expect(decodeScoutAction(data)).toEqual({ kind: 'tailor', runId: RUN_ID });
+    });
+
+    test('generating: says it is on its way', async () => {
+        const calls: string[] = [];
+        const d = deps({
+            tailorResumeForRun: async (_u, runId, channel) => {
+                calls.push(`${runId}:${channel}`);
+                return { success: true, data: { sessionId: 's1', workspaceId: 'w1', resumeId: 'r1', status: 'generating' } };
+            },
+        });
+        const reply = await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d, { channel: 'telegram' });
+        expect(calls).toEqual([`${RUN_ID}:telegram`]);
+        expect(reply.lines.map((l) => l.map((s) => s.text).join('')).join(' ')).toContain('Tailoring your resume');
+    });
+
+    test('awaiting a clarification: asks the question right here', async () => {
+        const d = deps({
+            tailorResumeForRun: async () => ({ success: true, data: { sessionId: 's1', workspaceId: 'w1', resumeId: null, status: 'awaiting_clarification' } }),
+            nextGenerationQuestion: async () => 'Have you run Kafka in production?',
+        });
+        const text = (await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d)).lines.map((l) => l.map((s) => s.text).join('')).join('\n');
+        expect(text).toContain('Have you run Kafka in production?');
+        expect(text).toContain('skip all');
+    });
+
+    test('a plan limit is relayed as the service worded it', async () => {
+        const d = deps({ tailorResumeForRun: async () => ({ success: false, error: "You've used all 10 Tailored resumes on Free", code: 'entitlement_required' }) });
+        const reply = await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d);
+        expect(reply.lines[0][0].text).toContain('Tailored resumes');
+    });
+});

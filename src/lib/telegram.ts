@@ -254,6 +254,7 @@ const BOT_COMMANDS = [
   { command: 'generate', description: 'Start with: /generate <job description>' },
   { command: 'status', description: 'Show your latest resume generation status (linked account required)' },
   { command: 'profile', description: 'View your linked profile details' },
+  { command: 'unlink', description: 'Disconnect this chat from your Patronus account' },
 ] as const;
 
 export async function setTelegramBotCommands(): Promise<{ ok: boolean; error?: string }> {

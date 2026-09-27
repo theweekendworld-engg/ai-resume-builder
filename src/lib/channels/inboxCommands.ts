@@ -183,6 +183,11 @@ export function renderHelp(appUrl: string, opts: { bare: boolean }): RichMessage
             [{ text: `${cmd('applied')}: what you have applied to and where it stands` }],
             [{ text: `${cmd('insights')}: your saved insights` }],
             [{ text: `${cmd('notes')}: your notes and drafts` }],
+            [],
+            heading('Resumes and your account'),
+            // WhatsApp is Scout-only: no resume bot there, so no /generate.
+            ...(opts.bare ? [] : [[{ text: '/generate <job description>: a tailored resume' }], [{ text: '/status: where your latest resume is' }]]),
+            [{ text: `${cmd('unlink')}: disconnect this chat` }],
         ],
         footer: inboxFooter(appUrl),
         actions: [],

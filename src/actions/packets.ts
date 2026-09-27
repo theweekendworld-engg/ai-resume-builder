@@ -60,6 +60,7 @@ import {
     type ReadinessReport,
 } from '@/services/reviewPacket';
 import { handleReviewPacketWorkflow } from '@/workflows/reviewPacket';
+import { withRefundOnFailure } from '@/lib/metering/refundOnFailure';
 
 const FEATURE = { feature: 'review_packet' } as const;
 
@@ -260,7 +261,10 @@ export async function startPacket(input: {
         throw error;
     }
 
-    const packet = await prisma.reviewPacket.create({
+    // Everything from here to a running workflow is refunded if it throws:
+    // the unit was taken above and the user has no packet to show for it.
+    const refundParams = { userId: access.userId, action: 'review_packet' as const, reason: 'packet_start_failed' };
+    const packet = await withRefundOnFailure(refundParams, () => prisma.reviewPacket.create({
         data: {
             userId: access.userId,
             type: scope.type as PacketType,
@@ -274,7 +278,7 @@ export async function startPacket(input: {
             content: { progress: initialProgress() } as unknown as Prisma.InputJsonValue,
         },
         select: { id: true },
-    });
+    }));
 
     await track(access.userId, 'packet_started', {
         ...FEATURE,
@@ -287,11 +291,13 @@ export async function startPacket(input: {
     });
 
     try {
-        if (shouldUseLocalInlineRun()) {
-            await runPacketInline(packet.id);
-        } else {
-            await start(handleReviewPacketWorkflow, [packet.id]);
-        }
+        await withRefundOnFailure(refundParams, async () => {
+            if (shouldUseLocalInlineRun()) {
+                await runPacketInline(packet.id);
+            } else {
+                await start(handleReviewPacketWorkflow, [packet.id]);
+            }
+        });
     } catch (error) {
         await prisma.reviewPacket.updateMany({
             where: { id: packet.id },

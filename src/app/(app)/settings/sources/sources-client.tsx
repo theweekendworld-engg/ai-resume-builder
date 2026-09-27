@@ -29,27 +29,27 @@ export function SourcesClient({ initial }: { initial: SourcesOverview }) {
         () => ({
             connect: async (mode) => {
                 const result = await connectGithub({ mode });
-                return result.success ? { ok: true } : { ok: false, error: result.error };
+                return result.success ? { ok: true } : { ok: false, error: result.error, code: result.code };
             },
             listRepos: async () => {
                 const result = await listGithubRepos();
-                return result.success ? { ok: true, repos: result.data } : { ok: false, error: result.error };
+                return result.success ? { ok: true, repos: result.data } : { ok: false, error: result.error, code: result.code };
             },
             saveRepos: async (repos) => {
                 const result = await saveRepoSelection(repos);
-                return result.success ? { ok: true } : { ok: false, error: result.error };
+                return result.success ? { ok: true } : { ok: false, error: result.error, code: result.code };
             },
             syncNow: async (kind) => {
                 const result = await syncSourceNow(kind as CaptureSourceKind);
-                return result.success ? { ok: true } : { ok: false, error: result.error };
+                return result.success ? { ok: true } : { ok: false, error: result.error, code: result.code };
             },
             togglePause: async (kind, paused) => {
                 const result = await setSourcePaused(kind as CaptureSourceKind, paused);
-                return result.success ? { ok: true } : { ok: false, error: result.error };
+                return result.success ? { ok: true } : { ok: false, error: result.error, code: result.code };
             },
             disconnect: async (kind, deleteWins) => {
                 const result = await disconnectSource({ kind: kind as CaptureSourceKind, deleteWins });
-                return result.success ? { ok: true } : { ok: false, error: result.error };
+                return result.success ? { ok: true } : { ok: false, error: result.error, code: result.code };
             },
             refresh: async () => {
                 const result = await getSourcesOverview();

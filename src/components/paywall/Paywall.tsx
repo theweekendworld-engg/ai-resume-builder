@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 
 import { recordPaywallCta, recordPaywallShown, startCheckout } from '@/actions/billing';
 import { typeStyles } from '@/components/patterns';
@@ -93,8 +94,13 @@ export function Paywall({ content, softAllowed = false, className }: PaywallProp
       </div>
 
       {error ? (
-        <p role="alert" className={cn(typeStyles.caption, 'mt-3 text-danger')}>
-          {error}
+        <p role="alert" className={cn(typeStyles.caption, 'mt-3 text-foreground')}>
+          {error}{' '}
+          {/* A refused checkout (no provider yet, Career required first) must
+              never be a dead end: the plan page explains the options. */}
+          <Link href="/settings/plan" className="underline underline-offset-2">
+            See plans
+          </Link>
         </p>
       ) : null}
     </section>

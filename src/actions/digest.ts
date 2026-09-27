@@ -24,7 +24,7 @@ import { err, ok, type Result } from '@/lib/result';
 import { describeNextDigest, isValidTimeZone } from '@/lib/time';
 import { generateUnsubscribeToken } from '@/lib/email/send';
 import { checkWinTokenRateLimit } from '@/lib/rateLimit';
-import { resolveWinToken, undoDigestAction } from '@/lib/winTokens';
+import { applyDigestAction, resolveWinToken, undoDigestAction } from '@/lib/winTokens';
 
 // ---------------------------------------------------------------------------
 // Notification settings — design/02 §J2
@@ -192,4 +192,36 @@ export async function undoFromDigestLink(token: string): Promise<UndoResult> {
     if (result.outcome === 'failed') return { status: 'error', message: result.error };
     if (result.outcome === 'nothing_to_undo') return { status: 'nothing_to_undo' };
     return { status: 'undone' };
+}
+
+export type ApplyFromLinkResult =
+    | { status: 'done'; confirmed: boolean; replay: boolean; title: string }
+    | { status: 'error'; message: string };
+
+/**
+ * Apply the token's confirm/dismiss — on a TAP, never on the GET.
+ *
+ * Until 2026-09-27 the `/w/[token]` GET itself performed the write. That was
+ * tolerable only because the route sat behind the login wall (by accident),
+ * where no mail scanner could reach it. Public, it would let link scanners
+ * confirm Wins nobody tapped, and confirming writes Evidence (CLAUDE.md
+ * rule 5). Authorised by the token alone, like the undo above.
+ */
+export async function applyFromDigestLink(token: string): Promise<ApplyFromLinkResult> {
+    const resolved = await resolveWinToken(String(token ?? ''));
+    if (!resolved.ok) return { status: 'error', message: 'That link is no longer valid.' };
+
+    const limit = await checkWinTokenRateLimit(resolved.resolved.payload.root);
+    if (!limit.allowed) return { status: 'error', message: limit.error ?? 'Too many requests.' };
+    if (resolved.resolved.payload.action === 'edit') return { status: 'error', message: 'Open your log to edit this one.' };
+
+    const outcome = await applyDigestAction(resolved.resolved, { surface: 'email' });
+    if (outcome.outcome === 'failed') return { status: 'error', message: outcome.error };
+    if (outcome.outcome === 'navigate') return { status: 'error', message: 'Open your log to edit this one.' };
+    return {
+        status: 'done',
+        confirmed: outcome.win.status === 'confirmed',
+        replay: outcome.outcome === 'already_done',
+        title: outcome.win.title,
+    };
 }

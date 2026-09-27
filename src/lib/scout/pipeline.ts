@@ -25,6 +25,7 @@ import {
     setRunKind,
     type StoredSection,
 } from '@/lib/agent/run';
+import { settleChargeForKind } from '@/lib/scout/metering';
 import { SCOUT_SECTION_IMPLS, SCOUT_SECTION_OPTIONS } from '@/lib/scout/sections';
 import type { StageDriver } from '@/lib/scout/stages';
 import type { ScoutInput, ScoutKind, ScoutSectionName, ScoutSections } from '@/lib/scout/types';
@@ -84,6 +85,12 @@ export async function progressScoutRun(runId: string): Promise<void> {
 
 export async function setScoutKind(runId: string, kind: ScoutKind): Promise<void> {
     await setRunKind(runId, kind);
+    // `link_analysis` pays for job analyses only. A note, an article or an
+    // "other" link gets its unit back here, once (src/lib/scout/metering.ts).
+    // Never fatal: a refund hiccup must not fail the user's run.
+    await settleChargeForKind(runId, kind).catch((error: unknown) => {
+        console.warn('[scout] could not settle link_analysis for kind', { runId, kind, error: String(error) });
+    });
 }
 
 /** Local development: the same stages, in-process. */

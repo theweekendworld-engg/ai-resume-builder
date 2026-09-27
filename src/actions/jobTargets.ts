@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@clerk/nextjs/server';
+import { stripClarificationBlock } from '@/services/channelGenerate';
 
 const SaveJobTargetSchema = z.object({
     resumeId: z.string().cuid().optional(),
@@ -100,6 +101,19 @@ export async function loadJobTargetForResume(resumeId: string): Promise<{
         const { userId } = await auth();
         if (!userId) return { success: false, error: 'Not authenticated' };
 
+        // What the user saved for this resume wins: it is their text. The
+        // session's JD is only a fallback, and it carries the clarification
+        // block the pipeline appended, which must never be shown back as if
+        // it were part of the posting (it used to be, on every reload).
+        const scoped = await prisma.jobTarget.findFirst({
+            where: { userId, resumeId },
+            orderBy: { updatedAt: 'desc' },
+            select: { company: true, role: true, description: true },
+        });
+        if (scoped?.description?.trim()) {
+            return { success: true, jobTarget: scoped };
+        }
+
         const session = await prisma.generationSession.findFirst({
             where: { resultResumeId: resumeId, userId },
             orderBy: { completedAt: 'desc' },
@@ -108,24 +122,11 @@ export async function loadJobTargetForResume(resumeId: string): Promise<{
         if (session?.jobDescription) {
             return {
                 success: true,
-                jobTarget: { company: '', role: '', description: session.jobDescription },
+                jobTarget: { company: '', role: '', description: stripClarificationBlock(session.jobDescription) },
             };
         }
 
-        const scoped = await prisma.jobTarget.findFirst({
-            where: { userId, resumeId },
-            orderBy: { updatedAt: 'desc' },
-            select: { company: true, role: true, description: true },
-        });
-
-        if (!scoped) {
-            return { success: true, jobTarget: undefined };
-        }
-
-        return {
-            success: true,
-            jobTarget: scoped,
-        };
+        return { success: true, jobTarget: scoped ?? undefined };
     } catch (error: unknown) {
         console.error('Failed to load job target for resume:', error);
         return {

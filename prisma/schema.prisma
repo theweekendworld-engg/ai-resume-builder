@@ -131,10 +131,16 @@ model Resume {
   /// session that produced it: the editor is where a candidate acts on it.
   /// Shape: `ResumeCoverage` in `src/lib/resume/report.ts`.
   coverageReport Json?
+  /// Set on a per-job copy: the resume it was tailored FROM. Refining for a
+  /// job creates a copy; it never overwrites the base (audit 2026-09-27, F).
+  baseResumeId   String?
+  /// The tracked job (ApplicationWorkspace) this copy was tailored for.
+  workspaceId    String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   @@index([userId, updatedAt])
+  @@index([workspaceId])
 }
 
 model JobTarget {
@@ -243,6 +249,8 @@ model GenerationSession {
   userId              String
   sourceResumeId      String?
   jobTargetId         String?
+  /// The tracked job this generation is for, when started from Scout / the tracker.
+  workspaceId         String?
   jobDescription      String
   channel             Channel          @default(web)
   currentStep         PipelineStep     @default(reuse_check)
@@ -1578,4 +1586,19 @@ model ChannelMessageReceipt {
 
   @@unique([channel, externalId])
   @@index([createdAt])
+}
+
+/// The free /score result, held server-side so it survives sign-up (email
+/// verification in a new tab lost the sessionStorage copy, and /welcome
+/// cleared it before the editor could apply the fixes: audit 2026-09-27, B).
+model PendingScore {
+  id        String    @id @default(cuid())
+  /// Set when a signed-in user claims it.
+  userId    String?
+  payload   Json
+  claimedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
 }

@@ -329,16 +329,18 @@ describe('J5 — the month loop', () => {
         // hop below bypasses the clock, so a user kept out only by their digest
         // hour would still be swept in and would blur the fan-out count.
 
-        // Due: the 1st of the month, at the user's own digest hour.
+        // Due: the first local week of the month, at any hour (the production
+        // tick is daily since 2026-09-27; the digest hour no longer gates it).
         const due = await dueUsers(ROLLOVER, 5_000);
         const dueIds = due.map((entry) => entry.userId);
         expect(dueIds).toContain(PRIMARY);
         expect(dueIds).toContain(THIN);
-        expect(dueIds).not.toContain(OFF_HOUR);
+        expect(dueIds).toContain(OFF_HOUR);
         expect(due.find((entry) => entry.userId === PRIMARY)?.periodKey).toBe(PERIOD_KEY);
 
-        // The 2nd is not the 1st. A cron that ticks hourly must not fire again.
-        const notDue = await dueUsers(new Date(ROLLOVER.getTime() + 86_400_000), 5_000);
+        // Mid-month is not due. One review per month is the MonthlyReview
+        // unique's job, not the clock's.
+        const notDue = await dueUsers(new Date(ROLLOVER.getTime() + 10 * 86_400_000), 5_000);
         expect(notDue.map((entry) => entry.userId)).not.toContain(PRIMARY);
 
         // Eligible: ≥3 confirmed wins that occurred inside the reviewed month.

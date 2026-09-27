@@ -1,6 +1,17 @@
 import { Channel, GenerationStatus } from '@prisma/client';
 import { z } from 'zod';
-import { consumeChannelLinkToken } from '@/actions/channelIdentity';
+import { consumeChannelLinkToken, describeAccount, unlinkChatByExternalId } from '@/actions/channelIdentity';
+import { routeClarificationReply, nextClarificationQuestion } from '@/lib/channels/clarification';
+import { escapeTelegramHtml } from '@/lib/channels/format';
+import {
+  UNLINK_CONFIRM,
+  alreadyLinkedText,
+  conflictText,
+  linkedText,
+  notLinkedText,
+  unlinkedText,
+  welcomeBackText,
+} from '@/lib/channels/linkCopy';
 import { processChannelGenerate } from '@/services/channelGenerate';
 import { config } from '@/lib/config';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
@@ -8,6 +19,7 @@ import { prisma } from '@/lib/prisma';
 import {
   answerTelegramCallbackQuery,
   sendTelegramMessage,
+  sendTelegramMessageDetailed,
 } from '@/lib/telegram';
 import {
   handleTelegramInboxCommand,
@@ -56,6 +68,31 @@ async function findLinkedUserId(chatId: string): Promise<string | null> {
 }
 
 export type TelegramUpdatePayload = z.infer<typeof TelegramUpdateSchema>;
+
+/** Plain text, escaped for HTML mode: names and emails may contain `_` or `*`. */
+async function sayPlain(chatId: string, text: string, replyMarkup?: Record<string, unknown>): Promise<void> {
+  await sendTelegramMessageDetailed({ chatId, text: escapeTelegramHtml(text), ...(replyMarkup ? { replyMarkup } : {}) });
+}
+
+/** A generation refusal's way forward, keyed on the service's machine code. */
+function failureNextStep(code: string | undefined): string {
+  const app = config.app.url.replace(/\/$/, '');
+  if (code === 'entitlement_required') return `\n\nSee plans: ${app}/settings/plan`;
+  if (code === 'empty_profile' || code === 'no_base_resume') return `\n\nAdd your resume first: ${app}/dashboard?section=profile`;
+  return '';
+}
+
+function telegramDashboardUrl(): string {
+  return `${config.app.url.replace(/\/$/, '')}/dashboard?section=telegram`;
+}
+
+/** Unlink confirmation buttons. Short, outside the `sc:` namespace. */
+const UNLINK_KEYBOARD = {
+  inline_keyboard: [[
+    { text: 'Unlink this chat', callback_data: 'ul:yes' },
+    { text: 'Keep it', callback_data: 'ul:no' },
+  ]],
+};
 
 function escapeMarkdown(value: string): string {
   return value.replace(/[_*\[\]()~`>#+\-=|{}.!]/g, '\\$&');
@@ -143,7 +180,12 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   if (callback?.data) {
     const chatId = String(callback.message?.chat.id ?? '');
     if (chatId) {
-      if (callback.data.startsWith('sc:')) {
+      if (callback.data === 'ul:yes') {
+        const { removed } = await unlinkChatByExternalId(Channel.telegram, chatId);
+        await sayPlain(chatId, removed > 0 ? unlinkedText(telegramDashboardUrl()) : 'This chat was not linked.');
+      } else if (callback.data === 'ul:no') {
+        await sayPlain(chatId, 'Kept. This chat stays linked.');
+      } else if (callback.data.startsWith('sc:')) {
         // Scout buttons (answer / draft / why / refresh). Ownership of the run
         // is checked by the service, so the user id must come from the link.
         const userId = await findLinkedUserId(chatId);
@@ -174,9 +216,12 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
             channel: Channel.telegram,
             externalId: chatId,
             message: seed.jobDescription,
+            // A regenerate of your own recent session is free (capped by the
+            // service); without this it charged a second tailored resume.
+            regenerateOfSessionId: sessionId,
           });
           if (!regenerated.success) {
-            await sendTelegramMessage({ chatId, text: `Regeneration failed: ${regenerated.error ?? 'Unknown error'}` });
+            await sendTelegramMessage({ chatId, text: `Regeneration failed: ${regenerated.error ?? 'Unknown error'}${failureNextStep(regenerated.code)}` });
           } else {
             await sendTelegramMessage({ chatId, text: 'Regeneration started. Use /status to track progress.' });
           }
@@ -239,10 +284,22 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     return;
   }
 
-  if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|help)\b/.test(text)) {
+  // /unlink needs no Scout flag and no generation state: it only asks whether
+  // to disconnect the chat the message came from.
+  if (/^\/unlink\b/.test(text)) {
+    const linked = await findLinkedUserId(chatId);
+    if (!linked) {
+      await sayPlain(chatId, 'This chat is not linked to Patronus.');
+      return;
+    }
+    await sayPlain(chatId, `${UNLINK_CONFIRM}\n\nLinked to: ${await describeAccount(linked)}`, UNLINK_KEYBOARD);
+    return;
+  }
+
+  if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|help|unlink)\b/.test(text)) {
     await sendTelegramMessage({
       chatId,
-      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details',
+      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat',
     });
     return;
   }
@@ -257,16 +314,10 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
         select: { verified: true },
       });
       if (existingIdentity?.verified) {
-        await sendTelegramMessage({
-          chatId,
-          text: 'Welcome back! Your account is linked.\n\nUse:\n/generate <job description> - start a new resume\n/status - check progress\n/profile - view your profile details',
-        });
+        const linkedUser = await findLinkedUserId(chatId);
+        await sayPlain(chatId, welcomeBackText(linkedUser ? await describeAccount(linkedUser) : 'your Patronus account', { bare: false }));
       } else {
-        const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
-        await sendTelegramMessage({
-          chatId,
-          text: `Welcome to Patronus!\n\nTo get started, link your account from the dashboard first:\n[Open Dashboard](${dashboardUrl})\n\nOnce linked, use /generate <job description> to create a tailored resume.`,
-        });
+        await sayPlain(chatId, notLinkedText(telegramDashboardUrl(), 'Telegram'));
       }
       return;
     }
@@ -280,32 +331,27 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       });
 
       if (!linkResult.success) {
-        const alreadyLinked = await prisma.channelIdentity.findUnique({
-          where: {
-            channel_externalId: { channel: Channel.telegram, externalId: chatId },
-          },
-          select: { verified: true },
-        });
-        if (alreadyLinked?.verified) {
-          await sendTelegramMessage({
-            chatId,
-            text: 'Your account is already linked. Use /generate <job description> to get started!',
-          });
+        // A chat already linked to ANOTHER account: say which (masked) and
+        // how to move it. The old "Your account is already linked" hid this,
+        // and the chat kept recording into the other account.
+        if (linkResult.code === 'linked_to_other' && linkResult.otherUserId) {
+          await sayPlain(chatId, conflictText({
+            otherAccount: await describeAccount(linkResult.otherUserId),
+            app: 'Telegram',
+            unlinkCommand: '/unlink',
+          }));
           return;
         }
-        const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
-        await sendTelegramMessage({
-          chatId,
-          text: `Link failed: ${escapeMarkdown(linkResult.error ?? 'Unknown error')}\n\n[Generate a new link from the dashboard](${dashboardUrl})`,
-        });
+        const linkedUser = await findLinkedUserId(chatId);
+        if (linkedUser) {
+          await sayPlain(chatId, alreadyLinkedText(await describeAccount(linkedUser)));
+          return;
+        }
+        await sayPlain(chatId, `That link did not work: ${linkResult.error ?? 'unknown error'}.\n\nGet a fresh one at ${telegramDashboardUrl()} (tap "Link Telegram").`);
         return;
       }
 
-      await sendTelegramMessage({
-        chatId,
-        text: 'Telegram linked successfully. Use /generate <job description> to start your tailored resume.',
-      });
-
+      await sayPlain(chatId, linkedText(await describeAccount(linkResult.userId ?? ''), { bare: false }));
       return;
     }
 
@@ -324,11 +370,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   });
 
   if (!identity?.verified) {
-    const dashboardUrl = `${config.app.url}/dashboard?section=telegram`;
-    await sendTelegramMessage({
-      chatId,
-      text: `Your Telegram is not linked yet.\n\n[Link your account from the dashboard](${dashboardUrl})\n\nOnce linked, use /generate <job description> to start.`,
-    });
+    await sayPlain(chatId, notLinkedText(telegramDashboardUrl(), 'Telegram'));
     return;
   }
 
@@ -339,7 +381,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       status: GenerationStatus.awaiting_clarification,
     },
     orderBy: { updatedAt: 'desc' },
-    select: { id: true },
+    select: { id: true, updatedAt: true, clarifications: true },
   });
 
   // `/scout <link>` is explicit, so it wins over everything — including an
@@ -365,18 +407,41 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     return;
   }
 
+  // An open resume clarification takes a message only when it plausibly
+  // answers it: recent, not a link, not a pasted post; "skip" / "skip all"
+  // always skip. Anything else goes on to Scout below, and the question is
+  // mentioned so it is not forgotten. Users without Scout keep the old
+  // behaviour (every message answers), since there is nowhere else for it.
+  const clarificationRoute = pendingSession && !isGenerateCommand
+    ? routeClarificationReply({ text, askedAt: pendingSession.updatedAt })
+    : null;
+  const scoutOn = clarificationRoute === 'pass'
+    ? await handleTelegramScoutText(chatId, identity.userId, text)
+    : false;
+  if (scoutOn && pendingSession) {
+    const question = nextClarificationQuestion(pendingSession.clarifications);
+    await sayPlain(chatId, question
+      ? `(Your resume question is still open: "${question}" Reply to it, or send "skip".)`
+      : '(A resume question is still open. Send /status to see it, or "skip all" to generate now.)');
+    return;
+  }
+
   if (pendingSession && !isGenerateCommand) {
     const result = await processChannelGenerate({
       channel: Channel.telegram,
       externalId: chatId,
       sessionId: pendingSession.id,
-      message: text,
+      ...(clarificationRoute === 'skip'
+        ? { skip: true }
+        : clarificationRoute === 'skip_all'
+          ? { skipAll: true }
+          : { message: text }),
     });
 
     if (!result.success) {
       await sendTelegramMessage({
         chatId,
-        text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}`,
+        text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}${failureNextStep(result.code)}`,
       });
       return;
     }
@@ -411,7 +476,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   if (!isGenerateCommand) {
     await sendTelegramMessage({
       chatId,
-      text: 'Unsupported input. Use one of:\n/scout <LinkedIn job or post link>\n/generate <job description>\n/status\n/profile',
+      text: 'Unsupported input. Use one of:\n/scout <LinkedIn job or post link>\n/generate <job description>\n/status\n/help',
     });
     return;
   }
@@ -431,7 +496,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   if (!result.success) {
     await sendTelegramMessage({
       chatId,
-      text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}`,
+      text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}${failureNextStep(result.code)}`,
     });
     return;
   }

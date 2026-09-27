@@ -55,7 +55,7 @@ export function CareerInbox({
             <header className="flex flex-col gap-1">
                 <h1 className={cn(typeStyles.h1, 'text-foreground')}>Inbox</h1>
                 <p className={cn(typeStyles.body, 'text-muted-foreground')}>
-                    Everything you share from Telegram, WhatsApp, the extension or here: jobs scored against your record,
+                    Everything you share from Telegram or here: jobs scored against your record,
                     posts worth keeping, and notes on their way into your Work Log.
                 </p>
                 {summary ? <p className={cn(typeStyles.small, 'num text-foreground')}>{summary}</p> : null}

@@ -27,13 +27,17 @@ let override: ScoutChannelDeps | null = null;
 
 export async function scoutChannelDeps(): Promise<ScoutChannelDeps> {
     if (override) return override;
-    const [service, flags, inbox, wins] = await Promise.all([
+    const [service, flags, inbox, wins, tailor, generation] = await Promise.all([
         import('@/services/scout'),
         import('@/lib/flags'),
         import('@/services/careerInbox'),
         import('@/services/wins'),
+        import('@/services/tailor'),
+        import('@/lib/channels/generationQuestion'),
     ]);
     return {
+        tailorResumeForRun: tailor.tailorResumeForRun,
+        nextGenerationQuestion: generation.nextGenerationQuestion,
         setJobStatus: inbox.setJobStatus,
         topFits: inbox.topFits,
         listJobBoard: inbox.listJobBoard,

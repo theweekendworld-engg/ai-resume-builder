@@ -1,113 +1,117 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Check } from 'lucide-react';
-import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN, type PlanDefinition } from '@/lib/plans';
+import { Check, Clock } from 'lucide-react';
+import {
+    CAREER_PLAN,
+    FREE_PLAN,
+    SEARCH_PLAN,
+    freeResumeCap,
+    isUnlimited,
+    meteredLimit,
+    type PlanDefinition,
+} from '@/lib/plans';
+import { START_FREE_HREF } from './links';
 import { Section, SectionIntro } from './Section';
 
 /**
  * Pricing, read from the catalog rather than retyped.
  *
- * The previous version hardcoded its own perk list and never mentioned a
- * price, while `src/lib/plans.ts` held the real packaging. Two sources of
- * truth for what something costs is a bug that surfaces as a support ticket,
- * so names, prices and cadences now come from `PLAN_CATALOG` — change the
- * catalog and this page follows.
+ * Names, prices and cadences come from `PLAN_CATALOG`, and every limit comes
+ * from `meteredLimit` — no numeric limit is written here (plans.ts rule 2).
  *
- * The highlight lists are curated here on purpose rather than rendered from
- * `PLAN_COMPARISON`. That table is the authenticated change-plan surface and
- * currently includes rows for capabilities that are not built yet; listing
- * them to a logged-out visitor deciding whether to trust us would be exactly
- * the kind of unearned claim this product refuses to put in a resume.
+ * ── What is listed ──────────────────────────────────────────────────────────
+ *
+ * A highlight is either `live` (a new user can use it today) or `soon` (built,
+ * not yet switched on for everyone), and a `soon` item is always labelled as
+ * such. The previous version listed packets, rubric readiness, Month in Review
+ * and GitHub auto-drafting as plain features while every one of them was off
+ * for new users (audit 2026-09-27, "Stop advertising what's off").
+ *
+ * ── Why paid plans are not buyable here ─────────────────────────────────────
+ *
+ * Payments are not live yet. The prices are shown because a visitor deciding
+ * whether to invest in a record deserves to know what it will cost, and a
+ * payment gateway's review needs a visible price list. The buttons say so
+ * instead of leading to a plan page that cannot take money.
  */
 
-/** Only capabilities that exist in the product today. */
-const HIGHLIGHTS: Record<string, readonly string[]> = {
-    free: [
-        '10 tailored resumes',
-        'Free ATS and coverage check',
-        'Unlimited wins, kept forever',
-        'GitHub auto-drafting',
-        'Everything else, a few times over',
-    ],
-    career: [
-        'Everything in Free',
-        'Performance-review and promotion packets',
-        'Level readiness against your rubric',
-        'Month in Review',
-        'Reconstruct the years before Patronus',
-    ],
-    search: [
-        'Everything in Career',
-        'Unlimited tailored resumes',
-        'Application autofill and saved answers',
-        'Application tracking',
-    ],
-};
+type Highlight = { text: string; soon?: boolean };
+
+function tailoredLine(plan: PlanDefinition): string {
+    if (plan.tier === FREE_PLAN.tier) return `${freeResumeCap()} tailored resumes, free`;
+    const limit = meteredLimit(plan.tier, 'tailored_generation');
+    return isUnlimited(limit.limit)
+        ? 'Unlimited tailored resumes'
+        : `${limit.limit} tailored resumes a month`;
+}
+
+export function pricingHighlights(): Record<'free' | 'career' | 'search', Highlight[]> {
+    return {
+        free: [
+            { text: 'Free resume check with a prioritised fix list' },
+            { text: tailoredLine(FREE_PLAN) },
+            { text: 'Tailor to any job by pasting it in' },
+            { text: 'Log wins in a sentence; your record is kept forever' },
+        ],
+        career: [
+            { text: 'Everything in Free' },
+            { text: tailoredLine(CAREER_PLAN) },
+            { text: 'Your full log history, not just recent months' },
+            { text: 'Performance-review and promotion packets', soon: true },
+            { text: 'Level readiness against your rubric', soon: true },
+            { text: 'Month in Review', soon: true },
+        ],
+        search: [
+            { text: 'Everything in Career' },
+            { text: tailoredLine(SEARCH_PLAN) },
+            { text: 'Job links analysed for fit, pay and interview write-ups', soon: true },
+            { text: 'Application autofill in the browser', soon: true },
+        ],
+    };
+}
 
 function headline(plan: PlanDefinition): { amount: string; cadence: string } {
     if (plan.prices.length === 0) return { amount: 'Free', cadence: 'forever' };
-    // Prefer the recommended price; otherwise the first listed.
     const price = plan.prices.find((p) => p.recommended) ?? plan.prices[0];
     return { amount: price.label, cadence: price.cadence };
 }
 
-/** The monthly alternative, when an annual price is the headline. */
-function alternate(plan: PlanDefinition): string | null {
-    const shown = plan.prices.find((p) => p.recommended) ?? plan.prices[0];
-    const other = plan.prices.find((p) => p !== shown);
-    return other ? `or ${other.label}` : null;
-}
-
 const COLUMNS: ReadonlyArray<{
     plan: PlanDefinition;
-    key: keyof typeof HIGHLIGHTS;
-    cta: string;
-    href: string;
+    key: 'free' | 'career' | 'search';
     featured: boolean;
     note?: string;
 }> = [
-    {
-        plan: FREE_PLAN,
-        key: 'free',
-        cta: 'Start free',
-        href: '/sign-up?redirect_url=/build',
-        featured: false,
-    },
-    {
-        plan: CAREER_PLAN,
-        key: 'career',
-        cta: 'Get Career',
-        href: '/sign-up?redirect_url=/settings/plan',
-        featured: true,
-    },
+    { plan: FREE_PLAN, key: 'free', featured: true },
+    { plan: CAREER_PLAN, key: 'career', featured: false },
     {
         plan: SEARCH_PLAN,
         key: 'search',
-        cta: 'Get Search',
-        href: '/sign-up?redirect_url=/settings/plan',
         featured: false,
-        note: 'Sits on top of Career and is billed separately, so switching it off leaves everything else as it was.',
+        note: 'Added on top of Career, and billed separately, so switching it off leaves everything else as it was.',
     },
 ];
 
-export function Pricing() {
+export function Pricing({ id = 'pricing' }: { id?: string }) {
+    const highlights = pricingHighlights();
+
     return (
-        <Section id="pricing">
+        <Section id={id}>
             <SectionIntro
                 eyebrow="Pricing"
                 title="Logging is free. We charge for what we do with it."
                 lead={
                     <>
-                        The record is the part you should never have to pay to keep — losing it is
-                        the problem we exist to solve.
+                        The free plan works today and has no time limit. Paid plans open soon;
+                        these are the prices they will open at.
                     </>
                 }
             />
 
             <div className="mt-12 grid gap-5 lg:grid-cols-3">
-                {COLUMNS.map(({ plan, key, cta, href, featured, note }) => {
+                {COLUMNS.map(({ plan, key, featured, note }) => {
                     const { amount, cadence } = headline(plan);
-                    const other = alternate(plan);
+                    const isFree = plan.tier === FREE_PLAN.tier;
 
                     return (
                         <div
@@ -120,7 +124,7 @@ export function Pricing() {
                         >
                             {featured ? (
                                 <span className="absolute -top-2.5 left-6 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground">
-                                    Most people
+                                    Available now
                                 </span>
                             ) : null}
 
@@ -131,50 +135,59 @@ export function Pricing() {
                             <p className="mt-1 text-xs text-muted-foreground">{plan.audience}</p>
 
                             <div className="mt-5">
-                                <p className="font-heading text-3xl font-semibold tabular-nums">
-                                    {amount}
-                                </p>
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                    {cadence}
-                                    {other ? ` · ${other}` : ''}
-                                </p>
+                                <p className="font-heading text-3xl font-semibold tabular-nums">{amount}</p>
+                                <p className="mt-1 text-xs text-muted-foreground">{cadence}</p>
                             </div>
 
                             <ul className="mt-6 flex-1 space-y-2.5">
-                                {HIGHLIGHTS[key].map((item) => (
-                                    <li key={item} className="flex gap-2.5 text-sm">
-                                        <Check
-                                            className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
-                                            strokeWidth={2.5}
-                                            aria-hidden
-                                        />
-                                        <span className="text-muted-foreground">{item}</span>
+                                {highlights[key].map((item) => (
+                                    <li key={item.text} className="flex gap-2.5 text-sm">
+                                        {item.soon ? (
+                                            <Clock
+                                                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60"
+                                                strokeWidth={2.25}
+                                                aria-hidden
+                                            />
+                                        ) : (
+                                            <Check
+                                                className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary"
+                                                strokeWidth={2.5}
+                                                aria-hidden
+                                            />
+                                        )}
+                                        <span className={item.soon ? 'text-muted-foreground/70' : 'text-muted-foreground'}>
+                                            {item.text}
+                                            {item.soon ? <span className="ml-1.5 text-[11px] uppercase tracking-wide text-muted-foreground/60">· coming soon</span> : null}
+                                        </span>
                                     </li>
                                 ))}
                             </ul>
 
                             {note ? (
-                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground/70">
-                                    {note}
-                                </p>
+                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground/70">{note}</p>
                             ) : null}
 
-                            <Link href={href} className="mt-6">
-                                <Button
-                                    className="w-full"
-                                    variant={featured ? 'default' : 'outline'}
-                                >
-                                    {cta}
+                            {isFree ? (
+                                <Link href={START_FREE_HREF} className="mt-6">
+                                    <Button className="w-full">Start free</Button>
+                                </Link>
+                            ) : (
+                                <Button className="mt-6 w-full" variant="outline" disabled aria-disabled>
+                                    Opening soon
                                 </Button>
-                            </Link>
+                            )}
                         </div>
                     );
                 })}
             </div>
 
             <p className="mt-8 text-center text-xs text-muted-foreground/70">
-                Limits are always shown before you reach them. Downgrade and your history is hidden,
-                never deleted.
+                Paid plans open soon. Limits are always shown before you reach them. Downgrade and
+                your history is hidden, never deleted. See the{' '}
+                <Link href="/refund-policy" className="underline-offset-4 hover:underline">
+                    refund and cancellation policy
+                </Link>
+                .
             </p>
         </Section>
     );

@@ -27,10 +27,18 @@ export default async function PlanPage({
   if (!userId) redirect('/sign-in');
 
   const params = await searchParams;
-  if (params.checkout && params.checkout !== 'cancelled') {
+  // Say what happened on the way back from checkout. Before this, both the
+  // success and the cancel return rendered the page with no acknowledgement.
+  let checkoutNotice: string | null = null;
+  if (params.checkout === 'cancelled') {
+    checkoutNotice = 'Checkout cancelled. Nothing was charged.';
+  } else if (params.checkout) {
     // Failure here is not fatal: the webhook is the backstop, and the page
     // still renders whatever state we do have.
-    await reconcileCheckout(params.checkout);
+    const reconciled = await reconcileCheckout(params.checkout);
+    checkoutNotice = reconciled.success
+      ? `You're on ${reconciled.data.planName}. Thank you.`
+      : 'Payment received? It can take a minute to show here. Refresh shortly.';
   }
 
   const result = await getPlanPageData();
@@ -40,5 +48,5 @@ export default async function PlanPage({
   // way this can fail.
   if (!result.success) redirect('/sign-in');
 
-  return <PlanScreen data={result.data} />;
+  return <PlanScreen data={result.data} checkoutNotice={checkoutNotice} />;
 }

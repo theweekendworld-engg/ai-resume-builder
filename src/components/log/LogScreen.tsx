@@ -15,7 +15,9 @@ import {
 } from '@/components/patterns';
 import { cn } from '@/lib/utils';
 
-import { toWinRecord } from './adapt';
+import { syncSourceNow } from '@/actions/capture';
+import { mergeTargetFromCode, toWinRecord } from './adapt';
+import { planQueueUndo, type QueueUndoEntry } from './queueActions';
 import { logData, type LogSnapshot } from './data-source';
 import { applyFilters, isFiltered, NO_FILTERS, yearOptions, type LogFilterState } from './filters';
 import { LogFilters } from './LogFilters';
@@ -207,8 +209,11 @@ export function LogScreen({
   }, []);
 
   const handleGroundConfirm = React.useCallback(
-    async (winId: string) => {
-      const result = await logData.confirmWin(winId);
+    async (winId: string, source?: string) => {
+      // The source the user typed in the Confirm popover is evidence; it used
+      // to be dropped on the floor here.
+      const trimmed = source?.trim();
+      const result = await logData.confirmWin(winId, undefined, trimmed ? { source: trimmed } : undefined);
       if (result.success) replaceWin(result.data);
       else toast.error(result.error);
     },
@@ -263,6 +268,93 @@ export function LogScreen({
     setSummary((prev) => ({ ...prev, draftCount: Math.max(0, prev.draftCount - 1) }));
   }, []);
 
+  const editFromQueue = React.useCallback(
+    (record: WinRecord, nextTitle: string) => {
+      const title = nextTitle.trim();
+      if (!title) return;
+      void logData.updateWin(record.id, { title }).then((result) => {
+        if (result.success) replaceWin(result.data);
+        else toast.error(result.error);
+      });
+    },
+    [replaceWin],
+  );
+
+  const recategorizeFromQueue = React.useCallback(
+    (record: WinRecord, category: WinPatch['category']) => {
+      if (!category) return;
+      void logData.updateWin(record.id, { category }).then((result) => {
+        if (result.success) replaceWin(result.data);
+        else toast.error(result.error);
+      });
+    },
+    [replaceWin],
+  );
+
+  /**
+   * The queue's undo only ever changed the screen: a confirmed Win stayed
+   * confirmed, a dismissed one stayed dismissed, edits stayed edited. Each
+   * undo now writes its inverse.
+   */
+  const undoFromQueue = React.useCallback(
+    (entry: QueueUndoEntry) => {
+      const write = planQueueUndo(entry);
+      const done = (result: { success: true; data: WinView } | { success: false; error: string; code?: string }) => {
+        // The record is back to draft even when only the search index lagged.
+        if (result.success) replaceWin(result.data);
+        else if (result.code !== 'qdrant_delete_failed') toast.error(result.error);
+      };
+      switch (write.kind) {
+        case 'unconfirm':
+          void logData.unconfirmWin(write.winId).then((result) => {
+            done(result);
+            if (result.success || result.code === 'qdrant_delete_failed') {
+              setSummary((prev) => ({
+                ...prev,
+                totalConfirmed: Math.max(0, prev.totalConfirmed - 1),
+                draftCount: prev.draftCount + 1,
+              }));
+            }
+          });
+          return;
+        case 'restore':
+          void logData.restoreWin(write.winId).then((result) => {
+            if (!result.success) {
+              toast.error(result.error);
+              return;
+            }
+            setWins((prev) => mergeWins(prev, [result.data]));
+            setSummary((prev) => ({ ...prev, draftCount: prev.draftCount + 1 }));
+          });
+          return;
+        case 'update':
+          void logData.updateWin(write.winId, write.patch).then(done);
+          return;
+        case 'none':
+          return;
+      }
+    },
+    [replaceWin],
+  );
+
+  const confirmManyFromQueue = React.useCallback(
+    async (records: WinRecord[]) => {
+      const result = await logData.bulkConfirm(records.map((record) => record.id));
+      if (!result.success) throw new Error(result.error);
+      const okIds = new Set(result.data.ok);
+      setWins((prev) =>
+        prev.map((win) => (okIds.has(win.id) ? { ...win, status: 'confirmed' as const } : win)),
+      );
+      setSummary((prev) => ({
+        ...prev,
+        totalConfirmed: prev.totalConfirmed + okIds.size,
+        draftCount: Math.max(0, prev.draftCount - okIds.size),
+      }));
+      return { failed: result.data.failed };
+    },
+    [],
+  );
+
   /* --- pagination ---------------------------------------------------------- */
   const loadMore = React.useCallback(() => {
     if (!nextCursor || loadingMore) return;
@@ -295,49 +387,113 @@ export function LogScreen({
   }, [clientSideRegime, nextCursor, loadingMore, loadMore]);
 
   /* --- quick capture -------------------------------------------------------- */
+  /**
+   * One create call. The structured draft the user saw and edited is sent as
+   * the draft, so the server persists it without a second model call or a
+   * second meter unit (it used to send raw text, re-structure it, then patch
+   * the edits back on). `confirm` is set only for an explicit "Log it" on a
+   * structured draft: that click is the confirmation.
+   */
   const persistCapture = React.useCallback(
-    async (input: QuickCaptureSubmit): Promise<WinView | null> => {
+    async (
+      input: QuickCaptureSubmit,
+      options: { confirm: boolean; force?: boolean },
+    ): Promise<{ win: WinView } | { duplicateOf: string; title: string } | null> => {
+      const structured = input.draft
+        ? {
+            ...input.draft,
+            title: input.title ?? input.draft.title,
+            narrative: input.narrative ?? input.draft.narrative,
+            category: input.category ?? input.draft.category,
+          }
+        : undefined;
       const created = await logData.createWinFromText({
         text: input.text,
+        ...(structured ? { draft: structured } : {}),
         occurredAt: input.occurredAt,
         sensitivity: input.sensitivity,
         source: 'manual',
+        confirm: options.confirm && Boolean(structured),
+        force: options.force,
       });
       if (!created.success) {
+        const existing = mergeTargetFromCode(created.code);
+        if (existing) return { duplicateOf: existing, title: created.error };
         toast.error(created.error);
         return null;
       }
 
       let win = created.data;
-
-      // `CreateWinInput` carries only raw text, so the edits the user made to
-      // the structured draft have to land as a follow-up patch. See the
-      // handoff: this wants to be one call.
-      const patch: WinPatch = {};
-      if (input.title) patch.title = input.title;
-      if (input.narrative) patch.narrative = input.narrative;
-      if (input.category) patch.category = input.category;
-      if (Object.keys(patch).length > 0) {
-        const patched = await logData.updateWin(win.id, patch);
-        if (patched.success) win = patched.data;
-      }
-
       if (input.quantity) {
         const quantified = await logData.addImpact(win.id, input.quantity);
         if (quantified.success) win = quantified.data;
       }
-
-      return win;
+      return { win };
     },
     [],
   );
 
+  /** Put a newly saved draft where drafts are reviewed, without a reload. */
+  const enqueueDraft = React.useCallback((win: WinView) => {
+    if (win.status !== 'draft') return;
+    setQueueItems((prev) =>
+      prev.some((item) => item.id === win.id) ? prev : [toWinRecord(win), ...prev].slice(0, QUEUE_MAX),
+    );
+    setSummary((prev) => ({ ...prev, draftCount: prev.draftCount + 1 }));
+  }, []);
+
+  /**
+   * "Looks like <existing>. Merge into it or keep both?" A duplicate used to
+   * throw the user's words away with a toast. Merge appends them to the
+   * existing Win and opens it for editing; Keep both creates it anyway.
+   */
+  const offerDuplicate = React.useCallback(
+    (input: QuickCaptureSubmit, existingId: string, message: string, onKept: (win: WinView) => void) => {
+      const existing = wins.find((win) => win.id === existingId) ?? null;
+      const label = existing ? `Looks like "${existing.title}".` : message;
+      toast(label, {
+        duration: 15_000,
+        description: 'Merge into it or keep both?',
+        action: {
+          label: 'Merge',
+          onClick: () => {
+            const addition = (input.narrative ?? input.draft?.narrative ?? input.text).trim();
+            const narrative = existing?.narrative ? `${existing.narrative}\n\n${addition}` : addition;
+            void logData.updateWin(existingId, { narrative }).then((result) => {
+              if (!result.success) {
+                toast.error(result.error);
+                return;
+              }
+              setWins((prev) => mergeWins(prev, [result.data]));
+              setOpenWinId(existingId);
+            });
+          },
+        },
+        cancel: {
+          label: 'Keep both',
+          onClick: () => {
+            void persistCapture(input, { confirm: true, force: true }).then((outcome) => {
+              if (outcome && 'win' in outcome) onKept(outcome.win);
+            });
+          },
+        },
+      });
+    },
+    [wins, persistCapture],
+  );
+
   const handleCapture = React.useCallback(
     (input: QuickCaptureSubmit) => {
-      void persistCapture(input).then((win) => {
-        if (!win) return;
-        const next = [win, ...wins].sort(byRecency);
+      const landed = (win: WinView) => {
+        const next = [win, ...wins.filter((entry) => entry.id !== win.id)].sort(byRecency);
         setWins(next);
+        if (win.status !== 'confirmed') {
+          // Confirm-on-create did not happen (no structured draft, or it
+          // failed): say so, and put it in the queue rather than claim "Logged".
+          enqueueDraft(win);
+          toast('Saved as a draft. Confirm it in Needs review to add it to your record.');
+          return;
+        }
         setSummary((prev) => ({
           ...prev,
           totalConfirmed: prev.totalConfirmed + 1,
@@ -356,27 +512,41 @@ export function LogScreen({
                 totalConfirmed: Math.max(0, prev.totalConfirmed - 1),
                 withEvidence: Math.max(0, prev.withEvidence - 1),
               }));
+              // Delete reverses the confirmation too (winGraph.deleteWin).
               void logData.deleteWin(win.id);
             },
           },
         });
+      };
+      void persistCapture(input, { confirm: true }).then((outcome) => {
+        if (!outcome) return;
+        if ('duplicateOf' in outcome) {
+          offerDuplicate(input, outcome.duplicateOf, outcome.title, landed);
+          return;
+        }
+        landed(outcome.win);
       });
     },
-    [persistCapture, quarterCount, wins],
+    [persistCapture, quarterCount, wins, enqueueDraft, offerDuplicate],
   );
 
   const handleDegrade = React.useCallback(
     (input: QuickCaptureSubmit) => {
-      // Silent degradation: the note is safe, the structuring catches up.
-      void persistCapture({ ...input, title: undefined, narrative: undefined, category: undefined }).then(
-        (win) => {
-          if (!win) return;
-          setWins((prev) => [win, ...prev].sort(byRecency));
-          toast('Saved. We are still tidying it up.');
-        },
-      );
+      // Silent degradation: the note is safe, the structuring catches up. It
+      // is saved as a draft (the user never saw a structured version, so
+      // there is nothing they approved yet) and goes to the review queue.
+      void persistCapture(
+        { ...input, title: undefined, narrative: undefined, category: undefined, draft: undefined },
+        { confirm: false },
+      ).then((outcome) => {
+        if (!outcome || !('win' in outcome)) return;
+        const win = outcome.win;
+        setWins((prev) => [win, ...prev.filter((entry) => entry.id !== win.id)].sort(byRecency));
+        enqueueDraft(win);
+        toast('Saved as a draft. It is in Needs review once it is tidied up.');
+      });
     },
-    [persistCapture],
+    [persistCapture, enqueueDraft],
   );
 
   /* --- render -------------------------------------------------------------- */
@@ -422,7 +592,20 @@ export function LogScreen({
           ) : null}
 
           {syncError ? (
-            <SyncErrorBanner message={syncError} onRetry={() => setSyncError(null)} />
+            <SyncErrorBanner
+              message={syncError}
+              onRetry={() => {
+                // Retry used to just hide the error.
+                void syncSourceNow().then((result) => {
+                  if (result.success) {
+                    setSyncError(null);
+                    toast('Syncing again. New drafts land in Needs review.');
+                  } else {
+                    toast.error(result.error);
+                  }
+                });
+              }}
+            />
           ) : null}
 
           {/* Empty means the block does not render at all — a "nothing to
@@ -431,7 +614,11 @@ export function LogScreen({
             <ReviewQueue
               items={queueItems}
               onConfirm={confirmFromQueue}
+              onConfirmMany={confirmManyFromQueue}
               onDismiss={dismissFromQueue}
+              onEdit={editFromQueue}
+              onRecategorize={recategorizeFromQueue}
+              onUndo={undoFromQueue}
               onOpen={(record) => setOpenWinId(record.id)}
               onDone={() => setQueueItems([])}
             />
@@ -443,8 +630,10 @@ export function LogScreen({
               title="No wins yet"
               description={
                 canConnectSources
-                  ? "Connect GitHub and we'll draft your last 90 days in about a minute."
-                  : 'Start with one thing you shipped this week. It takes about a minute.'
+                  ? snapshot.surface.plan === 'free'
+                    ? "Connect GitHub and we'll draft wins from your last 30 days of merged work. They land here for you to review."
+                    : "Connect GitHub and we'll draft wins from your last 90 days of merged work. They land here for you to review."
+                  : 'Start with one thing you shipped this week.'
               }
               action={
                 canConnectSources

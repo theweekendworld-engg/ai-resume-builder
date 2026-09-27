@@ -257,6 +257,8 @@ function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
         { kind: 'status', status: 'a', label: '📨 Applied' },
         { kind: 'status', status: 'n', label: '❌ Not interested' },
     ];
+    // The JD is already stored: tailoring is one tap, not a copy-paste into /build.
+    actions.push({ kind: 'tailor', label: '✍️ Tailor resume' });
     const fit = okData<FitData>(view.sections.fit);
     const poster = view.kind === 'hiring_post';
     actions.push(poster

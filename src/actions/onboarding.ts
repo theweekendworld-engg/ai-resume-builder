@@ -31,8 +31,21 @@
  */
 
 import { auth } from '@clerk/nextjs/server';
+import { cookies } from 'next/headers';
 
 import { err, ok, type Result } from '@/lib/result';
+import { ParsedResumeSchema } from '@/lib/aiSchemas';
+import { checkEntitlement } from '@/lib/entitlements';
+import { isUnlimited } from '@/lib/plans';
+import { profileReadiness, type ProfileReadiness } from '@/lib/profileReadiness';
+import {
+    startFromParsed,
+    startFromStash,
+    startFromText,
+    type StartOutcome,
+} from '@/lib/onboarding/startFromResume';
+import { SCORE_STASH_COOKIE, claimScoreStash, isStashId } from '@/lib/scoreStash';
+import type { ScoreFix } from '@/lib/anonScoreSchema';
 import { parseResumeText } from '@/lib/resumeParser';
 import { importParsedResumeData } from '@/actions/resumeImport';
 import { completeOnboarding } from '@/actions/profile';
@@ -148,8 +161,10 @@ export async function getWelcomeState(): Promise<Result<WelcomeState>> {
  * on an empty screen is how a good first run still fails:
  *
  *   history + missions  → Home, where the mission they just picked lives
- *   history only        → the builder, to make the thing they came for
- *   nothing             → the builder, which is where history gets added
+ *   otherwise           → the dashboard, whose first-run card names the next step
+ *
+ * Imports do not come through here without a destination: they pass the
+ * editor url of the resume they just created as `requestedNext`.
  */
 export async function finishOnboarding(requestedNext?: string): Promise<Result<{ next: string }>> {
     const { userId } = await auth();
@@ -176,7 +191,10 @@ export async function finishOnboarding(requestedNext?: string): Promise<Result<{
     });
 
     if (intended) return ok({ next: intended });
-    return ok({ next: experiences > 0 && missionsEnabled ? '/home' : '/build' });
+    // Never the builder by default: a job-description box is a dead end for
+    // someone with no resume in the product yet (audit 2026-09-27, D). The
+    // dashboard's first-run card names the one next step for their state.
+    return ok({ next: experiences > 0 && missionsEnabled ? '/home' : '/dashboard' });
 }
 
 /** Leave without importing. Recorded, because a skip is a real signal. */
@@ -186,4 +204,113 @@ export async function skipOnboarding(requestedNext?: string): Promise<Result<{ n
 
     await track(userId, 'onboarding_skipped', FEATURE);
     return finishOnboarding(requestedNext);
+}
+
+// ═══════════════════════════════════════════ first run → a resume document
+
+/**
+ * Clear the stash cookie once it has done its job. Throws outside an action or
+ * route scope (e.g. when a server component calls this), which is fine: the
+ * claimed stash is bound to this user and reopening it reuses the resume.
+ */
+async function clearStashCookie(): Promise<void> {
+    try {
+        (await cookies()).delete(SCORE_STASH_COOKIE);
+    } catch {
+        // Not in a mutable-cookie scope.
+    }
+}
+
+async function recordStart(userId: string, outcome: StartOutcome, via: 'stash' | 'text' | 'upload'): Promise<void> {
+    await track(userId, 'onboarding_resume_imported', {
+        ...FEATURE,
+        via,
+        experiences: outcome.outcome.experiences,
+        projects: outcome.outcome.projects,
+        education: outcome.outcome.education,
+        fixes: outcome.fixes,
+        reused: outcome.reused,
+    });
+}
+
+/** The resume the user just checked on `/score` → history + a Resume they can open. */
+export async function startOnboardingFromStash(stashId: string): Promise<Result<StartOutcome>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    if (!isStashId(stashId)) return err('That link is not valid.', 'invalid_input');
+    const result = await startFromStash(userId, stashId);
+    if (result.success) {
+        await recordStart(userId, result.data, 'stash');
+        await clearStashCookie();
+    }
+    return result;
+}
+
+/** Fallback for a handoff that only made it into this tab's sessionStorage. */
+export async function startOnboardingFromText(resumeText: string, score?: number): Promise<Result<StartOutcome>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    if (typeof resumeText !== 'string' || resumeText.length > 60_000) return err('That is not a resume.', 'invalid_input');
+    const safeScore = typeof score === 'number' && Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null;
+    const result = await startFromText(userId, resumeText, safeScore);
+    if (result.success) await recordStart(userId, result.data, 'text');
+    return result;
+}
+
+/** An uploaded resume the client already parsed → history + a Resume. */
+export async function startOnboardingFromUpload(parsed: unknown): Promise<Result<StartOutcome>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const valid = ParsedResumeSchema.safeParse(parsed);
+    if (!valid.success) return err('We could not read that resume.', 'invalid_input');
+    const result = await startFromParsed(userId, valid.data);
+    if (result.success) await recordStart(userId, result.data, 'upload');
+    return result;
+}
+
+/** The fixes carried from `/score`, for the editor's checklist. Claims if unclaimed. */
+export async function getScoreStashFixes(stashId: string): Promise<Result<{ fixes: ScoreFix[]; score: number }>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    if (!isStashId(stashId)) return err('That link is not valid.', 'invalid_input');
+    const stash = await claimScoreStash(stashId, userId);
+    if (!stash) return err('Those fixes are no longer available.', 'stash_missing');
+    return ok({ fixes: stash.fixes, score: stash.score });
+}
+
+/** Cheap: does the profile have anything a resume could be built from? */
+export async function getProfileReadinessState(): Promise<Result<ProfileReadiness>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    return ok(await profileReadiness(userId));
+}
+
+export type ActivationState = {
+    hasHistory: boolean;
+    resumes: number;
+    /** Completed tailored generations, ever. */
+    tailored: number;
+    /** Null when the plan does not meter tailored resumes. */
+    tailoredRemaining: number | null;
+    tailoredLimit: number | null;
+};
+
+/** What the dashboard's first-run card needs to name ONE next step. */
+export async function getActivationState(): Promise<Result<ActivationState>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const [readiness, resumes, tailored, entitlement] = await Promise.all([
+        profileReadiness(userId),
+        prisma.resume.count({ where: { userId } }),
+        prisma.generationSession.count({ where: { userId, status: 'completed' } }),
+        checkEntitlement(userId, 'tailored_generation').catch(() => null),
+    ]);
+    const metered = entitlement && !isUnlimited(entitlement.limit);
+    return ok({
+        hasHistory: readiness.hasHistory,
+        resumes,
+        tailored,
+        tailoredRemaining: metered ? entitlement!.remaining : null,
+        tailoredLimit: metered ? entitlement!.limit : null,
+    });
 }

@@ -1,7 +1,19 @@
 import Link from 'next/link';
-import { Clock, TriangleAlert } from 'lucide-react';
+import { Bell, Clock, TriangleAlert } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { CONTACT_EMAIL } from '@/components/marketing/Contact';
+
+/**
+ * The "tell me when it's ready" address. A mailto rather than a form: it works
+ * with no new endpoint, lands with a person, and says which feature they were
+ * waiting for, so the page is never a dead end (audit 2026-09-27, flow E).
+ */
+export function waitlistHref(feature: string): string {
+    const subject = encodeURIComponent(`Tell me when ${feature} is ready`);
+    const body = encodeURIComponent(`I tried to open ${feature} in Patronus. Please let me know when it is switched on for my account.`);
+    return `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+}
 
 /**
  * What a signed-in customer sees instead of a 404.
@@ -96,7 +108,15 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
                     </p>
                 ) : null}
                 <div className="mt-5 flex flex-wrap gap-2">
-                    <Button asChild size="sm">
+                    {!isError ? (
+                        <Button asChild size="sm">
+                            <a href={waitlistHref(feature)}>
+                                <Bell className="size-4" aria-hidden />
+                                Tell me when it&apos;s ready
+                            </a>
+                        </Button>
+                    ) : null}
+                    <Button asChild size="sm" variant={isError ? 'default' : 'outline'}>
                         <Link href="/dashboard">Back to your resumes</Link>
                     </Button>
                     <Button asChild variant="outline" size="sm">

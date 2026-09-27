@@ -53,7 +53,7 @@ export function AtsCheckerClient() {
 
     const handleScore = async () => {
         if (!file) {
-            toast.error('Please upload a resume PDF first.');
+            toast.error('Choose your resume first: a PDF or DOCX file.');
             return;
         }
         const startedAt = Date.now();
@@ -94,11 +94,12 @@ export function AtsCheckerClient() {
 
             if (isFunctionTimeout(res)) {
                 trackFunnelEvent('score_timed_out', { durationMs, ...scoreContext });
-                toast.error(
-                    scoreContext.hasJD
-                        ? 'That took too long to score. Try a shorter resume, or run it without the job description.'
-                        : 'That took too long to score. Try a shorter resume.'
-                );
+                toast.error('That took too long to score.', {
+                    description: scoreContext.hasJD
+                        ? 'Try again without the job description, or use a one- or two-page version of the resume.'
+                        : 'Try again with a one- or two-page version, or sign up free and upload it there: the builder reads longer resumes.',
+                    action: { label: 'Sign up free', onClick: () => { window.location.href = '/sign-up'; } },
+                });
                 setStatus('idle');
                 return;
             }
@@ -108,6 +109,12 @@ export function AtsCheckerClient() {
                     data && !data.success ? data.error : 'Could not score your resume.';
                 if (res.status === 429) {
                     trackFunnelEvent('score_rate_limited', { durationMs });
+                    toast.error('You have scored a few resumes in a row.', {
+                        description: 'The free check resets within the hour. Sign up free to keep working on this one now.',
+                        action: { label: 'Sign up free', onClick: () => { window.location.href = '/sign-up'; } },
+                    });
+                    setStatus('idle');
+                    return;
                 } else {
                     trackFunnelEvent('score_failed', {
                         durationMs,
@@ -166,7 +173,7 @@ export function AtsCheckerClient() {
                 <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
                 <p className="text-base font-medium text-foreground">Scoring your resume…</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    Reading your PDF and checking it against ATS best practices.
+                    Reading your resume and checking it against ATS best practices.
                 </p>
             </div>
         );
@@ -205,7 +212,7 @@ export function AtsCheckerClient() {
 
             <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Your file is processed in memory and never stored.
+                Your file is processed in memory and not kept, unless you choose Fix all afterwards.
             </p>
         </div>
     );

@@ -4,16 +4,21 @@
  * The Month in Review read path (design/02 §E — `/log/review/[yyyy-mm]`).
  *
  * Follows impl/00 §P-3: Clerk `auth()` -> zod parse -> work -> `Result<T>`.
- * There is no metered action here on purpose. Re-reading a review you have
- * already been sent is not a billable event, and the one branch that would
- * cost money (composing a paragraph on demand) is deliberately not taken —
- * see `source` below.
+ *
+ * Metering — `month_in_review` is charged once per (user, month), never per
+ * page view (audit 2026-09-27, §I: three reloads used to exhaust Free):
+ *   - A review the monthly job already composed or sent is free to read, for
+ *     ever. It was delivered; re-reading your own document is not billable.
+ *   - A review computed on demand (no stored row) charges the first time it is
+ *     opened, recorded by a receipt, and is free on every later view.
+ * A refusal is returned as `entitlement_required`, never thrown, so the page
+ * renders an upsell rather than the error boundary.
  */
 
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { err, ok, type Result } from '@/lib/result';
-import { gateMeteredAction } from '@/lib/entitlements';
+import { chargeOncePerMonth } from '@/lib/metering/monthlyReceipt';
 import {
     buildMonthInReview,
     formatPeriodKey,
@@ -63,17 +68,6 @@ export async function getMonthInReview(periodKey: string): Promise<Result<MonthI
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
 
-    // `month_in_review` has carried a limit since packaging shipped —
-    // `period(0)` on Free, unlimited on Career — and was never passed to
-    // `gateMeteredAction` anywhere. It is the flagship Career differentiator in
-    // the comparison table, so the day the `work_log` flag turns on, every free
-    // user would have had it. A declared limit with no call site is not a
-    // limit; it is documentation.
-    const gate = await gateMeteredAction(userId, 'month_in_review');
-    if (!gate.allowed) {
-        return err(gate.reason ?? 'Month in Review is not included on this plan', 'entitlement');
-    }
-
     const parsedKey = PeriodKeySchema.safeParse(periodKey);
     if (!parsedKey.success) return err('Invalid month', 'invalid_input');
 
@@ -113,6 +107,9 @@ export async function getMonthInReview(periodKey: string): Promise<Result<MonthI
     if (!review) {
         return err(`No confirmed wins in ${periodLabel(period)}`, 'not_found');
     }
+
+    const charged = await chargeOncePerMonth(userId, parsedKey.data);
+    if (!charged.ok) return err(charged.message, 'entitlement_required');
 
     return ok({
         periodKey: review.periodKey,

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { loadLogSnapshot, logNow, parseScenario } from '@/components/log/data-source';
 import { LogScreen } from '@/components/log/LogScreen';
+import { loadLogSurface } from '@/components/log/surface.server';
 import { isEnabled } from '@/lib/flags';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
@@ -38,8 +39,11 @@ export default async function LogPage({
   }
 
   const params = await searchParams;
+  const scenario = parseScenario(params.scenario);
+  // Real connector state for the real page; `?scenario=` keeps the fixtures'.
+  const surface = scenario === 'default' ? await loadLogSurface(userId) : undefined;
   const [snapshot, canConnectSources] = await Promise.all([
-    loadLogSnapshot(parseScenario(params.scenario)),
+    loadLogSnapshot(scenario, surface),
     // `/settings/sources` 404s unless this is on, so the empty state has to
     // know before it offers to send anyone there.
     isEnabled(userId, 'github_capture'),

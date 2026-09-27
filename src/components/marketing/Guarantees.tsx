@@ -54,11 +54,11 @@ const CONSTRAINTS = [
         mechanism: 'the only step the habit needs',
     },
     {
-        to: 90,
-        suffix: 's',
-        label: 'is the whole weekly ritual',
-        detail: 'Keep, edit or dismiss what we drafted. That is the entire commitment.',
-        mechanism: 'designed to fit a busy Tuesday',
+        to: 1,
+        suffix: '',
+        label: 'sentence is enough to log a win',
+        detail: 'Type a rough note; it comes back structured, with your numbers untouched.',
+        mechanism: 'no weekly homework',
     },
     {
         to: 100,

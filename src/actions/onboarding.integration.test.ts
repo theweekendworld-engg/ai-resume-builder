@@ -39,6 +39,19 @@ const onboarding = await import('@/actions/onboarding');
 
 const RUN = `itest-onb-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const users: string[] = [];
+const stashIds: string[] = [];
+const { createScoreStash } = await import('@/lib/scoreStash');
+const { requireProfileHistory } = await import('@/lib/profileReadiness');
+
+async function stash(score = 58) {
+    const row = await createScoreStash({
+        extractedText: RESUME_TEXT,
+        fixes: [{ priority: 'high', title: 'Quantify impact', problem: 'No figures', suggestion: 'Cut p95 by [X]%' }],
+        score,
+    });
+    stashIds.push(row.id);
+    return row.id;
+}
 
 function signIn(label: string): string {
     const id = `${RUN}-${label}`;
@@ -149,7 +162,10 @@ afterAll(async () => {
         await prisma.funnelEvent.deleteMany({ where: { userId } });
         await prisma.apiUsageLog.deleteMany({ where: { userId } });
         await prisma.mission.deleteMany({ where: { userId } });
+        await prisma.resume.deleteMany({ where: { userId } });
+        await prisma.pendingScore.deleteMany({ where: { userId } });
     }
+    await prisma.pendingScore.deleteMany({ where: { id: { in: stashIds } } });
     invalidateFlagCache();
     uninstallMocks();
     clerk.signOut();
@@ -261,22 +277,23 @@ describe('the welcome state decides what to ask', () => {
 });
 
 describe('where it sends people', () => {
-    test('no history goes to the builder, which is where history gets added', async () => {
+    test('no history goes to the dashboard, never a job-description box', async () => {
+        // The builder cannot use an empty profile; the dashboard names the
+        // next step (audit 2026-09-27, D).
         signIn('exit-empty');
         const result = await onboarding.finishOnboarding();
         if (!result.success) throw new Error(result.error);
-        expect(result.data.next).toBe('/build');
+        expect(result.data.next).toBe('/dashboard');
     });
 
-    test('history but no missions also goes to the builder', async () => {
-        // Landing someone on an empty Home is how a good first run still fails.
+    test('history but no missions also goes to the dashboard', async () => {
         const userId = signIn('exit-history');
         await prisma.userExperience.create({
             data: { userId, company: 'Flexport', role: 'Engineer', startDate: '2021-01', highlights: [] },
         });
         const result = await onboarding.finishOnboarding();
         if (!result.success) throw new Error(result.error);
-        expect(result.data.next).toBe('/build');
+        expect(result.data.next).toBe('/dashboard');
     });
 
     test('history plus missions goes to Home, where the mission they picked lives', async () => {
@@ -322,5 +339,104 @@ describe('where it sends people', () => {
             where: { userId, type: 'onboarding_skipped' },
         });
         expect(events).toHaveLength(1);
+    });
+});
+
+describe('first run ends in a resume document (audit 2026-09-27, B and D)', () => {
+    test('a /score stash becomes history AND a Resume, and is claimed by this user', async () => {
+        const userId = signIn('stash');
+        scriptParse();
+        const id = await stash(58);
+
+        const result = await onboarding.startOnboardingFromStash(id);
+        if (!result.success) throw new Error(result.error);
+        expect(result.data.fixes).toBe(1);
+
+        const resume = await prisma.resume.findFirst({ where: { id: result.data.resumeId, userId } });
+        expect(resume).not.toBeNull();
+        expect(resume!.atsScore).toBe(58);
+        const content = resume!.content as { experience: { company: string }[] };
+        expect(content.experience.map((item) => item.company)).toEqual(['Flexport', 'Instacart']);
+        expect(await prisma.userExperience.count({ where: { userId } })).toBe(2);
+
+        const row = await prisma.pendingScore.findUnique({ where: { id } });
+        expect(row!.userId).toBe(userId);
+        expect(row!.claimedAt).not.toBeNull();
+    });
+
+    test('re-opening the same stash reopens the same resume, not a second one', async () => {
+        const userId = signIn('stash-twice');
+        scriptParse();
+        const id = await stash();
+        const first = await onboarding.startOnboardingFromStash(id);
+        const second = await onboarding.startOnboardingFromStash(id);
+        if (!first.success || !second.success) throw new Error('expected success');
+        expect(second.data.resumeId).toBe(first.data.resumeId);
+        expect(second.data.reused).toBe(true);
+        expect(await prisma.resume.count({ where: { userId } })).toBe(1);
+    });
+
+    test("another account cannot take someone else's checked resume", async () => {
+        signIn('stash-owner');
+        scriptParse();
+        const id = await stash();
+        const owned = await onboarding.startOnboardingFromStash(id);
+        expect(owned.success).toBe(true);
+
+        const thiefId = signIn('stash-thief');
+        const stolen = await onboarding.startOnboardingFromStash(id);
+        expect(stolen.success).toBe(false);
+        expect(await prisma.resume.count({ where: { userId: thiefId } })).toBe(0);
+        const fixes = await onboarding.getScoreStashFixes(id);
+        expect(fixes.success).toBe(false);
+    });
+
+    test('the editor can read the fixes back by stash id', async () => {
+        signIn('stash-fixes');
+        scriptParse();
+        const id = await stash();
+        await onboarding.startOnboardingFromStash(id);
+        const fixes = await onboarding.getScoreStashFixes(id);
+        if (!fixes.success) throw new Error(fixes.error);
+        expect(fixes.data.fixes[0].title).toBe('Quantify impact');
+    });
+
+    test('an upload also creates a Resume, with no model call', async () => {
+        const userId = signIn('upload');
+        const result = await onboarding.startOnboardingFromUpload(parsedResume());
+        if (!result.success) throw new Error(result.error);
+        expect(await prisma.resume.count({ where: { id: result.data.resumeId, userId } })).toBe(1);
+        expect(result.data.outcome.experiences).toBe(2);
+    });
+
+    test('a malformed upload is refused', async () => {
+        signIn('upload-bad');
+        const result = await onboarding.startOnboardingFromUpload({ nope: true });
+        expect(result.success).toBe(false);
+    });
+});
+
+describe('never generate against an empty profile', () => {
+    test('the guard blocks an empty profile and passes one with history', async () => {
+        const empty = signIn('guard-empty');
+        const blocked = await requireProfileHistory(empty);
+        expect(blocked.success).toBe(false);
+        if (!blocked.success) expect(blocked.code).toBe('empty_profile');
+
+        const full = signIn('guard-full');
+        await prisma.userExperience.create({ data: { userId: full, company: 'Flexport', role: 'Engineer', startDate: '2021-01', highlights: [] } });
+        expect((await requireProfileHistory(full)).success).toBe(true);
+
+        const readiness = await onboarding.getProfileReadinessState();
+        if (!readiness.success) throw new Error(readiness.error);
+        expect(readiness.data.hasHistory).toBe(true);
+    });
+
+    test('activation state reports remaining free tailored resumes', async () => {
+        signIn('activation');
+        const state = await onboarding.getActivationState();
+        if (!state.success) throw new Error(state.error);
+        expect(state.data.hasHistory).toBe(false);
+        expect(state.data.tailored).toBe(0);
     });
 });

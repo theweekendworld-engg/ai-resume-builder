@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { marketingContainer, marketingType } from './Section';
+import { START_FREE_HREF } from './links';
 import { Ambience, Reveal } from './Reveal';
 
 /**
@@ -37,8 +38,9 @@ export function ClosingCta() {
 
                 <Reveal delay={160}>
                     <p className={cn(marketingType.lead, 'mx-auto mt-6 max-w-xl')}>
-                        You cannot get those back — but you can reconstruct some of them, and you
-                        can make sure the next three are never in question. Start with this week.
+                        You cannot get those back — but a sentence each is enough to log the ones
+                        you remember, and to make sure the next three are never in question. Start
+                        with this week.
                     </p>
                 </Reveal>
 
@@ -46,7 +48,7 @@ export function ClosingCta() {
                     delay={240}
                     className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
                 >
-                    <Link href="/sign-up?redirect_url=/build" className="mk-btn group w-full sm:w-auto">
+                    <Link href={START_FREE_HREF} className="mk-btn group w-full sm:w-auto">
                         Start free
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>

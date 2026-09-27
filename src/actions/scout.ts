@@ -28,6 +28,7 @@ import {
     refreshScoutRun,
     startScoutRun,
 } from '@/services/scout';
+import { tailorResumeForRun, type TailorStart } from '@/services/tailor';
 
 type Gate = { userId: string } | { error: Result<never> };
 
@@ -150,6 +151,20 @@ export async function draftScoutMessage(input: z.infer<typeof DraftSchema>): Pro
     if (!parsed.success) return err(invalidInput(parsed.error), 'invalid_input');
     const { runId, ...params } = parsed.data;
     return draftScoutOutreach(gate.userId, runId, params);
+}
+
+// ───────────────────────────────────────────────────────────────── tailor
+
+/**
+ * "Tailor my resume for this job" from a Scout run: a per-job copy of the
+ * base resume, generated against the posting Scout already read.
+ */
+export async function tailorFromScout(runId: string): Promise<Result<TailorStart>> {
+    const gate = await gateSurface();
+    if ('error' in gate) return gate.error;
+    const parsed = RunIdSchema.safeParse(runId);
+    if (!parsed.success) return err('Invalid run id', 'invalid_input');
+    return tailorResumeForRun(gate.userId, parsed.data, 'web');
 }
 
 // ──────────────────────────────────────────────────────────────── contacts

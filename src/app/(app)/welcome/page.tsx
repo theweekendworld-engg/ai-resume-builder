@@ -1,42 +1,73 @@
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import { auth } from '@clerk/nextjs/server';
 
-import { getWelcomeState } from '@/actions/onboarding';
+import { finishOnboarding, getWelcomeState, startOnboardingFromStash } from '@/actions/onboarding';
 import { WelcomeFlow } from '@/components/onboarding/WelcomeFlow';
 import { parseInternalPath } from '@/lib/safeNext';
+import { SCORE_STASH_COOKIE, isStashId, readScoreStash } from '@/lib/scoreStash';
 
 export const metadata = {
     title: 'Welcome · Patronus',
 };
 
 /**
- * `/welcome` — where everyone lands after signing up.
+ * `/welcome` — where everyone lands after signing up or signing in with a
+ * checked resume in hand.
  *
- * Not flag-gated. Onboarding is the one surface that cannot wait for a rollout:
- * a user who signs up while a flag is off would otherwise get no first run at
- * all. What it OFFERS adapts instead — the mission question only appears when
- * `missions` is on for that user.
+ * Not flag-gated: a user who signs up while a flag is off must still get a
+ * first run.
  *
- * Runs once. `onboardingComplete` sends a returning user straight through, so
- * a bookmarked or shared link cannot trap someone in setup they have done.
+ * ── The score stash ─────────────────────────────────────────────────────────
+ *
+ * `?stash=<id>` (or the first-party cookie `/api/score/stash` set, which
+ * survives an email-verification tab) means they came from "Fix all of these".
+ * The stash is read server-side, so nothing depends on this tab's
+ * sessionStorage (audit 2026-09-27, B).
+ *
+ *   returning user + stash  → straight to the resume, fixes ready
+ *   new user + stash        → one tap: "Use it" → the resume, fixes ready
+ *   has history, no stash   → nothing to ask: finish and go
  */
 export default async function WelcomePage({
     searchParams,
 }: {
-    searchParams: Promise<{ next?: string }>;
+    searchParams: Promise<{ next?: string; stash?: string }>;
 }) {
     const { userId } = await auth();
     if (!userId) redirect('/sign-in');
 
-    // Where the CTA they clicked was actually going. "Get Career" means
-    // checkout; the hero means the Work Log. Sign-up parks it here because
-    // first run has to happen before the destination is worth reaching.
-    const next = parseInternalPath((await searchParams).next);
+    const params = await searchParams;
+    const next = parseInternalPath(params.next);
+    const cookieStash = (await cookies()).get(SCORE_STASH_COOKIE)?.value;
+    // `stash=none` is "Use a different file": ignore the cookie too.
+    const declined = params.stash === 'none';
+    const stashId = isStashId(params.stash) ? params.stash : !declined && isStashId(cookieStash) ? cookieStash : null;
+    const stash = stashId ? await readScoreStash(stashId, userId) : null;
 
     const result = await getWelcomeState();
     if (!result.success) redirect(next ?? '/dashboard');
-    // A returning user has done this. Send them where they were going.
-    if (result.data.done) redirect(next ?? '/dashboard');
 
-    return <WelcomeFlow initial={result.data} next={next} />;
+    if (result.data.done) {
+        // A returning user who checked a resume: open it, don't ask again.
+        if (stash) {
+            const started = await startOnboardingFromStash(stash.id);
+            if (started.success) redirect(`/editor/${started.data.resumeId}?stash=${stash.id}`);
+        }
+        redirect(next ?? '/dashboard');
+    }
+
+    // Already has history and nothing new to bring in: there is nothing to ask.
+    if (result.data.hasHistory && !stash && !result.data.missionsEnabled) {
+        const finished = await finishOnboarding(next ?? undefined);
+        redirect(finished.success ? finished.data.next : next ?? '/dashboard');
+    }
+
+    return (
+        <WelcomeFlow
+            initial={result.data}
+            next={next}
+            stash={stash ? { id: stash.id, score: stash.score, fixes: stash.fixes.length } : null}
+        />
+    );
 }

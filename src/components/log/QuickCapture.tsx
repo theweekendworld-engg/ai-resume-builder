@@ -44,6 +44,13 @@ export interface QuickCaptureSubmit {
   sensitivity: WinView['sensitivity'];
   /** Answer to the inline quantify prompt, when the draft carried no number. */
   quantity?: string;
+  /**
+   * The structured draft exactly as the user saw and edited it. Sent so the
+   * server persists it as-is: re-structuring the raw text on save was a second
+   * model call, a second meter unit, and a chance to overwrite the edits.
+   * Absent when structuring never completed (raw text, or the 4s degrade).
+   */
+  draft?: DraftStructure;
 }
 
 export interface QuickCaptureProps {
@@ -146,6 +153,7 @@ export function QuickCapture({
       occurredAt: dateFor(preset, now, picked),
       sensitivity,
       quantity: quantity.trim() || undefined,
+      draft: draft ?? undefined,
     }),
     [text, draft, preset, now, picked, sensitivity, quantity],
   );

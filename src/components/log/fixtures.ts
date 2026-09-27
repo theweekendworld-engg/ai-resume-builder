@@ -867,6 +867,14 @@ export async function dismissWin(winId: string, reason: DismissReason): Promise<
   return ok(undefined);
 }
 
+export async function restoreWin(winId: string): Promise<Result<WinView>> {
+  await sleep(80);
+  const win = find(winId);
+  if (!win) return fail('That win no longer exists.', 'not_found');
+  if (win.status === 'dismissed') win.status = 'draft';
+  return ok({ ...win });
+}
+
 export async function bulkConfirm(winIds: string[]): Promise<Result<BulkResult>> {
   await sleep(220);
   const result: BulkResult = { ok: [], failed: [] };

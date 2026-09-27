@@ -189,3 +189,15 @@ export function recordSpanYears(recordStart: Date | null, now: Date): number {
   const years = (now.getTime() - recordStart.getTime()) / (365.25 * 86_400_000);
   return Math.max(1, Math.round(years));
 }
+
+/**
+ * The existing Win a near-duplicate create points at, from the error code the
+ * create action returns (`merge_proposal:<winId>`, `winDrafting.ts`). Local
+ * because that module is server-only.
+ */
+export function mergeTargetFromCode(code: string | undefined): string | null {
+  const prefix = 'merge_proposal:';
+  if (!code || !code.startsWith(prefix)) return null;
+  const id = code.slice(prefix.length);
+  return id.length > 0 ? id : null;
+}

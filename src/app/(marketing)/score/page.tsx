@@ -4,7 +4,7 @@ import { AtsCheckerClient } from '@/components/marketing/score/AtsCheckerClient'
 export const metadata: Metadata = {
     title: 'Free Resume ATS Score — Patronus',
     description:
-        'Drop your resume PDF and get an instant ATS and quality score with specific, prioritized fixes. Free, no sign-up, never stored.',
+        'Drop your resume (PDF or DOCX) and get an instant ATS and quality score with specific, prioritized fixes. Free, no sign-up.',
 };
 
 export default function ScorePage() {

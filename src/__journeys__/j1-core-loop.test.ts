@@ -97,6 +97,7 @@ const { qdrantExternalFilter } = await import('@/lib/graph/visibility');
 const qdrantModule = await import('@/lib/qdrantClient');
 const { applyDigestAction, resolveWinToken, verifyWinToken } = await import('@/lib/winTokens');
 const MagicLinkPage = (await import('@/app/w/[token]/page')).default;
+const { applyFromDigestLink } = await import('@/actions/digest');
 
 // ═══════════════════════════════════════════════════════════════ the corpus
 //
@@ -573,6 +574,13 @@ function tokensIn(body: string): Array<{ token: string; winId: string; action: s
     return out;
 }
 
+/** The win id a confirm token names (tokens carry it; see tokensIn). */
+function winIdForScannerCheck(token: string): string {
+    const parsed = verifyWinToken(token);
+    if (!parsed) throw new Error('bad token in test');
+    return parsed.winId;
+}
+
 function confirmTokenFor(body: string, winId: string): string {
     const found = tokensIn(body).find((entry) => entry.winId === winId && entry.action === 'confirm');
     if (!found) throw new Error(`no confirm token for win ${winId} in the delivered email`);
@@ -581,13 +589,27 @@ function confirmTokenFor(body: string, winId: string): string {
 
 type PageResult = { props: { headline: string; children: unknown } };
 
-/** Tap the link the way a logged-out reader does: the real route, no session. */
-async function tapMagicLink(token: string): Promise<{ headline: string; body: string }> {
+async function renderMagicLink(token: string): Promise<{ headline: string; body: string }> {
     const element = (await MagicLinkPage({
         params: Promise.resolve({ token }),
         searchParams: Promise.resolve({}),
     })) as unknown as PageResult;
     return { headline: element.props.headline, body: elementText(element.props.children) };
+}
+
+/**
+ * Tap the link the way a logged-out reader does: open the page (a GET that
+ * must write NOTHING, since mail scanners open links too), then press the one
+ * button, which is the server action. Since 2026-09-27 the GET only shows.
+ */
+async function tapMagicLink(token: string): Promise<{ headline: string; body: string }> {
+    const opened = await renderMagicLink(token);
+    if (opened.headline === 'Log this win?' || opened.headline === 'Not a win?') {
+        const applied = await applyFromDigestLink(token);
+        if (applied.status !== 'done') throw new Error(`magic link tap failed: ${applied.status === 'error' ? applied.message : ''}`);
+        return renderMagicLink(token);
+    }
+    return opened;
 }
 
 function elementText(node: unknown): string {
@@ -864,6 +886,12 @@ describe('J1 — the core loop', () => {
 
         journey.clerk.signOut();
         expect(journey.clerk.userId).toBeNull();
+
+        // A mail scanner opening the link must not confirm anything.
+        const beforeOpen = await countGraph(winIdForScannerCheck(confirmToken));
+        const opened = await renderMagicLink(confirmToken);
+        expect(opened.headline).toBe('Log this win?');
+        expect(await countGraph(winIdForScannerCheck(confirmToken))).toEqual(beforeOpen);
 
         const tapped = await tapMagicLink(confirmToken);
         expect(tapped.headline).toBe('✓  Logged');
