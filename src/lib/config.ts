@@ -13,7 +13,12 @@ export function resolveEmbeddingSize(model: string, override?: string): number {
     return 3072;
 }
 
-const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-large";
+// Small, not large (2026-09-27): search ranks a few hundred items per user, where
+// large's benchmark edge (MTEB 64.6 vs 62.3) does not show, and small is 6.5x
+// cheaper at half the dimensions. Switched when the move to pgvector meant
+// re-embedding everything anyway. Changing it again starts a new collection
+// (see KNOWLEDGE_BASE_COLLECTION) that the reconcile sweep re-fills.
+const embeddingModel = process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
 
 export type ModelGateway = {
     /** Which vendor chat traffic actually goes to. For logs and the admin UI. */

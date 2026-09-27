@@ -1620,8 +1620,7 @@ model VectorCollection {
 /// One embedded point. `userId`, `type` and `sourceId` are copied out of the
 /// payload so the filters every search uses are plain indexed columns.
 /// Search is an exact scan inside one user's points (a few hundred at most),
-/// so there is no ANN index: exact is both correct and fast at that size, and
-/// pgvector's HNSW caps out at 2,000 dimensions (text-embedding-3-large is 3,072).
+/// so there is no ANN index: exact is both correct and fast at that size.
 model VectorPoint {
   collection String
   id         String

@@ -23,6 +23,7 @@
  *    genuinely exercised rather than bypassed by calling handlers directly.
  */
 
+import { KNOWLEDGE_BASE_COLLECTION } from '@/lib/embeddings';
 import { afterAll, afterEach, beforeAll } from 'bun:test';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -175,13 +176,10 @@ export async function purge(runId: string): Promise<void> {
 }
 
 /**
- * The collection the app writes to. Mirrors `COLLECTION_NAME` in
- * `src/lib/embeddings.ts`, which is not exported. ADR-5's move to a
- * `QDRANT_COLLECTION` env var and 1024 dims (P0.6) never happened; if it does,
- * this must follow or every vector assertion here silently passes on an empty
- * collection.
+ * The collection the app writes to: imported, not copied, so a rename can
+ * never leave every vector assertion here passing on an empty collection.
  */
-export const JOURNEY_COLLECTION = 'knowledge_base';
+export const JOURNEY_COLLECTION = KNOWLEDGE_BASE_COLLECTION;
 
 /** Assert nothing leaked. Worth calling once at the end of a journey file. */
 export async function assertPurged(runId: string): Promise<Record<string, number>> {

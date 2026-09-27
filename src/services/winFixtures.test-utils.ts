@@ -19,11 +19,11 @@ import {
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
 import { qdrantClient } from '@/lib/qdrantClient';
-import { ensureKnowledgeBaseCollection } from '@/lib/embeddings';
+import { ensureKnowledgeBaseCollection, KNOWLEDGE_BASE_COLLECTION } from '@/lib/embeddings';
 import { createWinRecord, type NewWinInput } from '@/services/winGraph';
 import type { JobContext } from '@/lib/jobs/types';
 
-export const QDRANT_COLLECTION = 'knowledge_base';
+export const QDRANT_COLLECTION = KNOWLEDGE_BASE_COLLECTION;
 
 export function newTestUserId(label = 'b1'): string {
     return `test-worklog-${label}-${randomUUID()}`;

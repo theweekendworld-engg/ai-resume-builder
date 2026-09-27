@@ -21,7 +21,15 @@ import {
 } from '@/lib/qdrantClient';
 import { logUsageEvent, trackedEmbeddingCreate } from '@/lib/usageTracker';
 
-const COLLECTION_NAME = 'knowledge_base';
+/**
+ * Named for its dimension. Vectors from different models cannot be compared,
+ * so a model change must not write into the old collection: a new name means a
+ * fresh, empty collection, which the daily reconcile sweep then re-fills
+ * (ADR-5: a dimension change is a new collection plus a full re-embed).
+ * The old collection is left untouched; it is simply no longer read.
+ */
+export const KNOWLEDGE_BASE_COLLECTION = `knowledge_base_${config.openai.embedding.size}`;
+const COLLECTION_NAME = KNOWLEDGE_BASE_COLLECTION;
 const PROJECT_README_EMBED_CHARS = 3500;
 const PROJECT_EMBED_MAX_CHARS = 12000;
 const EXPERIENCE_EMBED_CHARS = 4000;
