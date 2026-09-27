@@ -1602,3 +1602,37 @@ model PendingScore {
 
   @@index([expiresAt])
 }
+
+/// The vector store, in Postgres (pgvector). Replaced Qdrant Cloud on
+/// 2026-09-27, when the free cluster was suspended for inactivity and every
+/// semantic search in production failed with "fetch failed": one database is
+/// one thing that can be down, not two. Accessed only through raw SQL in
+/// `src/lib/pgVectorClient.ts`, which presents the Qdrant client surface the
+/// app already uses. `size` guards against an embedding-model change mixing
+/// dimensions in one collection.
+model VectorCollection {
+  name      String   @id
+  size      Int
+  distance  String
+  createdAt DateTime @default(now())
+}
+
+/// One embedded point. `userId`, `type` and `sourceId` are copied out of the
+/// payload so the filters every search uses are plain indexed columns.
+/// Search is an exact scan inside one user's points (a few hundred at most),
+/// so there is no ANN index: exact is both correct and fast at that size, and
+/// pgvector's HNSW caps out at 2,000 dimensions (text-embedding-3-large is 3,072).
+model VectorPoint {
+  collection String
+  id         String
+  userId     String?
+  type       String?
+  sourceId   String?
+  payload    Json
+  embedding  Unsupported("vector")
+  updatedAt  DateTime                 @default(now()) @updatedAt
+
+  @@id([collection, id])
+  @@index([collection, userId, type])
+  @@index([collection, type])
+}

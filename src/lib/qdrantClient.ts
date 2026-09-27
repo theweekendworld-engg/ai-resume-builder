@@ -1,5 +1,9 @@
 /**
- * The Qdrant client, and the seam for swapping it in tests.
+ * The vector-store client, and the seam for swapping it in tests.
+ *
+ * The binding is typed as `QdrantClient` because that is the surface the app
+ * calls. By default it is backed by Postgres (`PgVectorClient`); set
+ * `VECTOR_STORE=qdrant` to talk to a Qdrant server instead.
  *
  * Lives here rather than beside the embedding code (formerly the `'use server'`
  * file `src/actions/embed.ts`, now `src/lib/embeddings.ts`) for a hard reason: that file
@@ -15,8 +19,10 @@
 
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { config } from '@/lib/config';
+import { PgVectorClient } from '@/lib/pgVectorClient';
 
 function createClient(): QdrantClient {
+    if (config.vectorStore === 'pgvector') return new PgVectorClient().asQdrantClient();
     return new QdrantClient({
         url: config.qdrant.url || 'http://localhost:6333',
         ...(config.qdrant.apiKey && { apiKey: config.qdrant.apiKey }),

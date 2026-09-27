@@ -24,6 +24,12 @@ describe('configHealth', () => {
         expect(check?.ok).toBe(false);
     });
 
+    test('the vector store needs nothing by default; a Qdrant opt-in needs a server', () => {
+        expect(configHealth(FULL).some((c) => c.id === 'vector_store')).toBe(false);
+        expect(configHealth({ ...FULL, VECTOR_STORE: 'qdrant' }).find((c) => c.id === 'vector_store')?.ok).toBe(false);
+        expect(configHealth({ ...FULL, VECTOR_STORE: 'qdrant', QDRANT_URL: 'https://q' }).find((c) => c.id === 'vector_store')?.ok).toBe(true);
+    });
+
     test('half a WhatsApp config is flagged; none at all is not', () => {
         expect(configHealth(FULL).some((c) => c.id === 'whatsapp')).toBe(false);
         expect(configHealth({ ...FULL, WHATSAPP_ACCESS_TOKEN: 'x' }).find((c) => c.id === 'whatsapp')?.ok).toBe(false);

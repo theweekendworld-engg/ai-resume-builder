@@ -18,6 +18,8 @@ import {
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { config } from '@/lib/config';
+import { qdrantClient } from '@/lib/qdrantClient';
+import { ensureKnowledgeBaseCollection } from '@/lib/embeddings';
 import { createWinRecord, type NewWinInput } from '@/services/winGraph';
 import type { JobContext } from '@/lib/jobs/types';
 
@@ -44,32 +46,26 @@ export function fakeEmbedding(text: string, size = config.openai.embedding.size)
     return vector.map((value) => value / norm);
 }
 
-// ───────────────────────────────────────────────────────────── qdrant helpers
-
-function qdrantUrl(path: string): string {
-    const base = (config.qdrant.url || 'http://localhost:6333').replace(/\/+$/, '');
-    return `${base}${path}`;
-}
-
-function qdrantHeaders(): Record<string, string> {
-    return {
-        'content-type': 'application/json',
-        ...(config.qdrant.apiKey ? { 'api-key': config.qdrant.apiKey } : {}),
-    };
-}
+// ───────────────────────────────────────────────────────────── vector store helpers
+//
+// Through the live client binding, never raw HTTP to a Qdrant server: the
+// store is Postgres/pgvector by default (src/lib/qdrantClient.ts), and a test
+// must assert what is in the store the app actually wrote to.
 
 export type QdrantPoint = { id: string; payload: Record<string, unknown> };
 
 /** Raw scroll so a test can assert what is *actually* in the collection. */
 export async function qdrantScroll(filter: unknown, limit = 50): Promise<QdrantPoint[]> {
-    const response = await fetch(qdrantUrl(`/collections/${QDRANT_COLLECTION}/points/scroll`), {
-        method: 'POST',
-        headers: qdrantHeaders(),
-        body: JSON.stringify({ filter, limit, with_payload: true }),
+    await ensureKnowledgeBaseCollection();
+    const page = await qdrantClient.scroll(QDRANT_COLLECTION, {
+        filter: filter as never,
+        limit,
+        with_payload: true,
     });
-    if (!response.ok) throw new Error(`qdrant scroll failed: ${response.status}`);
-    const body = (await response.json()) as { result?: { points?: QdrantPoint[] } };
-    return body.result?.points ?? [];
+    return page.points.map((point) => ({
+        id: String(point.id),
+        payload: (point.payload ?? {}) as Record<string, unknown>,
+    }));
 }
 
 export async function qdrantPointsForUser(userId: string): Promise<QdrantPoint[]> {
@@ -81,27 +77,16 @@ export async function qdrantUpsertRaw(point: {
     vector: number[];
     payload: Record<string, unknown>;
 }): Promise<void> {
-    const response = await fetch(
-        qdrantUrl(`/collections/${QDRANT_COLLECTION}/points?wait=true`),
-        {
-            method: 'PUT',
-            headers: qdrantHeaders(),
-            body: JSON.stringify({ points: [point] }),
-        },
-    );
-    if (!response.ok) throw new Error(`qdrant upsert failed: ${response.status} ${await response.text()}`);
+    await ensureKnowledgeBaseCollection();
+    await qdrantClient.upsert(QDRANT_COLLECTION, { wait: true, points: [point] });
 }
 
 async function qdrantDeleteByUser(userId: string): Promise<void> {
-    const response = await fetch(
-        qdrantUrl(`/collections/${QDRANT_COLLECTION}/points/delete?wait=true`),
-        {
-            method: 'POST',
-            headers: qdrantHeaders(),
-            body: JSON.stringify({ filter: { must: [{ key: 'userId', match: { value: userId } }] } }),
-        },
-    );
-    if (!response.ok) throw new Error(`qdrant delete failed: ${response.status}`);
+    await ensureKnowledgeBaseCollection();
+    await qdrantClient.delete(QDRANT_COLLECTION, {
+        wait: true,
+        filter: { must: [{ key: 'userId', match: { value: userId } }] },
+    });
 }
 
 // ───────────────────────────────────────────────────────────── job context

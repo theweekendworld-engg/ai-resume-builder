@@ -81,6 +81,9 @@ async function sweep(dryRun = false): Promise<{ report: ReconcileReport; enqueue
 }
 
 afterEach(async () => {
+    if (created.length > 0) {
+        await prisma.job.deleteMany({ where: { OR: created.map((id) => ({ dedupeKey: { contains: id } })) } });
+    }
     await prisma.claimLink.deleteMany({ where: { userId: USER } });
     await prisma.evidence.deleteMany({ where: { userId: USER } });
     await prisma.win.deleteMany({ where: { userId: USER } });
@@ -173,6 +176,33 @@ describe('missing vectors', () => {
         });
         expect(jobs).toHaveLength(1);
         await prisma.job.deleteMany({ where: { id: { in: jobs.map((j) => j.id) } } });
+    });
+
+    test('a Win marked embedded whose vector is gone gets a repair job', async () => {
+        // Every row in production after the Qdrant Cloud cluster was lost: the
+        // column says embedded, the store has nothing. The original embed job
+        // succeeded long ago, so the repair must not reuse its dedupe key.
+        const winId = await makeWin({ embedded: true, qdrantPointId: crypto.randomUUID(), grounded: true });
+        const { report } = await sweep();
+
+        expect(report.missing).toBe(1);
+        const jobs = await prisma.job.findMany({ where: { kind: 'embed_win', dedupeKey: { contains: winId } } });
+        expect(jobs).toHaveLength(1);
+        expect(jobs[0].dedupeKey).toContain('embed-win-repair');
+    });
+
+    test('a Win whose vector is live is not re-enqueued', async () => {
+        const { upsertToQdrant, deleteFromQdrant } = await import('@/lib/embeddings');
+        const { config } = await import('@/lib/config');
+        const winId = await makeWin({ embedded: true, grounded: true });
+        const vector = Array.from({ length: config.openai.embedding.size }, (_, i) => (i === 0 ? 1 : 0));
+        const pointId = await upsertToQdrant({ vector, payload: { userId: USER, type: 'win', sourceId: winId } });
+        try {
+            const { report } = await sweep();
+            expect(report.missing).toBe(0);
+        } finally {
+            await deleteFromQdrant(pointId);
+        }
     });
 
     test('a confidential Win is never enqueued for embedding', async () => {

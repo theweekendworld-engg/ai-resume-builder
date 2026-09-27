@@ -24,11 +24,18 @@
  *   3. MISSING  — a Win that should be embedded but has no live point. Benign:
  *      it is invisible to retrieval, so the record is quietly poorer than the
  *      user thinks. Re-enqueued rather than embedded inline, so the sweep stays
- *      cheap and the existing idempotent handler does the work.
+ *      cheap and the existing idempotent handler does the work. "No live point"
+ *      is checked against the store, not the `embedded` column: the column says
+ *      what the code believed, and when the store lost its points (the Qdrant
+ *      Cloud suspension, then the move to pgvector) every column stayed `true`.
  *
  *   4. ORPHANED — a point whose Win is gone. Reported by B1: `deleteWin`
  *      removes the point before the transaction, so a failed transaction can
  *      strand one. Wastes memory and can surface a deleted Win in search.
+ *
+ *   5. PROFILE  — a project, experience or knowledge item with no live point.
+ *      Those are embedded inline on save, so nothing else ever repaired one.
+ *      One `embed_profile_item` job each.
  *
  * Read-mostly and safe to run repeatedly. Repairs are capped per run so one
  * sweep cannot become an unbounded backfill.
@@ -40,6 +47,12 @@ import { prisma } from '@/lib/prisma';
 import { mayEmbed, WIN_POINT_TYPE } from '@/lib/graph/visibility';
 import { deleteFromQdrant, scrollPointSourceIds } from '@/lib/embeddings';
 import { deleteWinPoint, enqueueEmbedWin } from './embedWin';
+import { enqueue } from '@/lib/jobs/runner';
+import {
+    EMBED_PROFILE_ITEM_JOB_KIND,
+    embedProfileItemDedupeKey,
+    type ProfileItemKind,
+} from './embedProfileItem';
 import type { JobHandler, JobResult } from '../types';
 
 /** Per-run ceilings. A sweep is a janitor, not a migration. */
@@ -50,7 +63,7 @@ export const RECONCILE_LIMITS = {
     leaked: 500,
     /** Ungrounded Wins repaired per run — each costs a transaction. */
     ungrounded: 200,
-    /** Embed jobs enqueued per run. */
+    /** Embed jobs enqueued per run (Wins and profile items, each). */
     missing: 200,
 } as const;
 
@@ -67,6 +80,8 @@ export type ReconcileReport = {
     ungrounded: number;
     missing: number;
     orphaned: number;
+    /** Projects, experiences and knowledge items with no live point. */
+    profileMissing: number;
     repaired: number;
     dryRun: boolean;
 };
@@ -104,8 +119,18 @@ export const reconcileGraphHandler: JobHandler = async (payload, ctx): Promise<J
 
     const report: ReconcileReport = {
         scanned: wins.length, leaked: 0, ungrounded: 0, missing: 0,
-        orphaned: 0, repaired: 0, dryRun,
+        orphaned: 0, profileMissing: 0, repaired: 0, dryRun,
     };
+    const day = new Date().toISOString().slice(0, 10);
+
+    // What the store actually holds, for drifts 3 and 4. Scoped to the user
+    // when the sweep is.
+    const winPoints = await scrollPointSourceIds({
+        type: WIN_POINT_TYPE,
+        userId: input.userId,
+        limit: RECONCILE_LIMITS.scan * 2,
+    });
+    const liveWinIds = new Set(winPoints.map((p) => p.sourceId));
 
     // --- 1. Leaked vectors. Repaired first; this one is a privacy incident. ---
     const leaked = wins.filter((w) => !mayEmbed(w) && (w.embedded || w.qdrantPointId));
@@ -150,12 +175,14 @@ export const reconcileGraphHandler: JobHandler = async (payload, ctx): Promise<J
     }
 
     // --- 3. Should be embedded, no live point. ---
-    const missing = wins.filter((w) => mayEmbed(w) && !w.embedded);
+    const missing = wins.filter((w) => mayEmbed(w) && (!w.embedded || !liveWinIds.has(w.id)));
     report.missing = missing.length;
 
     for (const win of missing.slice(0, RECONCILE_LIMITS.missing)) {
         if (dryRun) continue;
-        await enqueueEmbedWin(win);
+        // Marked embedded but no vector: the original job already succeeded,
+        // so the repair needs its own dedupe key.
+        await enqueueEmbedWin(win, win.embedded ? { repairDay: day } : {});
         report.repaired += 1;
     }
 
@@ -164,10 +191,7 @@ export const reconcileGraphHandler: JobHandler = async (payload, ctx): Promise<J
     // Only detectable from the Qdrant side, so it is skipped for a single-user
     // sweep (the scroll is collection-wide and the cost would not be scoped).
     if (!input.userId) {
-        const points = await scrollPointSourceIds({
-            type: WIN_POINT_TYPE,
-            limit: RECONCILE_LIMITS.scan,
-        });
+        const points = winPoints;
 
         if (points.length > 0) {
             const live = await prisma.win.findMany({
@@ -190,6 +214,35 @@ export const reconcileGraphHandler: JobHandler = async (payload, ctx): Promise<J
                     });
                 }
             }
+        }
+    }
+
+    // --- 5. Profile rows with no live point. ---
+    const scope = input.userId ? { userId: input.userId } : {};
+    const take = RECONCILE_LIMITS.scan;
+    const [projects, experiences, knowledge, profilePoints] = await Promise.all([
+        prisma.userProject.findMany({ where: scope, select: { id: true }, orderBy: { updatedAt: 'desc' }, take }),
+        prisma.userExperience.findMany({ where: scope, select: { id: true }, orderBy: { updatedAt: 'desc' }, take }),
+        prisma.knowledgeItem.findMany({ where: scope, select: { id: true }, orderBy: { updatedAt: 'desc' }, take }),
+        scrollPointSourceIds({ userId: input.userId, limit: RECONCILE_LIMITS.scan * 10 }),
+    ]);
+    const liveSourceIds = new Set(profilePoints.map((p) => p.sourceId));
+    const profileMissing: Array<[ProfileItemKind, string]> = [
+        ...projects.map((r) => ['project', r.id] as [ProfileItemKind, string]),
+        ...experiences.map((r) => ['experience', r.id] as [ProfileItemKind, string]),
+        ...knowledge.map((r) => ['knowledge', r.id] as [ProfileItemKind, string]),
+    ].filter(([, id]) => !liveSourceIds.has(id));
+    report.profileMissing = profileMissing.length;
+
+    for (const [kind, id] of profileMissing.slice(0, RECONCILE_LIMITS.missing)) {
+        if (dryRun) continue;
+        try {
+            await enqueue(EMBED_PROFILE_ITEM_JOB_KIND, { kind, id }, { dedupeKey: embedProfileItemDedupeKey(kind, id, day) });
+            report.repaired += 1;
+        } catch (error: unknown) {
+            ctx.log('reconcile: failed to enqueue profile embed', {
+                kind, id, error: error instanceof Error ? error.message : 'unknown',
+            });
         }
     }
 

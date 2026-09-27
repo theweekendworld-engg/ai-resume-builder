@@ -123,14 +123,16 @@ export function embedWinDedupeKey(winId: string, updatedAt: Date): string {
  */
 export async function enqueueEmbedWin(
     win: Pick<Win, 'id' | 'status' | 'sensitivity' | 'updatedAt'>,
+    opts: { repairDay?: string } = {},
 ): Promise<EnqueueResult | null> {
     if (!mayEmbed(win)) return null;
+    // A repair (the Win is marked embedded but its vector is gone) needs its own
+    // key: the original key belongs to a job that already succeeded, so reusing
+    // it would dedupe the repair into nothing.
+    const base = embedWinDedupeKey(win.id, win.updatedAt);
+    const dedupeKey = opts.repairDay ? buildDedupeKey('embed-win-repair', [win.id, opts.repairDay]) : base;
     try {
-        return await enqueue(
-            EMBED_WIN_JOB_KIND,
-            { winId: win.id },
-            { dedupeKey: embedWinDedupeKey(win.id, win.updatedAt) },
-        );
+        return await enqueue(EMBED_WIN_JOB_KIND, { winId: win.id }, { dedupeKey });
     } catch (error) {
         // Embedding is a retrieval optimization; failing to schedule it must not
         // fail the confirm the user just made. The reconcile job picks it up.

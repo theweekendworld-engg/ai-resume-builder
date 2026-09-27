@@ -1,6 +1,7 @@
 /**
- * Embeddings and the Qdrant knowledge base: plain server code, NOT server
- * actions.
+ * Embeddings and the vector knowledge base: plain server code, NOT server
+ * actions. The store is Postgres/pgvector by default (src/lib/qdrantClient.ts);
+ * the `Qdrant` names below are the client surface, kept so no caller changed.
  *
  * This lived at `src/actions/embed.ts` under `'use server'`, which made every
  * export a public HTTP endpoint with no auth check: `searchQdrantByUser` took
@@ -104,25 +105,32 @@ export async function generateEmbedding(params: {
 }
 
 /**
- * Page through points of one payload `type`, returning their `sourceId`s.
+ * Page through points, optionally of one payload `type` and one user,
+ * returning their `sourceId`s.
  *
- * Exists for the reconciliation sweep: finding a vector whose row is gone can
- * only be done from the Qdrant side. Scrolls with `with_vector: false` — we
- * need identity, not embeddings, and pulling 1024 floats per point to compare
- * ids would make the sweep cost more than the drift it repairs.
+ * Exists for the reconciliation sweep, in both directions: a vector whose row
+ * is gone (orphan), and a row whose vector is gone (missing), can only be
+ * found by comparing against what the store actually holds. Scrolls with
+ * `with_vector: false`: identity, not embeddings.
  */
 export async function scrollPointSourceIds(params: {
-  type: string;
+  type?: string;
+  userId?: string;
   limit?: number;
 }): Promise<{ pointId: string; sourceId: string }[]> {
+  await ensureKnowledgeBaseCollection();
   const pageSize = 256;
   const max = params.limit ?? 5_000;
   const out: { pointId: string; sourceId: string }[] = [];
   let offset: string | number | undefined | null = undefined;
+  const must = [
+    ...(params.type ? [{ key: 'type', match: { value: params.type } }] : []),
+    ...(params.userId ? [{ key: 'userId', match: { value: params.userId } }] : []),
+  ];
 
   while (out.length < max) {
     const page = await qdrantClient.scroll(COLLECTION_NAME, {
-      filter: { must: [{ key: 'type', match: { value: params.type } }] },
+      filter: { must },
       limit: Math.min(pageSize, max - out.length),
       offset: offset ?? undefined,
       with_payload: { include: ['sourceId'] },
@@ -541,7 +549,7 @@ export async function searchQdrantByVector(params: {
       userId: params.userId,
       sessionId: params.sessionId,
       operation: 'semantic_search',
-      provider: 'qdrant',
+      provider: config.vectorStore,
       model: 'cosine-vector-search',
       latencyMs: Date.now() - start,
       status: 'success',
@@ -557,7 +565,7 @@ export async function searchQdrantByVector(params: {
       userId: params.userId,
       sessionId: params.sessionId,
       operation: 'semantic_search',
-      provider: 'qdrant',
+      provider: config.vectorStore,
       model: 'cosine-vector-search',
       latencyMs: Date.now() - start,
       status: 'failed',

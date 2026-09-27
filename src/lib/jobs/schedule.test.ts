@@ -45,13 +45,14 @@ describe('every tick dispatches (the tick is daily on Vercel Hobby)', () => {
         }
     });
 
-    test('the monthly and weekly dispatchers are keyed to their period, not a day', async () => {
+    test('the monthly dispatchers are keyed to their month; the reconcile sweep to its day', async () => {
         const { fn, calls } = recorder();
         await schedulePeriodicWork(at(9, 3), fn);
         const key = (kind: string) => calls.find((call) => call.kind === kind)?.dedupeKey;
         expect(key('radar_snapshot')).toBe('radar_snapshot:2026-08');
         expect(key('month_in_review')).toBe('month_in_review:2026-08');
-        expect(key('reconcile_qdrant')).toMatch(/^reconcile_qdrant:2026-W\d{2}$/);
+        // Daily since the pgvector move: the sweep is what re-embeds missing vectors.
+        expect(key('reconcile_qdrant')).toBe('reconcile_qdrant:2026-08-09');
     });
 });
 

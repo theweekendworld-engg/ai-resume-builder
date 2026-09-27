@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector: the vector store lives in Postgres (src/lib/pgVectorClient.ts).
+    image: pgvector/pgvector:pg16
     container_name: ai-resume-builder-postgres
     ports:
       - "127.0.0.1:5432:5432"
@@ -9,7 +10,7 @@ services:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=resume_builder
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_pgvector_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -37,6 +38,7 @@ services:
       start_period: 40s
 
 volumes:
+  postgres_pgvector_data:
   postgres_data:
     driver: local
   qdrant_storage:

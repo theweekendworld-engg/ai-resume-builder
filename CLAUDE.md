@@ -2,7 +2,7 @@
 
 The private, evidence-backed record of a user's working life. The job search is the highest-monetization event inside a relationship that never ends.
 
-**Stack:** Next.js 16 (App Router) · React 19 · Bun · Prisma 6 / Postgres (Supabase) · Qdrant · Clerk · Stripe · Vercel Blob · Upstash · `workflow` SDK · AI SDK 6 + OpenAI · Tailwind 4 + Radix.
+**Stack:** Next.js 16 (App Router) · React 19 · Bun · Prisma 6 / Postgres (Supabase) + pgvector · Clerk · Stripe · Vercel Blob · Upstash · `workflow` SDK · AI SDK 6 + OpenAI · Tailwind 4 + Radix.
 
 ---
 
@@ -154,6 +154,15 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   land in `ApplicationWorkspace` (never moved backwards), notes become `Win`
   drafts (`source = chat`, confirmed only by the user), posts become
   `SavedInsight`. See `06-scout-agent.md` §8.
+- **The vector store is Postgres (pgvector), not Qdrant** (2026-09-27, after
+  the Qdrant Cloud free cluster was suspended and every search failed).
+  `src/lib/pgVectorClient.ts` implements the Qdrant client surface the app
+  already called, so the `qdrant*` names and the Qdrant test double stay; a
+  contract test holds the two to the same answers. An unknown filter THROWS
+  rather than being dropped. The daily reconcile sweep compares rows with the
+  store itself, not the `embedded` column, and re-embeds anything missing
+  (`embed_profile_item` for projects, experiences and knowledge items).
+  Local Docker must run the `pgvector/pgvector:pg16` image.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

@@ -20,6 +20,7 @@ export type JobKind =
     | 'weekly_digest'
     | 'month_in_review'
     | 'embed_win'
+    | 'embed_profile_item'
     | 'ingest_board'
     | 'skill_rollup'
     | 'radar_snapshot'
@@ -35,6 +36,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'weekly_digest',
     'month_in_review',
     'embed_win',
+    'embed_profile_item',
     'ingest_board',
     'skill_rollup',
     'radar_snapshot',

@@ -210,6 +210,12 @@ export const config = {
     app: {
         url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
     },
+    /**
+     * Where vectors live. `pgvector` (default) is the app's own Postgres;
+     * `qdrant` is the legacy Qdrant server, kept only as an explicit opt-in.
+     * See src/lib/pgVectorClient.ts for why production moved.
+     */
+    vectorStore: (process.env.VECTOR_STORE === 'qdrant' ? 'qdrant' : 'pgvector') as 'qdrant' | 'pgvector',
     qdrant: {
         url: process.env.QDRANT_URL as string,
         apiKey: process.env.QDRANT_API_KEY || undefined,

@@ -32,7 +32,7 @@ import { RADAR_SNAPSHOT_JOB_KIND } from '@/lib/jobs/handlers/radarSnapshot';
  * nothing at all ran, because the tick route was behind the login wall).
  *
  * The rule now: every tick dispatches everything periodic, and each dispatch
- * is dedupe-keyed to its own period (day / ISO week / month). A second tick in
+ * is dedupe-keyed to its own period (day / month). A second tick in
  * the same period is a no-op; a MISSED tick is recovered by the next one,
  * because nothing depends on hitting a particular hour.
  */
@@ -54,15 +54,6 @@ export type PeriodicScheduleResult = {
     downgradeJobId: string | null;
 };
 
-function isoWeek(now: Date): string {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const day = d.getUTCDay() || 7;
-    d.setUTCDate(d.getUTCDate() + 4 - day);
-    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-    const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-    return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-}
-
 /**
  * Enqueue every periodic dispatcher. Failures are swallowed per job and
  * returned as nulls: scheduling is additive, and an exception here would take
@@ -74,7 +65,6 @@ export async function schedulePeriodicWork(
 ): Promise<PeriodicScheduleResult> {
     const day = now.toISOString().slice(0, 10);
     const month = now.toISOString().slice(0, 7);
-    const week = isoWeek(now);
     const result: PeriodicScheduleResult = {
         missionNudgeJobId: null,
         radarSnapshotJobId: null,
@@ -101,8 +91,11 @@ export async function schedulePeriodicWork(
         // and any later tick that month (or a recovery after a missed day) is a no-op.
         ['radarSnapshotJobId', RADAR_SNAPSHOT_JOB_KIND, `${RADAR_SNAPSHOT_JOB_KIND}:${month}`, 80],
         ['monthInReviewJobId', MONTH_IN_REVIEW_JOB_KIND, `${MONTH_IN_REVIEW_JOB_KIND}:${month}`, 78],
-        // Weekly integrity sweep of the evidence graph against Qdrant.
-        ['reconcileJobId', 'reconcile_qdrant', `reconcile_qdrant:${week}`, 95],
+        // Daily integrity sweep of the evidence graph against the vector store.
+        // It was weekly; daily since the pgvector move (2026-09-27), because it
+        // is also what re-embeds rows whose vectors are missing, and a cheap
+        // SQL scan no longer justifies making a user wait a week for that.
+        ['reconcileJobId', 'reconcile_qdrant', `reconcile_qdrant:${day}`, 95],
     ];
 
     for (const [field, kind, dedupeKey, priority] of plan) {

@@ -90,6 +90,18 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
         },
     ];
 
+    // The vector store is Postgres unless Qdrant is asked for by name, and a
+    // Qdrant opt-in without a server is every semantic search failing.
+    if (env.VECTOR_STORE === 'qdrant') {
+        checks.push({
+            id: 'vector_store',
+            ok: has(env, 'QDRANT_URL'),
+            severity: 'error',
+            impact: 'VECTOR_STORE=qdrant with no server: semantic search and Win embedding fail.',
+            fix: 'QDRANT_URL (or unset VECTOR_STORE to use Postgres/pgvector)',
+        });
+    }
+
     // Half a WhatsApp config is worse than none: the UI offers linking that fails.
     if (whatsappAny) {
         checks.push({
