@@ -21,6 +21,10 @@ bunx prisma migrate status
 bun run ext:build      # chrome extension
 ```
 
+Production deploys run `prisma migrate deploy` before `next build` (`vercel-build`,
+production only: preview deploys share the same database and must never
+migrate it). A failing migration fails the deploy, and the previous one stays live.
+
 ---
 
 ## The five rules
