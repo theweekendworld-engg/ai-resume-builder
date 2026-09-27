@@ -24,6 +24,8 @@ bun run ext:build      # chrome extension
 Production deploys run `prisma migrate deploy` before `next build` (`vercel-build`,
 production only: preview deploys share the same database and must never
 migrate it). A failing migration fails the deploy, and the previous one stays live.
+It migrates through the Supabase pooler's session port, because the direct host is
+IPv6-only and unreachable from Vercel builds (`scripts/vercel-build.sh`).
 
 ---
 
