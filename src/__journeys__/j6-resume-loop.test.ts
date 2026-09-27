@@ -304,6 +304,36 @@ describe('J6 — the resume loop', () => {
 });
 
 describe('teardown', () => {
+    // Production, 2026-09-27: the Qdrant Cloud cluster was suspended and
+    // refused connections, and every generation failed at semantic_search.
+    // Semantic search ranks the profile; it must never gate generation.
+    test('a generation still completes when the vector store is down', async () => {
+        installLatexDouble();
+        scriptAtsReply();
+        const { qdrantClient, setQdrantClient } = await import('@/lib/qdrantClient');
+        const healthy = qdrantClient;
+        const refuse = async () => { throw new TypeError('fetch failed'); };
+        setQdrantClient(new Proxy({}, { get: () => refuse }) as unknown as typeof healthy);
+        try {
+            const session = await prisma.generationSession.create({
+                data: {
+                    userId: journey.userId,
+                    channel: Channel.web,
+                    jobDescription: `${JOB_DESCRIPTION}\n\nAlso: experience with incident response on-call rotations.`,
+                    currentStep: PipelineStep.reuse_check,
+                    stepStartedAt: new Date(),
+                    status: GenerationStatus.generating,
+                },
+                select: { id: true },
+            });
+            const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
+            expect(result.status).toBe('completed');
+            expect(result.resumeId).toBeDefined();
+        } finally {
+            setQdrantClient(healthy);
+        }
+    });
+
     test('the journey leaves nothing behind', async () => {
         latexTesting.reset();
         await prisma.generatedPdf.deleteMany({ where: { userId: { contains: journey.runId } } });

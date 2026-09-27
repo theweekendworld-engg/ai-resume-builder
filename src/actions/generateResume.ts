@@ -619,29 +619,48 @@ export async function generateSmartResumePipeline(
       semanticQueries.push(baseQuery);
     }
 
-    const queryEmbeddings = await Promise.all(
-      semanticQueries.map((query) => generateEmbedding({
-        text: query,
-        userId,
-        sessionId,
-        operation: 'embedding_generate',
-        metadata: {
-          reason: 'semantic_search_query',
-          type: 'all',
-        },
-      }))
-    );
+    // Semantic search RANKS the profile; it never gates generation. Production
+    // lost its vector store (Qdrant Cloud suspended an idle cluster) on
+    // 2026-09-27 and every generation failed at this step. Degrade instead:
+    // with no vector hits, ranking falls back to the deterministic signals and
+    // the whole profile is still available to the model.
+    type SearchBatch = {
+      projectSearch: Awaited<ReturnType<typeof searchQdrantByVector>>;
+      experienceSearch: Awaited<ReturnType<typeof searchQdrantByVector>>;
+      knowledgeSearches: Awaited<ReturnType<typeof searchQdrantByVector>>[];
+    };
+    let allSearchResults: SearchBatch[] = [];
+    try {
+      const queryEmbeddings = await Promise.all(
+        semanticQueries.map((query) => generateEmbedding({
+          text: query,
+          userId,
+          sessionId,
+          operation: 'embedding_generate',
+          metadata: {
+            reason: 'semantic_search_query',
+            type: 'all',
+          },
+        }))
+      );
 
-    const allSearchResults = await Promise.all(
-      queryEmbeddings.map(async (vector) => {
-        const [projectSearch, experienceSearch, ...knowledgeSearches] = await Promise.all([
-          searchQdrantByVector({ userId, sessionId, vector, type: 'project', limit: 6 }),
-          searchQdrantByVector({ userId, sessionId, vector, type: 'experience', limit: 6 }),
-          ...knowledgeTypes.map((type) => searchQdrantByVector({ userId, sessionId, vector, type, limit: 3 })),
-        ]);
-        return { projectSearch, experienceSearch, knowledgeSearches };
-      })
-    );
+      allSearchResults = await Promise.all(
+        queryEmbeddings.map(async (vector) => {
+          const [projectSearch, experienceSearch, ...knowledgeSearches] = await Promise.all([
+            searchQdrantByVector({ userId, sessionId, vector, type: 'project', limit: 6 }),
+            searchQdrantByVector({ userId, sessionId, vector, type: 'experience', limit: 6 }),
+            ...knowledgeTypes.map((type) => searchQdrantByVector({ userId, sessionId, vector, type, limit: 3 })),
+          ]);
+          return { projectSearch, experienceSearch, knowledgeSearches };
+        })
+      );
+    } catch (error: unknown) {
+      console.warn('[generateResume] semantic search unavailable; ranking without it', {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      allSearchResults = [];
+    }
 
     for (const batchResults of allSearchResults) {
       for (const result of batchResults.projectSearch) {
