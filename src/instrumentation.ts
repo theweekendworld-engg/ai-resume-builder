@@ -27,6 +27,9 @@ export async function register(): Promise<void> {
     // Say loudly, at boot, which switched-on features cannot work here.
     const { logConfigHealth } = await import('@/lib/health');
     logConfigHealth();
+    // Whether the connected database can hold vectors: a property of the live
+    // server, not of env. Not awaited: three small queries must not delay boot.
+    void import('@/lib/vectorStoreHealth').then((m) => m.logVectorStoreHealth());
 
     try {
         const { ensureFlagsSeeded } = await import('@/lib/flags');

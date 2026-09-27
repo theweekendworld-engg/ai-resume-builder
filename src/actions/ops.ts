@@ -9,6 +9,7 @@
  */
 
 import { configHealth, type HealthCheck } from '@/lib/health';
+import { probeVectorStore, vectorStoreCheck } from '@/lib/vectorStoreHealth';
 import { JobStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
@@ -226,6 +227,8 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
         },
         ...configHealth(),
     ];
+    const vectorCheck = vectorStoreCheck(await probeVectorStore());
+    if (vectorCheck) health.push(vectorCheck);
 
     return { generatedAt: new Date(), windowHours, jobs, dead, cost, email, funnel, health };
 }
