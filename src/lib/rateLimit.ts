@@ -40,6 +40,8 @@ export const RATE_LIMITS = {
     anonWrite: { limit: 20, windowSec: 600, message: 'Too many requests. Try again in a few minutes.' },
     /** Third-party compile/enrichment calls billed per request. */
     external: { limit: 30, windowSec: 600, message: 'Too many requests. Try again in a few minutes.' },
+    /** Retrying one failed generation: a few tries, not a free loop. Keyed by session. */
+    retry: { limit: 3, windowSec: 86_400, message: 'This one has been retried a few times today. Start a new resume instead.' },
 } as const satisfies Record<string, Window>;
 
 export type RateBucket = keyof typeof RATE_LIMITS;

@@ -9,6 +9,8 @@ import { FunnelEventPayloadSchema } from '@/lib/funnelEventSchema';
 export const runtime = 'nodejs';
 export const maxDuration = 10;
 
+const MAX_EVENT_BYTES = 8_192;
+
 function getClientIp(req: NextRequest): string {
     const forwarded = req.headers.get('x-forwarded-for');
     if (forwarded) {
@@ -31,9 +33,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true });
         }
 
+        // Telemetry is small. An anonymous route that stores whatever it is
+        // sent was a free database for anyone (audit 2026-10-02).
+        const declared = Number(req.headers.get('content-length') ?? 0);
+        if (declared > MAX_EVENT_BYTES) return NextResponse.json({ success: true });
         let raw: unknown;
         try {
-            raw = await req.json();
+            const text = await req.text();
+            if (text.length > MAX_EVENT_BYTES) return NextResponse.json({ success: true });
+            raw = JSON.parse(text);
         } catch {
             return NextResponse.json({ success: true }); // ignore malformed beacons
         }

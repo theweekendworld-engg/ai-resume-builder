@@ -36,6 +36,7 @@ import { err, ok, type Result } from '@/lib/result';
 import { generateStructured } from '@/lib/ai/structured';
 import { getRoleEvidence } from '@/lib/resume/tools/evidence';
 import { track } from '@/lib/track';
+import { checkAiRateLimit } from '@/lib/rateLimit';
 
 const InputSchema = z.object({
     /**
@@ -86,6 +87,8 @@ Rules that do not bend:
 export async function reviseLine(input: unknown): Promise<Result<LineRevision>> {
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
+    const limited = await checkAiRateLimit(`ai:${userId}`);
+    if (!limited.allowed) return err(limited.error ?? 'Too many requests', 'rate_limited');
 
     const parsed = InputSchema.safeParse(input);
     if (!parsed.success) {

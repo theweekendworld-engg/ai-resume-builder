@@ -3,6 +3,7 @@ import { GenerationStatus } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,14 +20,24 @@ export async function POST(req: NextRequest) {
 
     const session = await prisma.generationSession.findFirst({
       where: { id: sessionId, userId },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!session) {
       return NextResponse.json({ success: false, error: 'Generation session not found' }, { status: 404 });
     }
+    // Only a FAILED run is retried. This used to restart any session the
+    // user owned, finished ones included, with `force` skipping the dedupe:
+    // a free, unmetered generation loop (launch audit 2026-10-02).
+    if (session.status !== GenerationStatus.failed) {
+      return NextResponse.json({ success: false, error: 'Only a failed resume can be retried.' }, { status: 409 });
+    }
+    const limited = await checkRateLimit('retry', session.id);
+    if (!limited.allowed) {
+      return NextResponse.json({ success: false, error: limited.error }, { status: 429 });
+    }
 
-    await prisma.generationSession.update({
-      where: { id: session.id },
+    const claimed = await prisma.generationSession.updateMany({
+      where: { id: session.id, userId, status: GenerationStatus.failed },
       data: {
         status: GenerationStatus.generating,
         errorMessage: null,
@@ -34,6 +45,9 @@ export async function POST(req: NextRequest) {
         workflowRunId: null,
       },
     });
+    if (claimed.count === 0) {
+      return NextResponse.json({ success: false, error: 'This resume is already being retried.' }, { status: 409 });
+    }
     await enqueueGenerationSession(session.id, { force: true });
 
     return NextResponse.json({

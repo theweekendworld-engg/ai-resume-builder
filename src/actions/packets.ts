@@ -14,6 +14,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { checkAiRateLimit, checkRateLimit } from '@/lib/rateLimit';
 import { auth } from '@clerk/nextjs/server';
 import { z } from 'zod';
 import { FrameworkSource, PacketStatus, PacketType, Tier, type Prisma } from '@prisma/client';
@@ -527,6 +528,10 @@ export async function regeneratePacket(
     });
     if (!row) return err('Packet not found', 'not_found');
     if (row.status === PacketStatus.generating) return err('Already generating', 'conflict');
+    // A regeneration re-runs the whole packet workflow; a few a day per
+    // packet, not an unmetered loop (audit 2026-10-02).
+    const limited = await checkRateLimit('retry', `packet:${row.id}`);
+    if (!limited.allowed) return err('This packet has been regenerated a few times today. Try again tomorrow.', 'rate_limited');
 
     await prisma.reviewPacket.update({
         where: { id: row.id },
@@ -833,6 +838,8 @@ export async function getReadiness(input: {
 }): Promise<Result<ReadinessReport>> {
     const access = await requireAccess();
     if (!access.ok) return err(access.error, access.code);
+    const limited = await checkAiRateLimit(`ai:${access.userId}`);
+    if (!limited.allowed) return err(limited.error ?? 'Too many requests', 'rate_limited');
 
     const now = new Date();
     const parsed = z

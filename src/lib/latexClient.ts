@@ -20,7 +20,10 @@ export const LATEX_BUILD_URL = 'https://latex.ytotech.com/builds/sync';
 
 export type LatexFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-const realLatexFetch: LatexFetch = (input, init) => globalThis.fetch(input, init);
+/** A third-party compile: bounded, so a hung service cannot hold the function (audit 2026-10-02). */
+export const LATEX_TIMEOUT_MS = 45_000;
+const realLatexFetch: LatexFetch = (input, init) =>
+    globalThis.fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(LATEX_TIMEOUT_MS) });
 let latexFetch: LatexFetch = realLatexFetch;
 
 /** The transport `compileLatex` should use. Production: global fetch. */

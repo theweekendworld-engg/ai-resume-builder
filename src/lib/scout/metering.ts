@@ -84,8 +84,12 @@ export async function refundCharge(runId: string, userId: string, reason: string
 /** Called when a run learns its kind. Non-job kinds get their unit back. */
 export async function settleChargeForKind(runId: string, kind: ScoutKind): Promise<boolean> {
     if (CHARGEABLE_KINDS.has(kind)) return false;
-    const run = await prisma.agentRun.findUnique({ where: { id: runId }, select: { userId: true } });
+    const run = await prisma.agentRun.findUnique({ where: { id: runId }, select: { userId: true, input: true } });
     if (!run) return false;
+    // A company the user asked about by name runs the paid research sections
+    // (web search plus extraction), so it keeps its unit. Refunding it made
+    // company research free and unlimited (launch audit 2026-10-02).
+    if ((run.input as { intent?: unknown } | null)?.intent === 'company_research') return false;
     return refundCharge(runId, run.userId, 'scout_not_a_job');
 }
 

@@ -8,6 +8,10 @@ import { costBudgetUsd, tokenBudget } from '@/lib/plans';
 
 const realOpenAI = new OpenAI({
   apiKey: config.openai.apiKey,
+  // SDK defaults are 600s and 2 retries: one hung call could hold a function
+  // for most of its life (audit 2026-10-02).
+  timeout: 90_000,
+  maxRetries: 1,
   ...(config.openai.baseURL ? { baseURL: config.openai.baseURL } : {}),
 });
 
@@ -30,6 +34,8 @@ const usesSeparateEmbeddingCreds =
 const realEmbeddingOpenAI = usesSeparateEmbeddingCreds
   ? new OpenAI({
       apiKey: config.openai.embedding.apiKey,
+      timeout: 30_000,
+      maxRetries: 1,
       ...(config.openai.embedding.baseURL
         ? { baseURL: config.openai.embedding.baseURL }
         : {}),
@@ -265,63 +271,97 @@ async function budgetFor(userId: string): Promise<{ tokens: number; costUsd: num
   };
 }
 
-async function getCurrentPeriodUsage(userId: string): Promise<{ totalTokens: number; totalCostUsd: number }> {
-  const { start, end } = getCurrentBillingPeriod();
-
-  const summary = await prisma.userUsageSummary.findUnique({
-    where: {
-      userId_periodStart: {
-        userId,
-        periodStart: start,
-      },
-    },
-    select: {
-      totalTokens: true,
-      totalCostUsd: true,
-    },
-  });
-
-  if (summary) {
-    return {
-      totalTokens: summary.totalTokens,
-      totalCostUsd: summary.totalCostUsd,
-    };
+/** Thrown when a user has spent their monthly model budget. Callers can say so plainly. */
+export class UsageLimitError extends Error {
+  readonly code = 'usage_limit' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'UsageLimitError';
   }
+}
 
+/** Anonymous /score traffic is pooled under one id; it gets its own monthly ceiling. */
+const ANON_ID = 'anon';
+function anonBudgetUsd(): number {
+  const value = Number(process.env.ANON_MONTHLY_COST_USD);
+  return Number.isFinite(value) && value > 0 ? value : 25;
+}
+
+/** Live totals, cached briefly per instance: a cap must move with spend. */
+const USAGE_CACHE_MS = 15_000;
+const usageCache = new Map<string, { at: number; totalTokens: number; totalCostUsd: number }>();
+
+/**
+ * Always the live sum of ApiUsageLog for the period, every status included.
+ *
+ * It used to prefer the stored UserUsageSummary, which only admin pages
+ * refresh, so the cap froze for any user an admin had looked at; and it
+ * counted only successful calls, so failed calls (which still bill tokens)
+ * were free (launch audit, 2026-10-02).
+ */
+async function getCurrentPeriodUsage(userId: string): Promise<{ totalTokens: number; totalCostUsd: number }> {
+  const cached = usageCache.get(userId);
+  if (cached && Date.now() - cached.at < USAGE_CACHE_MS) return cached;
+
+  const { start, end } = getCurrentBillingPeriod();
   const aggregate = await prisma.apiUsageLog.aggregate({
-    where: {
-      userId,
-      createdAt: { gte: start, lt: end },
-      status: 'success',
-    },
-    _sum: {
-      totalTokens: true,
-      costUsd: true,
-    },
+    where: { userId, createdAt: { gte: start, lt: end } },
+    _sum: { totalTokens: true, costUsd: true },
   });
-
-  return {
+  const usage = {
+    at: Date.now(),
     totalTokens: aggregate._sum.totalTokens ?? 0,
     totalCostUsd: aggregate._sum.costUsd ?? 0,
   };
+  usageCache.set(userId, usage);
+  if (usageCache.size > 5_000) usageCache.delete(usageCache.keys().next().value as string);
+  return usage;
 }
 
+/**
+ * The per-user monthly backstop, in front of every model call
+ * (`generateStructured`, the resume loop, and the tracked wrappers). Not a
+ * product limit: feature quotas bind long before this. Infrastructure errors
+ * fail open (logged); a limit reached throws UsageLimitError.
+ */
 export async function enforceUsageLimit(userId: string): Promise<void> {
-  const { tokens: tokenLimit, costUsd: costLimit } = await budgetFor(userId);
-  const tokenCapped = Number.isFinite(tokenLimit) && tokenLimit > 0;
-  const costCapped = Number.isFinite(costLimit) && costLimit > 0;
-  if (!tokenCapped && !costCapped) return;
-
-  const usage = await getCurrentPeriodUsage(userId);
-
-  if (tokenCapped && usage.totalTokens >= tokenLimit) {
-    throw new Error('Monthly token usage limit reached for your account');
+  let usage: { totalTokens: number; totalCostUsd: number };
+  let tokenLimit: number;
+  let costLimit: number;
+  try {
+    if (userId === ANON_ID) {
+      tokenLimit = Number.POSITIVE_INFINITY;
+      costLimit = anonBudgetUsd();
+    } else {
+      ({ tokens: tokenLimit, costUsd: costLimit } = await budgetFor(userId));
+    }
+    const tokenCapped = Number.isFinite(tokenLimit) && tokenLimit > 0;
+    const costCapped = Number.isFinite(costLimit) && costLimit > 0;
+    if (!tokenCapped && !costCapped) return;
+    usage = await getCurrentPeriodUsage(userId);
+  } catch (error) {
+    console.error('[usage] budget check unavailable; allowing', {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return;
   }
 
-  if (costCapped && usage.totalCostUsd >= costLimit) {
-    throw new Error('Monthly usage cost limit reached for your account');
+  if (Number.isFinite(tokenLimit) && tokenLimit > 0 && usage.totalTokens >= tokenLimit) {
+    throw new UsageLimitError('You have used this month\'s AI allowance. It resets on the 1st, or upgrade for more.');
+  }
+  if (Number.isFinite(costLimit) && costLimit > 0 && usage.totalCostUsd >= costLimit) {
+    throw new UsageLimitError(userId === ANON_ID
+      ? 'The free check is busy right now. Sign up to keep going.'
+      : 'You have used this month\'s AI allowance. It resets on the 1st, or upgrade for more.');
   }
 }
+
+export const __usageTesting = {
+  clearCache() {
+    usageCache.clear();
+  },
+};
 
 type ResponseCreateParamsNonStreaming = Parameters<OpenAI['responses']['create']>[0] & { stream?: false };
 

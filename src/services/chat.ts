@@ -14,6 +14,7 @@
 import { Channel, Prisma, WinSource, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { track } from '@/lib/track';
+import { UsageLimitError } from '@/lib/usageTracker';
 import { err, ok, type Result } from '@/lib/result';
 import { buildChatContext, toChatJob } from '@/lib/chat/context';
 import { searchRecord } from '@/lib/chat/askRecord';
@@ -331,7 +332,7 @@ export async function sendChatMessage(params: {
         // Never lose what the user typed: their message is stored, and they
         // get a reply that says what to do next.
         console.error('[chat] turn failed', { userId: params.userId, action, error: error instanceof Error ? error.message : String(error) });
-        reply = { text: ROUTER_FALLBACK, cards: [] };
+        reply = { text: error instanceof UsageLimitError ? error.message : ROUTER_FALLBACK, cards: [] };
     }
 
     const assistantRow = await prisma.chatMessage.create({
@@ -370,6 +371,10 @@ const SCOUT_ACTIONS = new Set<ChatAction>(['log_work', 'analyze_job', 'research_
 export async function routeChannelText(userId: string, text: string, channel: 'telegram' | 'whatsapp'): Promise<ChannelRoute | null> {
     const { isEnabled } = await import('@/lib/flags');
     if (!(await isEnabled(userId, 'chat'))) return null;
+    // The web action rate-limits before calling in; channels arrive here directly.
+    const { checkChatRateLimit } = await import('@/lib/rateLimit');
+    const limited = await checkChatRateLimit(userId);
+    if (!limited.allowed) return { kind: 'reply', text: limited.error ?? 'Give it a minute.' };
     try {
         const context = await buildChatContext(userId);
         const { decision } = await routeMessage({ userId, message: text, history: [], context });
@@ -382,6 +387,7 @@ export async function routeChannelText(userId: string, text: string, channel: 't
         const { replyToText } = await import('@/lib/chat/renderText');
         return { kind: 'reply', text: replyToText(reply, config.app.url) };
     } catch (error) {
+        if (error instanceof UsageLimitError) return { kind: 'reply', text: error.message };
         console.warn('[chat] channel routing failed; using the Scout flow', {
             channel,
             error: error instanceof Error ? error.message : String(error),

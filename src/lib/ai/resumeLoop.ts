@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { aiOpenAI } from '@/lib/aiProvider';
 import { resolveTaskModel } from '@/lib/ai/tasks';
+import { calculateOpenAiCostUsd, enforceUsageLimit, logUsageEvent } from '@/lib/usageTracker';
 import {
     getContactCard,
     getRoleEvidence,
@@ -201,6 +202,8 @@ export const __testing = {
 
 /** Hard ceiling. Output tokens are ~93% of spend; an unbounded loop is an unbounded bill. */
 const MAX_STEPS = 14;
+/** The whole loop; the generation function's own limit is 300s. */
+const LOOP_TIMEOUT_MS = 180_000;
 
 export async function assembleResume(params: {
     userId: string;
@@ -215,6 +218,11 @@ export async function assembleResume(params: {
 }): Promise<LoopResult> {
     const { userId, jobDescription, requirements } = params;
     if (assembler) return assembler({ userId, jobDescription });
+    // The most expensive call in the product, so it carries the monthly
+    // backstop and its own usage row; it had neither (launch audit 2026-10-02).
+    await enforceUsageLimit(userId);
+    const model = resolveTaskModel('resumeAssemble');
+    const startedAt = Date.now();
 
     const toolCalls: string[] = [];
     const evidence: string[] = [];
@@ -276,8 +284,29 @@ export async function assembleResume(params: {
         }),
     };
 
-    const result = await generateText({
-        model: aiOpenAI(resolveTaskModel('resumeAssemble')),
+    const logLoop = async (status: 'success' | 'failed', usage: { inputTokens?: number; outputTokens?: number } | undefined, steps: number) => {
+        const inputTokens = usage?.inputTokens ?? 0;
+        const outputTokens = usage?.outputTokens ?? 0;
+        await logUsageEvent({
+            userId,
+            operation: 'ai.resumeAssemble',
+            provider: 'openai',
+            model,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            costUsd: calculateOpenAiCostUsd({ model, inputTokens, outputTokens }),
+            latencyMs: Date.now() - startedAt,
+            status,
+            metadata: { feature: 'resume', steps, toolCalls: toolCalls.length },
+        }).catch(() => undefined);
+    };
+
+    let outcome: { usage: { inputTokens?: number; outputTokens?: number } | undefined; steps: number };
+    try {
+        const result = await generateText({
+        model: aiOpenAI(model),
+        abortSignal: AbortSignal.timeout(LOOP_TIMEOUT_MS),
         system: SYSTEM,
         prompt: [
             "Assemble this candidate's resume for the following posting.",
@@ -295,14 +324,20 @@ export async function assembleResume(params: {
         // The loop terminates on submit_resume; this is the backstop for a model
         // that never gets there.
         stopWhen: stepCountIs(MAX_STEPS),
-    });
+        });
+        outcome = { usage: result.totalUsage, steps: result.steps.length };
+    } catch (error) {
+        await logLoop('failed', undefined, 0);
+        throw error;
+    }
+    await logLoop(submitted ? 'success' : 'failed', outcome.usage, outcome.steps);
 
     if (!submitted) {
         // Distinct from a schema failure. The model ran out of steps, or decided
         // it could not produce a document — either way there is no draft, and
         // returning a half-empty one is how the pipeline shipped blank resumes.
         throw new Error(
-            `Assembly finished without submitting a resume after ${result.steps.length} steps. Tools called: ${toolCalls.join(', ') || 'none'}`,
+            `Assembly finished without submitting a resume after ${outcome.steps} steps. Tools called: ${toolCalls.join(', ') || 'none'}`,
         );
     }
 
@@ -310,6 +345,6 @@ export async function assembleResume(params: {
         draft: submitted,
         toolCalls,
         evidenceSeen: evidence.join('\n'),
-        steps: result.steps.length,
+        steps: outcome.steps,
     };
 }

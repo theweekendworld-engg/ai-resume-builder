@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { isExtensionAuthError, requireExtensionAuth } from '@/lib/extension/auth';
 import { getExtensionCompanyInsight } from '@/lib/extension/company';
 import { ExtensionCompanyInsightRequestSchema, normalizeExtensionRequestBody } from '@/lib/extension/schemas';
@@ -6,6 +7,10 @@ import { ExtensionCompanyInsightRequestSchema, normalizeExtensionRequestBody } f
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await requireExtensionAuth(req);
+    const limited = await checkRateLimit('external', `ext:${userId}`);
+    if (!limited.allowed) {
+      return NextResponse.json({ success: false, error: limited.error }, { status: 429 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const parsed = ExtensionCompanyInsightRequestSchema.safeParse(normalizeExtensionRequestBody(body));

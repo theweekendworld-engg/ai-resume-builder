@@ -1,4 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
+import { checkRateLimit } from '@/lib/rateLimit';
 import { ResumeImportStatus, ResumeImportStep } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { enqueueResumeImportSession } from '@/lib/resumeImportQueue';
@@ -15,6 +16,11 @@ export async function POST(req: NextRequest) {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const limited = await checkRateLimit('upload', `import:${userId}`);
+    if (!limited.allowed) {
+      return NextResponse.json({ success: false, error: limited.error }, { status: 429 });
     }
 
     const contentType = req.headers.get('content-type') ?? '';

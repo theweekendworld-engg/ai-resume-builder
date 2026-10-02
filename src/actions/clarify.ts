@@ -257,13 +257,20 @@ export async function submitClarificationAnswers(input: unknown): Promise<{
       },
     };
 
-    await prisma.generationSession.update({
-      where: { id: session.id },
+    // Claim it: only a session that is waiting for answers may run. Without
+    // this, re-submitting the same session with new answers ran the full
+    // pipeline again for free, as many times as you liked (launch audit
+    // 2026-10-02). Conditional update, the codebase's one concurrency idiom.
+    const claimed = await prisma.generationSession.updateMany({
+      where: { id: session.id, userId, status: GenerationStatus.awaiting_clarification },
       data: {
         status: GenerationStatus.generating,
         clarifications: mergedPayload as unknown as Prisma.InputJsonValue,
       },
     });
+    if (claimed.count === 0) {
+      return { success: false, error: 'These answers were already used. Start a new tailored resume to change them.' };
+    }
 
     const clarificationContext = buildClarificationContext(mergedPayload);
     const enrichedJobDescription = `${session.jobDescription}${clarificationContext}`;

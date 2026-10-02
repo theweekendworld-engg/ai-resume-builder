@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { aiOpenAI } from '@/lib/aiProvider';
-import { calculateOpenAiCostUsd, logUsageEvent } from '@/lib/usageTracker';
+import { calculateOpenAiCostUsd, enforceUsageLimit, logUsageEvent } from '@/lib/usageTracker';
 import { resolveTaskModel, resolveTaskReasoningEffort, type TaskKey ,
 } from '@/lib/ai/tasks';
 import type { FeatureTag } from '@/lib/ai/features';
@@ -107,6 +107,8 @@ const defaultObjectRunner: ObjectRunner = async ({
         schema,
         system,
         prompt,
+        // A hung provider must not hold a function until the platform kills it.
+        abortSignal: AbortSignal.timeout(STRUCTURED_CALL_TIMEOUT_MS),
         ...(temperature === undefined ? {} : { temperature }),
         ...(reasoningEffort === undefined
             ? {}
@@ -120,9 +122,14 @@ const defaultObjectRunner: ObjectRunner = async ({
 };
 
 type UsageLogger = typeof logUsageEvent;
+type BudgetGuard = (userId: string) => Promise<void>;
+
+/** One attempt; retries get their own. */
+export const STRUCTURED_CALL_TIMEOUT_MS = 90_000;
 
 let objectRunner: ObjectRunner = defaultObjectRunner;
 let usageLogger: UsageLogger = logUsageEvent;
+let budgetGuard: BudgetGuard = enforceUsageLimit;
 
 export const __testing = {
     setObjectRunner(runner: ObjectRunner) {
@@ -131,9 +138,13 @@ export const __testing = {
     setUsageLogger(logger: UsageLogger) {
         usageLogger = logger;
     },
+    setBudgetGuard(guard: BudgetGuard) {
+        budgetGuard = guard;
+    },
     reset() {
         objectRunner = defaultObjectRunner;
         usageLogger = logUsageEvent;
+        budgetGuard = enforceUsageLimit;
     },
 };
 
@@ -173,6 +184,11 @@ export async function generateStructured<T extends z.ZodType>(
     // same discipline as the model map — no thinking budget at a call site.
     const reasoningEffort = opts.reasoningEffort ?? resolveTaskReasoningEffort(task);
     const maxRetries = Math.max(0, opts.maxRetries ?? 1);
+
+    // The monthly per-user backstop (src/lib/usageTracker.ts). It sat only in
+    // the legacy tracked* wrappers, so chat, Scout, packets, backfill, wins
+    // and outreach had no ceiling at all (launch audit, 2026-10-02).
+    await budgetGuard(userId);
 
     const startedAt = Date.now();
     let inputTokens = 0;

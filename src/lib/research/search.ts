@@ -8,6 +8,7 @@
  * is the correct failure, but a confusing one.
  */
 
+import { logUsageEvent } from '@/lib/usageTracker';
 import type { StepContext } from '@/lib/agent/run';
 import { resolveSearchProvider } from '@/lib/research/providers';
 import type { SearchArgs, SearchOutcome, SearchResult } from '@/lib/research/types';
@@ -24,7 +25,7 @@ export function pageText(result: SearchResult): string {
 }
 
 export async function runSearch(
-    step: Pick<StepContext, 'sources' | 'signal' | 'addCost' | 'log'>,
+    step: Pick<StepContext, 'sources' | 'signal' | 'addCost' | 'log'> & Partial<Pick<StepContext, 'userId' | 'runId'>>,
     args: Omit<SearchArgs, 'signal'>,
 ): Promise<RunSearchOutcome> {
     const provider = resolveSearchProvider();
@@ -37,6 +38,20 @@ export async function runSearch(
     }
 
     step.addCost(outcome.costUsd);
+    // Also a usage row, so web research counts against the user's monthly
+    // backstop like model calls do; it was on the run only (audit 2026-10-02).
+    if (step.userId && outcome.costUsd > 0) {
+        await logUsageEvent({
+            userId: step.userId,
+            sessionId: step.runId,
+            operation: 'research.search',
+            provider: provider.name,
+            model: 'web-search',
+            costUsd: outcome.costUsd,
+            status: 'success',
+            metadata: { feature: 'scout', results: outcome.results.length },
+        }).catch(() => undefined);
+    }
     for (const result of outcome.results) {
         step.sources.add({
             url: result.url,
