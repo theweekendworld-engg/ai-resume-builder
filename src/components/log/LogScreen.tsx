@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Inbox, SearchX } from 'lucide-react';
@@ -48,6 +49,8 @@ export interface LogScreenProps {
    * connector is off, logging one manually IS the primary action.
    */
   canConnectSources?: boolean;
+  /** Work Log pages that are switched on for this user (review, backfill, readiness). */
+  subpages?: { href: string; label: string }[];
 }
 
 function byRecency(a: WinView, b: WinView): number {
@@ -81,6 +84,7 @@ export function LogScreen({
   initialWinId,
   initialCompose = false,
   canConnectSources = false,
+  subpages = [],
 }: LogScreenProps) {
   const router = useRouter();
 
@@ -580,6 +584,15 @@ export function LogScreen({
           onDegrade={handleDegrade}
         />
       </header>
+      {subpages.length > 0 ? (
+        <nav aria-label="More in your Work Log" className="mb-4 flex flex-wrap gap-2">
+          {subpages.map((page) => (
+            <Link key={page.href} href={page.href} className={cn(typeStyles.small, 'rounded-full border border-border px-3 py-1 text-muted-foreground hover:text-foreground')}>
+              {page.label}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">

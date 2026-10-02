@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { getNotificationSettings } from '@/actions/digest';
 import { NotificationsScreen } from '@/components/notifications/NotificationsScreen';
+import { FeatureUnavailable } from '@/components/app/FeatureUnavailable';
+import { emailConfigured } from '@/lib/email/send';
 
 /**
  * `/settings/notifications` — design/02 §J2.
@@ -20,7 +22,9 @@ export default async function NotificationsSettingsPage() {
     if (!userId) notFound();
 
     const settings = await getNotificationSettings();
-    if (!settings.success) notFound();
+    if (!settings.success) {
+        return <FeatureUnavailable feature="Notifications" reason="error" />;
+    }
 
-    return <NotificationsScreen initial={settings.data} />;
+    return <NotificationsScreen initial={settings.data} emailOn={emailConfigured()} />;
 }

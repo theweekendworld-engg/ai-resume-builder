@@ -1,6 +1,7 @@
 'use server';
 
 import { auth } from '@clerk/nextjs/server';
+import { fitHighlights } from '@/lib/resume/fitHighlights';
 import { KnowledgeType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { ParsedResumeData } from '@/lib/aiSchemas';
@@ -144,8 +145,9 @@ export async function importParsedResumeData(
         endDate: exp.endDate || '',
         current: exp.current,
         location: exp.location,
-        description: exp.description,
-        highlights: exp.highlights,
+        description: exp.description?.slice(0, 5_000),
+        // Split, never drop: one long PDF bullet used to fail the whole role.
+        highlights: fitHighlights(exp.highlights),
       });
       if (result.success) {
         summary.experience.created++;

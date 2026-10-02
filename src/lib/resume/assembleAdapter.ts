@@ -62,8 +62,12 @@ export async function tailorViaLoop(input: TailorInput): Promise<TailorResult> {
         draft: assembly.draft,
         contact,
         availableRoles: roles.length,
+        evidenceSeen: assembly.evidenceSeen,
         sectionOrder: preferences.defaultSectionOrder,
     });
+    if (checked.ok && checked.violations.length > 0) {
+        console.warn('[resume v2] dropped lines the record does not support', { userId, count: checked.violations.length, sample: checked.violations.slice(0, 3) });
+    }
 
     if (!checked.ok) {
         // Throwing hands control to the caller's existing catch, which logs and

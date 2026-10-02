@@ -33,8 +33,25 @@ export type DraftRejection =
     | { kind: 'fabrication'; detail: string; violations: string[] };
 
 export type DraftCheck =
-    | { ok: true; resume: ResumeData }
+    /** `violations`: lines dropped for a figure or source the record does not hold. Report the rate. */
+    | { ok: true; resume: ResumeData; violations: string[] }
     | { ok: false; reason: DraftRejection };
+
+/** Case, spacing and punctuation-insensitive, so a line copied verbatim always matches. */
+export function normalizeForMatch(text: string): string {
+    return text.toLowerCase().replace(/[^a-z0-9%$.]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Did the model actually see this line? A `sourceLine` is the model's claim
+ * about where a bullet came from; trusted as written, it let a bullet cite an
+ * invented source and pass the numeric guard against its own invention
+ * (launch audit 2026-10-02). It must appear in what the tools returned.
+ */
+export function sourceWasSeen(sourceLine: string, evidenceSeen: string): boolean {
+    const line = normalizeForMatch(sourceLine);
+    return line.length > 0 && normalizeForMatch(evidenceSeen).includes(line);
+}
 
 /** Bullets are stored as one newline-joined string per role. */
 function joinBullets(bullets: readonly { text: string }[]): string {
@@ -51,11 +68,16 @@ function joinBullets(bullets: readonly { text: string }[]): string {
  */
 function guardBullets(
     bullets: readonly { text: string; sourceLine: string }[],
+    evidenceSeen: string,
 ): { kept: typeof bullets; violations: string[] } {
     const kept: { text: string; sourceLine: string }[] = [];
     const violations: string[] = [];
 
     for (const bullet of bullets) {
+        if (!sourceWasSeen(bullet.sourceLine, evidenceSeen)) {
+            violations.push(`"${bullet.text.slice(0, 80)}" — cites a source line the record does not contain`);
+            continue;
+        }
         const result = checkNumericGuard(
             { text: bullet.text },
             { sourceText: bullet.sourceLine, fields: ['text'] },
@@ -77,6 +99,8 @@ export function resumeFromDraft(params: {
     contact: ContactCard | null;
     /** How many roles the record actually holds. An empty draft over a full record is a failure. */
     availableRoles: number;
+    /** Everything the tools returned to the model: the only text any line may come from. */
+    evidenceSeen: string;
     /**
      * The user's chosen sections, in their order. Absence from this list means
      * "do not print this section at all" — it is how someone removes projects
@@ -88,7 +112,7 @@ export function resumeFromDraft(params: {
      */
     sectionOrder?: ResumeData['sectionOrder'];
 }): DraftCheck {
-    const { draft, contact, availableRoles } = params;
+    const { draft, contact, availableRoles, evidenceSeen } = params;
     const sectionOrder =
         params.sectionOrder?.length
             ? params.sectionOrder
@@ -99,7 +123,7 @@ export function resumeFromDraft(params: {
     const allViolations: string[] = [];
     const experience = draft.experience
         .map((role) => {
-            const { kept, violations } = guardBullets(role.bullets);
+            const { kept, violations } = guardBullets(role.bullets, evidenceSeen);
             allViolations.push(...violations);
             return { role, description: joinBullets(kept) };
         })
@@ -128,32 +152,41 @@ export function resumeFromDraft(params: {
         };
     }
 
-    // Fabrication is reported even when the document survives, because the rate
-    // is the number that matters — a guard that silently drops bad lines looks
-    // identical to a model that never writes them, and only one of those is
-    // worth shipping.
-    if (allViolations.length > 0) {
-        return {
-            ok: false,
-            reason: {
-                kind: 'fabrication',
-                detail: `${allViolations.length} bullet(s) carried a figure their stated source does not contain.`,
-                violations: allViolations,
-            },
-        };
-    }
+    // A bad line is dropped, not the whole resume: failing here handed the
+    // user to the v1 path, which is weaker on truth, for one over-reaching
+    // bullet (audit 2026-10-02). The violations come back so callers can
+    // report the rate: a guard that silently drops looks identical to a model
+    // that never fabricates, and only one of those is worth shipping.
+
+    // The free-text fields carry no source line, so they are checked against
+    // everything the model saw. A figure found nowhere in the record is removed.
+    const prose = checkNumericGuard(
+        {
+            headline: draft.headline,
+            summary: draft.summary,
+            projects: draft.projects.map((project) => ({ description: project.description })),
+        },
+        {
+            sourceText: evidenceSeen,
+            fields: ['headline', 'summary', ...draft.projects.map((_, i) => `projects.${i}.description`)],
+        },
+    );
+    const badProse = new Set(prose.violations.map((v) => v.path));
+    for (const path of badProse) allViolations.push(`${path} — figure absent from the record`);
+    const headline = badProse.has('headline') ? '' : draft.headline;
+    const summary = badProse.has('summary') ? '' : draft.summary;
 
     const resume: ResumeData = {
         personalInfo: {
             fullName: contact?.fullName ?? '',
-            title: draft.headline || contact?.defaultTitle || '',
+            title: headline || contact?.defaultTitle || '',
             email: contact?.email ?? '',
             phone: contact?.phone ?? '',
             location: contact?.location ?? '',
             website: contact?.website ?? '',
             linkedin: contact?.linkedin ?? '',
             github: contact?.github ?? '',
-            summary: shows('summary') ? draft.summary : '',
+            summary: shows('summary') ? summary : '',
         },
         experience,
         // A section the user removed is not merely unordered, it is absent.
@@ -163,7 +196,7 @@ export function resumeFromDraft(params: {
         projects: !shows('projects') ? [] : draft.projects.map((project, index) => ({
             id: `p${index}`,
             name: project.name,
-            description: project.description,
+            description: badProse.has(`projects.${index}.description`) ? '' : project.description,
             url: project.url,
             liveUrl: '',
             repoUrl: project.url,
@@ -184,5 +217,5 @@ export function resumeFromDraft(params: {
         sectionOrder: [...sectionOrder],
     } as ResumeData;
 
-    return { ok: true, resume };
+    return { ok: true, resume, violations: allViolations };
 }

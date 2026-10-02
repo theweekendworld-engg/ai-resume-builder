@@ -37,6 +37,8 @@ import { track } from '@/lib/track';
  * note (kind `work_note`). Anything below this is too little to classify.
  */
 const MIN_TEXT = 15;
+/** A run idle this long was killed mid-flight (src/lib/jobs/handlers/purgeExpired.ts uses the same bound). */
+const STALE_SCOUT_RUN_MS = 15 * 60_000;
 const MAX_TEXT = 100_000;
 
 // ──────────────────────────────────────────────────────────────── enqueue
@@ -191,6 +193,20 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
         // Rebind FIRST: a restarted run must edit the progress message the
         // user just received, not the one from their previous attempt.
         await rebindChannel(existing, params);
+        // A run that stalled mid-flight (its function was killed) restarts,
+        // free: it was charged once and never finished. Without this the same
+        // link returned the same stuck run forever (audit 2026-10-02).
+        const stalled = (existing.status === 'running' || existing.status === 'queued')
+            && Date.now() - existing.updatedAt.getTime() > STALE_SCOUT_RUN_MS;
+        if (stalled) {
+            try {
+                await enqueueScoutRun(existing.id, { force: true });
+                const restarted = (await loadRun(existing.id)) ?? existing;
+                return ok({ run: toRunView(restarted), created: true });
+            } catch (error) {
+                console.error('[scout] restart of stalled run failed', { runId: existing.id, error: String(error) });
+            }
+        }
         // A run that never got going (start() failed) is retried, not returned
         // dead, and reported as started so the channel shows progress instead
         // of replaying the old failure. Free: it was never charged to success.

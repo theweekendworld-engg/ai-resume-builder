@@ -73,7 +73,7 @@ const CATEGORIES: Array<{ key: CategoryKey; title: string; description: string }
     },
 ];
 
-export function NotificationsScreen({ initial }: { initial: NotificationSettings }) {
+export function NotificationsScreen({ initial, emailOn = true }: { initial: NotificationSettings; emailOn?: boolean }) {
     const [settings, setSettings] = useState(initial);
     const [pending, startTransition] = useTransition();
 
@@ -101,6 +101,15 @@ export function NotificationsScreen({ initial }: { initial: NotificationSettings
                     When we check in, and how.
                 </p>
             </header>
+
+            {/* Said plainly rather than letting the next-digest time imply a
+                send that will not happen (audit 2026-10-02). */}
+            {!emailOn ? (
+                <p className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                    Email is not available yet, so nothing is sent by email.{' '}
+                    {settings.telegramLinked ? 'Choose Telegram below to get your weekly ritual there.' : 'Link Telegram to get your weekly ritual in the chat.'}
+                </p>
+            ) : null}
 
             <Card>
                 <CardHeader>
@@ -134,7 +143,7 @@ export function NotificationsScreen({ initial }: { initial: NotificationSettings
                             </p>
                         ) : (
                             <p className="text-xs text-muted-foreground">
-                                Link the bot from your dashboard to confirm wins without leaving the chat.
+                                <a href="/dashboard?section=telegram" className="underline">Link Telegram</a> to confirm wins without leaving the chat.
                             </p>
                         )}
                     </div>

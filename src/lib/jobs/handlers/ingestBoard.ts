@@ -97,6 +97,18 @@ export async function dueBoards(limit: number): Promise<Array<{ id: string; host
  * host are at least `MIN_REQUEST_SPACING_MS` apart.
  */
 async function dispatch(limit: number): Promise<JobResultObject> {
+    // Boards come from somewhere now. `seedLaunchList` and
+    // `discoverFromWorkspaces` existed with no callers, so production followed
+    // no boards and chat's find_jobs and Radar had nothing (audit 2026-10-02).
+    // Seeding is idempotent; discovery registers the boards behind the jobs
+    // users actually share, which is how coverage grows toward their market.
+    try {
+        const { discoverFromWorkspaces, seedLaunchList } = await import('@/lib/radar/discovery');
+        if ((await prisma.jobSource.count()) === 0) await seedLaunchList();
+        await discoverFromWorkspaces();
+    } catch (error) {
+        console.warn('[ingest_board] board discovery failed; dispatching known boards', { error: String(error) });
+    }
     const boards = await dueBoards(limit);
     const nextSlotByHost = new Map<string, number>();
     const now = Date.now();

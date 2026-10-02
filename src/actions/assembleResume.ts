@@ -79,7 +79,11 @@ export async function generateResumeByAssembly(
         draft: assembly.draft,
         contact,
         availableRoles: roles.length,
+        evidenceSeen: assembly.evidenceSeen,
     });
+    if (checked.ok && checked.violations.length > 0) {
+        await track(userId, 'ai_guard_violation', { feature: 'resume', reason: 'dropped_lines', count: checked.violations.length });
+    }
 
     if (!checked.ok) {
         await track(userId, 'ai_guard_violation', {

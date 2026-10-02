@@ -36,7 +36,7 @@ import { buildDedupeKey, enqueue } from '@/lib/jobs/runner';
 import type { EnqueueFn, JobContext, JobHandler, JobResultObject } from '@/lib/jobs/types';
 import { isDigestDue, safeTimeZone, weekStartFor, type IsoWeekday } from '@/lib/time';
 import { selectDigestDrafts } from '@/lib/capture/draftRun';
-import { ensureEmailPreference, getAppUrl, sendEmail } from '@/lib/email/send';
+import { emailConfigured, ensureEmailPreference, getAppUrl, sendEmail } from '@/lib/email/send';
 import { inboxCounts, topFits } from '@/services/careerInbox';
 import type { JobBoardItem } from '@/lib/inbox/types';
 import type { FitVerdict } from '@/lib/scout/types';
@@ -512,6 +512,13 @@ async function sendOne(
     const { surfaced, overflow } = selectDigestDrafts(drafts);
 
     const channel = prefs.digestChannel === Channel.telegram ? Channel.telegram : Channel.email;
+    // Email is not set up on this deployment: compose nothing, store nothing.
+    // Creating the row here used to consume the week, so the digest was lost
+    // even after email was configured (audit 2026-10-02). Telegram still sends.
+    if (channel === Channel.email && !emailConfigured()) {
+        ctx.log('digest skipped: email not configured', { userId });
+        return { skipped: 'email_not_configured' };
+    }
     const digest = existing ?? (await createDigestRow(userId, weekStart, channel));
 
     // ── Zero signals: no email, ever. PRD 01 §5.2.

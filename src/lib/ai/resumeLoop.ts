@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { aiOpenAI } from '@/lib/aiProvider';
 import { resolveTaskModel } from '@/lib/ai/tasks';
+import { sourceWasSeen } from '@/lib/resume/fromDraft';
 import { calculateOpenAiCostUsd, enforceUsageLimit, logUsageEvent } from '@/lib/usageTracker';
 import {
     getContactCard,
@@ -200,6 +201,23 @@ export const __testing = {
     },
 };
 
+const MAX_REJECTIONS = 2;
+
+/** What the guard would drop, said in time for the model to fix it. Pure. */
+export function submissionProblems(draft: ResumeDraft, evidenceSeen: string): string[] {
+    const problems: string[] = [];
+    for (const role of draft.experience) {
+        if (role.bullets.length === 0) problems.push(`${role.role} at ${role.company} has no bullets; drop the role or add lines from its evidence.`);
+        for (const bullet of role.bullets) {
+            if (!sourceWasSeen(bullet.sourceLine, evidenceSeen)) {
+                problems.push(`The sourceLine for "${bullet.text.slice(0, 60)}" is not in the evidence you were given.`);
+            }
+        }
+    }
+    if (draft.experience.length === 0) problems.push('There are no roles. Call list_roles and get_role_evidence, then include the relevant ones.');
+    return problems.slice(0, 12);
+}
+
 /** Hard ceiling. Output tokens are ~93% of spend; an unbounded loop is an unbounded bill. */
 const MAX_STEPS = 14;
 /** The whole loop; the generation function's own limit is 300s. */
@@ -227,6 +245,7 @@ export async function assembleResume(params: {
     const toolCalls: string[] = [];
     const evidence: string[] = [];
     let submitted: ResumeDraft | null = null;
+    let rejections = 0;
 
     /** Record what the model was actually shown, so the guard can check against it. */
     const seen = <T>(label: string, value: T): T => {
@@ -277,8 +296,18 @@ export async function assembleResume(params: {
                 'Submit the finished resume. Call exactly once, when the document is complete.',
             inputSchema: DraftSchema,
             execute: async (draft) => {
-                submitted = draft as ResumeDraft;
                 toolCalls.push('submit_resume');
+                // Say what is wrong, so the model can fix it inside its step
+                // budget, instead of always answering "accepted" and leaving
+                // the guard to throw the lines away afterwards (audit
+                // 2026-10-02). Bounded: after two rejections it is accepted
+                // and the guard does the rest.
+                const problems = submissionProblems(draft as ResumeDraft, evidence.join('\n'));
+                if (problems.length > 0 && rejections < MAX_REJECTIONS) {
+                    rejections += 1;
+                    return { accepted: false, problems, instruction: 'Fix these and call submit_resume again. Copy each sourceLine exactly from what get_role_evidence returned.' };
+                }
+                submitted = draft as ResumeDraft;
                 return { accepted: true };
             },
         }),

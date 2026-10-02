@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 import { loadLogSnapshot, logNow, parseScenario } from '@/components/log/data-source';
 import { LogScreen } from '@/components/log/LogScreen';
 import { loadLogSurface } from '@/components/log/surface.server';
-import { isEnabled } from '@/lib/flags';
+import { getEnabledFlags, isEnabled } from '@/lib/flags';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 /**
@@ -42,12 +42,23 @@ export default async function LogPage({
   const scenario = parseScenario(params.scenario);
   // Real connector state for the real page; `?scenario=` keeps the fixtures'.
   const surface = scenario === 'default' ? await loadLogSurface(userId) : undefined;
-  const [snapshot, canConnectSources] = await Promise.all([
+  const [snapshot, canConnectSources, flags] = await Promise.all([
     loadLogSnapshot(scenario, surface),
     // `/settings/sources` 404s unless this is on, so the empty state has to
     // know before it offers to send anyone there.
     isEnabled(userId, 'github_capture'),
+    getEnabledFlags(userId),
   ]);
+  // Pages that existed but were reachable only from an email or a packet form
+  // (audit 2026-10-02). Linked only when their flag is on, so no link is a dead end.
+  const lastMonth = new Date();
+  lastMonth.setUTCDate(1);
+  lastMonth.setUTCMonth(lastMonth.getUTCMonth() - 1);
+  const subpages = [
+    ...(flags.month_in_review ? [{ href: `/log/review/${lastMonth.toISOString().slice(0, 7)}`, label: 'Last month in review' }] : []),
+    ...(flags.backfill ? [{ href: '/log/backfill', label: 'Remember older work' }] : []),
+    ...(flags.review_packet ? [{ href: '/log/readiness', label: 'Level readiness' }] : []),
+  ];
 
   return (
     <LogScreen
@@ -55,6 +66,7 @@ export default async function LogPage({
       now={logNow()}
       initialWinId={params.win ?? null}
       canConnectSources={canConnectSources}
+      subpages={subpages}
       // The digest's "Add a win" link and the quiet-week nudge land here.
       // Without this they drop the user on the log with nothing focused,
       // which is a dead end at the exact moment they intended to write.

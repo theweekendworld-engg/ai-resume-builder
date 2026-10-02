@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { externalRetrievalFilter } from '@/lib/graph/visibility';
 
 /**
  * The tools an assembling model may call to see a candidate's record.
@@ -100,14 +101,22 @@ export function dateSortKey(raw: string, current = false): number {
  * Returned newest-first. See `dateSortKey`.
  */
 export async function listRoles(userId: string): Promise<RoleIndexEntry[]> {
-    const rows = await prisma.userExperience.findMany({
-        where: { userId },
-        select: {
-            id: true, company: true, role: true, startDate: true,
-            endDate: true, current: true, location: true,
-            description: true, highlights: true,
-        },
-    });
+    const [rows, winCounts] = await Promise.all([
+        prisma.userExperience.findMany({
+            where: { userId },
+            select: {
+                id: true, company: true, role: true, startDate: true,
+                endDate: true, current: true, location: true,
+                description: true, highlights: true,
+            },
+        }),
+        prisma.win.groupBy({
+            by: ['employerId'],
+            where: { ...externalRetrievalFilter(userId), employerId: { not: null } },
+            _count: { id: true },
+        }),
+    ]);
+    const winsByRole = new Map(winCounts.map((w) => [w.employerId as string, (w._count as { id: number }).id]));
 
     return rows
         .map((row) => {
@@ -121,7 +130,7 @@ export async function listRoles(userId: string): Promise<RoleIndexEntry[]> {
                 endDate: row.endDate,
                 current: row.current,
                 location: row.location,
-                evidenceCount: highlights.length || (description ? 1 : 0),
+                evidenceCount: (highlights.length || (description ? 1 : 0)) + (winsByRole.get(row.id) ?? 0),
             };
         })
         .sort(
@@ -152,6 +161,7 @@ export async function getRoleEvidence(
 
     const highlights = asStringArray(row.highlights);
     const description = (row.description || '').trim();
+    const winLines = await confirmedWinLines(userId, row.id);
 
     const base = {
         id: row.id,
@@ -163,10 +173,39 @@ export async function getRoleEvidence(
         location: row.location,
     };
 
-    if (highlights.length > 0) return { ...base, lines: highlights };
+    if (highlights.length > 0) return { ...base, lines: [...highlights, ...winLines] };
+    if (winLines.length > 0) return { ...base, lines: winLines };
     // No specifics anywhere. The summary is all the evidence there is, and
     // saying so explicitly stops the model treating a thin role as a rich one.
     return { ...base, lines: description ? [description] : [], summaryOnly: description || undefined };
+}
+
+/** Lines per role a resume can draw from the Work Log. Most recent first. */
+const WIN_LINES_PER_ROLE = 12;
+
+/**
+ * The user's confirmed Wins at this role, as evidence lines.
+ *
+ * The Work Log is the product's record of what someone did, and until
+ * 2026-10-02 no resume ever read it: confirmed Wins never reached a resume
+ * (launch audit). Shareable only, filtered in the query (CLAUDE.md rule 3):
+ * a resume is an external artifact, and a confidential Win is never offered
+ * to the model at all, so it cannot appear however the prompt is worded.
+ */
+export async function confirmedWinLines(userId: string, roleId: string): Promise<string[]> {
+    const wins = await prisma.win.findMany({
+        where: { ...externalRetrievalFilter(userId), employerId: roleId },
+        orderBy: { occurredAt: 'desc' },
+        take: WIN_LINES_PER_ROLE,
+        select: { title: true, narrative: true },
+    });
+    return wins
+        .map((win) => {
+            const title = win.title.trim().replace(/[.\s]+$/, '');
+            const narrative = win.narrative.trim();
+            return narrative && !narrative.toLowerCase().startsWith(title.toLowerCase()) ? `${title}. ${narrative}` : narrative || title;
+        })
+        .filter(Boolean);
 }
 
 export type ProjectEntry = {

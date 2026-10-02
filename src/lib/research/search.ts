@@ -13,7 +13,8 @@ import type { StepContext } from '@/lib/agent/run';
 import { resolveSearchProvider } from '@/lib/research/providers';
 import type { SearchArgs, SearchOutcome, SearchResult } from '@/lib/research/types';
 
-export const RESEARCH_OFF_REASON = 'Web research is off: add TAVILY_API_KEY';
+/** Shown to users: say what is missing, not which env var (that is /admin/ops). */
+export const RESEARCH_OFF_REASON = 'Web research is not available right now, so this part is missing.';
 
 export type RunSearchOutcome =
     | { kind: 'ok'; results: SearchResult[] }
@@ -73,7 +74,7 @@ export function reasonForOutcome(outcome: Exclude<RunSearchOutcome, { kind: 'ok'
         case 'quota_exhausted':
             return 'Web research credits are used up for this period.';
         case 'unauthorized':
-            return 'The search provider rejected our key (TAVILY_API_KEY).';
+            return 'Web research is not available right now. Try again later.';
         case 'error':
             return 'The search provider failed. Refresh to try again.';
     }
