@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getOpsSnapshot, type OpsSnapshot } from '@/actions/ops';
+import { DeadJobActions } from '@/components/admin/DeadJobActions';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,7 +106,7 @@ export default async function OpsPage() {
                         ))}
                         {totalDead > 0 && (
                             <li>
-                                <span className="num">{totalDead}</span> dead job(s) — these are never retried again
+                                <span className="num">{totalDead}</span> dead job(s): retry or discard them below
                             </li>
                         )}
                     </ul>
@@ -169,13 +170,14 @@ export default async function OpsPage() {
             </Section>
 
             {snap.dead.length > 0 && (
-                <Section title="Dead letters" hint="Exhausted retries. The row is kept — nothing is ever silently dropped.">
+                <Section title="Dead letters" hint="Exhausted retries. Retry requeues it now; discard deletes it. Both are recorded.">
                     <table className="w-full">
                         <thead>
                             <tr>
                                 <Th>Kind</Th>
                                 <Th right>Attempts</Th>
                                 <Th>Error</Th>
+                                <Th>Action</Th>
                             </tr>
                         </thead>
                         <tbody>
@@ -185,6 +187,9 @@ export default async function OpsPage() {
                                     <Td right>{d.attempts}</Td>
                                     <Td tone="muted">
                                         <span className="line-clamp-1 font-mono text-xs">{d.lastError ?? '—'}</span>
+                                    </Td>
+                                    <Td>
+                                        <DeadJobActions jobId={d.id} />
                                     </Td>
                                 </tr>
                             ))}

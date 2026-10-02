@@ -1681,3 +1681,27 @@ model RateLimitHit {
   @@id([key, windowStart])
   @@index([windowStart])
 }
+
+/// A suspended user (admin action). Blocks every model call and metered action
+/// (checked in the usage backstop and the entitlement gate) and channel use;
+/// sign-in is blocked separately by a Clerk ban. Removing the row restores.
+model UserSuspension {
+  userId    String   @id
+  reason    String
+  /// Admin who suspended.
+  byUserId  String
+  createdAt DateTime @default(now())
+}
+
+/// Every admin mutation, append-only: who did what to whom, and when.
+model AdminAction {
+  id           String   @id @default(cuid())
+  adminUserId  String
+  action       String
+  targetUserId String?
+  detail       Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetUserId, createdAt])
+}

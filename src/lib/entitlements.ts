@@ -1,4 +1,5 @@
 import { ApplicationStatus, Tier } from '@prisma/client';
+import { assertNotSuspended } from '@/lib/suspension';
 import { prisma } from '@/lib/prisma';
 import {
   METERED_ACTIONS,
@@ -431,6 +432,7 @@ export async function gateMeteredAction(
   userId: string,
   action: MeteredAction
 ): Promise<EntitlementDecision> {
+  await assertNotSuspended(userId);
   const tier = await getUserTier(userId);
   const { limit, scope } = meteredLimit(tier, action);
   const requiredTier = tierRequiredForAction(action);

@@ -22,6 +22,7 @@ export type JobKind =
     | 'embed_win'
     | 'embed_profile_item'
     | 'purge_expired'
+    | 'operator_digest'
     | 'ingest_board'
     | 'skill_rollup'
     | 'radar_snapshot'
@@ -39,6 +40,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'embed_win',
     'embed_profile_item',
     'purge_expired',
+    'operator_digest',
     'ingest_board',
     'skill_rollup',
     'radar_snapshot',

@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
 import { planName } from '@/lib/plans';
-import { Tier } from '@prisma/client';
+import { Prisma, Tier } from '@prisma/client';
 import {
   ensureFlagsSeeded,
   FEATURE_FLAGS,
@@ -428,7 +428,7 @@ export async function setFeatureFlag(input: {
   enabled: boolean;
   rolloutPercent: number;
 }): Promise<{ success: boolean; error?: string }> {
-  await requireAdminUserId();
+  const adminId = await requireAdminUserId();
 
   const parsed = SetFeatureFlagSchema.safeParse(input);
   if (!parsed.success) return { success: false, error: 'Invalid flag input' };
@@ -451,6 +451,7 @@ export async function setFeatureFlag(input: {
   });
 
   invalidateFlagCache();
+  await audit(adminId, 'flag_set', null, { key: parsed.data.key, enabled: parsed.data.enabled, rolloutPercent: parsed.data.rolloutPercent });
   return { success: true };
 }
 
@@ -496,6 +497,7 @@ export async function setFeatureFlagAllowList(input: {
   });
 
   invalidateFlagCache();
+  await audit(adminId, `flag_allowlist_${parsed.data.op}`, target, { key: parsed.data.key });
   return { success: true, allowUserIds: next };
 }
 
@@ -690,4 +692,156 @@ export async function searchAdminUsers(input: { q?: string; page?: number } = {}
   });
 
   return { rows, total, page, pageSize: ADMIN_USERS_PAGE, source };
+}
+
+/* ── Operator actions ──────────────────────────────────────────────────────
+ *
+ * Every mutation here writes an AdminAction row: who, what, to whom, when
+ * (launch audit 2026-10-02: admin changes left no trace at all).
+ */
+
+async function audit(adminUserId: string, action: string, targetUserId: string | null, detail: Record<string, unknown> = {}) {
+  await prisma.adminAction.create({
+    data: { adminUserId, action, targetUserId, detail: detail as Prisma.InputJsonValue },
+  });
+}
+
+const TargetSchema = z.string().trim().regex(/^[A-Za-z0-9_:-]{3,100}$/);
+
+export async function suspendUser(input: { target: string; reason: string }): Promise<{ success: boolean; error?: string }> {
+  const adminId = await requireAdminUserId();
+  const target = TargetSchema.safeParse(input.target);
+  const reason = z.string().trim().min(3).max(300).safeParse(input.reason);
+  if (!target.success || !reason.success) return { success: false, error: 'Give a user id and a reason' };
+  if (target.data === adminId) return { success: false, error: 'You cannot suspend yourself' };
+
+  await prisma.userSuspension.upsert({
+    where: { userId: target.data },
+    create: { userId: target.data, reason: reason.data, byUserId: adminId },
+    update: { reason: reason.data, byUserId: adminId },
+  });
+  // Sign-in too: a Clerk ban revokes sessions. Best effort; the DB row is what
+  // stops spend, on every channel.
+  let banned = false;
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server');
+    await (await clerkClient()).users.banUser(target.data);
+    banned = true;
+  } catch (error) {
+    console.warn('[admin] Clerk ban failed; spend is still blocked', { target: target.data, error: String(error) });
+  }
+  const { forgetSuspension } = await import('@/lib/suspension');
+  forgetSuspension(target.data);
+  await audit(adminId, 'suspend_user', target.data, { reason: reason.data, clerkBanned: banned });
+  return { success: true };
+}
+
+export async function unsuspendUser(input: { target: string }): Promise<{ success: boolean; error?: string }> {
+  const adminId = await requireAdminUserId();
+  const target = TargetSchema.safeParse(input.target);
+  if (!target.success) return { success: false, error: 'Invalid user id' };
+  await prisma.userSuspension.deleteMany({ where: { userId: target.data } });
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server');
+    await (await clerkClient()).users.unbanUser(target.data);
+  } catch (error) {
+    console.warn('[admin] Clerk unban failed', { target: target.data, error: String(error) });
+  }
+  const { forgetSuspension } = await import('@/lib/suspension');
+  forgetSuspension(target.data);
+  await audit(adminId, 'unsuspend_user', target.data);
+  return { success: true };
+}
+
+/** Clear this period's metered-usage counters for one user (support goodwill). */
+export async function resetUserUsage(input: { target: string }): Promise<{ success: boolean; cleared?: number; error?: string }> {
+  const adminId = await requireAdminUserId();
+  const target = TargetSchema.safeParse(input.target);
+  if (!target.success) return { success: false, error: 'Invalid user id' };
+  const { count } = await prisma.usageQuota.deleteMany({ where: { userId: target.data } });
+  await audit(adminId, 'reset_usage', target.data, { quotaRows: count });
+  return { success: true, cleared: count };
+}
+
+/** Delete all of a user's data (a deletion request by email). Typed confirmation. */
+export async function adminDeleteUserData(input: { target: string; confirm: string }): Promise<{ success: boolean; error?: string; leftovers?: string[] }> {
+  const adminId = await requireAdminUserId();
+  const target = TargetSchema.safeParse(input.target);
+  if (!target.success) return { success: false, error: 'Invalid user id' };
+  if (input.confirm !== target.data) return { success: false, error: 'Type the user id to confirm' };
+  if (target.data === adminId) return { success: false, error: 'Use Settings to delete your own account' };
+  const { deleteUserData } = await import('@/services/accountDeletion');
+  const report = await deleteUserData(target.data);
+  await audit(adminId, 'delete_user_data', target.data, { rows: report.rows, files: report.files, leftovers: report.leftovers });
+  return { success: report.leftovers.length === 0, leftovers: report.leftovers };
+}
+
+/** Requeue a dead job, or discard it. */
+export async function resolveDeadJob(input: { jobId: string; op: 'retry' | 'discard' }): Promise<{ success: boolean; error?: string }> {
+  const adminId = await requireAdminUserId();
+  const jobId = z.string().min(1).max(64).safeParse(input.jobId);
+  if (!jobId.success) return { success: false, error: 'Invalid job id' };
+  const result = input.op === 'retry'
+    ? await prisma.job.updateMany({
+        where: { id: jobId.data, status: 'dead' },
+        data: { status: 'pending', attempts: 0, runAt: new Date(), lastError: null },
+      })
+    : await prisma.job.deleteMany({ where: { id: jobId.data, status: 'dead' } });
+  if (result.count === 0) return { success: false, error: 'That job is no longer dead' };
+  await audit(adminId, `dead_job_${input.op}`, null, { jobId: jobId.data });
+  return { success: true };
+}
+
+export type AdminActionRow = { id: string; adminUserId: string; action: string; targetUserId: string | null; detail: unknown; createdAt: string };
+
+export async function listAdminActions(input: { target?: string } = {}): Promise<AdminActionRow[]> {
+  await requireAdminUserId();
+  const rows = await prisma.adminAction.findMany({
+    where: input.target ? { targetUserId: input.target } : {},
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+}
+
+export type AdminUserDetail = {
+  suspension: { reason: string; byUserId: string; createdAt: string } | null;
+  plan: string;
+  channels: { channel: string; verified: boolean; createdAt: string }[];
+  extensionTokens: { id: string; createdAt: string; expiresAt: string; revoked: boolean }[];
+  chat: { role: string; text: string; action: string | null; createdAt: string }[];
+  runs: { id: string; status: string; kind: string | null; error: string | null; createdAt: string }[];
+  jobs: { company: string | null; role: string | null; status: string; updatedAt: string }[];
+  failedGenerations: { id: string; errorStep: string | null; errorMessage: string | null; createdAt: string }[];
+  actions: AdminActionRow[];
+};
+
+/** Everything an operator needs to answer "what happened to this user". */
+export async function getAdminUserDetail(target: string): Promise<AdminUserDetail> {
+  await requireAdminUserId();
+  const userId = TargetSchema.parse(target);
+  const [suspension, subs, channels, tokens, chat, runs, jobs, failed, actions] = await Promise.all([
+    prisma.userSuspension.findUnique({ where: { userId } }),
+    prisma.subscription.findMany({ where: { userId, status: { in: ['active', 'trialing', 'past_due'] } }, select: { tier: true } }),
+    prisma.channelIdentity.findMany({ where: { userId }, select: { channel: true, verified: true, createdAt: true } }),
+    prisma.extensionAccessToken.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, createdAt: true, expiresAt: true, revokedAt: true } }),
+    prisma.chatMessage.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 30, select: { role: true, text: true, action: true, createdAt: true } }),
+    prisma.agentRun.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 20, select: { id: true, status: true, kind: true, error: true, createdAt: true } }),
+    prisma.applicationWorkspace.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' }, take: 20, select: { companyName: true, roleTitle: true, applicationStatus: true, updatedAt: true } }),
+    prisma.generationSession.findMany({ where: { userId, status: 'failed' }, orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, errorStep: true, errorMessage: true, createdAt: true } }),
+    listAdminActions({ target: userId }),
+  ]);
+  const rank: Record<string, number> = { free: 0, always_on: 1, pro: 2, team: 3 };
+  const best = subs.map((s) => s.tier).sort((a, b) => rank[b] - rank[a])[0] ?? Tier.free;
+  return {
+    suspension: suspension ? { reason: suspension.reason, byUserId: suspension.byUserId, createdAt: suspension.createdAt.toISOString() } : null,
+    plan: planName(best),
+    channels: channels.map((c) => ({ channel: c.channel, verified: c.verified, createdAt: c.createdAt.toISOString() })),
+    extensionTokens: tokens.map((t) => ({ id: t.id, createdAt: t.createdAt.toISOString(), expiresAt: t.expiresAt.toISOString(), revoked: Boolean(t.revokedAt) })),
+    chat: chat.reverse().map((m) => ({ ...m, text: m.text.slice(0, 400), createdAt: m.createdAt.toISOString() })),
+    runs: runs.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+    jobs: jobs.map((j) => ({ company: j.companyName, role: j.roleTitle, status: j.applicationStatus, updatedAt: j.updatedAt.toISOString() })),
+    failedGenerations: failed.map((g) => ({ ...g, createdAt: g.createdAt.toISOString() })),
+    actions,
+  };
 }

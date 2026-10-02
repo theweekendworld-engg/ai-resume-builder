@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { getAdminUserUsage } from '@/actions/admin';
-import type { AdminUserUsageData } from '@/actions/admin';
+import { getAdminUserDetail, getAdminUserUsage } from '@/actions/admin';
+import type { AdminUserDetail, AdminUserUsageData } from '@/actions/admin';
+import { AdminUserPanel } from '@/components/admin/AdminUserPanel';
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
@@ -16,8 +17,9 @@ export default async function AdminUserUsagePage({ params }: Props) {
   const { userId } = await params;
 
   let data: AdminUserUsageData;
+  let detail: AdminUserDetail;
   try {
-    data = await getAdminUserUsage(userId);
+    [data, detail] = await Promise.all([getAdminUserUsage(userId), getAdminUserDetail(userId)]);
   } catch {
     redirect('/dashboard');
   }
@@ -45,6 +47,8 @@ export default async function AdminUserUsagePage({ params }: Props) {
           <UserButton />
         </div>
       </header>
+
+      <AdminUserPanel userId={userId} detail={detail} />
 
       <section className="mb-8 grid gap-4 md:grid-cols-4">
         <div className="rounded-xl border border-border bg-card p-4">

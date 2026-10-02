@@ -52,6 +52,7 @@ export type PeriodicScheduleResult = {
     skillRollupJobId: string | null;
     reconcileJobId: string | null;
     purgeJobId: string | null;
+    operatorDigestJobId: string | null;
     downgradeJobId: string | null;
 };
 
@@ -75,6 +76,7 @@ export async function schedulePeriodicWork(
         skillRollupJobId: null,
         reconcileJobId: null,
         purgeJobId: null,
+        operatorDigestJobId: null,
         downgradeJobId: null,
     };
 
@@ -100,6 +102,8 @@ export async function schedulePeriodicWork(
         ['reconcileJobId', 'reconcile_qdrant', `reconcile_qdrant:${day}`, 95],
         // Short-lived rows nothing else deletes: rate-limit windows, expired grants.
         ['purgeJobId', 'purge_expired', `purge_expired:${day}`, 99],
+        // Last, so it reports on the rest of the tick's work.
+        ['operatorDigestJobId', 'operator_digest', `operator_digest:${day}`, 100],
     ];
 
     for (const [field, kind, dedupeKey, priority] of plan) {

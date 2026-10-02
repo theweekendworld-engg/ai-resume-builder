@@ -17,6 +17,7 @@ import { noopHandler } from './handlers/noop';
 import { embedWinHandler } from './handlers/embedWin';
 import { embedProfileItemHandler } from './handlers/embedProfileItem';
 import { purgeExpiredHandler } from './handlers/purgeExpired';
+import { operatorDigestHandler } from './handlers/operatorDigest';
 import { captureSyncHandler } from './handlers/captureSync';
 import { draftWinsHandler } from './handlers/draftWins';
 import { proactiveDowngradeHandler } from './handlers/proactiveDowngrade';
@@ -34,6 +35,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('embed_win', embedWinHandler);
     registerHandler('embed_profile_item', embedProfileItemHandler);
     registerHandler('purge_expired', purgeExpiredHandler);
+    registerHandler('operator_digest', operatorDigestHandler);
     registerHandler('capture_sync', captureSyncHandler);
     registerHandler('draft_wins', draftWinsHandler);
     registerHandler('proactive_downgrade', proactiveDowngradeHandler);

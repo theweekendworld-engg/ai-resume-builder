@@ -27,6 +27,8 @@ const isPublicRoute = createRouteMatcher([
     // Funnel telemetry for that same anonymous flow. Gating it means the
     // acquisition funnel is invisible exactly where it matters most.
     '/api/events/funnel',
+    // Uptime monitors (reveals nothing but "the database answers").
+    '/api/health',
     // The pattern gallery exists to be looked at. It already returns notFound()
     // in production, so auth here bought nothing and made the design system
     // reviewable only by someone with an account.

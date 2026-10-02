@@ -15,6 +15,7 @@ import { Channel, Prisma, WinSource, WinStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { track } from '@/lib/track';
 import { UsageLimitError } from '@/lib/usageTracker';
+import { SuspendedError } from '@/lib/suspension';
 import { err, ok, type Result } from '@/lib/result';
 import { buildChatContext, toChatJob } from '@/lib/chat/context';
 import { searchRecord } from '@/lib/chat/askRecord';
@@ -332,7 +333,7 @@ export async function sendChatMessage(params: {
         // Never lose what the user typed: their message is stored, and they
         // get a reply that says what to do next.
         console.error('[chat] turn failed', { userId: params.userId, action, error: error instanceof Error ? error.message : String(error) });
-        reply = { text: error instanceof UsageLimitError ? error.message : ROUTER_FALLBACK, cards: [] };
+        reply = { text: error instanceof UsageLimitError || error instanceof SuspendedError ? error.message : ROUTER_FALLBACK, cards: [] };
     }
 
     const assistantRow = await prisma.chatMessage.create({
@@ -387,7 +388,7 @@ export async function routeChannelText(userId: string, text: string, channel: 't
         const { replyToText } = await import('@/lib/chat/renderText');
         return { kind: 'reply', text: replyToText(reply, config.app.url) };
     } catch (error) {
-        if (error instanceof UsageLimitError) return { kind: 'reply', text: error.message };
+        if (error instanceof UsageLimitError || error instanceof SuspendedError) return { kind: 'reply', text: error.message };
         console.warn('[chat] channel routing failed; using the Scout flow', {
             channel,
             error: error instanceof Error ? error.message : String(error),

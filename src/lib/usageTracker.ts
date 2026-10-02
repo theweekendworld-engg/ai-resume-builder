@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { assertNotSuspended } from '@/lib/suspension';
 import { Prisma } from '@prisma/client';
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
@@ -325,6 +326,7 @@ async function getCurrentPeriodUsage(userId: string): Promise<{ totalTokens: num
  * fail open (logged); a limit reached throws UsageLimitError.
  */
 export async function enforceUsageLimit(userId: string): Promise<void> {
+  if (userId !== ANON_ID) await assertNotSuspended(userId);
   let usage: { totalTokens: number; totalCostUsd: number };
   let tokenLimit: number;
   let costLimit: number;
