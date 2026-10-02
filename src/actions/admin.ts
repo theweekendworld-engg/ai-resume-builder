@@ -2,6 +2,8 @@
 
 import { prisma } from '@/lib/prisma';
 import { requireAdminUserId } from '@/lib/adminAuth';
+import { planName } from '@/lib/plans';
+import { Tier } from '@prisma/client';
 import {
   ensureFlagsSeeded,
   FEATURE_FLAGS,
@@ -452,6 +454,51 @@ export async function setFeatureFlag(input: {
   return { success: true };
 }
 
+const AllowListSchema = z.object({
+  key: z.enum(FEATURE_FLAGS),
+  /** A Clerk user id to add or remove. Ignored when `self` is set. */
+  entry: z.string().trim().regex(/^[A-Za-z0-9_:-]{3,100}$/, 'That does not look like a user id').optional(),
+  /** Add the signed-in admin: the common case, and no id to copy by hand. */
+  self: z.boolean().optional(),
+  op: z.enum(['add', 'remove']),
+});
+
+/**
+ * Edit a flag's allow-list: switch a feature on for named users only, before
+ * turning it on for everyone. Until 2026-10-02 the panel could only read the
+ * list's length, so turning a flag on for yourself meant SQL against production.
+ */
+export async function setFeatureFlagAllowList(input: {
+  key: string;
+  entry?: string;
+  self?: boolean;
+  op: 'add' | 'remove';
+}): Promise<{ success: true; allowUserIds: string[] } | { success: false; error: string }> {
+  const adminId = await requireAdminUserId();
+
+  const parsed = AllowListSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
+  const target = parsed.data.self ? adminId : parsed.data.entry;
+  if (!target) return { success: false, error: 'Enter a user id' };
+
+  const row = await prisma.featureFlag.findUnique({ where: { key: parsed.data.key } });
+  const current = Array.isArray(row?.allowUserIds)
+    ? (row.allowUserIds as unknown[]).filter((value): value is string => typeof value === 'string')
+    : [];
+  const next = parsed.data.op === 'add'
+    ? [...new Set([...current, target])]
+    : current.filter((value) => value !== target);
+
+  await prisma.featureFlag.upsert({
+    where: { key: parsed.data.key },
+    create: { key: parsed.data.key, enabled: false, rolloutPercent: 0, allowUserIds: next, description: `Career OS: ${parsed.data.key}` },
+    update: { allowUserIds: next },
+  });
+
+  invalidateFlagCache();
+  return { success: true, allowUserIds: next };
+}
+
 /** Fills in any declared flag with no row, defaulting to off. */
 export async function seedFeatureFlags(): Promise<{ success: boolean; seeded: number }> {
   await requireAdminUserId();
@@ -518,4 +565,129 @@ export async function getEffectiveLimits(): Promise<EffectiveLimits> {
     trialDays: freeTrialDays(),
     enforced: entitlementsEnforced(),
   };
+}
+
+/* ── Users ──────────────────────────────────────────────────────────────────
+ *
+ * Every signed-up user, searchable by name, email or id. Clerk is the list of
+ * record: a user who never finished onboarding has no UserProfile row and was
+ * invisible here before (the page only showed the top users by cost). Our own
+ * counts are joined on. If Clerk cannot be reached, the profile table answers
+ * instead, and says so.
+ */
+
+export type AdminUserRow = {
+  userId: string;
+  name: string;
+  email: string;
+  joinedAt: string | null;
+  lastSeenAt: string | null;
+  plan: string;
+  wins: number;
+  jobs: number;
+  chatMessages: number;
+  channels: string[];
+  /** Flags this user is on the allow-list of. */
+  allowedFlags: string[];
+};
+
+export type AdminUserSearch = { rows: AdminUserRow[]; total: number; page: number; pageSize: number; source: 'clerk' | 'profiles' };
+
+const UserSearchSchema = z.object({
+  q: z.string().trim().max(120).default(''),
+  page: z.number().int().min(0).max(1_000).default(0),
+});
+
+/** Not exported: a 'use server' module may export only async functions. */
+const ADMIN_USERS_PAGE = 25;
+
+export async function searchAdminUsers(input: { q?: string; page?: number } = {}): Promise<AdminUserSearch> {
+  await requireAdminUserId();
+  const { q, page } = UserSearchSchema.parse(input);
+
+  type Base = { userId: string; name: string; email: string; joinedAt: string | null; lastSeenAt: string | null };
+  let base: Base[] = [];
+  let total = 0;
+  let source: AdminUserSearch['source'] = 'clerk';
+
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server');
+    const client = await clerkClient();
+    const list = await client.users.getUserList({
+      ...(q ? { query: q } : {}),
+      limit: ADMIN_USERS_PAGE,
+      offset: page * ADMIN_USERS_PAGE,
+      orderBy: '-created_at',
+    });
+    total = list.totalCount;
+    base = list.data.map((user) => ({
+      userId: user.id,
+      name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || '',
+      email: user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? '',
+      joinedAt: user.createdAt ? new Date(user.createdAt).toISOString() : null,
+      lastSeenAt: user.lastActiveAt ? new Date(user.lastActiveAt).toISOString() : user.lastSignInAt ? new Date(user.lastSignInAt).toISOString() : null,
+    }));
+  } catch (error) {
+    console.warn('[admin] Clerk user list unavailable; searching profiles', { error: error instanceof Error ? error.message : String(error) });
+    source = 'profiles';
+    const where = q
+      ? { OR: [
+          { fullName: { contains: q, mode: 'insensitive' as const } },
+          { email: { contains: q, mode: 'insensitive' as const } },
+          { userId: { contains: q } },
+        ] }
+      : {};
+    const [profiles, count] = await Promise.all([
+      prisma.userProfile.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * ADMIN_USERS_PAGE, take: ADMIN_USERS_PAGE }),
+      prisma.userProfile.count({ where }),
+    ]);
+    total = count;
+    base = profiles.map((p) => ({ userId: p.userId, name: p.fullName, email: p.email, joinedAt: p.createdAt.toISOString(), lastSeenAt: null }));
+  }
+
+  const ids = base.map((row) => row.userId);
+  if (ids.length === 0) return { rows: [], total, page, pageSize: ADMIN_USERS_PAGE, source };
+
+  const [profiles, subs, wins, jobs, chats, channels, lastCalls, flags] = await Promise.all([
+    prisma.userProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, fullName: true, email: true } }),
+    prisma.subscription.findMany({ where: { userId: { in: ids }, status: { in: ['active', 'trialing', 'past_due'] } }, select: { userId: true, tier: true } }),
+    prisma.win.groupBy({ by: ['userId'], where: { userId: { in: ids }, status: 'confirmed' }, _count: { _all: true } }),
+    prisma.applicationWorkspace.groupBy({ by: ['userId'], where: { userId: { in: ids } }, _count: { _all: true } }),
+    prisma.chatMessage.groupBy({ by: ['userId'], where: { userId: { in: ids }, role: 'user' }, _count: { _all: true } }),
+    prisma.channelIdentity.findMany({ where: { userId: { in: ids }, verified: true }, select: { userId: true, channel: true } }),
+    prisma.apiUsageLog.groupBy({ by: ['userId'], where: { userId: { in: ids } }, _max: { createdAt: true } }),
+    prisma.featureFlag.findMany({ select: { key: true, allowUserIds: true } }),
+  ]);
+
+  const count = (rows: { userId: string; _count: { _all: number } }[]) => new Map(rows.map((r) => [r.userId, r._count._all]));
+  const winCount = count(wins as never);
+  const jobCount = count(jobs as never);
+  const chatCount = count(chats as never);
+  const profileBy = new Map(profiles.map((p) => [p.userId, p]));
+  const lastCall = new Map(lastCalls.map((r) => [r.userId, r._max.createdAt]));
+  const rank: Record<string, number> = { free: 0, always_on: 1, pro: 2, team: 3 };
+
+  const rows = base.map((row) => {
+    const tiers = subs.filter((s) => s.userId === row.userId).map((s) => s.tier);
+    const best = tiers.sort((a, b) => rank[b] - rank[a])[0] ?? Tier.free;
+    const profile = profileBy.get(row.userId);
+    const lastApi = lastCall.get(row.userId);
+    const lastSeen = [row.lastSeenAt, lastApi?.toISOString() ?? null].filter(Boolean).sort().at(-1) ?? null;
+    return {
+      ...row,
+      name: row.name || profile?.fullName || '',
+      email: row.email || profile?.email || '',
+      lastSeenAt: lastSeen,
+      plan: planName(best),
+      wins: winCount.get(row.userId) ?? 0,
+      jobs: jobCount.get(row.userId) ?? 0,
+      chatMessages: chatCount.get(row.userId) ?? 0,
+      channels: [...new Set(channels.filter((c) => c.userId === row.userId).map((c) => c.channel))],
+      allowedFlags: flags
+        .filter((f) => Array.isArray(f.allowUserIds) && (f.allowUserIds as unknown[]).includes(row.userId))
+        .map((f) => f.key),
+    };
+  });
+
+  return { rows, total, page, pageSize: ADMIN_USERS_PAGE, source };
 }

@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { setFeatureFlag, type FeatureFlagRow } from '@/actions/admin';
+import { setFeatureFlag, setFeatureFlagAllowList, type FeatureFlagRow } from '@/actions/admin';
 
 /**
  * The one admin operation that gates the entire product.
@@ -31,7 +31,83 @@ const LABELS: Record<string, string> = {
     backfill: 'Backfill',
     career_radar: 'Career Radar',
     missions: 'Missions',
+    scout: 'Scout / Inbox',
+    chat: 'Chat',
 };
+
+/**
+ * Who sees the feature while it is off for everyone else. The allow-list wins
+ * over `enabled` (src/lib/flags.ts `decideFlag`), so adding yourself is how a
+ * feature is tried in production before it is switched on.
+ */
+function AllowListCell({ row, onSaved }: { row: FeatureFlagRow; onSaved: (next: FeatureFlagRow) => void }) {
+    const [entry, setEntry] = React.useState('');
+    const [busy, setBusy] = React.useState(false);
+    const label = LABELS[row.key] ?? row.key;
+
+    const apply = async (input: { entry?: string; self?: boolean; op: 'add' | 'remove' }) => {
+        setBusy(true);
+        const result = await setFeatureFlagAllowList({ key: row.key, ...input });
+        setBusy(false);
+        if (!result.success) {
+            toast.error(result.error);
+            return;
+        }
+        setEntry('');
+        toast.success(`${label}: allow-list updated. Live within a minute.`);
+        onSaved({ ...row, allowUserIds: result.allowUserIds, seeded: true });
+    };
+
+    return (
+        <div className="space-y-2">
+            {row.allowUserIds.length > 0 ? (
+                <ul className="flex flex-wrap gap-1">
+                    {row.allowUserIds.map((id) => (
+                        <li key={id} className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-[11px]">
+                            {id}
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void apply({ entry: id, op: 'remove' })}
+                                className="text-muted-foreground hover:text-foreground"
+                                aria-label={`Remove ${id} from ${label}`}
+                            >
+                                ×
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            ) : null}
+            <form
+                className="flex items-center gap-1"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    if (entry.trim()) void apply({ entry: entry.trim(), op: 'add' });
+                }}
+            >
+                <input
+                    value={entry}
+                    onChange={(event) => setEntry(event.target.value)}
+                    placeholder="user_…"
+                    disabled={busy}
+                    className="w-36 rounded-md border border-border bg-background px-2 py-1 font-mono text-xs"
+                    aria-label={`Add a user id to ${label}`}
+                />
+                <button type="submit" disabled={busy || !entry.trim()} className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-50">
+                    Add
+                </button>
+                <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void apply({ self: true, op: 'add' })}
+                    className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-50"
+                >
+                    Add me
+                </button>
+            </form>
+        </div>
+    );
+}
 
 function FlagRow({
     row,
@@ -119,10 +195,8 @@ function FlagRow({
                     <span className="text-xs text-muted-foreground">%</span>
                 </div>
             </td>
-            <td className="py-3 text-xs text-muted-foreground">
-                {row.allowUserIds.length > 0
-                    ? `${row.allowUserIds.length} on the allow-list`
-                    : '—'}
+            <td className="py-3">
+                <AllowListCell row={row} onSaved={onSaved} />
             </td>
         </tr>
     );
@@ -186,7 +260,7 @@ export function FeatureFlagPanel({ initial }: { initial: FeatureFlagRow[] }) {
 
             <p className="mt-3 text-xs text-muted-foreground">
                 Enabled with a 0% rollout is still off for everyone outside the allow-list. Set
-                both.
+                both. Users on the allow-list get the feature even while it is off.
             </p>
         </section>
     );

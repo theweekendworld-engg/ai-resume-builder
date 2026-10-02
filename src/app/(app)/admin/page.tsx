@@ -6,8 +6,10 @@ import {
   getEffectiveLimits,
   listFeatureFlags,
   refreshCurrentUsageSummaries,
+  searchAdminUsers,
 } from '@/actions/admin';
-import type { AdminDashboardData, EffectiveLimits, FeatureFlagRow } from '@/actions/admin';
+import type { AdminDashboardData, AdminUserSearch, EffectiveLimits, FeatureFlagRow } from '@/actions/admin';
+import { AdminUsersPanel } from '@/components/admin/AdminUsersPanel';
 import { FeatureFlagPanel } from '@/components/admin/FeatureFlagPanel';
 import { EffectiveLimitsPanel } from '@/components/admin/EffectiveLimitsPanel';
 
@@ -19,11 +21,13 @@ export default async function AdminDashboardPage() {
   let data: AdminDashboardData;
   let flags: FeatureFlagRow[];
   let limits: EffectiveLimits;
+  let users: AdminUserSearch;
   try {
-    [data, flags, limits] = await Promise.all([
+    [data, flags, limits, users] = await Promise.all([
       getAdminDashboardData(),
       listFeatureFlags(),
       getEffectiveLimits(),
+      searchAdminUsers(),
     ]);
   } catch {
     redirect('/dashboard');
@@ -57,6 +61,10 @@ export default async function AdminDashboardPage() {
           can reach. Usage numbers are diagnostics; this is the product. */}
       <div className="mb-8">
         <FeatureFlagPanel initial={flags} />
+      </div>
+
+      <div className="mb-8">
+        <AdminUsersPanel initial={users} />
       </div>
 
       <div className="mb-8">
