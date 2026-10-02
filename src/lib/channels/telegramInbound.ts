@@ -28,18 +28,32 @@ function openingLine(shared: { url: string | null; text: string | null }): strin
 }
 
 /** Start a run from shared text, with a progress message the notifier edits. */
-export async function startTelegramScout(chatId: string, userId: string, raw: string): Promise<void> {
+export async function startTelegramScout(
+    chatId: string,
+    userId: string,
+    raw: string,
+    /** Set when chat routed the text to company research (docs/prd/10-chat.md). */
+    research?: { company: string },
+): Promise<void> {
     const deps = await scoutChannelDeps();
-    const shared = parseSharedMessage(raw);
+    const shared = research ? { url: null, text: `Research the company: ${research.company}` } : parseSharedMessage(raw);
     if (!shared.url && !shared.text) {
         await say(chatId, 'Send a LinkedIn job or post link, or paste the post text.');
         return;
     }
 
-    const initial = await sendTelegramMessageDetailed({ chatId, text: openingLine(shared) });
+    const initial = await sendTelegramMessageDetailed({
+        chatId,
+        text: research ? `🔎 Looking into ${research.company}…` : openingLine(shared),
+    });
     const result = await deps.startScoutRun({
         userId,
-        input: { url: shared.url, text: shared.text, source: 'telegram' },
+        input: {
+            url: shared.url,
+            text: shared.text,
+            source: 'telegram',
+            ...(research ? { intent: 'company_research' as const, company: research.company } : {}),
+        },
         channel: 'telegram',
         channelRef: { chatId, messageId: initial.messageId },
     });
@@ -93,7 +107,12 @@ export async function handleTelegramScoutText(chatId: string, userId: string, te
             return true;
         }
         if (intent === 'reply') {
-            await startTelegramScout(chatId, userId, text);
+            const routed = await deps.routeChannelText?.(userId, text, 'telegram');
+            if (routed?.kind === 'reply') {
+                await say(chatId, routed.text);
+                return true;
+            }
+            await startTelegramScout(chatId, userId, text, routed?.kind === 'scout' && routed.company ? { company: routed.company } : undefined);
             return true;
         }
         await say(chatId, TINY_HELP);

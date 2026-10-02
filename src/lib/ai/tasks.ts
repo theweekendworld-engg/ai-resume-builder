@@ -51,6 +51,9 @@ export const TASK_KEYS = [
     // The posting read, on Scout's model. Same prompt as `postingRead`; the
     // resume path keeps its measured model, Scout takes the cheaper one.
     'scoutPostingRead',
+    // Chat (docs/prd/10-chat.md): one routing call per message. It picks an
+    // action from a closed list; the code runs it.
+    'chatRoute',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];
@@ -122,6 +125,8 @@ export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 
     scoutDigest: 'low',
     scoutFitMatch: 'low',
     scoutPostingRead: 'low',
+    // A person is waiting on every message; routing is classification.
+    chatRoute: 'low',
 };
 
 export function resolveTaskReasoningEffort(

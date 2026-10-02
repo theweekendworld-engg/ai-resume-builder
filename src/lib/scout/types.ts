@@ -39,6 +39,13 @@ export type ScoutInput = {
     author?: string | null;
     authorUrl?: string | null;
     source: ScoutInputSource;
+    /**
+     * Set by chat's `research_company` (docs/prd/10-chat.md): the user named a
+     * company and asked about it, so there is nothing to classify. The run goes
+     * straight to the `company_signal` plan (company facts, open roles).
+     */
+    intent?: 'company_research' | null;
+    company?: string | null;
 };
 
 // ────────────────────────────────────────────────────────────── sections

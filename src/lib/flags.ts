@@ -22,6 +22,8 @@ export const FEATURE_FLAGS = [
     'career_radar',
     'missions',
     'scout',
+    // The chat front door (docs/prd/10-chat.md).
+    'chat',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];

@@ -11,6 +11,7 @@ import type { StartScoutParams, StartScoutResult } from '@/services/scout';
 import type { ScoutRunView } from '@/lib/scout/types';
 import type { ScoutActionDeps } from '@/lib/channels/scoutActions';
 import type { InsightItem, JobBoardFilters, JobBoardItem, NoteItem } from '@/lib/inbox/types';
+import type { ChannelRoute } from '@/services/chat';
 
 export type ScoutChannelDeps = ScoutActionDeps & {
     isScoutEnabled: (userId: string) => Promise<boolean>;
@@ -21,19 +22,25 @@ export type ScoutChannelDeps = ScoutActionDeps & {
     listJobBoard: (userId: string, filters?: JobBoardFilters) => Promise<JobBoardItem[]>;
     listInsights: (userId: string, opts?: { tag?: string | null; q?: string | null; limit?: number }) => Promise<InsightItem[]>;
     listChatNotes: (userId: string, opts?: { limit?: number }) => Promise<NoteItem[]>;
+    /**
+     * The chat router for free text (docs/prd/10-chat.md §4). Optional: absent
+     * (as in routing tests) or returning null, a channel does what it did before.
+     */
+    routeChannelText?: (userId: string, text: string, channel: 'telegram' | 'whatsapp') => Promise<ChannelRoute | null>;
 };
 
 let override: ScoutChannelDeps | null = null;
 
 export async function scoutChannelDeps(): Promise<ScoutChannelDeps> {
     if (override) return override;
-    const [service, flags, inbox, wins, tailor, generation] = await Promise.all([
+    const [service, flags, inbox, wins, tailor, generation, chat] = await Promise.all([
         import('@/services/scout'),
         import('@/lib/flags'),
         import('@/services/careerInbox'),
         import('@/services/wins'),
         import('@/services/tailor'),
         import('@/lib/channels/generationQuestion'),
+        import('@/services/chat'),
     ]);
     return {
         tailorResumeForRun: tailor.tailorResumeForRun,
@@ -52,6 +59,7 @@ export async function scoutChannelDeps(): Promise<ScoutChannelDeps> {
         answerScoutQuestion: service.answerScoutQuestion,
         draftScoutOutreach: service.draftScoutOutreach,
         refreshScoutRun: service.refreshScoutRun,
+        routeChannelText: chat.routeChannelText,
     };
 }
 

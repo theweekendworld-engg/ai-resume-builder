@@ -187,6 +187,9 @@ export const config = {
             outreachDraft: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             scoutFitMatch: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             scoutPostingRead: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            // Chat routing: high volume, latency-felt, classification-shaped.
+            // Scout's cheap default, with its own override.
+            chatRoute: process.env.OPENAI_MODEL_CHAT || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
         },
         /**
          * Embeddings keep their own credentials, and that is load-bearing.

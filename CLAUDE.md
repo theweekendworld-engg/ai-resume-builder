@@ -169,6 +169,14 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   store itself, not the `embedded` column, and re-embeds anything missing
   (`embed_profile_item` for projects, experiences and knowledge items).
   Local Docker must run the `pgvector/pgvector:pg16` image.
+- **Chat** (`docs/prd/10-chat.md`, flag `chat`). The front door: `/chat` on the
+  web, and the same router behind Telegram/WhatsApp free text. One
+  `generateStructured` call (task `chatRoute`) picks an action from a closed
+  list; the code runs it through the service its own page uses, so metering
+  and dedupe are unchanged. The router picks jobs by index and never writes an
+  id; its reply runs the numeric guard. **It can draft a Win, never confirm
+  one**: Confirm is a button on the card (rule 5). Card buttons go through
+  `src/actions/chat.ts`, gated on `chat`, not on the Scout flag.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

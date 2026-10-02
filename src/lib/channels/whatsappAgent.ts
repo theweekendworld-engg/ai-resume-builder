@@ -134,16 +134,27 @@ export async function processWhatsAppMessage(message: WhatsAppInbound): Promise<
             return;
         }
         if (intent === 'reply') {
-            await startWhatsAppScout(to, userId, text);
+            const routed = await deps.routeChannelText?.(userId, text, 'whatsapp');
+            if (routed?.kind === 'reply') {
+                await say(to, routed.text);
+                return;
+            }
+            await startWhatsAppScout(to, userId, text, routed?.kind === 'scout' && routed.company ? { company: routed.company } : undefined);
             return;
         }
     }
     await say(to, TINY_HELP.replace('/help', 'help'));
 }
 
-export async function startWhatsAppScout(to: string, userId: string, raw: string): Promise<void> {
+export async function startWhatsAppScout(
+    to: string,
+    userId: string,
+    raw: string,
+    /** Set when chat routed the text to company research (docs/prd/10-chat.md). */
+    research?: { company: string },
+): Promise<void> {
     const deps = await scoutChannelDeps();
-    const shared = parseSharedMessage(raw);
+    const shared = research ? { url: null, text: `Research the company: ${research.company}` } : parseSharedMessage(raw);
     if (!shared.url && !shared.text) {
         await say(to, 'Send a LinkedIn job or post link, or paste the post text.');
         return;
@@ -151,7 +162,12 @@ export async function startWhatsAppScout(to: string, userId: string, raw: string
 
     const result = await deps.startScoutRun({
         userId,
-        input: { url: shared.url, text: shared.text, source: 'whatsapp' },
+        input: {
+            url: shared.url,
+            text: shared.text,
+            source: 'whatsapp',
+            ...(research ? { intent: 'company_research' as const, company: research.company } : {}),
+        },
         channel: 'whatsapp',
         channelRef: { to },
     });
@@ -160,7 +176,7 @@ export async function startWhatsAppScout(to: string, userId: string, raw: string
         return;
     }
     if (result.data.created) {
-        await say(to, shared.url || (shared.text ?? '').length >= 200
+        await say(to, research || shared.url || (shared.text ?? '').length >= 200
             ? '🔎 On it. I will reply here in a minute or two.'
             : '📝 Recording that. I will reply here in a moment.');
         return;

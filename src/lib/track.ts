@@ -133,6 +133,8 @@ export const SERVER_EVENTS = [
     'scout_contacts_imported',
     // Career inbox
     'inbox_job_status_changed',
+    // Chat — docs/prd/10-chat.md. One event per message, with the action chosen.
+    'chat_message',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];

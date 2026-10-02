@@ -21,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (userId) {
     const flags = await getEnabledFlags(userId);
     destinations = [
+      ...(flags.chat ? (['chat'] as const) : []),
       ...(flags.missions ? (['home'] as const) : []),
       ...(flags.work_log ? (['log'] as const) : []),
       ...(flags.scout ? (['scout'] as const) : []),

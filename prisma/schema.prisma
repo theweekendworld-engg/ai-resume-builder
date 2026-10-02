@@ -1635,3 +1635,37 @@ model VectorPoint {
   @@index([collection, userId, type])
   @@index([collection, type])
 }
+
+/// The chat front door (docs/prd/10-chat.md). One continuous thread per user
+/// per channel: a career is one long conversation, not a list of sessions.
+model ChatConversation {
+  id            String        @id @default(cuid())
+  userId        String
+  channel       Channel       @default(web)
+  createdAt     DateTime      @default(now())
+  lastMessageAt DateTime      @default(now())
+  messages      ChatMessage[]
+
+  @@unique([userId, channel])
+}
+
+/// One turn. `cards` is the typed payload the UI renders (src/lib/chat/types.ts);
+/// `action` is what the router chose, for analysis. `clientId` makes a
+/// double-submitted message one message: idempotency is a DB constraint.
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  userId         String
+  /// `user` or `assistant`.
+  role           String
+  text           String
+  cards          Json             @default("[]")
+  action         String?
+  clientId       String?
+  createdAt      DateTime         @default(now())
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, clientId])
+  @@index([conversationId, createdAt])
+  @@index([userId, createdAt])
+}

@@ -6,6 +6,7 @@ let ratelimitAi: Ratelimit | null | undefined = undefined;
 let ratelimitGitHub: Ratelimit | null | undefined = undefined;
 let ratelimitAnonScore: Ratelimit | null | undefined = undefined;
 let ratelimitFunnelEvent: Ratelimit | null | undefined = undefined;
+let ratelimitChat: Ratelimit | null | undefined = undefined;
 
 function getRedis(): Redis | null {
     const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -143,4 +144,22 @@ export async function checkWinTokenRateLimit(identifier: string): Promise<{ allo
     const result = await limiter.limit(`win-token:${identifier}`);
     if (result.success) return { allowed: true };
     return { allowed: false, error: 'Too many actions from this link. Try again in a minute.' };
+}
+
+/**
+ * Chat messages (docs/prd/10-chat.md). Talking is free, so this is the only
+ * thing between a script and the routing model's bill. Its own prefix, so a
+ * user's chat does not spend the budget of the other AI limiters.
+ */
+export async function checkChatRateLimit(userId: string): Promise<{ allowed: boolean; error?: string }> {
+    if (ratelimitChat === undefined) {
+        const redis = getRedis();
+        ratelimitChat = redis
+            ? new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(30, '1 m'), prefix: 'rl:chat', analytics: true })
+            : null;
+    }
+    if (!ratelimitChat) return { allowed: true };
+    const result = await ratelimitChat.limit(userId);
+    if (result.success) return { allowed: true };
+    return { allowed: false, error: 'That is a lot of messages at once. Give it a minute.' };
 }

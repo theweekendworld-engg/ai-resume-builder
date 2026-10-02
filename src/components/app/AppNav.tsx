@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
-import { Compass, FileText, Home, Inbox, Menu, NotebookPen, Radar, Sparkles, Settings } from 'lucide-react';
+import { Compass, FileText, Home, Inbox, Menu, MessageSquare, NotebookPen, Radar, Sparkles, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -34,12 +34,15 @@ import { cn } from '@/lib/utils';
  * — opt out. A focus surface with a global header stops being one.
  */
 
-export type NavDestination = 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
+export type NavDestination = 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
 
 const DESTINATIONS: Record<
     NavDestination,
     { href: string; label: string; icon: React.ComponentType<{ className?: string }> }
 > = {
+    // The front door when on (docs/prd/10-chat.md): first in the nav, and
+    // where the logo goes.
+    chat: { href: '/chat', label: 'Chat', icon: MessageSquare },
     home: { href: '/home', label: 'Home', icon: Home },
     log: { href: '/log', label: 'Work Log', icon: NotebookPen },
     resumes: { href: '/dashboard', label: 'Resumes', icon: FileText },
@@ -51,7 +54,7 @@ const DESTINATIONS: Record<
 };
 
 /** Order is the user's mental model, not the object's key order. */
-const ORDER: NavDestination[] = ['home', 'log', 'scout', 'resumes', 'packets', 'radar'];
+const ORDER: NavDestination[] = ['chat', 'home', 'log', 'scout', 'resumes', 'packets', 'radar'];
 
 /**
  * Paths that render their own full-screen chrome.
@@ -113,7 +116,7 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
         <header className="sticky top-0 z-40 border-b border-border bg-background">
             <div className="mx-auto flex h-14 w-full max-w-[1180px] items-center gap-3 px-4 sm:px-6">
                 <Link
-                    href={items.some((item) => item.key === 'home') ? '/home' : '/dashboard'}
+                    href={items.some((item) => item.key === 'chat') ? '/chat' : items.some((item) => item.key === 'home') ? '/home' : '/dashboard'}
                     className="font-heading text-sm font-semibold tracking-tight text-foreground"
                 >
                     Patronus

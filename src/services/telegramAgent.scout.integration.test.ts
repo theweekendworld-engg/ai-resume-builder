@@ -425,3 +425,30 @@ describe('429 handling', () => {
         telegramTesting.setSleep(null);
     });
 });
+
+describe('chat routing for free text (docs/prd/10-chat.md §4)', () => {
+    test('a question the router answers is replied to, and no run starts', async () => {
+        depsTesting.setDeps(fakeDeps({ routeChannelText: async () => ({ kind: 'reply', text: 'Here is your pipeline.\n\n1. SDE II at Razorpay · applied' }) }));
+        await processTelegramUpdate(textUpdate('show me my job pipeline please'));
+        expect(started).toHaveLength(0);
+        expect(telegram.sent.at(-1)?.text).toContain('SDE II at Razorpay');
+    });
+
+    test('company research goes through Scout with the intent, so the notifier reports it', async () => {
+        depsTesting.setDeps(fakeDeps({ routeChannelText: async () => ({ kind: 'scout', company: 'Jack & Jill' }) }));
+        await processTelegramUpdate(textUpdate('tell me about the startup Jack & Jill'));
+        expect(started).toHaveLength(1);
+        expect(started[0]).toMatchObject({
+            channel: 'telegram',
+            input: { text: 'Research the company: Jack & Jill', intent: 'company_research', company: 'Jack & Jill', source: 'telegram' },
+        });
+        expect(telegram.sent[0].text).toContain('Looking into Jack & Jill');
+    });
+
+    test('a routing failure (null) falls back to recording the note, never losing it', async () => {
+        depsTesting.setDeps(fakeDeps({ routeChannelText: async () => null }));
+        await processTelegramUpdate(textUpdate('shipped the retry queue today, p99 down to 300ms'));
+        expect(started).toHaveLength(1);
+        expect((started[0].input as { text: string }).text).toContain('retry queue');
+    });
+});

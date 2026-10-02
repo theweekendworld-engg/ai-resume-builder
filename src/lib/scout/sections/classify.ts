@@ -142,6 +142,22 @@ export const classifySection: ScoutSection<'classify'> = async (ctx) => {
     const ingest = dataOf(ctx.sections, 'ingest');
     if (!ingest) return { status: 'unavailable', reason: 'Nothing was read from the link, so there is nothing to classify.' };
 
+    // The user asked about a company by name: classifying their request would
+    // only risk filing it as something else.
+    const requested = ctx.input.intent === 'company_research' ? ctx.input.company?.trim() : null;
+    if (requested) {
+        return {
+            status: 'ok',
+            data: {
+                kind: 'company_signal',
+                confidence: 1,
+                companies: [requested],
+                roleTitle: null,
+                reason: `You asked about ${requested}.`,
+            },
+        };
+    }
+
     const shortcut = deterministicClassification(ingest);
     if (shortcut) return { status: 'ok', data: shortcut };
 

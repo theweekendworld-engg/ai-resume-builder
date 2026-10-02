@@ -24,6 +24,7 @@ export const FEATURE_TAGS = [
     'onboarding',
     'scout',
     'outreach',
+    'chat',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];
