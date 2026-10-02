@@ -150,7 +150,7 @@ export async function runAction(
         case 'research_company': {
             const company = companyName(decision.company ?? '');
             if (!company) return failure('Which company? Send me its name.');
-            const hint = companyHint(decision.company ?? '', company);
+            const hint = decision.query?.trim().slice(0, 120) || companyHint(decision.company ?? '', company);
             const started = await startScoutRun({
                 userId,
                 input: { text: `Research the company: ${company}`, source: 'dashboard', intent: 'company_research', company, companyHint: hint },
