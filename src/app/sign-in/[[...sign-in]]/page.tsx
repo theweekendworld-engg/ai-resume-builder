@@ -39,7 +39,7 @@ export default async function SignInPage({
             path="/sign-in"
             signUpUrl={stash ? `/sign-up?stash=${stash}` : '/sign-up'}
             {...(destination ? { forceRedirectUrl: destination } : {})}
-            fallbackRedirectUrl="/dashboard"
+            fallbackRedirectUrl="/app"
             signUpForceRedirectUrl={newAccount}
             signUpFallbackRedirectUrl={newAccount}
           />

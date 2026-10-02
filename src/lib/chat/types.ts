@@ -137,4 +137,6 @@ export type ChatContext = {
     openQuestion: { runId: string; question: string } | null;
     draftCount: number;
     hasBaseResume: boolean;
+    /** From job-search preferences (Settings → Job search), so "find me jobs" means theirs. */
+    looking: { roles: string[]; locations: string[]; remote: boolean };
 };

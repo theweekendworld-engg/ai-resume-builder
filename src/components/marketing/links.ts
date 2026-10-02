@@ -7,7 +7,9 @@
  * 2026-09-27, flow D). Onboarding decides the first screen now; the landing
  * page only needs to get people into it.
  */
-export const START_FREE_HREF = '/sign-up?redirect_url=/dashboard';
+// No redirect_url: a forced destination beat onboarding's own (the editor,
+// or chat), so "Opening your resume" landed on the dashboard (audit 2026-10-02).
+export const START_FREE_HREF = '/sign-up';
 
 /** The public policy pages a payment gateway's review expects to find. */
 export const POLICY_LINKS = [

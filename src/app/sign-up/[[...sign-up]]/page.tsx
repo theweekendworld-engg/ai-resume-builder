@@ -45,7 +45,7 @@ export default async function SignUpPage({
   const stash = isStashId(params.stash) ? params.stash : null;
   const welcome = welcomeUrl({ next, stash });
   // An existing account that signs in from here still gets the checked resume.
-  const signInDestination = stash ? welcome : next ?? '/dashboard';
+  const signInDestination = stash ? welcome : next ?? '/app';
 
   return (
     <div className="relative min-h-screen bg-background">

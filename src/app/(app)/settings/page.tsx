@@ -22,7 +22,7 @@ export default async function SettingsIndexPage() {
     const items = [
         { href: '/settings/resume', icon: FileText, title: 'Resume defaults', body: 'Template, section order and length for every resume you generate.' },
         { href: '/settings/job-search', icon: Target, title: 'Job search', body: 'Roles, locations and pay you are looking for, and your LinkedIn connections.' },
-        { href: '/dashboard?section=telegram', icon: MessageCircle, title: 'Chat apps', body: 'Link Telegram so you can send jobs, posts and notes from your phone.' },
+        { href: '/settings/channels', icon: MessageCircle, title: 'Channels', body: 'Web chat, Telegram, WhatsApp, the browser extension and the CLI.' },
         ...(capture ? [{ href: '/settings/sources', icon: GitBranch, title: 'Sources', body: 'Connect GitHub so your merged work becomes Work Log drafts.' }] : []),
         { href: '/settings/notifications', icon: Bell, title: 'Notifications', body: 'The weekly digest, monthly review and what reaches your inbox.' },
         { href: '/settings/plan', icon: CreditCard, title: 'Plan & usage', body: 'What you have left this month, and paid plans.' },

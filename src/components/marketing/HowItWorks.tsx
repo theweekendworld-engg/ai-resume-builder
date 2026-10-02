@@ -32,7 +32,7 @@ const STEPS = [
         icon: Check,
         title: 'Log wins as they happen',
         body: 'The incident you ran, the design review you turned around, the number you moved. Type a rough note and it comes back structured — your numbers untouched — and the next resume draws on it.',
-        note: 'Drafting wins from GitHub automatically is coming soon.',
+        note: 'From the web, or a message to the Telegram bot from your phone.',
     },
 ];
 

@@ -15,7 +15,7 @@ export function ActivityList({ runs }: { runs: ScoutRunSummary[] }) {
                 icon={History}
                 title="Nothing shared yet"
                 description="Most people share from their phone. Link Telegram, then send any LinkedIn link the moment you see it."
-                action={{ label: 'Link a chat app', href: '/dashboard?section=telegram' }}
+                action={{ label: 'Link a chat app', href: '/settings/channels' }}
                 secondary={{ label: 'Set your job-search preferences', href: '/settings/job-search' }}
             />
         );

@@ -3,7 +3,6 @@
 import {
   LayoutDashboard,
   FileText,
-  Sparkles,
   User,
   Send,
   FileDown,
@@ -23,10 +22,9 @@ export const DASHBOARD_TOUR_STORAGE_KEY = 'dashboard-tour-dismissed-v1';
 
 const SECTIONS: { id: DashboardSectionId; title: string; description: string; icon: React.ReactNode }[] = [
   { id: 'overview', title: 'Overview', description: 'Welcome, quick stats, usage, and recent resumes.', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { id: 'copilot', title: 'Copilot', description: 'Paste a job description and get a complete resume.', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'resumes', title: 'My Resumes', description: 'Create and manage all your resumes.', icon: <FileText className="h-4 w-4" /> },
   { id: 'profile', title: 'Profile', description: 'Personal info, experience, education, and preferences.', icon: <User className="h-4 w-4" /> },
-  { id: 'telegram', title: 'Telegram', description: 'Link Telegram to generate resumes from the bot.', icon: <Send className="h-4 w-4" /> },
+  { id: 'telegram', title: 'Channels', description: 'Link Telegram to send jobs, notes and questions from your phone.', icon: <Send className="h-4 w-4" /> },
   { id: 'pdf', title: 'PDF History', description: 'Download previously generated PDFs.', icon: <FileDown className="h-4 w-4" /> },
 ];
 

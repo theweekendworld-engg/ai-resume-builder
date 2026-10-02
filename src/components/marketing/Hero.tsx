@@ -75,7 +75,7 @@ export function Hero() {
 
             <div className={cn(marketingContainer, 'relative pb-24 pt-28 text-center lg:pt-32')}>
                 <Reveal as="span" className="mk-pill">
-                    Resumes, built from evidence
+                    Your working life, on the record
                 </Reveal>
 
                 {/*
@@ -87,16 +87,16 @@ export function Hero() {
                 */}
                 <Reveal delay={80}>
                     <h1 className={cn(marketingType.hero, 'mk-float mx-auto mt-8 max-w-4xl')}>
-                        More interviews from work{' '}
-                        <span className="text-primary">you’ve already done.</span>
+                        The assistant that knows your work,{' '}
+                        <span className="text-primary">for your whole career.</span>
                     </h1>
                 </Reveal>
 
                 <Reveal delay={160}>
                     <p className={cn(marketingType.lead, 'mx-auto mt-7 max-w-2xl')}>
-                        Check your resume free and get a fix list. Fix it in the editor, then tailor
-                        it to any job by pasting the posting in. Log your wins in a sentence as they
-                        happen, and the next resume draws on them — each line traces back to
+                        Tell Patronus what you shipped, in a sentence, whenever it happens. It keeps
+                        the record, checks any job against it, tailors your resume, drafts the note to
+                        the recruiter and gets your next review ready. Every line traces back to
                         something you confirmed, and{' '}
                         <span className="font-semibold text-foreground">nothing is invented.</span>
                     </p>
@@ -125,8 +125,8 @@ export function Hero() {
 
                 <Reveal delay={320}>
                     <p className="mx-auto mt-7 max-w-lg text-[13px] leading-relaxed text-muted-foreground/70">
-                        No sign-up to check · {freeResumeCap()} tailored resumes free · Never sold,
-                        never used to train anything
+                        Chat on the web or on Telegram ·{' '}
+                        {freeResumeCap()} tailored resumes free · Never sold, never used to train anything
                     </p>
                 </Reveal>
 

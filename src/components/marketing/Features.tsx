@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, BarChart3, FileText, ListChecks, Repeat2, ScanSearch } from 'lucide-react';
+import { ArrowRight, BarChart3, FileText, ListChecks, Repeat2, ScanSearch, Briefcase, MessageSquare } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
 import { Reveal } from './Reveal';
 import { START_FREE_HREF } from './links';
@@ -40,6 +40,18 @@ export const PAYOFFS: ReadonlyArray<{
         title: 'A resume assembled from evidence',
         body: 'Paste any job posting and get a version tailored to it, built from your history and the wins you logged instead of a blank page — then scored for ATS parsing before you send it.',
         proof: 'Numbers are copied from your record, never generated.',
+    },
+    {
+        icon: Briefcase,
+        title: 'Any job, checked against your record',
+        body: 'Send a LinkedIn job or post, from chat or Telegram. You get the fit, what the company does and how it is funded, published pay, interview write-ups and who to talk to, then a tailored resume and a draft message to the recruiter.',
+        proof: 'Every company fact links to the page it came from.',
+    },
+    {
+        icon: MessageSquare,
+        title: 'One assistant, wherever you are',
+        body: 'Chat on the web or message the Telegram bot: log a win, check a job, ask what you shipped last quarter. It all lands in the same record.',
+        proof: 'Everything you send, from anywhere, lands in the same record.',
     },
     {
         icon: FileText,

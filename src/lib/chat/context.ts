@@ -12,6 +12,7 @@ import { prisma } from '@/lib/prisma';
 import { listJobBoard } from '@/services/careerInbox';
 import { findOpenQuestionRun } from '@/services/scout';
 import type { JobBoardItem } from '@/lib/inbox/types';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { ChatContext, ChatJob } from './types';
 
 export const CONTEXT_JOBS = 8;
@@ -32,12 +33,14 @@ export function toChatJob(item: JobBoardItem): ChatJob {
 }
 
 export async function buildChatContext(userId: string): Promise<ChatContext> {
-    const [board, open, draftCount, base] = await Promise.all([
+    const [board, open, draftCount, base, profile] = await Promise.all([
         listJobBoard(userId),
         findOpenQuestionRun(userId),
         prisma.win.count({ where: { userId, status: WinStatus.draft } }),
         prisma.resume.findFirst({ where: { userId, baseResumeId: null }, select: { id: true } }),
+        prisma.userProfile.findUnique({ where: { userId }, select: { preferences: true } }),
     ]);
+    const prefs = parseUserGenerationPreferences(profile?.preferences);
     const jobs = [...board]
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
         .slice(0, CONTEXT_JOBS)
@@ -47,5 +50,10 @@ export async function buildChatContext(userId: string): Promise<ChatContext> {
         openQuestion: open?.pendingQuestion ? { runId: open.id, question: open.pendingQuestion.prompt } : null,
         draftCount,
         hasBaseResume: Boolean(base),
+        looking: {
+            roles: prefs.targetRoles,
+            locations: prefs.targetLocations,
+            remote: prefs.preferredWorkModes.includes('remote'),
+        },
     };
 }

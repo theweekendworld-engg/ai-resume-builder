@@ -40,7 +40,7 @@ import { ClosingCta } from '@/components/marketing/ClosingCta';
 export default async function MarketingHomePage() {
   const { userId } = await auth();
   if (userId) {
-    redirect('/dashboard');
+    redirect('/app');
   }
 
   return (

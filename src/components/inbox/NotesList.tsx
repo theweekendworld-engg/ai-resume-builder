@@ -84,7 +84,7 @@ export function NotesList({ items }: { items: NoteItem[] }) {
                 icon={NotebookPen}
                 title="No notes yet"
                 description="Tell the bot what you did, e.g. “shipped the retry queue today, p99 down 40%”, and it drafts a Win for your Work Log. Confirm it here or in the chat."
-                action={{ label: 'Link Telegram', href: '/dashboard?section=telegram' }}
+                action={{ label: 'Link Telegram', href: '/settings/channels' }}
                 secondary={{ label: 'Open the Work Log', href: '/log' }}
             />
         );

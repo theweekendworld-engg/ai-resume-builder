@@ -86,7 +86,7 @@ function failureNextStep(code: string | undefined): string {
 }
 
 function telegramDashboardUrl(): string {
-  return `${config.app.url.replace(/\/$/, '')}/dashboard?section=telegram`;
+  return `${config.app.url.replace(/\/$/, '')}/settings/channels`;
 }
 
 /** Unlink confirmation buttons. Short, outside the `sc:` namespace. */

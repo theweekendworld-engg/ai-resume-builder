@@ -1,4 +1,6 @@
 import { notFound } from 'next/navigation';
+import { auth } from '@clerk/nextjs/server';
+import { getEnabledFlags } from '@/lib/flags';
 
 import { getChatThread } from '@/actions/chat';
 import { ChatScreen } from '@/components/chat/ChatScreen';
@@ -20,12 +22,14 @@ export default async function ChatPage() {
             return (
                 <FeatureUnavailable
                     feature="Chat"
-                    blurb="Talk to Patronus: check a job, log what you shipped, tailor a resume or research a company, all in one place. It is built and it is coming."
+                    blurb="Talk to Patronus: check a job, log what you shipped, tailor a resume or research a company, all in one place. It is being switched on in stages."
                     reason="not_enabled"
                 />
             );
         }
         return <FeatureUnavailable feature="Chat" reason="error" />;
     }
-    return <ChatScreen initial={result.data} />;
+    const { userId } = await auth();
+    const flags = userId ? await getEnabledFlags(userId) : null;
+    return <ChatScreen initial={result.data} links={{ scout: Boolean(flags?.scout), workLog: Boolean(flags?.work_log) }} />;
 }

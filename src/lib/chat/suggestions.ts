@@ -29,7 +29,11 @@ export function suggestionsFor(context: ChatContext): ChatSuggestion[] {
         out.push({ label: 'My pipeline', message: 'Show my job pipeline' });
     }
     out.push({ label: 'Log a win', message: 'This week I ', prefill: true });
-    out.push({ label: 'Find roles', message: 'Find remote backend engineer roles' });
+    const role = context.looking.roles[0];
+    const place = context.looking.remote ? 'remote' : context.looking.locations[0];
+    out.push(role
+        ? { label: `Find ${role} roles`, message: `Find ${role} roles${place ? (place === 'remote' ? ', remote' : ` in ${place}`) : ''}` }
+        : { label: 'Find roles', message: 'Find open roles that fit me' });
     out.push({ label: 'What did I ship?', message: 'What have I shipped recently?' });
     if (!context.hasBaseResume) out.push({ label: 'Build a resume', message: 'I want to build a new resume' });
     return out.slice(0, 6);

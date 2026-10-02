@@ -160,6 +160,7 @@ export async function getWelcomeState(): Promise<Result<WelcomeState>> {
  * The destination depends on what they actually have, because landing someone
  * on an empty screen is how a good first run still fails:
  *
+ *   chat on             → Chat, the front door
  *   history + missions  → Home, where the mission they just picked lives
  *   otherwise           → the dashboard, whose first-run card names the next step
  *
@@ -173,9 +174,10 @@ export async function finishOnboarding(requestedNext?: string): Promise<Result<{
     const done = await completeOnboarding();
     if (!done.success) return err(done.error ?? 'Could not finish setup', 'failed');
 
-    const [experiences, missionsEnabled] = await Promise.all([
+    const [experiences, missionsEnabled, chatEnabled] = await Promise.all([
         prisma.userExperience.count({ where: { userId } }),
         isEnabled(userId, 'missions'),
+        isEnabled(userId, 'chat'),
     ]);
 
     // Where they were going before we interrupted them to set up an account.
@@ -194,6 +196,8 @@ export async function finishOnboarding(requestedNext?: string): Promise<Result<{
     // Never the builder by default: a job-description box is a dead end for
     // someone with no resume in the product yet (audit 2026-09-27, D). The
     // dashboard's first-run card names the one next step for their state.
+    // Chat, when it is on, is where everything starts (src/lib/homeRoute.ts).
+    if (chatEnabled) return ok({ next: '/chat' });
     return ok({ next: experiences > 0 && missionsEnabled ? '/home' : '/dashboard' });
 }
 

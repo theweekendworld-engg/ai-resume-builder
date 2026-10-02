@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { STEP_HREF } from '@/lib/missions/stepLinks';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, ChevronRight, Circle, Lock, Minus, Pause, Play } from 'lucide-react';
@@ -115,6 +117,12 @@ function StepRow({
                     </div>
                 ) : null}
             </div>
+
+            {!done && !skipped && STEP_HREF[step.key] ? (
+                <Button asChild variant="outline" size="sm" className="shrink-0 text-xs">
+                    <Link href={STEP_HREF[step.key]}>Go</Link>
+                </Button>
+            ) : null}
 
             {/* Only attested steps get a control. Everything else is the log's
                 answer, and offering a button would imply otherwise. */}

@@ -99,6 +99,9 @@ export function renderContext(context: ChatContext): string {
         jobs,
         `Unconfirmed Work Log drafts: ${context.draftCount}.`,
         `Has a base resume: ${context.hasBaseResume ? 'yes' : 'no'}.`,
+        context.looking.roles.length || context.looking.locations.length
+            ? `Looking for: ${[context.looking.roles.join(' or '), context.looking.locations.join(' or '), context.looking.remote ? 'remote' : ''].filter(Boolean).join(', ')}. Use these for find_jobs when the user does not say.`
+            : null,
         context.openQuestion ? `Scout is waiting on an answer: "${context.openQuestion.question}"` : null,
     ].filter(Boolean).join('\n');
 }

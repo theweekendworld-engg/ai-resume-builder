@@ -5,12 +5,10 @@ import Link from 'next/link';
 import {
   LayoutDashboard,
   FileText,
-  Sparkles,
   User,
   Send,
   FileDown,
   Menu,
-  Briefcase,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -39,14 +37,15 @@ export type DashboardSectionId =
 
 const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { id: 'applications', label: 'Applications', icon: <Briefcase className="h-4 w-4" /> },
+  // Applications and Copilot left the menu (launch audit 2026-10-02): jobs
+  // live in Jobs (/scout), and tailoring is /build or one chat message. Old
+  // ?section= links still render them.
   { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
-  { id: 'copilot', label: 'Copilot', icon: <Sparkles className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
   // WhatsApp is named only where it is configured; production has no
   // WHATSAPP_* variables, and the old "Telegram & WhatsApp" promised a
   // channel nobody could link.
-  { id: 'telegram', label: 'Telegram', icon: <Send className="h-4 w-4" /> },
+  { id: 'telegram', label: 'Channels', icon: <Send className="h-4 w-4" /> },
   { id: 'pdf', label: 'PDF History', icon: <FileDown className="h-4 w-4" /> },
 ];
 

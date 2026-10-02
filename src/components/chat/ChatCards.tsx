@@ -25,6 +25,10 @@ import { processChannelGenerate } from '@/actions/channelGenerate';
 import type { ChatCard, ChatJob } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
 
+/** Which full pages exist for this user. A card never links to a switched-off page. */
+export type ChatLinks = { scout: boolean; workLog: boolean };
+export const ChatLinksContext = React.createContext<ChatLinks>({ scout: true, workLog: true });
+
 const POLL_MS = 3_000;
 /** Stop polling after this long; the full page is one tap away. */
 const POLL_LIMIT_MS = 5 * 60_000;
@@ -61,6 +65,7 @@ const RUN_LIVE = (card: Extract<ChatCard, { type: 'scout_run' }>) => card.status
 
 function ScoutRunCard({ initial }: { initial: Extract<ChatCard, { type: 'scout_run' }> }) {
     const [card] = useLiveCard(initial, RUN_LIVE);
+    const links = React.useContext(ChatLinksContext);
     const Icon = card.kind ? KIND_ICON[card.kind] : Search;
     const live = RUN_LIVE(card);
     return (
@@ -74,12 +79,14 @@ function ScoutRunCard({ initial }: { initial: Extract<ChatCard, { type: 'scout_r
                         {RUN_STATUS_LABEL[card.status]}
                     </p>
                 </div>
-                <Button asChild size="sm" variant={live ? 'ghost' : 'outline'}>
-                    <Link href={`/scout/${card.runId}`}>
-                        {card.status === 'awaiting_input' ? 'Answer' : live ? 'Watch' : 'Open'}
-                        <ArrowUpRight className="size-3.5" aria-hidden />
-                    </Link>
-                </Button>
+                {links.scout ? (
+                    <Button asChild size="sm" variant={live ? 'ghost' : 'outline'}>
+                        <Link href={`/scout/${card.runId}`}>
+                            {card.status === 'awaiting_input' ? 'Answer' : live ? 'Watch' : 'Open'}
+                            <ArrowUpRight className="size-3.5" aria-hidden />
+                        </Link>
+                    </Button>
+                ) : null}
             </div>
         </Shell>
     );
@@ -88,6 +95,7 @@ function ScoutRunCard({ initial }: { initial: Extract<ChatCard, { type: 'scout_r
 // ───────────────────────────────────────────────────────────── Win draft
 
 function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }> }) {
+    const links = React.useContext(ChatLinksContext);
     const [state, setState] = React.useState<'draft' | 'confirmed' | 'dismissed' | 'busy'>(card.current ?? 'draft');
     const [error, setError] = React.useState<string | null>(null);
 
@@ -96,9 +104,11 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
             <Shell>
                 <p className={cn(typeStyles.body, 'font-medium')}>{card.title}</p>
                 <p className={cn(typeStyles.small, 'mt-1 text-muted-foreground')}>Already in your Work Log.</p>
-                <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
-                    <Link href="/log">Open the Work Log</Link>
-                </Button>
+                {links.workLog ? (
+                    <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
+                        <Link href="/log">Open the Work Log</Link>
+                    </Button>
+                ) : null}
             </Shell>
         );
     }
@@ -137,9 +147,11 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
                             <Button size="sm" variant="ghost" onClick={() => act('dismiss')} disabled={state === 'busy'}>
                                 <X className="size-3.5" aria-hidden /> Dismiss
                             </Button>
-                            <Button asChild size="sm" variant="ghost">
-                                <Link href="/log">Edit in the Work Log</Link>
-                            </Button>
+                            {links.workLog ? (
+                                <Button asChild size="sm" variant="ghost">
+                                    <Link href="/log">Edit in the Work Log</Link>
+                                </Button>
+                            ) : null}
                         </div>
                     )}
                     {error ? <p className={cn(typeStyles.caption, 'mt-2 text-destructive')}>{error}</p> : null}
@@ -224,6 +236,7 @@ function GenerationCard({ initial }: { initial: Extract<ChatCard, { type: 'gener
 // ───────────────────────────────────────────────────────────── outreach
 
 function OutreachCard({ card }: { card: Extract<ChatCard, { type: 'outreach' }> }) {
+    const links = React.useContext(ChatLinksContext);
     const [copied, setCopied] = React.useState(false);
     const text = [card.draft.subject ? `Subject: ${card.draft.subject}` : null, card.draft.body].filter(Boolean).join('\n\n');
     const copy = async () => {
@@ -240,9 +253,11 @@ function OutreachCard({ card }: { card: Extract<ChatCard, { type: 'outreach' }> 
                     {copied ? <Check className="size-3.5" aria-hidden /> : <Copy className="size-3.5" aria-hidden />}
                     {copied ? 'Copied' : 'Copy'}
                 </Button>
-                <Button asChild size="sm" variant="ghost">
-                    <Link href={`/scout/${card.runId}`}>More drafts</Link>
-                </Button>
+                {links.scout ? (
+                    <Button asChild size="sm" variant="ghost">
+                        <Link href={`/scout/${card.runId}`}>More drafts</Link>
+                    </Button>
+                ) : null}
             </div>
         </Shell>
     );
@@ -258,7 +273,8 @@ const STATUS_LABEL: Record<ChatJob['status'], string> = {
 };
 
 function JobRow({ job }: { job: ChatJob }) {
-    const href = job.runId ? `/scout/${job.runId}` : safeHref(job.sourceUrl);
+    const links = React.useContext(ChatLinksContext);
+    const href = job.runId && links.scout ? `/scout/${job.runId}` : safeHref(job.sourceUrl);
     return (
         <li className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
             <div className="min-w-0">
@@ -308,6 +324,7 @@ function PostingsCard({ card, onSend }: { card: Extract<ChatCard, { type: 'posti
 }
 
 function RecordCard({ card }: { card: Extract<ChatCard, { type: 'record' }> }) {
+    const links = React.useContext(ChatLinksContext);
     return (
         <Shell>
             <ul className="divide-y divide-border">
@@ -321,9 +338,11 @@ function RecordCard({ card }: { card: Extract<ChatCard, { type: 'record' }> }) {
                     </li>
                 ))}
             </ul>
-            <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
-                <Link href="/log">Open the Work Log</Link>
-            </Button>
+            {links.workLog ? (
+                <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
+                    <Link href="/log">Open the Work Log</Link>
+                </Button>
+            ) : null}
         </Shell>
     );
 }

@@ -53,7 +53,7 @@ export function PersonalInfoEditor() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="email" className="text-sm font-medium">Email</Label>
                         <Input
@@ -87,7 +87,7 @@ export function PersonalInfoEditor() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <div className="flex flex-col gap-2">
                         <Label htmlFor="linkedin" className="text-sm font-medium">LinkedIn</Label>
                         <Input

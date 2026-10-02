@@ -10,7 +10,7 @@ import type { ChatSuggestion } from '@/lib/chat/suggestions';
 import type { ChatMessageView } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
 
-import { ChatCardView } from './ChatCards';
+import { ChatCardView, ChatLinksContext, type ChatLinks } from './ChatCards';
 
 const MAX_CHARS = 4_000;
 
@@ -51,6 +51,9 @@ function Empty({ suggestions, onPick }: { suggestions: ChatSuggestion[]; onPick:
                 and never make up a number.
             </p>
             <Suggestions suggestions={suggestions} onPick={onPick} className="mt-6 justify-center" />
+            <p className={cn(typeStyles.small, 'mt-8 text-muted-foreground')}>
+                On your phone? <a href="/settings/channels" className="underline">Link Telegram</a> and message the same assistant there.
+            </p>
         </div>
     );
 }
@@ -76,7 +79,7 @@ function Suggestions({
     );
 }
 
-export function ChatScreen({ initial }: { initial: ChatThread }) {
+export function ChatScreen({ initial, links = { scout: true, workLog: true } }: { initial: ChatThread; links?: ChatLinks }) {
     const [messages, setMessages] = React.useState<ChatMessageView[]>(initial.messages);
     const [pending, setPending] = React.useState<Pending | null>(null);
     const [draft, setDraft] = React.useState('');
@@ -122,8 +125,11 @@ export function ChatScreen({ initial }: { initial: ChatThread }) {
     };
 
     return (
-        <div className="mx-auto flex h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col px-4 sm:px-6">
-            <div className="flex-1 space-y-5 overflow-y-auto py-6" aria-live="polite">
+        <ChatLinksContext.Provider value={links}>
+        {/* The page scrolls and the composer sticks: a fixed-height pane under
+            an in-flow banner pushed the composer below the screen on phones. */}
+        <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col px-4 sm:px-6">
+            <div className="flex-1 space-y-5 py-6" aria-live="polite">
                 {messages.length === 0 && !pending ? <Empty suggestions={initial.suggestions} onPick={pick} /> : null}
                 {messages.map((message) => (
                     <Bubble key={message.id} message={message} onSend={(text) => void send(text)} />
@@ -152,7 +158,7 @@ export function ChatScreen({ initial }: { initial: ChatThread }) {
                 <div ref={endRef} />
             </div>
 
-            <div className="border-t border-border bg-background pb-4 pt-3">
+            <div className="sticky bottom-0 border-t border-border bg-background pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
                 {messages.length > 0 ? <Suggestions suggestions={initial.suggestions} onPick={pick} className="mb-3" /> : null}
                 <form
                     className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2 focus-within:ring-2 focus-within:ring-ring"
@@ -170,7 +176,8 @@ export function ChatScreen({ initial }: { initial: ChatThread }) {
                         onKeyDown={onKeyDown}
                         rows={1}
                         placeholder="Paste a job link, log a win, or ask anything about your search"
-                        className={cn(typeStyles.body, 'max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 outline-none [field-sizing:content]')}
+                        // 16px on phones: iOS zooms the page into any smaller input.
+                        className={cn(typeStyles.body, 'max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-base outline-none [field-sizing:content] sm:text-sm')}
                     />
                     <Button type="submit" size="icon" className="rounded-full" disabled={busy || !draft.trim()} aria-label="Send">
                         {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
@@ -178,5 +185,6 @@ export function ChatScreen({ initial }: { initial: ChatThread }) {
                 </form>
             </div>
         </div>
+        </ChatLinksContext.Provider>
     );
 }

@@ -91,7 +91,7 @@ export function ReadinessScreen({ report: initial, frameworks, locked }: Readine
                             void reload({ frameworkId: value === 'default' ? null : value, targetLevel: null })
                         }
                     >
-                        <SelectTrigger className="w-[220px]">
+                        <SelectTrigger className="w-full sm:w-[220px]">
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -111,7 +111,7 @@ export function ReadinessScreen({ report: initial, frameworks, locked }: Readine
                                 void reload({ targetLevel: value === 'none' ? null : value })
                             }
                         >
-                            <SelectTrigger className="w-[180px]">
+                            <SelectTrigger className="w-full sm:w-[180px]">
                                 <SelectValue placeholder="Change target" />
                             </SelectTrigger>
                             <SelectContent>
@@ -202,7 +202,7 @@ function CompetencyRow({ item, locked }: { item: CompetencyAssessment; locked: b
             >
                 {VERDICT_GLYPH[item.verdict]}
             </span>
-            <span className={cn(typeStyles.body, 'min-w-[150px] flex-1 text-foreground')}>{item.name}</span>
+            <span className={cn(typeStyles.body, 'min-w-0 flex-1 sm:min-w-[150px] text-foreground')}>{item.name}</span>
             <span className="shrink-0" aria-hidden>
                 <Dots filled={item.dots} locked={locked} />
             </span>
@@ -217,7 +217,7 @@ function CompetencyRow({ item, locked }: { item: CompetencyAssessment; locked: b
                      * thing this screen must not do.
                      */}
                     <span
-                        className={cn(typeStyles.small, 'num w-[190px] shrink-0 select-none text-right blur-[5px]')}
+                        className={cn(typeStyles.small, 'num w-[110px] shrink-0 sm:w-[190px] select-none text-right blur-[5px]')}
                         aria-hidden
                     >
                         strong · 6 wins
@@ -228,7 +228,7 @@ function CompetencyRow({ item, locked }: { item: CompetencyAssessment; locked: b
                 <span
                     className={cn(
                         typeStyles.small,
-                        'num w-[190px] shrink-0 text-right',
+                        'num w-[110px] shrink-0 sm:w-[190px] text-right',
                         verdictTone(item.verdict),
                     )}
                 >

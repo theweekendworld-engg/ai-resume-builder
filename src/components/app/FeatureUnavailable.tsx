@@ -45,31 +45,31 @@ export function waitlistHref(feature: string): string {
 export const FEATURE_COPY = {
     work_log: {
         feature: 'The Work Log',
-        blurb: 'The running record of what you have actually done — the thing every resume, packet and review here is built from. It is built and it is coming.',
+        blurb: 'The running record of what you have actually done — the thing every resume, packet and review here is built from. It is being switched on in stages.',
     },
     github_capture: {
         feature: 'GitHub capture',
-        blurb: 'Turns your commits and pull requests into draft entries in your Work Log, so the record keeps itself. It is built and it is coming.',
+        blurb: 'Turns your commits and pull requests into draft entries in your Work Log, so the record keeps itself. It is being switched on in stages.',
     },
     review_packet: {
         feature: 'Review packets',
-        blurb: 'Your evidence, arranged for a performance review or a promotion case. It is built and it is coming.',
+        blurb: 'Your evidence, arranged for a performance review or a promotion case. It is being switched on in stages.',
     },
     month_in_review: {
         feature: 'Month in Review',
-        blurb: 'A monthly read on what you shipped and what it added up to. It is built and it is coming.',
+        blurb: 'A monthly read on what you shipped and what it added up to. It is being switched on in stages.',
     },
     backfill: {
         feature: 'Backfill',
-        blurb: 'Reconstructs the years before you started keeping a log, one conversation at a time. It is built and it is coming.',
+        blurb: 'Reconstructs the years before you started keeping a log, one conversation at a time. It is being switched on in stages.',
     },
     career_radar: {
         feature: 'Career Radar',
-        blurb: 'What the market is asking for in your field, priced and dated, from postings employers actually published. It is built and it is coming.',
+        blurb: 'What the market is asking for in your field, priced and dated, from postings employers actually published. It is being switched on in stages.',
     },
     missions: {
-        feature: 'Home',
-        blurb: 'The one thing you are working toward, paced week by week. It is built and it is coming.',
+        feature: 'Goals',
+        blurb: 'The one thing you are working toward, paced week by week. It is being switched on in stages.',
     },
 } as const;
 
@@ -99,7 +99,7 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
                     {isError
                         ? 'Something on our side failed, not something you did. Nothing was lost — try again in a moment.'
                         : (blurb ??
-                          'It is built and it is coming. We turn features on in stages so the first people through get a working version rather than an early one.')}
+                          'We turn features on in stages so the first people through get a working version rather than an early one.')}
                 </p>
                 {!isError ? (
                     <p className="mt-2 text-sm text-muted-foreground">
@@ -116,8 +116,9 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
                             </a>
                         </Button>
                     ) : null}
+                    {/* /app resolves to the user's actual home (chat when it is on). */}
                     <Button asChild size="sm" variant={isError ? 'default' : 'outline'}>
-                        <Link href="/dashboard">Back to your resumes</Link>
+                        <Link href="/app">Go to Patronus</Link>
                     </Button>
                     <Button asChild variant="outline" size="sm">
                         <Link href="/build">Tailor a resume</Link>

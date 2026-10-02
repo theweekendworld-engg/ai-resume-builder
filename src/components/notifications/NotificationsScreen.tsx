@@ -143,7 +143,7 @@ export function NotificationsScreen({ initial, emailOn = true }: { initial: Noti
                             </p>
                         ) : (
                             <p className="text-xs text-muted-foreground">
-                                <a href="/dashboard?section=telegram" className="underline">Link Telegram</a> to confirm wins without leaving the chat.
+                                <a href="/settings/channels" className="underline">Link Telegram</a> to confirm wins without leaving the chat.
                             </p>
                         )}
                     </div>

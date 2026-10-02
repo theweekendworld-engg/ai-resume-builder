@@ -43,14 +43,15 @@ const DESTINATIONS: Record<
     // The front door when on (docs/prd/10-chat.md): first in the nav, and
     // where the logo goes.
     chat: { href: '/chat', label: 'Chat', icon: MessageSquare },
-    home: { href: '/home', label: 'Home', icon: Home },
+    // Missions: the goal you are working toward and its next step.
+    home: { href: '/home', label: 'Goals', icon: Home },
     log: { href: '/log', label: 'Work Log', icon: NotebookPen },
     resumes: { href: '/dashboard', label: 'Resumes', icon: FileText },
     packets: { href: '/packets', label: 'Packets', icon: Compass },
     radar: { href: '/radar', label: 'Radar', icon: Radar },
     // The route stays /scout (links in chat messages point there); the
     // surface is the inbox now: jobs, insights, companies, notes.
-    scout: { href: '/scout', label: 'Inbox', icon: Inbox },
+    scout: { href: '/scout', label: 'Jobs', icon: Inbox },
 };
 
 /** Order is the user's mental model, not the object's key order. */
@@ -146,13 +147,17 @@ export function AppNav({ destinations }: { destinations: NavDestination[] }) {
                 </nav>
 
                 <div className="ml-auto flex items-center gap-2">
-                    <Button asChild size="sm" className="gap-1.5">
-                        <Link href="/build">
-                            <Sparkles className="size-4" aria-hidden />
-                            <span className="hidden sm:inline">Tailor a resume</span>
-                            <span className="sm:hidden">Tailor</span>
-                        </Link>
-                    </Button>
+                    {/* With chat on, "tailor my resume for…" is one message; the
+                        button stays for accounts without it. */}
+                    {items.some((item) => item.key === 'chat') ? null : (
+                        <Button asChild size="sm" className="gap-1.5">
+                            <Link href="/build">
+                                <Sparkles className="size-4" aria-hidden />
+                                <span className="hidden sm:inline">Tailor a resume</span>
+                                <span className="sm:hidden">Tailor</span>
+                            </Link>
+                        </Button>
+                    )}
                     {/* Settings were mobile-sheet only; desktop had no way in (audit §E). */}
                     <Button asChild variant="ghost" size="icon" className="hidden md:inline-flex" aria-label="Settings">
                         <Link href="/settings">

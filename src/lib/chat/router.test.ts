@@ -18,7 +18,7 @@ const JOB: ChatJob = {
 };
 const OTHER: ChatJob = { ...JOB, workspaceId: 'ws_2', runId: 'run_2', company: 'Razorpay', role: 'SDE II' };
 
-const context = (jobs: ChatJob[] = [JOB, OTHER]): ChatContext => ({ jobs, openQuestion: null, draftCount: 2, hasBaseResume: true });
+const context = (jobs: ChatJob[] = [JOB, OTHER]): ChatContext => ({ jobs, openQuestion: null, draftCount: 2, hasBaseResume: true, looking: { roles: [], locations: [], remote: false } });
 
 afterEach(() => aiTesting.reset());
 

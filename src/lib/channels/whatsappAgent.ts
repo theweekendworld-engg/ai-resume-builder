@@ -36,7 +36,7 @@ async function say(to: string, text: string): Promise<void> {
 }
 
 function dashboardUrl(): string {
-    return `${config.app.url.replace(/\/$/, '')}/dashboard?section=telegram`;
+    return `${config.app.url.replace(/\/$/, '')}/settings/channels`;
 }
 
 async function linkedUserId(waId: string): Promise<string | null> {

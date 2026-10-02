@@ -31,3 +31,40 @@ export async function deleteMyAccount(input: { confirm: string }): Promise<Resul
     }
     return ok({ deleted: true });
 }
+
+export type ConnectedDevice = { id: string; client: string; createdAt: string; expiresAt: string; lastUsedAt: string | null };
+
+/** The extension sessions that can act for me right now. */
+export async function listConnectedDevices(): Promise<Result<ConnectedDevice[]>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const { prisma } = await import('@/lib/prisma');
+    const rows = await prisma.extensionAccessToken.findMany({
+        where: { userId, revokedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+    });
+    return ok(rows.map((row) => ({
+        id: row.id,
+        client: row.client,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+        lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
+    })));
+}
+
+/**
+ * Disconnect the browser extension everywhere. Tokens lasted 30 days and could
+ * only be revoked by connecting again, so a lost laptop stayed signed in
+ * (launch audit 2026-10-02).
+ */
+export async function disconnectExtension(): Promise<Result<{ revoked: number }>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const { prisma } = await import('@/lib/prisma');
+    const { count } = await prisma.extensionAccessToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+    });
+    return ok({ revoked: count });
+}
