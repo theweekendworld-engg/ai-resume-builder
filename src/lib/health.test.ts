@@ -5,6 +5,7 @@ const FULL = {
     CRON_SECRET: 'x', OPENROUTER_API_KEY: 'x', RESEND_API_KEY: 'x', EMAIL_FROM: 'a@b.c', WIN_MAGIC_LINK_SECRET: 'x',
     RAZORPAY_KEY_ID: 'x', RAZORPAY_KEY_SECRET: 'x', TAVILY_API_KEY: 'x', TELEGRAM_BOT_TOKEN: 'x', TELEGRAM_WEBHOOK_SECRET: 'x',
     TELEGRAM_BOT_USERNAME: 'x', NEXT_PUBLIC_APP_URL: 'https://patronus.cv',
+    UPSTASH_REDIS_REST_URL: 'https://r', UPSTASH_REDIS_REST_TOKEN: 'x',
 };
 
 describe('configHealth', () => {

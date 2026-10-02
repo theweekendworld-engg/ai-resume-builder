@@ -61,6 +61,23 @@ export type ExtensionConnectApprovalResult =
   | { status: 'expired' }
   | { status: 'not_found' };
 
+/** Read a grant's state without changing it (the page renders this; approval is a tap). */
+export async function readExtensionConnectGrant(
+  grantId: string,
+  userId: string,
+): Promise<'pending' | 'not_found' | 'expired' | 'already_connected' | 'approved_by_you' | 'approved_by_other_account'> {
+  const grant = await prisma.extensionConnectGrant.findUnique({
+    where: { id: grantId },
+    select: { approvedUserId: true, consumedAt: true, expiresAt: true },
+  });
+  if (!grant) return 'not_found';
+  if (grant.consumedAt) return 'already_connected';
+  if (grant.expiresAt <= new Date()) return 'expired';
+  if (grant.approvedUserId === userId) return 'approved_by_you';
+  if (grant.approvedUserId) return 'approved_by_other_account';
+  return 'pending';
+}
+
 export async function approveExtensionConnectGrant(
   grantId: string,
   userId: string

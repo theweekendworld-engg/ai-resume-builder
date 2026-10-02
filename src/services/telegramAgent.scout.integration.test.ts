@@ -452,3 +452,21 @@ describe('chat routing for free text (docs/prd/10-chat.md §4)', () => {
         expect((started[0].input as { text: string }).text).toContain('retry queue');
     });
 });
+
+describe('group chats (launch audit 2026-10-02)', () => {
+    test('a message from a group is ignored, even from a linked chat id', async () => {
+        updateId += 1;
+        await processTelegramUpdate({
+            update_id: updateId,
+            message: { message_id: 1, text: 'https://www.linkedin.com/jobs/view/4455902670', chat: { id: CHAT, type: 'supergroup' } },
+        });
+        expect(started).toHaveLength(0);
+    });
+
+    test('a command in a group says to message privately, and does nothing else', async () => {
+        updateId += 1;
+        await processTelegramUpdate({ update_id: updateId, message: { message_id: 1, text: '/jobs', chat: { id: CHAT, type: 'group' } } });
+        expect(started).toHaveLength(0);
+        expect(telegram.sent.at(-1)?.text).toContain('private chat');
+    });
+});

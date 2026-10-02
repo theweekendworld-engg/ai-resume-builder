@@ -21,6 +21,7 @@ export type JobKind =
     | 'month_in_review'
     | 'embed_win'
     | 'embed_profile_item'
+    | 'purge_expired'
     | 'ingest_board'
     | 'skill_rollup'
     | 'radar_snapshot'
@@ -37,6 +38,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'month_in_review',
     'embed_win',
     'embed_profile_item',
+    'purge_expired',
     'ingest_board',
     'skill_rollup',
     'radar_snapshot',

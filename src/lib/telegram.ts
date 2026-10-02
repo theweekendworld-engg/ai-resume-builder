@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 
 type TelegramReplyMarkup = Record<string, unknown>;
@@ -63,11 +64,23 @@ function buildTelegramApiUrl(method: string): string {
   return `https://api.telegram.org/bot${getTelegramBotToken()}/${method}`;
 }
 
+/** Constant-time string compare; false on any length mismatch. */
+export function secretsMatch(provided: string | null | undefined, expected: string): boolean {
+  if (!provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Fails CLOSED. It used to return true when the secret was unset, so a
+ * deployment without it accepted forged updates for any linked chat id and
+ * acted as that user (launch audit, 2026-10-02).
+ */
 export function verifyTelegramWebhookSecret(headerValue: string | null): boolean {
   const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
-  if (!configuredSecret) return true;
-
-  return Boolean(headerValue && headerValue === configuredSecret);
+  if (!configuredSecret) return false;
+  return secretsMatch(headerValue, configuredSecret);
 }
 
 export async function sendTelegramMessage(input: SendMessageInput): Promise<void> {

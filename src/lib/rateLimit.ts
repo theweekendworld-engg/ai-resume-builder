@@ -1,165 +1,142 @@
+/**
+ * Rate limits for every expensive or abusable entry point.
+ *
+ * ── Why this changed (launch audit, 2026-10-02) ─────────────────────────────
+ *
+ * Every limiter here used Upstash and returned "allowed" when Redis was not
+ * configured, and Redis was not configured in production. So the product had
+ * no rate limiting at all: an anonymous script could call `/api/score` (a file
+ * parse plus model calls) as fast as it liked.
+ *
+ * Now each check uses Upstash when it is configured, and otherwise a
+ * fixed-window counter in Postgres (`RateLimitHit`, one atomic upsert), so a
+ * limit is real wherever the app runs. Each bucket has its own key prefix: two
+ * limiters can never share a counter by accident.
+ *
+ * An infrastructure error fails OPEN and is logged. A limiter that takes the
+ * product down when the database blips is a worse outage than the abuse it
+ * guards against; the per-user cost cap (src/lib/usageTracker.ts) is the
+ * backstop behind it.
+ */
+
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { prisma } from '@/lib/prisma';
 
-let ratelimitKb: Ratelimit | null | undefined = undefined;
-let ratelimitAi: Ratelimit | null | undefined = undefined;
-let ratelimitGitHub: Ratelimit | null | undefined = undefined;
-let ratelimitAnonScore: Ratelimit | null | undefined = undefined;
-let ratelimitFunnelEvent: Ratelimit | null | undefined = undefined;
-let ratelimitChat: Ratelimit | null | undefined = undefined;
+type Window = { limit: number; windowSec: number; message: string };
 
+/** Every bucket, in one place, so the limits can be read and reviewed together. */
+export const RATE_LIMITS = {
+    kb: { limit: 30, windowSec: 60, message: 'Too many requests. Please try again in a minute.' },
+    ai: { limit: 20, windowSec: 60, message: 'Too many AI requests. Please try again in a minute.' },
+    github: { limit: 30, windowSec: 60, message: 'Too many GitHub requests. Please try again in a minute.' },
+    anonScore: { limit: 10, windowSec: 3_600, message: "You've reached the free limit for now. Please try again in a little while." },
+    funnel: { limit: 60, windowSec: 60, message: 'Too many events.' },
+    winToken: { limit: 20, windowSec: 60, message: 'Too many actions from this link. Try again in a minute.' },
+    chat: { limit: 30, windowSec: 60, message: 'That is a lot of messages at once. Give it a minute.' },
+    /** Uploads and imports: each is a blob write plus a parse. */
+    upload: { limit: 10, windowSec: 600, message: 'Too many uploads. Try again in a few minutes.' },
+    /** Anonymous writes that create a row (extension connect, score stash). */
+    anonWrite: { limit: 20, windowSec: 600, message: 'Too many requests. Try again in a few minutes.' },
+    /** Third-party compile/enrichment calls billed per request. */
+    external: { limit: 30, windowSec: 600, message: 'Too many requests. Try again in a few minutes.' },
+} as const satisfies Record<string, Window>;
+
+export type RateBucket = keyof typeof RATE_LIMITS;
+export type RateResult = { allowed: boolean; error?: string };
+
+// ───────────────────────────────────────────────────────────── backends
+
+let redis: Redis | null | undefined;
 function getRedis(): Redis | null {
+    if (redis !== undefined) return redis;
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-    if (!url || !token) return null;
-    return new Redis({ url, token });
+    redis = url && token ? new Redis({ url, token }) : null;
+    return redis;
 }
 
-function getKbLimiter(): Ratelimit | null {
-    if (ratelimitKb !== undefined) return ratelimitKb;
-    const redis = getRedis();
-    ratelimitKb = redis
-        ? new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(30, '1 m'),
-              analytics: true,
-          })
-        : null;
-    return ratelimitKb;
-}
-
-function getAiLimiter(): Ratelimit | null {
-    if (ratelimitAi !== undefined) return ratelimitAi;
-    const redis = getRedis();
-    ratelimitAi = redis
-        ? new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(20, '1 m'),
-              analytics: true,
-          })
-        : null;
-    return ratelimitAi;
-}
-
-function getGitHubLimiter(): Ratelimit | null {
-    if (ratelimitGitHub !== undefined) return ratelimitGitHub;
-    const redis = getRedis();
-    ratelimitGitHub = redis
-        ? new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(30, '1 m'),
-              analytics: true,
-          })
-        : null;
-    return ratelimitGitHub;
-}
-
-function getAnonScoreLimiter(): Ratelimit | null {
-    if (ratelimitAnonScore !== undefined) return ratelimitAnonScore;
-    const redis = getRedis();
-    ratelimitAnonScore = redis
-        ? new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(10, '1 h'),
-              analytics: true,
-          })
-        : null;
-    return ratelimitAnonScore;
-}
-
-export async function checkKbRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
-    const limiter = getKbLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(identifier);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: 'Too many requests. Please try again in a minute.' };
-}
-
-export async function checkAiRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
-    const limiter = getAiLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(identifier);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: 'Too many AI requests. Please try again in a minute.' };
-}
-
-export async function checkGitHubRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
-    const limiter = getGitHubLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(identifier);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: 'Too many GitHub requests. Please try again in a minute.' };
-}
-
-export async function checkAnonScoreRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
-    const limiter = getAnonScoreLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(identifier);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: "You've reached the free limit for now. Please try again in a little while." };
-}
-
-function getFunnelEventLimiter(): Ratelimit | null {
-    if (ratelimitFunnelEvent !== undefined) return ratelimitFunnelEvent;
-    const redis = getRedis();
-    ratelimitFunnelEvent = redis
-        ? new Ratelimit({
-              redis,
-              limiter: Ratelimit.slidingWindow(60, '1 m'),
-              analytics: false,
-          })
-        : null;
-    return ratelimitFunnelEvent;
-}
-
-export async function checkFunnelEventRateLimit(identifier: string): Promise<{ allowed: boolean }> {
-    const limiter = getFunnelEventLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(identifier);
-    return { allowed: result.success };
-}
-
-let ratelimitWinToken: Ratelimit | null | undefined = undefined;
-
-function getWinTokenLimiter(): Ratelimit | null {
-    if (ratelimitWinToken !== undefined) return ratelimitWinToken;
-    const redis = getRedis();
-    ratelimitWinToken = redis
-        ? new Ratelimit({
-              redis,
-              // PRD 01 §9.3: 20 actions/minute per token root. A digest carries
-              // at most 15 buttons, so a real human never reaches this — it is
-              // there to bound what someone who scraped a root can do with it.
-              limiter: Ratelimit.slidingWindow(20, '1 m'),
-              analytics: true,
-          })
-        : null;
-    return ratelimitWinToken;
-}
-
-/** `identifier` is the digest token root, never the full signed token. */
-export async function checkWinTokenRateLimit(identifier: string): Promise<{ allowed: boolean; error?: string }> {
-    const limiter = getWinTokenLimiter();
-    if (!limiter) return { allowed: true };
-    const result = await limiter.limit(`win-token:${identifier}`);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: 'Too many actions from this link. Try again in a minute.' };
-}
-
-/**
- * Chat messages (docs/prd/10-chat.md). Talking is free, so this is the only
- * thing between a script and the routing model's bill. Its own prefix, so a
- * user's chat does not spend the budget of the other AI limiters.
- */
-export async function checkChatRateLimit(userId: string): Promise<{ allowed: boolean; error?: string }> {
-    if (ratelimitChat === undefined) {
-        const redis = getRedis();
-        ratelimitChat = redis
-            ? new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(30, '1 m'), prefix: 'rl:chat', analytics: true })
-            : null;
+const upstash = new Map<RateBucket, Ratelimit>();
+function upstashLimiter(bucket: RateBucket, r: Redis): Ratelimit {
+    let limiter = upstash.get(bucket);
+    if (!limiter) {
+        const { limit, windowSec } = RATE_LIMITS[bucket];
+        limiter = new Ratelimit({
+            redis: r,
+            limiter: Ratelimit.slidingWindow(limit, `${windowSec} s`),
+            prefix: `rl:${bucket}`,
+            analytics: false,
+        });
+        upstash.set(bucket, limiter);
     }
-    if (!ratelimitChat) return { allowed: true };
-    const result = await ratelimitChat.limit(userId);
-    if (result.success) return { allowed: true };
-    return { allowed: false, error: 'That is a lot of messages at once. Give it a minute.' };
+    return limiter;
 }
+
+/** Fixed window in Postgres: `count` for (key, windowStart), incremented atomically. */
+async function postgresHit(bucket: RateBucket, identifier: string): Promise<number> {
+    const { windowSec } = RATE_LIMITS[bucket];
+    const now = Date.now();
+    const windowStart = new Date(now - (now % (windowSec * 1_000)));
+    const key = `${bucket}:${identifier}`.slice(0, 300);
+    const rows = await prisma.$queryRaw<{ count: number }[]>`
+        INSERT INTO "RateLimitHit" ("key", "windowStart", "count")
+        VALUES (${key}, ${windowStart}, 1)
+        ON CONFLICT ("key", "windowStart") DO UPDATE SET "count" = "RateLimitHit"."count" + 1
+        RETURNING "count"`;
+    return Number(rows[0]?.count ?? 1);
+}
+
+// ───────────────────────────────────────────────────────────── the check
+
+let disabledForTests = process.env.NODE_ENV === 'test';
+
+export async function checkRateLimit(bucket: RateBucket, identifier: string): Promise<RateResult> {
+    if (disabledForTests) return { allowed: true };
+    const window = RATE_LIMITS[bucket];
+    try {
+        const r = getRedis();
+        if (r) {
+            const result = await upstashLimiter(bucket, r).limit(identifier);
+            return result.success ? { allowed: true } : { allowed: false, error: window.message };
+        }
+        const count = await postgresHit(bucket, identifier);
+        return count <= window.limit ? { allowed: true } : { allowed: false, error: window.message };
+    } catch (error) {
+        console.error('[rateLimit] limiter unavailable; allowing', {
+            bucket,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return { allowed: true };
+    }
+}
+
+/** Which backend is live, for the health check. */
+export function rateLimitBackend(): 'upstash' | 'postgres' {
+    return getRedis() ? 'upstash' : 'postgres';
+}
+
+// ───────────────────────────────────────────────────────────── named checks
+// Kept for their call sites; each is one line over `checkRateLimit`.
+
+export const checkKbRateLimit = (id: string) => checkRateLimit('kb', id);
+export const checkAiRateLimit = (id: string) => checkRateLimit('ai', id);
+export const checkGitHubRateLimit = (id: string) => checkRateLimit('github', id);
+export const checkAnonScoreRateLimit = (id: string) => checkRateLimit('anonScore', id);
+export const checkFunnelEventRateLimit = (id: string) => checkRateLimit('funnel', id);
+/** `identifier` is the digest token root, never the full signed token. */
+export const checkWinTokenRateLimit = (id: string) => checkRateLimit('winToken', id);
+/** Chat messages, on every channel (docs/prd/10-chat.md): talking is free, so this bounds the router's bill. */
+export const checkChatRateLimit = (userId: string) => checkRateLimit('chat', userId);
+
+export const __testing = {
+    enable() {
+        disabledForTests = false;
+    },
+    disable() {
+        disabledForTests = true;
+    },
+    resetRedis() {
+        redis = undefined;
+        upstash.clear();
+    },
+};

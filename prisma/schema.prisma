@@ -1669,3 +1669,15 @@ model ChatMessage {
   @@index([conversationId, createdAt])
   @@index([userId, createdAt])
 }
+
+/// Fixed-window rate-limit counters, used when Upstash is not configured
+/// (src/lib/rateLimit.ts). One row per (bucket:identifier, window); a daily
+/// purge job removes windows older than two days.
+model RateLimitHit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
+}

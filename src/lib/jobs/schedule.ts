@@ -51,6 +51,7 @@ export type PeriodicScheduleResult = {
     ingestBoardJobId: string | null;
     skillRollupJobId: string | null;
     reconcileJobId: string | null;
+    purgeJobId: string | null;
     downgradeJobId: string | null;
 };
 
@@ -73,6 +74,7 @@ export async function schedulePeriodicWork(
         ingestBoardJobId: null,
         skillRollupJobId: null,
         reconcileJobId: null,
+        purgeJobId: null,
         downgradeJobId: null,
     };
 
@@ -96,6 +98,8 @@ export async function schedulePeriodicWork(
         // is also what re-embeds rows whose vectors are missing, and a cheap
         // SQL scan no longer justifies making a user wait a week for that.
         ['reconcileJobId', 'reconcile_qdrant', `reconcile_qdrant:${day}`, 95],
+        // Short-lived rows nothing else deletes: rate-limit windows, expired grants.
+        ['purgeJobId', 'purge_expired', `purge_expired:${day}`, 99],
     ];
 
     for (const [field, kind, dedupeKey, priority] of plan) {

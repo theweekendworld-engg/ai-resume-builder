@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processTelegramUpdate, TelegramUpdateSchema } from '@/services/telegramAgent';
+import { secretsMatch } from '@/lib/telegram';
 
 function verifyInternalSecret(headerValue: string | null): boolean {
   const expected = process.env.TELEGRAM_INTERNAL_SECRET?.trim()
     || process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
 
   if (!expected) return false;
-  return Boolean(headerValue && headerValue === expected);
+  return secretsMatch(headerValue, expected);
 }
 
 export async function POST(req: NextRequest) {

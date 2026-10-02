@@ -102,6 +102,17 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
         });
     }
 
+    // Per-feature limits fall back to Postgres (src/lib/rateLimit.ts), but the
+    // per-IP limit in the middleware needs Upstash: without it, a flood of
+    // requests reaches the handlers.
+    checks.push({
+        id: 'rate_limit_global',
+        ok: has(env, 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'),
+        severity: 'warn',
+        impact: 'No per-IP request limit in the middleware. Per-feature limits still apply (Postgres fallback).',
+        fix: 'UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (Vercel Marketplace: Upstash for Redis)',
+    });
+
     // Half a WhatsApp config is worse than none: the UI offers linking that fails.
     if (whatsappAny) {
         checks.push({

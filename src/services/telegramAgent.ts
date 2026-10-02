@@ -37,6 +37,8 @@ export const TelegramUpdateSchema = z.object({
     text: z.string().optional(),
     chat: z.object({
       id: z.union([z.string(), z.number()]),
+      /** private | group | supergroup | channel. Only private chats are served. */
+      type: z.string().optional(),
     }),
   }).optional(),
   callback_query: z.object({
@@ -46,6 +48,7 @@ export const TelegramUpdateSchema = z.object({
       message_id: z.number().optional(),
       chat: z.object({
         id: z.union([z.string(), z.number()]),
+        type: z.string().optional(),
       }),
       // The keyboard the tapped button sat on, so spent buttons can be removed
       // without taking the others with them.
@@ -174,6 +177,18 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     if (!created) {
       return;
     }
+  }
+
+  // Private chats only. A linked chat id is the identity, so a group the bot
+  // was added to would let every member act as the account that linked it
+  // (launch audit, 2026-10-02). Telegram always sends `type`.
+  const chatType = update.message?.chat.type ?? update.callback_query?.message?.chat.type;
+  if (chatType && chatType !== 'private') {
+    const groupChatId = String(update.message?.chat.id ?? update.callback_query?.message?.chat.id ?? '');
+    if (groupChatId && update.message?.text?.startsWith('/')) {
+      await sayPlain(groupChatId, 'Patronus only works in a private chat. Message me directly.');
+    }
+    return;
   }
 
   const callback = update.callback_query;
