@@ -107,3 +107,19 @@ export async function dismissChatDraft(winId: string): Promise<Result<void>> {
     if (!IdSchema.safeParse(winId).success) return err('Invalid id', 'invalid_input');
     return dismissWinForUser(g.userId, winId);
 }
+
+/**
+ * Change who may see a drafted Win, from its card. The model only proposes a
+ * sensitivity; a quantified engineering Win it marked "internal only" was
+ * silently kept out of search and every resume (QA 2026-10-02).
+ */
+export async function setChatDraftSensitivity(input: { winId: string; sensitivity: 'shareable' | 'internal_only' | 'confidential' }): Promise<Result<{ sensitivity: string }>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    const parsed = z.object({ winId: IdSchema, sensitivity: z.enum(['shareable', 'internal_only', 'confidential']) }).safeParse(input);
+    if (!parsed.success) return err('Invalid input', 'invalid_input');
+    const { updateWin } = await import('@/services/winGraph');
+    const updated = await updateWin({ userId: g.userId, winId: parsed.data.winId, patch: { sensitivity: parsed.data.sensitivity } });
+    if (!updated.success) return updated;
+    return ok({ sensitivity: parsed.data.sensitivity });
+}

@@ -30,50 +30,51 @@ it closes. Status: ✅ shipped · 🔨 in progress · ⏳ next · 👤 needs the
 
 | | Item |
 |---|---|
-| ⏳ | v2 resume: every `sourceLine` must be found in the evidence the model saw; numeric guard on summary, headline, project descriptions |
-| ⏳ | v2 resume: never save zero roles when the record has some; drop bad bullets instead of failing the whole resume; `submit_resume` rejects and lets the model fix |
-| ⏳ | Confirmed Wins reach the resume (a `get_confirmed_wins` tool, shareable only) |
-| ⏳ | Import keeps every role (split long highlights), and says what it could not read |
-| ⏳ | Stuck states recover: Scout runs idle > 10 min → failed; generation sessions killed mid-run → failed; retry route enqueue failure |
-| ⏳ | Failed jobs retry within the hour, not the next day; requeue/discard dead jobs from /admin/ops |
-| ⏳ | Email off is visible: banner on notifications, digests not composed when they cannot be sent, month review linked from /log |
-| ⏳ | Job boards seeded (`seedLaunchList`, `discoverFromWorkspaces` have no callers), so `find_jobs` and Radar have data |
-| ⏳ | Tavily absent: user copy, not operator copy; do not charge job runs whose research is all unavailable |
+| ✅ | v2 resume: every `sourceLine` must be found in the evidence the model saw; numeric guard on summary, headline, project descriptions (c48f7f4) |
+| ✅ | v2 resume: drop bad bullets instead of failing the whole resume; `submit_resume` rejects and lets the model fix (c48f7f4) |
+| ✅ | Confirmed Wins reach the resume: role evidence includes the role's confirmed shareable Wins (c48f7f4) |
+| ✅ | Import keeps every role (long highlights split) (c48f7f4) |
+| ✅ | Stuck states recover: Scout runs idle > 15 min and generations > 30 min failed; stalled re-share restarts free (c48f7f4) |
+| ✅ | Failed jobs retry within minutes (health-check drain); requeue/discard dead jobs from /admin/ops (c48f7f4, c9f7dcc) |
+| ✅ | Email off is visible; email digests not composed when they cannot be sent; Work Log links Month in Review (c48f7f4) |
+| ✅ | Job boards seeded and discovered from shared jobs (c48f7f4) |
+| ✅ | Tavily absent: user copy, not operator copy (c48f7f4) |
 | 👤 | `RESEND_API_KEY` + `EMAIL_FROM` |
 
 ## Wave 3 — operator
 
 | | Item |
 |---|---|
-| 🔨 | Suspend a user (DB + Clerk ban), audit log of admin actions, reset usage |
-| ⏳ | /admin/[userId]: chat, runs, jobs, generation errors, channels, plan; actions |
-| ⏳ | Daily operator digest to the admin's Telegram: dead jobs, error rates, spend vs ceiling, config errors |
-| ⏳ | `/api/health` for an uptime monitor |
-| ⏳ | Users: "connected devices" (channels + extension tokens) with disconnect |
+| ✅ | Suspend a user (DB + Clerk ban), audit log of admin actions, reset usage (c9f7dcc) |
+| ✅ | /admin/[userId]: chat, runs, jobs, generation errors, channels, plan; actions (c9f7dcc) |
+| ✅ | Daily operator digest to the admin's Telegram (c9f7dcc) |
+| ✅ | `/api/health` for an uptime monitor (c9f7dcc) |
+| ✅ | Settings → Channels: connected devices, disconnect the extension (0349954) |
 
 ## Wave 4 — redesign for the positioning
 
 | | Item |
 |---|---|
-| ⏳ | Chat is the landing after sign-in/onboarding, on by default; cards render detail inline so they never link to a switched-off page |
-| ⏳ | Nav: Chat · Jobs · Record · Documents · Goals; Settings → Channels (Web, Telegram, WhatsApp, CLI) |
-| ⏳ | Landing page: career-long companion, every channel; no "learning" claim |
-| ⏳ | Onboarding ends in chat and offers Telegram/WhatsApp |
-| ⏳ | Remove duplicates: dashboard Copilot (duplicates /build), Applications (duplicates Inbox) |
-| ⏳ | Mission steps link to where you do them; hidden routes linked (review, backfill, readiness) |
-| ⏳ | Mobile: chat composer under the banner, 16px inputs (iOS zoom), editor grid, readiness widths |
+| ✅ | Chat is the landing after sign-in/onboarding (via /app); cards never link to a switched-off page (0349954) |
+| ✅ | Nav: Chat · Goals · Work Log · Jobs · Resumes; Settings → Channels (0349954) |
+| ✅ | Landing page: career-long companion; claims only live channels (0349954) |
+| ✅ | Onboarding ends in chat; chat offers Telegram (0349954) |
+| ✅ | Copilot and Applications out of the dashboard menu (0349954) |
+| ✅ | Mission steps link to where you do them; hidden routes linked (0349954) |
+| ✅ | Mobile: sticky chat composer, 16px inputs, editor grid, readiness widths (0349954) |
 
 ## Wave 5 — CLI
 
 | | Item |
 |---|---|
-| ⏳ | Per-user API keys (hashed, scoped, revocable, created in Settings → Channels) |
-| ⏳ | `/api/cli/chat` on the same chat service; `patronus` CLI: chat, log, jobs, tailor |
+| ✅ | Per-user API keys (hashed, revocable, Settings → Channels) (ec79dd3) |
+| ✅ | `/api/cli/v1/*` on the chat service; `patronus` CLI (ec79dd3) |
+| 👤 | Publish the CLI: `cd cli && npm publish` |
 
 ## Wave 6 — prove it
 
 | | Item |
 |---|---|
-| ⏳ | End-to-end QA harness over every flow (real model, local stack), each step pass/fail, run before launch |
+| 🔨 | End-to-end QA harness over every flow (real model, local stack), each step pass/fail, run before launch |
 | 👤 | Clerk production instance: user ID migration (every table keys on the dev-instance id), DNS, own GitHub OAuth app |
 | 👤 | Razorpay keys → payments |

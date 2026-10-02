@@ -70,15 +70,16 @@ export async function listThread(userId: string, channel: Channel = Channel.web)
 async function hydrateDrafts(userId: string, messages: ChatMessageView[]): Promise<ChatMessageView[]> {
     const winIds = messages.flatMap((m) => m.cards.flatMap((card) => (card.type === 'win_draft' ? [card.winId] : [])));
     if (winIds.length === 0) return messages;
-    const wins = await prisma.win.findMany({ where: { id: { in: winIds }, userId }, select: { id: true, status: true } });
+    const wins = await prisma.win.findMany({ where: { id: { in: winIds }, userId }, select: { id: true, status: true, sensitivity: true } });
     const state = new Map(wins.map((win) => [win.id, win.status]));
+    const sensitivity = new Map(wins.map((win) => [win.id, win.sensitivity]));
     return messages.map((m) => ({
         ...m,
         cards: m.cards.map((card) => {
             if (card.type !== 'win_draft') return card;
             const status = state.get(card.winId);
             const current = status === WinStatus.draft ? 'draft' : status === WinStatus.dismissed || !status ? 'dismissed' : 'confirmed';
-            return { ...card, current };
+            return { ...card, current, sensitivity: sensitivity.get(card.winId) ?? card.sensitivity };
         }),
     }));
 }
@@ -91,6 +92,25 @@ function jobAt(context: ChatContext, decision: RouteDecision): ChatJob | null {
 
 function jobName(job: ChatJob): string {
     return [job.role, job.company ? `at ${job.company}` : null].filter(Boolean).join(' ') || 'this job';
+}
+
+/**
+ * Just the name. "Linear, the project management software company" as the name
+ * made every fact fail the name check, so research came back empty (QA 2026-10-02).
+ */
+export function companyName(raw: string): string {
+    const name = raw.split(/\s*(?:,|\(|\s[-–—]\s|\bwhich\b|\bthat\b|\bthe\s+(?:ai|startup|company)\b)/i)[0] ?? '';
+    return name.split(/\s+/).slice(0, 6).join(' ').trim().slice(0, 120);
+}
+
+/**
+ * The rest of what the user said about the company, kept as a hint: "Linear"
+ * alone matched Linear Finance, Linear B and "linear TV", and research came
+ * back empty because the model could not tell which (QA 2026-10-02).
+ */
+export function companyHint(raw: string, name: string): string | null {
+    const rest = raw.slice(raw.indexOf(name) + name.length).replace(/^[\s,(\-–—]+|[\s)]+$/g, '').trim();
+    return rest.length >= 3 ? rest.slice(0, 120) : null;
 }
 
 /** An `err` from a service, said plainly. Entitlement copy already names the fix. */
@@ -128,10 +148,12 @@ export async function runAction(
         }
 
         case 'research_company': {
-            const company = (decision.company ?? '').trim();
+            const company = companyName(decision.company ?? '');
+            if (!company) return failure('Which company? Send me its name.');
+            const hint = companyHint(decision.company ?? '', company);
             const started = await startScoutRun({
                 userId,
-                input: { text: `Research the company: ${company}`, source: 'dashboard', intent: 'company_research', company },
+                input: { text: `Research the company: ${company}`, source: 'dashboard', intent: 'company_research', company, companyHint: hint },
                 channel: Channel.web,
             });
             if (!started.success) return failure(started.error);
@@ -146,6 +168,7 @@ export async function runAction(
             const drafted = await createWinDraftForUser({ userId, text: decision.text ?? '', source: WinSource.chat });
             if (!drafted.success) return failure(drafted.error);
             const draft = drafted.data;
+            const row = await prisma.win.findUnique({ where: { id: draft.winId }, select: { sensitivity: true } });
             return {
                 text: draft.status === 'merge_proposed'
                     ? 'This looks like something already in your Work Log, so I did not add it twice.'
@@ -157,6 +180,7 @@ export async function runAction(
                     narrative: draft.narrative,
                     category: draft.category,
                     status: draft.status,
+                    sensitivity: row?.sensitivity,
                 }],
             };
         }
@@ -229,11 +253,15 @@ export async function runAction(
         }
 
         case 'find_jobs': {
-            const query = decision.query ?? '';
+            // "Engineering at Anthropic" in the query: the company belongs in its own filter.
+            const atCompany = !decision.company ? /\bat\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,3})\s*$/.exec(decision.query ?? '') : null;
+            const query = atCompany ? (decision.query ?? '').slice(0, atCompany.index).trim() : decision.query ?? '';
+            const company = decision.company ?? atCompany?.[1] ?? null;
             const { items, searched } = await findPostings({
                 query,
                 location: decision.location,
                 remoteOnly: decision.remoteOnly ?? false,
+                company,
             });
             const note = searched === 0
                 ? null

@@ -13,7 +13,7 @@ import type { ChatPosting } from './types';
 
 export const POSTINGS_LIMIT = 8;
 /** Words that say nothing about the role. */
-const STOP = new Set(['jobs', 'job', 'role', 'roles', 'opening', 'openings', 'position', 'positions', 'find', 'me', 'a', 'an', 'the', 'for', 'in', 'at', 'and', 'or', 'with', 'some', 'any', 'remote', 'hiring', 'my', 'i', 'what', 'did', 'do', 'work', 'about', 'on', 'tell', 'show', 'last', 'this', 'that', 'of', 'to', 'is', 'was']);
+const STOP = new Set(['jobs', 'job', 'role', 'roles', 'opening', 'openings', 'position', 'positions', 'find', 'me', 'a', 'an', 'the', 'for', 'in', 'at', 'and', 'or', 'with', 'some', 'any', 'remote', 'hiring', 'my', 'i', 'what', 'did', 'do', 'work', 'about', 'on', 'tell', 'show', 'last', 'this', 'that', 'of', 'to', 'is', 'was', 'inc', 'ltd', 'llc']);
 
 export function searchTerms(query: string | null): string[] {
     return (query ?? '')
@@ -42,8 +42,14 @@ export async function findPostings(params: {
     query: string | null;
     location: string | null;
     remoteOnly: boolean;
+    /** A company the user named. Matched on the board's company, never on the title. */
+    company?: string | null;
 }): Promise<{ items: ChatPosting[]; searched: number }> {
-    const terms = searchTerms(params.query);
+    const company = params.company?.trim() || null;
+    // "Engineering jobs at Anthropic": the company is not a title word. With
+    // it in the terms, every posting failed the all-words match (QA 2026-10-02).
+    const companyWords = new Set(searchTerms(company));
+    const terms = searchTerms(params.query).filter((term) => !companyWords.has(term));
     const where: Prisma.JobPostingWhereInput = {
         closedAt: null,
         AND: [
@@ -57,6 +63,7 @@ export async function findPostings(params: {
                 ? [{ location: { contains: params.location.trim(), mode: 'insensitive' as const } }]
                 : []),
             ...(params.remoteOnly ? [{ location: { contains: 'remote', mode: 'insensitive' as const } }] : []),
+            ...(company ? [{ source: { companyName: { contains: company, mode: 'insensitive' as const } } }] : []),
         ],
     };
     const [rows, searched] = await Promise.all([

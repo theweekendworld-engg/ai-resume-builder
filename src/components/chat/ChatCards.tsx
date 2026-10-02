@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { KIND_ICON, VerdictChip } from '@/components/scout/parts';
 import { RUN_STATUS_LABEL, safeHref } from '@/components/scout/format';
-import { confirmChatDraft, dismissChatDraft, refreshChatCard } from '@/actions/chat';
+import { confirmChatDraft, dismissChatDraft, refreshChatCard, setChatDraftSensitivity } from '@/actions/chat';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import type { ChatCard, ChatJob } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
@@ -98,6 +98,13 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
     const links = React.useContext(ChatLinksContext);
     const [state, setState] = React.useState<'draft' | 'confirmed' | 'dismissed' | 'busy'>(card.current ?? 'draft');
     const [error, setError] = React.useState<string | null>(null);
+    const [sensitivity, setSensitivity] = React.useState(card.sensitivity ?? 'shareable');
+
+    const share = async () => {
+        const result = await setChatDraftSensitivity({ winId: card.winId, sensitivity: 'shareable' });
+        if (result.success) setSensitivity('shareable');
+        else setError(result.error);
+    };
 
     if (card.status === 'merge_proposed') {
         return (
@@ -132,6 +139,12 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
                 <div className="min-w-0 flex-1">
                     <p className={cn(typeStyles.body, 'font-medium')}>{card.title}</p>
                     {card.narrative ? <p className={cn(typeStyles.small, 'mt-1 text-muted-foreground')}>{card.narrative}</p> : null}
+                    {sensitivity !== 'shareable' && state !== 'dismissed' ? (
+                        <p className={cn(typeStyles.caption, 'mt-2 flex flex-wrap items-center gap-2 text-muted-foreground')}>
+                            {sensitivity === 'confidential' ? 'Marked confidential' : 'Marked internal only'}: kept out of resumes and search.
+                            <button type="button" onClick={() => void share()} className="underline">Use it on resumes</button>
+                        </p>
+                    ) : null}
                     {state === 'confirmed' ? (
                         <p className={cn(typeStyles.caption, 'mt-2 inline-flex items-center gap-1 text-success')}>
                             <Check className="size-3.5" aria-hidden /> In your record

@@ -179,7 +179,11 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
         authorUrl: params.input.authorUrl?.trim() || null,
         source: params.input.source,
         ...(params.input.intent === 'company_research' && params.input.company?.trim()
-            ? { intent: 'company_research' as const, company: params.input.company.trim().slice(0, 120) }
+            ? {
+                intent: 'company_research' as const,
+                company: params.input.company.trim().slice(0, 120),
+                companyHint: params.input.companyHint?.trim().slice(0, 120) || null,
+            }
             : {}),
     };
     const inputKey = scoutInputKey(input);

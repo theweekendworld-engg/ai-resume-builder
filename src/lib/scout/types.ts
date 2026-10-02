@@ -46,6 +46,8 @@ export type ScoutInput = {
      */
     intent?: 'company_research' | null;
     company?: string | null;
+    /** What the user said the company is ("the project management software company"): disambiguates common-word names. */
+    companyHint?: string | null;
 };
 
 // ────────────────────────────────────────────────────────────── sections

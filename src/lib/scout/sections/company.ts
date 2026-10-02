@@ -84,8 +84,9 @@ Rules:
 - If a result does not state a fact plainly, leave it out. An empty list is a correct answer.
 - growthNote: one plain sentence on trajectory built ONLY from the facts you listed, or null. No adjectives like "rapid" unless a fact supports them.`;
 
-function buildPrompt(company: string, results: readonly SearchResult[]): string {
-    return `Company: ${company}\n\nResults:\n${numberedResults(results)}`;
+function buildPrompt(company: string, results: readonly SearchResult[], hint: string | null = null): string {
+    const which = hint ? `\nWhich ${company}: ${hint}. Use results about this one; skip others that share the name.` : '';
+    return `Company: ${company}${which}\n\nResults:\n${numberedResults(results)}`;
 }
 
 type VerifiedFacts = { facts: CitedFact[]; growthNote: string | null; dropped: number; pagesUsed: SearchResult[] };
@@ -170,7 +171,9 @@ export const companySection: ScoutSection<'company'> = async (ctx) => {
     });
     const base = fromEnrichment(target.company, enrichment, target.geography);
 
-    const key = researchKey('company', target.company);
+    // Only a hint the user gave: never one the model inferred from a post.
+    const hint = ctx.input.intent === 'company_research' ? ctx.input.companyHint?.trim() || null : null;
+    const key = researchKey('company', hint ? `${target.company} ${hint}` : target.company);
     const fetchedAt = new Date().toISOString();
     let research: CachedCompany | null = null;
     let researchReason: string | null = null;
@@ -188,14 +191,14 @@ export const companySection: ScoutSection<'company'> = async (ctx) => {
     } else {
         const outcomes: RunSearchOutcome[] = [];
         outcomes.push(await runSearch(ctx.step, {
-            query: `${target.company} funding round raised valuation investors`,
+            query: `${target.company}${hint ? ` ${hint}` : ''} funding round raised valuation investors`,
             includeDomains: NEWS_DOMAINS,
             maxResults: 6,
             includeRawContent: true,
         }));
         if (outcomes[0].kind === 'ok') {
             outcomes.push(await runSearch(ctx.step, {
-                query: `${target.company} company revenue employees headcount growth layoffs`,
+                query: `${target.company}${hint ? ` ${hint}` : ''} company revenue employees headcount growth layoffs`,
                 topic: 'news',
                 maxResults: 5,
                 includeRawContent: true,
@@ -215,7 +218,7 @@ export const companySection: ScoutSection<'company'> = async (ctx) => {
                 task: 'scoutResearchExtract',
                 schema: ExtractSchema,
                 system: SYSTEM,
-                prompt: buildPrompt(target.company, results),
+                prompt: buildPrompt(target.company, results, hint),
             });
             const verified = verifyFacts(target.company, results, data, fetchedAt);
             ctx.step.log('company facts verified', { kept: verified.facts.length, dropped: verified.dropped });
@@ -247,6 +250,12 @@ export const companySection: ScoutSection<'company'> = async (ctx) => {
     }
     if (!hasAnything) {
         return { status: 'unavailable', reason: `No public size, funding or revenue figures found for ${target.company}`, data };
+    }
+    // Asked about by name: a hiring line alone is not "what this company is".
+    // It used to come back `ok` with nothing in it (QA 2026-10-02).
+    const factual = data.facts.length > 0 || data.employeeCount !== null || data.employeeCountRange || data.fundingText || data.revenueText;
+    if (ctx.input.intent === 'company_research' && !factual) {
+        return { status: 'unavailable', reason: `Found nothing verifiable about ${target.company} yet: no size, funding, revenue or facts on pages we could check.`, data };
     }
     return { status: 'ok', data };
 };

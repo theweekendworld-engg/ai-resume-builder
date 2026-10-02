@@ -105,6 +105,8 @@ export type ChatCard =
         status: 'draft' | 'merge_proposed';
         /** The Win's state when the thread was read, so a reload never offers Confirm twice. */
         current?: 'draft' | 'confirmed' | 'dismissed';
+        /** Who may see it. Only `shareable` reaches resumes and search; the user decides. */
+        sensitivity?: 'shareable' | 'internal_only' | 'confidential';
     }
     | {
         type: 'generation';

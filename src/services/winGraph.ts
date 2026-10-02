@@ -175,9 +175,37 @@ export function parseExperienceDate(raw: string, bound: 'start' | 'end'): Date |
             : new Date(Date.UTC(y, 11, 31, 23, 59, 59, 999));
     }
 
+    // "Sept 2023", "September 2023", "Sep '23": the formats resumes use, which
+    // Date.parse reads inconsistently across engines (QA 2026-10-02).
+    const monthYear = /^([A-Za-z]{3,9})\.?\s+'?(\d{2}|\d{4})$/.exec(value);
+    if (monthYear) {
+        const month = MONTHS.indexOf(monthYear[1].slice(0, 3).toLowerCase());
+        const year = monthYear[2].length === 2 ? 2000 + Number(monthYear[2]) : Number(monthYear[2]);
+        if (month >= 0) {
+            return bound === 'start'
+                ? new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+                : new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+        }
+    }
+    const slash = /^(\d{1,2})\/(\d{4})$/.exec(value);
+    if (slash) {
+        const month = Number(slash[1]) - 1;
+        const year = Number(slash[2]);
+        if (month >= 0 && month < 12) {
+            return bound === 'start'
+                ? new Date(Date.UTC(year, month, 1, 0, 0, 0, 0))
+                : new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+        }
+    }
+
     const parsed = Date.parse(value);
     return Number.isNaN(parsed) ? null : new Date(parsed);
 }
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** Recent enough that "the role you are in now" is what logging it means. */
+const CURRENT_ROLE_WINDOW_MS = 90 * 86_400_000;
 
 /**
  * PRD 01 §4.5 / §12: the experience whose `[startDate, endDate ?? now]` contains
@@ -197,7 +225,18 @@ export function resolveEmployerIdFrom(
         const upper = end ? end.getTime() : now.getTime();
         return at <= upper;
     });
-    return matches.length === 1 ? matches[0].id : null;
+    if (matches.length === 1) return matches[0].id;
+    if (matches.length > 1) return null; // overlapping roles: ask, never guess
+
+    // No date range settles it (dates unparseable or missing), but the work is
+    // recent and there is exactly one current role: that is the role. Without
+    // this, a note logged today from chat attached to no role and never
+    // reached a resume (QA 2026-10-02).
+    if (now.getTime() - at <= CURRENT_ROLE_WINDOW_MS) {
+        const current = experiences.filter((experience) => experience.current || OPEN_ENDED.has((experience.endDate ?? '').trim().toLowerCase()));
+        if (current.length === 1) return current[0].id;
+    }
+    return null;
 }
 
 export async function resolveEmployerId(params: {

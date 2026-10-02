@@ -179,6 +179,25 @@ describe('find_jobs', () => {
     });
 });
 
+describe('find_jobs by company', () => {
+    test('"Engineering jobs at Acme" filters on the company, not the title', async () => {
+        const userId = user('findco');
+        const token = `chat-test-co-${crypto.randomUUID()}`;
+        const source = await prisma.jobSource.create({ data: { provider: 'greenhouse', boardToken: token, companyName: 'Zebracorp Labs' } });
+        sources.push(source.id);
+        await prisma.jobPosting.createMany({
+            data: [{ sourceId: source.id, externalId: 'z1', title: 'Software Engineer, Platform', location: 'Remote', absoluteUrl: `https://boards.greenhouse.io/${token}/jobs/z1`, contentHash: 'z', postedAt: new Date() }],
+        });
+        // The model wrote the company into the query, as it did in QA.
+        nextRoute = { action: 'find_jobs', reply: 'x', query: 'Engineer at Zebracorp' };
+        const result = await send(userId, 'find me engineering jobs at Zebracorp');
+        const card = result.success ? result.data.assistant.cards[0] : null;
+        expect(card?.type).toBe('postings');
+        if (card?.type !== 'postings') return;
+        expect(card.items.map((p) => p.company)).toEqual(['Zebracorp Labs']);
+    });
+});
+
 describe('ask_record', () => {
     test('finds the user\'s own confirmed Win, and never another user\'s', async () => {
         const userId = user('record');
@@ -219,5 +238,21 @@ describe('channels', () => {
         const userId = user('flagoff');
         nextRoute = new Error('the router must not run when chat is off');
         expect(await routeChannelText(userId, 'show my pipeline', 'telegram')).toBeNull();
+    });
+});
+
+describe('companyName', () => {
+    test('keeps just the name, never the description', async () => {
+        const { companyName } = await import('./chat');
+        expect(companyName('Linear, the project management software company')).toBe('Linear');
+        expect(companyName('Jack and Jill, the AI recruiting startup')).toBe('Jack and Jill');
+        expect(companyName('The Browser Company')).toBe('The Browser Company');
+        expect(companyName('Razorpay (payments)')).toBe('Razorpay');
+    });
+
+    test('keeps what the user said about the company as a hint', async () => {
+        const { companyHint } = await import('./chat');
+        expect(companyHint('Linear, the project management software company', 'Linear')).toBe('the project management software company');
+        expect(companyHint('Razorpay', 'Razorpay')).toBeNull();
     });
 });
