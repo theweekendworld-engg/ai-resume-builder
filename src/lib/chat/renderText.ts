@@ -12,6 +12,12 @@ const VERDICT: Record<string, string> = {
     not_a_fit: 'Not a fit',
 };
 
+const STATUS: Record<string, string> = {
+    discovered: 'saved', analyzed: 'saved', drafting: 'drafting', in_progress: 'applying', submitted: 'applied',
+    applied: 'applied', in_review: 'in review', interview: 'interviewing', offer: 'offer', rejected: 'rejected',
+    ghosted: 'no reply', archived: 'not interested',
+};
+
 function cardLines(card: ChatCard, appUrl: string): string[] {
     const base = appUrl.replace(/\/$/, '');
     switch (card.type) {
@@ -26,7 +32,7 @@ function cardLines(card: ChatCard, appUrl: string): string[] {
         case 'jobs':
             return card.items.map((job, i) => {
                 const verdict = job.verdict && VERDICT[job.verdict] ? ` · ${VERDICT[job.verdict]}` : '';
-                return `${i + 1}. ${job.role ?? 'Role'}${job.company ? ` at ${job.company}` : ''} · ${job.status.replace(/_/g, ' ')}${verdict}`;
+                return `${i + 1}. ${job.role ?? 'Role'}${job.company ? ` at ${job.company}` : ''} · ${STATUS[job.status] ?? job.status}${verdict}`;
             });
         case 'postings':
             return [

@@ -21,6 +21,7 @@ import { findPostings } from '@/lib/chat/findJobs';
 import { CHAT_MESSAGE_MAX, ROUTER_FALLBACK, routeMessage, type HistoryTurn } from '@/lib/chat/router';
 import type { ChatAction, ChatCard, ChatContext, ChatJob, ChatMessageView, RouteDecision } from '@/lib/chat/types';
 import { listJobBoard, setJobStatus } from '@/services/careerInbox';
+import { JOB_ACTION_LABELS } from '@/lib/inbox/types';
 import { draftScoutOutreach, startScoutRun } from '@/services/scout';
 import { tailorResumeForRun } from '@/services/tailor';
 import { createWinDraftForUser } from '@/services/wins';
@@ -104,7 +105,10 @@ export async function runAction(
     opts: { channel?: ActionChannel } = {},
 ): Promise<Reply> {
     const channel = opts.channel ?? 'web';
-    const say = (fallback: string) => decision.reply.trim() || fallback;
+    // The line above a card is written here, never by the model: the model
+    // writes before the action runs, so its "I'll update it" can be wrong (the
+    // update failed) or stale (it already happened). QA 2026-10-02. Only
+    // `answer` and `clarify` show the model's words.
 
     switch (decision.action) {
         case 'analyze_job': {
@@ -116,7 +120,7 @@ export async function runAction(
             if (!started.success) return failure(started.error);
             const { run, created } = started.data;
             return {
-                text: created ? say('Reading it now. The fit, company and pay land below as they come in.') : 'You have shared this one before; here is what I found.',
+                text: created ? 'Reading it now. The fit, company and pay land below as they come in.' : 'You have shared this one before; here is what I found.',
                 cards: [{ type: 'scout_run', runId: run.id, status: run.status, kind: run.kind, headline: run.headline }],
             };
         }
@@ -131,7 +135,7 @@ export async function runAction(
             if (!started.success) return failure(started.error);
             const { run } = started.data;
             return {
-                text: say(`Looking into ${company}: what it does, funding, size and open roles, each with its source.`),
+                text: `Looking into ${company}: what it does, funding, size and open roles, each with its source.`,
                 cards: [{ type: 'scout_run', runId: run.id, status: run.status, kind: run.kind, headline: run.headline }],
             };
         }
@@ -175,7 +179,7 @@ export async function runAction(
             return {
                 text: session.status === 'awaiting_clarification'
                     ? 'One question first, so the resume says the right thing.'
-                    : say(`Tailoring your resume for ${jobName(job)}.`),
+                    : `Tailoring your resume for ${jobName(job)}.`,
                 cards: [{
                     type: 'generation',
                     sessionId: session.sessionId,
@@ -208,7 +212,7 @@ export async function runAction(
             const moved = await setJobStatus(userId, { workspaceId: job.workspaceId }, decision.jobAction);
             if (!moved.success) return failure(moved.error);
             return {
-                text: say(`Updated ${jobName(job)}.`),
+                text: `Updated ${jobName(job)}: ${JOB_ACTION_LABELS[decision.jobAction]}.`,
                 cards: [{ type: 'jobs', title: 'Updated', items: [toChatJob(moved.data)] }],
             };
         }
@@ -219,7 +223,7 @@ export async function runAction(
             if (jobs.length === 0) {
                 return { text: 'Nothing in your tracker yet. Send me a job link and I will score it against your record.', cards: [] };
             }
-            return { text: say('Here is your pipeline.'), cards: [{ type: 'jobs', title: 'Your jobs', items: jobs }] };
+            return { text: 'Here is your pipeline.', cards: [{ type: 'jobs', title: 'Your jobs', items: jobs }] };
         }
 
         case 'find_jobs': {
@@ -240,7 +244,7 @@ export async function runAction(
                     cards: [],
                 };
             }
-            return { text: say('Open roles that match.'), cards: [{ type: 'postings', query, items, note }] };
+            return { text: 'Open roles that match.', cards: [{ type: 'postings', query, items, note }] };
         }
 
         case 'ask_record': {
@@ -252,12 +256,12 @@ export async function runAction(
                     cards: [],
                 };
             }
-            return { text: say('From your record.'), cards: [{ type: 'record', query, items }] };
+            return { text: 'From your record.', cards: [{ type: 'record', query, items }] };
         }
 
         case 'build_resume':
             return {
-                text: say('Start a new resume here.'),
+                text: 'Start a new resume here.',
                 cards: [{ type: 'link', label: 'Open the resume builder', href: '/build', description: 'Upload a resume or start from your record.' }],
             };
 

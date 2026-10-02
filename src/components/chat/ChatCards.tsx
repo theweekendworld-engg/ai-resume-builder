@@ -250,6 +250,13 @@ function OutreachCard({ card }: { card: Extract<ChatCard, { type: 'outreach' }> 
 
 // ───────────────────────────────────────────────────────────── lists
 
+/** The tracker's words, not the column names (src/lib/scout/types.ts TrackedStatus). */
+const STATUS_LABEL: Record<ChatJob['status'], string> = {
+    discovered: 'Saved', analyzed: 'Saved', drafting: 'Drafting', in_progress: 'Applying', submitted: 'Applied',
+    applied: 'Applied', in_review: 'In review', interview: 'Interviewing', offer: 'Offer', rejected: 'Rejected',
+    ghosted: 'No reply', archived: 'Not interested',
+};
+
 function JobRow({ job }: { job: ChatJob }) {
     const href = job.runId ? `/scout/${job.runId}` : safeHref(job.sourceUrl);
     return (
@@ -258,7 +265,7 @@ function JobRow({ job }: { job: ChatJob }) {
                 <p className={cn(typeStyles.body, 'font-medium')}>{job.role ?? 'Role'}{job.company ? ` · ${job.company}` : ''}</p>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                     <VerdictChip verdict={job.verdict} score={job.fitScore} />
-                    <span className={cn(typeStyles.caption, 'text-muted-foreground')}>{job.status.replace(/_/g, ' ')}</span>
+                    <span className={cn(typeStyles.caption, 'text-muted-foreground')}>{STATUS_LABEL[job.status] ?? job.status}</span>
                 </div>
                 {job.topConcern ? <p className={cn(typeStyles.caption, 'mt-1 text-muted-foreground')}>Watch out: {job.topConcern}</p> : null}
             </div>

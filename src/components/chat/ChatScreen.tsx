@@ -26,7 +26,7 @@ function Bubble({ message, onSend }: { message: ChatMessageView; onSend: (text: 
     if (message.role === 'user') {
         return (
             <div className="flex justify-end">
-                <p className={cn(typeStyles.body, 'max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-primary-foreground')}>
+                <p className={cn(typeStyles.body, 'max-w-[80%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-primary-foreground')}>
                     {message.text}
                 </p>
             </div>
@@ -34,7 +34,7 @@ function Bubble({ message, onSend }: { message: ChatMessageView; onSend: (text: 
     }
     return (
         <div className="max-w-[92%] space-y-2">
-            {message.text ? <p className={cn(typeStyles.body, 'whitespace-pre-wrap')}>{message.text}</p> : null}
+            {message.text ? <p className={cn(typeStyles.body, 'whitespace-pre-wrap [overflow-wrap:anywhere]')}>{message.text}</p> : null}
             {message.cards.map((card, i) => (
                 <ChatCardView key={`${message.id}:${i}`} card={card} onSend={onSend} />
             ))}
@@ -131,7 +131,7 @@ export function ChatScreen({ initial }: { initial: ChatThread }) {
                 {pending ? (
                     <>
                         <div className="flex justify-end">
-                            <p className={cn(typeStyles.body, 'max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-primary-foreground', pending.error && 'opacity-60')}>
+                            <p className={cn(typeStyles.body, 'max-w-[80%] whitespace-pre-wrap [overflow-wrap:anywhere] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-primary-foreground', pending.error && 'opacity-60')}>
                                 {pending.text}
                             </p>
                         </div>
