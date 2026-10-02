@@ -1705,3 +1705,21 @@ model AdminAction {
   @@index([createdAt])
   @@index([targetUserId, createdAt])
 }
+
+/// A personal API key for the Patronus CLI (src/lib/apiKeys.ts). Only the
+/// SHA-256 of the key is stored; the key is shown once at creation. The user
+/// is resolved from the key, never from request input (the retired /api/v1
+/// trusted a caller-supplied userId).
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  /// First characters of the key, shown so the user can tell keys apart.
+  prefix     String
+  hash       String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId, createdAt])
+}

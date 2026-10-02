@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { TelegramSection } from '@/components/dashboard/sections/TelegramSection';
 import { WhatsAppSection } from '@/components/dashboard/sections/WhatsAppSection';
 import { ExtensionDevices } from '@/components/settings/ExtensionDevices';
+import { CliKeys } from '@/components/settings/CliKeys';
+import { config } from '@/lib/config';
 import { isEnabled } from '@/lib/flags';
 
 export const metadata = { title: 'Channels · Patronus' };
@@ -63,7 +65,7 @@ export default async function ChannelsPage() {
                     <CardDescription>Log work and check jobs from your terminal with the Patronus CLI.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-sm text-muted-foreground">Coming soon.</p>
+                    {chat ? <CliKeys appUrl={config.app.url} /> : <p className="text-sm text-muted-foreground">The CLI talks to chat, which is not switched on for your account yet.</p>}
                 </CardContent>
             </Card>
         </div>

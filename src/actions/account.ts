@@ -68,3 +68,37 @@ export async function disconnectExtension(): Promise<Result<{ revoked: number }>
     });
     return ok({ revoked: count });
 }
+
+// ───────────────────────────────────────────────────────────── API keys (CLI)
+
+export type ApiKeyView = { id: string; name: string; prefix: string; createdAt: string; lastUsedAt: string | null };
+
+export async function listApiKeys(): Promise<Result<ApiKeyView[]>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const { prisma } = await import('@/lib/prisma');
+    const rows = await prisma.apiKey.findMany({ where: { userId, revokedAt: null }, orderBy: { createdAt: 'desc' } });
+    return ok(rows.map((r) => ({ id: r.id, name: r.name, prefix: r.prefix, createdAt: r.createdAt.toISOString(), lastUsedAt: r.lastUsedAt?.toISOString() ?? null })));
+}
+
+/** The key is returned once, here, and never again. */
+export async function createCliKey(input: { name: string }): Promise<Result<{ key: string; prefix: string }>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const name = z.string().trim().max(60).safeParse(input?.name ?? '');
+    if (!name.success) return err('Name is too long', 'invalid_input');
+    const { prisma } = await import('@/lib/prisma');
+    const { createApiKey, MAX_KEYS_PER_USER } = await import('@/lib/apiKeys');
+    const live = await prisma.apiKey.count({ where: { userId, revokedAt: null } });
+    if (live >= MAX_KEYS_PER_USER) return err(`You have ${MAX_KEYS_PER_USER} keys. Revoke one first.`, 'limit');
+    const created = await createApiKey(userId, name.data);
+    return ok({ key: created.key, prefix: created.prefix });
+}
+
+export async function revokeCliKey(input: { id: string }): Promise<Result<void>> {
+    const { userId } = await auth();
+    if (!userId) return err('Not signed in', 'unauthenticated');
+    const { prisma } = await import('@/lib/prisma');
+    const { count } = await prisma.apiKey.updateMany({ where: { id: String(input?.id ?? ''), userId, revokedAt: null }, data: { revokedAt: new Date() } });
+    return count > 0 ? ok(undefined) : err('Key not found', 'not_found');
+}

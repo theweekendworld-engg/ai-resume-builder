@@ -1,0 +1,10 @@
+{
+  "name": "patronus-cli",
+  "version": "0.1.0",
+  "description": "Talk to Patronus, your career record, from the terminal.",
+  "type": "module",
+  "bin": { "patronus": "patronus.mjs" },
+  "files": ["patronus.mjs", "README.md"],
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}

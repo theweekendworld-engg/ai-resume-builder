@@ -57,6 +57,8 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/whatsapp/webhook',
     // Svix-signed (src/app/api/clerk/webhook/route.ts).
     '/api/clerk/webhook',
+    // Personal API keys (src/lib/apiKeys.ts); the user comes from the key.
+    '/api/cli(.*)',
 ]);
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
