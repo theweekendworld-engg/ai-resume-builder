@@ -496,11 +496,31 @@ describe('export', () => {
       wins: { id: string }[];
       reviewPackets: { id: string }[];
     };
-    expect(parsed.schema).toBe('patronus.export.v1');
+    expect(parsed.schema).toBe('patronus.export.v2');
     expect(parsed.wins.map((w) => w.id)).toContain(seeded.win.id);
     expect(parsed.reviewPackets.map((p) => p.id)).toContain(seeded.packet.id);
 
     expect(await events(userId, 'data_exported')).toHaveLength(1);
+  });
+
+  test('includes every table we hold (chat, tokens redacted) — audit 2026-10-02', async () => {
+    const userId = signIn('export-all');
+    const convo = await prisma.chatConversation.create({ data: { userId } });
+    await prisma.chatMessage.create({ data: { conversationId: convo.id, userId, role: 'user', text: 'export me' } });
+    await prisma.extensionAccessToken.create({
+      data: { userId, client: 'chrome', tokenHash: `hash-${userId}`, expiresAt: new Date(Date.now() + 60_000) },
+    });
+
+    const result = await billing.exportEverything();
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    const parsed = JSON.parse(result.data.json) as { tables: Record<string, Record<string, unknown>[]> };
+    expect(parsed.tables.chatMessage.map((m) => m.text)).toContain('export me');
+    expect(parsed.tables.extensionAccessToken[0]?.tokenHash).toBe('[redacted]');
+    expect(result.data.json).not.toContain(`hash-${userId}`);
+
+    await prisma.chatConversation.deleteMany({ where: { userId } });
+    await prisma.extensionAccessToken.deleteMany({ where: { userId } });
   });
 });
 

@@ -186,6 +186,15 @@ function resolveProjectUrls(project: { url?: string; liveUrl?: string; repoUrl?:
  * an alias of `ResumeTemplateId` so existing imports/string literals keep
  * compiling; the union simply grew the `'minimal'` member.
  */
+/**
+ * A URL as a LaTeX \\href argument: braces and backslashes removed (they end
+ * the argument or start a command: `}\\input{...}` was possible), and % and #
+ * escaped, which LaTeX would otherwise treat as a comment and a parameter.
+ */
+function latexUrl(url: string): string {
+    return url.replace(/[{}\\\s]/g, '').replace(/%/g, '\\%').replace(/#/g, '\\#');
+}
+
 export type LatexTemplateType = ResumeTemplateId;
 type LegacyLatexTemplateType = LatexTemplateType | 'modern-professional';
 
@@ -327,7 +336,7 @@ ${fontPackages(theme.fontFamily)}
         .filter((part) => part.label !== personalInfo.location?.trim())
         .map((part) =>
             part.href
-                ? `\\href{${part.href}}{${escapeLatex(part.label)}}`
+                ? `\\href{${latexUrl(part.href)}}{${escapeLatex(part.label)}}`
                 : escapeLatex(part.label)
         )
         .filter(Boolean)

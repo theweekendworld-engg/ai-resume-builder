@@ -621,32 +621,40 @@ export async function exportEverything(): Promise<Result<ExportBundle>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
 
-  const [profile, wins, evidence, claimLinks, metrics, packets, resumes, experiences, projects] =
-    await Promise.all([
-      prisma.userProfile.findUnique({ where: { userId } }),
-      prisma.win.findMany({ where: { userId }, orderBy: { occurredAt: 'desc' } }),
-      prisma.evidence.findMany({ where: { userId } }),
-      prisma.claimLink.findMany({ where: { userId } }),
-      prisma.impactMetric.findMany({ where: { userId } }),
-      prisma.reviewPacket.findMany({ where: { userId } }),
-      prisma.resume.findMany({ where: { userId } }),
-      prisma.userExperience.findMany({ where: { userId } }),
-      prisma.userProject.findMany({ where: { userId } }),
-    ]);
+  // Everything we hold, read from the schema so a new table is never left
+  // out (launch audit 2026-10-02: chat, jobs, channels, contacts, insights,
+  // capture data and agent runs were missing). Secrets are not data about
+  // you: token, hash and secret fields are redacted, and vectors are skipped.
+  const { userOwnedModels } = await import('@/services/accountDeletion');
+  const SKIP = new Set(['vectorPoint', 'channelLinkToken', 'rateLimitHit']);
+  const SECRET = /(token|secret|hash|verifier|password)/i;
+  const redact = (row: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(row).map(([key, value]) => [key, SECRET.test(key) ? '[redacted]' : value]));
+
+  const tables: Record<string, unknown[]> = {};
+  for (const model of userOwnedModels()) {
+    if (SKIP.has(model)) continue;
+    const delegate = (prisma as unknown as Record<string, { findMany: (a: object) => Promise<Record<string, unknown>[]> }>)[model];
+    tables[model] = (await delegate.findMany({ where: { userId }, take: 20_000 })).map(redact);
+  }
 
   const bundle = {
-    schema: 'patronus.export.v1',
+    schema: 'patronus.export.v2',
     exportedAt: new Date().toISOString(),
-    profile,
-    wins,
-    evidence,
-    claimLinks,
-    impactMetrics: metrics,
-    reviewPackets: packets,
-    resumes,
-    experiences,
-    projects,
+    // v1's keys, kept so anything that read a v1 export still works.
+    profile: tables.userProfile?.[0] ?? null,
+    wins: tables.win ?? [],
+    evidence: tables.evidence ?? [],
+    claimLinks: tables.claimLink ?? [],
+    impactMetrics: tables.impactMetric ?? [],
+    reviewPackets: tables.reviewPacket ?? [],
+    resumes: tables.resume ?? [],
+    experiences: tables.userExperience ?? [],
+    projects: tables.userProject ?? [],
+    tables,
   };
+  const wins = tables.win ?? [];
+  const packets = tables.reviewPacket ?? [];
 
   await track(userId, 'data_exported', { wins: wins.length, packets: packets.length });
 

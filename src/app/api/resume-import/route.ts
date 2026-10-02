@@ -1,4 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
+import { sniffUpload } from '@/lib/fileSniff';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { ResumeImportStatus, ResumeImportStep } from '@prisma/client';
 import { NextRequest, NextResponse } from 'next/server';
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
     }
 
-    if (file.type !== 'application/pdf') {
+    if (file.type !== 'application/pdf' || (await sniffUpload(file)) !== 'pdf') {
       return NextResponse.json(
         { success: false, error: 'Only PDF files are supported' },
         { status: 400 }

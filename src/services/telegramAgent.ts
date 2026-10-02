@@ -219,10 +219,15 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
         await sendTelegramStatus(chatId, callback.data.split(':')[1]);
       } else if (callback.data.startsWith('regen:')) {
         const sessionId = callback.data.split(':')[1];
-        const seed = await prisma.generationSession.findFirst({
-          where: { id: sessionId, channel: Channel.telegram },
-          select: { jobDescription: true },
-        });
+        // Scoped to the user this chat is linked to: a callback's data is
+        // whatever the client sends (audit 2026-10-02).
+        const ownerId = await findLinkedUserId(chatId);
+        const seed = ownerId
+          ? await prisma.generationSession.findFirst({
+              where: { id: sessionId, userId: ownerId, channel: Channel.telegram },
+              select: { jobDescription: true },
+            })
+          : null;
         if (!seed?.jobDescription) {
           await sendTelegramMessage({ chatId, text: 'Unable to regenerate from this session.' });
         } else {

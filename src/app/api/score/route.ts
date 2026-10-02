@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sniffUpload } from '@/lib/fileSniff';
 import { PDFParse } from 'pdf-parse';
 import { checkAnonScoreRateLimit } from '@/lib/rateLimit';
 import { scoreResumeText } from '@/lib/anonScore';
@@ -77,7 +78,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'No file provided' }, { status: 400 });
         }
 
-        if (!ACCEPTED_MIMES.has(file.type)) {
+        const sniffed = await sniffUpload(file);
+        const expected = file.type === 'application/pdf' ? 'pdf' : 'docx';
+        if (!ACCEPTED_MIMES.has(file.type) || sniffed !== expected) {
             return NextResponse.json(
                 { success: false, error: 'Only PDF and DOCX files are supported' },
                 { status: 400 }

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 import { Bell, ChevronRight, CreditCard, FileText, GitBranch, MessageCircle, Target, UserRound } from 'lucide-react';
 import { isEnabled } from '@/lib/flags';
+import { DeleteAccountSection } from '@/components/settings/DeleteAccountSection';
 
 export const metadata = { title: 'Settings · Patronus' };
 
@@ -48,6 +49,7 @@ export default async function SettingsIndexPage() {
                     );
                 })}
             </ul>
+            <DeleteAccountSection />
         </div>
     );
 }
