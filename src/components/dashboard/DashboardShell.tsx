@@ -8,10 +8,10 @@ import {
   User,
   Send,
   FileDown,
-  Menu,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
 import type { UserProfileDTO } from '@/actions/profile';
 import type { DashboardOverview } from '@/actions/dashboard';
 import type { UserUsageStats } from '@/actions/usage';
@@ -40,13 +40,13 @@ const NAV_ITEMS: { id: DashboardSectionId; label: string; icon: React.ReactNode 
   // Applications and Copilot left the menu (launch audit 2026-10-02): jobs
   // live in Jobs (/scout), and tailoring is /build or one chat message. Old
   // ?section= links still render them.
-  { id: 'resumes', label: 'My Resumes', icon: <FileText className="h-4 w-4" /> },
+  { id: 'resumes', label: 'All resumes', icon: <FileText className="h-4 w-4" /> },
   { id: 'profile', label: 'Profile', icon: <User className="h-4 w-4" /> },
   // WhatsApp is named only where it is configured; production has no
   // WHATSAPP_* variables, and the old "Telegram & WhatsApp" promised a
   // channel nobody could link.
   { id: 'telegram', label: 'Channels', icon: <Send className="h-4 w-4" /> },
-  { id: 'pdf', label: 'PDF History', icon: <FileDown className="h-4 w-4" /> },
+  { id: 'pdf', label: 'PDFs', icon: <FileDown className="h-4 w-4" /> },
 ];
 
 export type DashboardShellProps = {
@@ -110,7 +110,6 @@ export function DashboardShell({
   initialSection = 'overview',
 }: DashboardShellProps) {
   const [activeSection, setActiveSection] = useState<DashboardSectionId>(initialSection);
-  const [navOpen, setNavOpen] = useState(false);
   const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
@@ -127,98 +126,98 @@ export function DashboardShell({
     };
   }, [overview.success, overview.profile?.onboardingComplete]);
 
-  const navContent = (
-    <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.map((item) => (
-        <Button
-          key={item.id}
-          variant={activeSection === item.id ? 'secondary' : 'ghost'}
-          className="justify-start gap-3"
-          onClick={() => {
-            setActiveSection(item.id);
-            setNavOpen(false);
-          }}
-        >
-          {item.icon}
-          {item.label}
-        </Button>
-      ))}
-    </nav>
-  );
+  const select = (id: DashboardSectionId) => {
+    setActiveSection(id);
+    // Keep the section in the URL so reload and back land where you were.
+    const url = new URL(window.location.href);
+    if (id === 'overview') url.searchParams.delete('section');
+    else url.searchParams.set('section', id);
+    window.history.replaceState(null, '', url);
+  };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-dvh flex-col">
       {/*
-        The SECTION bar, not the app bar.
-
-        `(app)/layout.tsx` renders `AppNav` above this now — brand, primary
-        destinations, "Tailor a resume" and the account menu. This header kept
-        its own `UserButton`, so the dashboard showed two bars and two avatars
-        stacked on top of each other.
-
-        What is left is what belongs to this page: which dashboard section you
-        are in, the mobile trigger for switching section, and the admin link.
+        The page header and its tabs. The app shell (AppNav.tsx) owns the
+        destinations, so this page no longer brings a second sidebar; its
+        sections are tabs, scrollable on a phone.
       */}
-      <header className="flex items-center justify-between gap-4 border-b border-border bg-background px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Sheet open={navOpen} onOpenChange={setNavOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
+      <header className="border-b border-border bg-background px-4 sm:px-6">
+        <div className="mx-auto flex max-w-5xl items-end justify-between gap-4 pt-6 md:pt-8">
+          <div>
+            <h1 className="font-heading text-2xl font-semibold tracking-tight">Resumes</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Every resume is built from your record. Nothing in it is made up.</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {isAdmin && (
+              <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
+                <Link href="/admin">Admin</Link>
               </Button>
-            </SheetTrigger>
-            <SheetContent id="dashboard-mobile-nav-sheet" side="left" className="w-64 p-4">
-              <div className="mb-4 font-semibold">Dashboard</div>
-              {navContent}
-            </SheetContent>
-          </Sheet>
-          <span className="text-sm font-semibold">
-            {NAV_ITEMS.find((i) => i.id === activeSection)?.label ?? 'Dashboard'}
-          </span>
+            )}
+            <Button asChild size="sm" className="gap-1.5">
+              <Link href="/build">
+                <Sparkles className="size-4" aria-hidden />
+                <span className="hidden sm:inline">Tailor a resume</span>
+                <span className="sm:hidden">Tailor</span>
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Link href="/admin">
-              <Button variant="ghost" size="sm">
-                Admin
-              </Button>
-            </Link>
-          )}
-        </div>
+        <nav
+          aria-label="Resume sections"
+          className="mx-auto mt-4 flex max-w-5xl gap-1 overflow-x-auto [scrollbar-width:none] [&>button:first-child]:-ml-3"
+        >
+          {NAV_ITEMS.map((item) => {
+            const active = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                aria-current={active ? 'page' : undefined}
+                onClick={() => select(item.id)}
+                className={cn(
+                  'relative flex h-10 shrink-0 items-center gap-2 rounded-t-md px-3 text-sm font-medium transition-colors',
+                  active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {item.icon}
+                {item.label}
+                <span
+                  aria-hidden
+                  className={cn('absolute inset-x-2 -bottom-px h-0.5 rounded-full', active ? 'bg-primary' : 'bg-transparent')}
+                />
+              </button>
+            );
+          })}
+        </nav>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="hidden w-60 shrink-0 border-r border-border bg-card/50 md:block md:p-3">
-          <div className="sticky top-0 space-y-2 py-2">{navContent}</div>
-        </aside>
+      <main className="flex-1 px-4 py-6 sm:px-6 md:py-8">
+        <div className="mx-auto max-w-5xl">
+          {activeSection === 'overview' && (
+            <OverviewSection overview={overview} usageStats={usageStats} />
+          )}
+          {activeSection === 'applications' && (
+            <ApplicationsSection workspaces={applicationWorkspaces} listError={applicationListError} />
+          )}
+          {activeSection === 'resumes' && (
+            <ResumesSection resumes={resumes} listError={!overview.success ? overview.error : undefined} />
+          )}
+          {activeSection === 'copilot' && <DashboardCopilot />}
+          {activeSection === 'profile' && (
+            <ProfileSection profile={profile} projects={projects} />
+          )}
+          {activeSection === 'telegram' && (
+            <div className="space-y-6">
+              <TelegramSection />
+              <WhatsAppSection />
+            </div>
+          )}
+          {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
+        </div>
+      </main>
 
-        <main className="flex-1 overflow-auto px-4 py-6 md:px-6">
-          <div className="mx-auto max-w-4xl">
-            {activeSection === 'overview' && (
-              <OverviewSection overview={overview} usageStats={usageStats} />
-            )}
-            {activeSection === 'applications' && (
-              <ApplicationsSection workspaces={applicationWorkspaces} listError={applicationListError} />
-            )}
-            {activeSection === 'resumes' && (
-              <ResumesSection resumes={resumes} listError={!overview.success ? overview.error : undefined} />
-            )}
-            {activeSection === 'copilot' && <DashboardCopilot />}
-            {activeSection === 'profile' && (
-              <ProfileSection profile={profile} projects={projects} />
-            )}
-            {activeSection === 'telegram' && (
-              <div className="space-y-6">
-                <TelegramSection />
-                <WhatsAppSection />
-              </div>
-            )}
-            {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
-          </div>
-        </main>
-      </div>
-
-      <DashboardTour open={tourOpen} onOpenChange={setTourOpen} onNavigate={setActiveSection} />
+      <DashboardTour open={tourOpen} onOpenChange={setTourOpen} onNavigate={select} />
     </div>
   );
 }

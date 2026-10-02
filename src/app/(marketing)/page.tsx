@@ -4,6 +4,7 @@ import { Hero } from '@/components/marketing/Hero';
 import { EvidenceTicker } from '@/components/marketing/EvidenceTicker';
 import { TheProblem } from '@/components/marketing/TheProblem';
 import { HowItWorks } from '@/components/marketing/HowItWorks';
+import { Channels } from '@/components/marketing/Channels';
 import { Guarantees } from '@/components/marketing/Guarantees';
 import { Features } from '@/components/marketing/Features';
 import { Provenance } from '@/components/marketing/Provenance';
@@ -49,6 +50,7 @@ export default async function MarketingHomePage() {
       <EvidenceTicker />
       <TheProblem />
       <HowItWorks />
+      <Channels />
       <Guarantees />
       <Features />
       <Provenance />

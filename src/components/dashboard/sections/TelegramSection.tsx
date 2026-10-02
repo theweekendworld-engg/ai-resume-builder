@@ -127,8 +127,8 @@ export function TelegramSection() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Telegram</h1>
-          <p className="text-muted-foreground">Loading connection status…</p>
+          <h2 className="font-heading text-lg font-semibold tracking-tight">Telegram</h2>
+          <p className="text-sm text-muted-foreground">Loading connection status…</p>
         </div>
         <Skeleton className="h-32 rounded-xl" />
       </div>
@@ -139,8 +139,8 @@ export function TelegramSection() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Telegram</h1>
-          <p className="text-muted-foreground">
+          <h2 className="font-heading text-lg font-semibold tracking-tight">Telegram</h2>
+          <p className="text-sm text-muted-foreground">
             Send the bot a job link, a LinkedIn post, or a line about your work. It is recorded here.
           </p>
         </div>

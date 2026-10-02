@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, FileUp, Wand2 } from 'lucide-react';
+import { ArrowRight, FileText, FileUp, Wand2 } from 'lucide-react';
 import type { DashboardOverview } from '@/actions/dashboard';
 import { getActivationState, type ActivationState } from '@/actions/onboarding';
 import type { UserUsageStats } from '@/actions/usage';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 type OverviewSectionProps = {
   overview: DashboardOverview;
@@ -66,153 +65,97 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
     );
   }
 
-  const firstName = overview.profile?.fullName?.trim().split(/\s+/)[0] ?? '';
   const recentResumes = overview.recentResumes ?? [];
   const totalResumes = overview.totalResumes ?? 0;
-  const totalPdfs = overview.totalPdfs ?? 0;
-  const monthGens = overview.monthGenerations ?? 0;
-  const projectCount = overview.projectCount ?? 0;
-  const totalApplications = overview.totalApplications ?? 0;
+  const stats: Array<[string, number]> = [
+    ['Resumes', totalResumes],
+    ['Tailored this month', usageStats.success && usageStats.stats ? usageStats.stats.generationsCompleted : overview.monthGenerations ?? 0],
+    ['PDFs', overview.totalPdfs ?? 0],
+    ['Projects', overview.projectCount ?? 0],
+  ];
+  const step = activation ? nextStepFor(activation) : null;
+  const remaining = activation ? remainingLabel(activation) : null;
 
+  // The page header (DashboardShell) carries the title. This is what to do
+  // next, a count strip, and the resumes you were last in. Usage in dollars
+  // and tokens stays in /admin: it is our supplier bill, not the user's fact.
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {totalResumes === 0 ? (firstName ? `Welcome, ${firstName}` : 'Welcome') : firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
-        </h1>
-        <p className="text-muted-foreground">
-          {activation && remainingLabel(activation) ? remainingLabel(activation) : 'Everything you are working on, in one place.'}
-        </p>
-      </div>
-
-      {activation && nextStepFor(activation) ? (() => {
-        const step = nextStepFor(activation)!;
+    <div className="space-y-8">
+      {step ? (() => {
         const Icon = step.icon === 'upload' ? FileUp : Wand2;
         return (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Icon className="h-5 w-5 text-primary" aria-hidden />
-                {step.title}
-              </CardTitle>
-              <CardDescription>{step.body}</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-3">
+          <section className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                <Icon className="size-5" aria-hidden />
+              </span>
+              <div>
+                <h2 className="font-heading text-base font-semibold">{step.title}</h2>
+                <p className="mt-0.5 max-w-prose text-sm text-muted-foreground">{step.body}</p>
+              </div>
+            </div>
+            <Button asChild className="shrink-0 gap-2">
               <Link href={step.href}>
-                <Button className="gap-2">
-                  {step.cta}
-                  <ArrowRight className="h-4 w-4" aria-hidden />
-                </Button>
+                {step.cta}
+                <ArrowRight className="size-4" aria-hidden />
               </Link>
-              <Link href="/dashboard?section=profile" className="text-sm text-muted-foreground underline-offset-4 hover:underline">
-                Resume preferences (length, tone)
-              </Link>
-            </CardContent>
-          </Card>
+            </Button>
+          </section>
         );
       })() : null}
 
       {/* A row of zeros is noise on a first visit; it appears once there is something to count. */}
       {(!activation || activation.hasHistory || totalResumes > 0) && (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Resumes</CardDescription>
-            <CardTitle className="text-2xl">{totalResumes}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>PDFs generated</CardDescription>
-            <CardTitle className="text-2xl">{totalPdfs}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>This month</CardDescription>
-            <CardTitle className="text-2xl">{monthGens}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Projects</CardDescription>
-            <CardTitle className="text-2xl">{projectCount}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Applications</CardDescription>
-            <CardTitle className="text-2xl">{totalApplications}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-      )}
-
-            {usageStats.success && usageStats.stats && (
-        <>
-          <h2 className="text-lg font-semibold">Usage this period</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {/*
-              A dollar figure and a raw token count were here.
-              Removed: neither is a fact about the user, they are facts about
-              our supplier bill. A customer on a $5 plan does not benefit from
-              learning their resume cost us 23 cents — it invites the question
-              of why the plan is $5, and it exposes a number that moves when we
-              change model. What they need is what the plan promised: how many
-              resumes are left. Cost stays in /admin, where a decision is made
-              from it.
-            */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Generations completed</CardDescription>
-                <CardTitle className="text-2xl">{usageStats.stats.generationsCompleted}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Generations failed</CardDescription>
-                <CardTitle className="text-2xl">{usageStats.stats.generationsFailed}</CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>PDFs generated</CardDescription>
-                <CardTitle className="text-2xl">{usageStats.stats.pdfsGenerated}</CardTitle>
-              </CardHeader>
-            </Card>
-          </div>
-        </>
+        <section>
+          <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+            {stats.map(([label, value]) => (
+              <div key={label} className="bg-card px-4 py-4">
+                <dd className="font-heading text-2xl font-semibold tabular-nums">{value}</dd>
+                <dt className="mt-0.5 text-xs text-muted-foreground">{label}</dt>
+              </div>
+            ))}
+          </dl>
+          {remaining ? <p className="mt-2 text-xs text-muted-foreground">{remaining}</p> : null}
+        </section>
       )}
 
       {recentResumes.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent resumes</CardTitle>
-            <CardDescription>Jump back into editing.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <section>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-heading text-base font-semibold">Recent resumes</h2>
+            <Link href="/dashboard?section=resumes" className="text-sm text-primary hover:underline">See all</Link>
+          </div>
+          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
             {recentResumes.map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between rounded-lg border border-border p-3"
-              >
-                <div>
-                  <p className="font-medium">{r.title || 'Untitled'}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.targetRole ?? '—'}
-                    {r.targetCompany ? ` @ ${r.targetCompany}` : ''}
-                  </p>
-                </div>
-                <Link href={`/editor/${r.id}`}>
-                  <Button variant="outline" size="sm">
-                    Open
-                  </Button>
+              <li key={r.id}>
+                <Link href={`/editor/${r.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary/60">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-muted-foreground">
+                    <FileText className="size-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{r.title || 'Untitled'}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {[r.targetRole, r.targetCompany].filter(Boolean).join(' at ') || 'Base resume'}
+                      {' · '}
+                      {formatUpdated(r.updatedAt)}
+                    </span>
+                  </span>
+                  <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                 </Link>
-              </div>
+              </li>
             ))}
-          </CardContent>
-        </Card>
+          </ul>
+        </section>
       )}
+
+      <p className="text-sm text-muted-foreground">
+        <Link href="/dashboard?section=profile" className="font-medium text-primary hover:underline">Resume preferences</Link>
+        {' '}set length and tone for every resume you make.
+      </p>
     </div>
   );
+}
+
+function formatUpdated(date: Date): string {
+  return `edited ${new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
 }

@@ -22,8 +22,8 @@ export function ResumesSection({ resumes, listError }: ResumesSectionProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">My Resumes</h1>
-        <p className="text-muted-foreground">Create and manage your resumes.</p>
+        <h2 className="font-heading text-lg font-semibold tracking-tight">My Resumes</h2>
+        <p className="text-sm text-muted-foreground">Create and manage your resumes.</p>
       </div>
 
       {listError && (
@@ -32,7 +32,7 @@ export function ResumesSection({ resumes, listError }: ResumesSectionProps) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <CreateResumeCard />
         {resumes.map((resume) => (
           <ResumeCard key={resume.id} resume={resume} />

@@ -10,8 +10,8 @@ export function UsageSection({ result }: UsageSectionProps) {
   if (!result.success) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
-        <p className="text-muted-foreground">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">Usage</h2>
+        <p className="text-sm text-muted-foreground">
           {result.error ?? 'Failed to load usage stats.'}
         </p>
       </div>
@@ -24,8 +24,8 @@ export function UsageSection({ result }: UsageSectionProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
-        <p className="text-muted-foreground">Your usage for {monthLabel}.</p>
+        <h2 className="font-heading text-lg font-semibold tracking-tight">Usage</h2>
+        <p className="text-sm text-muted-foreground">Your usage for {monthLabel}.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

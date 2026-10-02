@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server';
 
 import { GlobalGenerationBanner } from '@/components/app/GlobalGenerationBanner';
-import { AppNav, type NavDestination } from '@/components/app/AppNav';
+import { AppShell, type NavDestination } from '@/components/app/AppNav';
 import { getEnabledFlags } from '@/lib/flags';
 
 /**
@@ -33,9 +33,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <GlobalGenerationBanner />
-      <AppNav destinations={destinations} />
-      {children}
+      <AppShell destinations={destinations}>
+        <GlobalGenerationBanner />
+        {children}
+      </AppShell>
     </div>
   );
 }

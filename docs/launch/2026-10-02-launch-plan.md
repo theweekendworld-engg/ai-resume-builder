@@ -62,6 +62,7 @@ it closes. Status: ✅ shipped · 🔨 in progress · ⏳ next · 👤 needs the
 | ✅ | Copilot and Applications out of the dashboard menu (0349954) |
 | ✅ | Mission steps link to where you do them; hidden routes linked (0349954) |
 | ✅ | Mobile: sticky chat composer, 16px inputs, editor grid, readiness widths (0349954) |
+| ✅ | Visual redesign: sidebar shell + phone tab bar, chat home with record rail, Resumes tabs (delete confirms), Jobs board, landing chat demo + channels |
 
 ## Wave 5 — CLI
 

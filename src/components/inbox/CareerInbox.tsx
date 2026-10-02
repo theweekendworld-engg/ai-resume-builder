@@ -51,17 +51,17 @@ export function CareerInbox({
     const summary = pipelineSummary(counts);
 
     return (
-        <div className={cn('mx-auto w-full px-4 py-8 sm:py-10', state.tab === 'jobs' ? 'max-w-[1200px]' : 'max-w-[860px]')}>
+        <div className={cn('mx-auto w-full px-4 py-6 sm:px-6 md:py-8', state.tab === 'jobs' ? 'max-w-[1200px]' : 'max-w-[860px]')}>
             <header className="flex flex-col gap-1">
-                <h1 className={cn(typeStyles.h1, 'text-foreground')}>Jobs &amp; saved</h1>
-                <p className={cn(typeStyles.body, 'text-muted-foreground')}>
-                    Everything you share, from chat, Telegram, WhatsApp or the extension: jobs scored against your record,
-                    posts worth keeping, and notes on their way into your Work Log.
+                <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Jobs</h1>
+                <p className="text-sm text-muted-foreground">
+                    Everything you share from chat, Telegram or the extension: jobs scored against your record, posts
+                    worth keeping, and notes on their way into your Work Log.
                 </p>
-                {summary ? <p className={cn(typeStyles.small, 'num text-foreground')}>{summary}</p> : null}
+                {summary ? <p className={cn(typeStyles.small, 'num mt-1 font-medium text-foreground')}>{summary}</p> : null}
             </header>
 
-            <div className="mt-6 max-w-[760px]">
+            <div className="mt-5 max-w-[760px]">
                 <PasteBox />
             </div>
 

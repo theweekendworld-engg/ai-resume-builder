@@ -49,6 +49,8 @@ function read(file: string): string {
  */
 const PAGE_SOURCES = [
     'Hero.tsx',
+    'ChatDemo.tsx',
+    'Channels.tsx',
     'EvidenceTicker.tsx',
     'TheProblem.tsx',
     'HowItWorks.tsx',

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Briefcase, Check, ChevronDown, ChevronRight, ExternalLink, MapPin, Search, X } from 'lucide-react';
+import { AlertCircle, Briefcase, Check, ChevronDown, ChevronRight, ExternalLink, MapPin, Search, SlidersHorizontal, X } from 'lucide-react';
 
 import { EmptyState, typeStyles, focusRing } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
@@ -148,12 +148,12 @@ export function JobCard({ item, onChanged }: { item: JobBoardItem; onChanged: ()
 
     return (
         <article className="surface-work rounded-lg border border-border bg-card p-3">
-            <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                    <h3 className={cn(typeStyles.h3, 'text-foreground')}>{heading}</h3>
-                    <p className={cn(typeStyles.small, 'text-muted-foreground')}>{item.company || 'Unknown company'}</p>
-                </div>
-                <VerdictChip verdict={item.verdict} score={item.fitScore} className="shrink-0 pt-0.5" />
+            {/* The fit sits under the title: beside it, a column's width left
+                the role three words a line. */}
+            <h3 className={cn(typeStyles.h3, 'line-clamp-2 text-foreground')}>{heading}</h3>
+            <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+                <p className={cn(typeStyles.small, 'min-w-0 truncate text-muted-foreground')}>{item.company || 'Unknown company'}</p>
+                <VerdictChip verdict={item.verdict} score={item.fitScore} className="shrink-0" />
             </div>
 
             {where ? (
@@ -235,6 +235,8 @@ export function JobsBoard({ state, items }: { state: InboxState; items: JobBoard
     const groups = groupByColumn(items);
     const firstNonEmpty = groups.find((group) => group.items.length > 0)?.column ?? 'to_review';
     const [mobileColumn, setMobileColumn] = React.useState<BoardColumn>(firstNonEmpty);
+    const [filtersOpen, setFiltersOpen] = React.useState(false);
+    const activeFilters = state.verdicts.length + state.workModes.length + (state.location ? 1 : 0) + (state.sinceDays ? 1 : 0);
     const refresh = React.useCallback(() => router.refresh(), [router]);
 
     const filtered = hasBoardFilters(state);
@@ -253,7 +255,16 @@ export function JobsBoard({ state, items }: { state: InboxState; items: JobBoard
 
     return (
         <div className="flex flex-col gap-5">
-            <Filters state={state} />
+            {/* On a phone the filters fold away; they took half the screen. */}
+            <div className="md:hidden">
+                <Button variant="outline" size="sm" className="gap-1.5" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
+                    <SlidersHorizontal aria-hidden className="size-3.5" />
+                    Filters{activeFilters > 0 ? ` · ${activeFilters}` : ''}
+                </Button>
+            </div>
+            <div className={cn(filtersOpen ? 'block' : 'hidden', 'md:block')}>
+                <Filters state={state} />
+            </div>
 
             {items.length === 0 ? (
                 <div className="flex flex-col items-start gap-2">

@@ -424,3 +424,53 @@ export async function routeChannelText(userId: string, text: string, channel: 't
         return null;
     }
 }
+
+// ───────────────────────────────────────────────────────────── the rail
+
+/** The record at a glance, beside the thread. Pure reads; every item links to where it is acted on. */
+export type ChatRail = {
+    drafts: { count: number; latest: { id: string; title: string }[] };
+    winsThisMonth: number;
+    pipeline: { toReview: number; applied: number; interviewing: number };
+    goal: { title: string; percent: number; nextStep: { title: string; href: string | null } | null } | null;
+    telegramLinked: boolean;
+};
+
+export async function getChatRail(userId: string, flags: { missions: boolean; scout: boolean }): Promise<ChatRail> {
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    const { inboxCounts } = await import('@/services/careerInbox');
+    const { STEP_HREF } = await import('@/lib/missions/stepLinks');
+    const [draftCount, latest, wins, counts, mission, telegram] = await Promise.all([
+        prisma.win.count({ where: { userId, status: WinStatus.draft } }),
+        prisma.win.findMany({ where: { userId, status: WinStatus.draft }, orderBy: { createdAt: 'desc' }, take: 3, select: { id: true, title: true } }),
+        prisma.win.count({ where: { userId, status: WinStatus.confirmed, occurredAt: { gte: monthStart } } }),
+        flags.scout ? inboxCounts(userId) : Promise.resolve(null),
+        flags.missions
+            ? prisma.mission.findFirst({
+                where: { userId, status: 'active' },
+                orderBy: { updatedAt: 'desc' },
+                select: { title: true, steps: { orderBy: { order: 'asc' }, select: { key: true, title: true, status: true } } },
+            })
+            : Promise.resolve(null),
+        prisma.channelIdentity.count({ where: { userId, channel: Channel.telegram, verified: true } }),
+    ]);
+    let goal: ChatRail['goal'] = null;
+    if (mission) {
+        const done = mission.steps.filter((step) => step.status === 'done' || step.status === 'skipped').length;
+        const next = mission.steps.find((step) => step.status === 'active' || step.status === 'pending') ?? null;
+        goal = {
+            title: mission.title,
+            percent: mission.steps.length ? Math.round((done / mission.steps.length) * 100) : 0,
+            nextStep: next ? { title: next.title, href: STEP_HREF[next.key] ?? null } : null,
+        };
+    }
+    return {
+        drafts: { count: draftCount, latest },
+        winsThisMonth: wins,
+        pipeline: { toReview: counts?.toReview ?? 0, applied: counts?.applied ?? 0, interviewing: counts?.interviewing ?? 0 },
+        goal,
+        telegramLinked: telegram > 0,
+    };
+}

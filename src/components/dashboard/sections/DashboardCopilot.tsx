@@ -229,8 +229,8 @@ export function DashboardCopilot() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Resume Copilot</h1>
-        <p className="text-muted-foreground">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">Resume Copilot</h2>
+        <p className="text-sm text-muted-foreground">
           Paste a job description to generate a tailored resume. We&apos;ll use your profile and project library.
         </p>
       </div>

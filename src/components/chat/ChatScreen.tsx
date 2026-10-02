@@ -22,6 +22,32 @@ function newClientId(): string {
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function Avatar() {
+    return (
+        <span aria-hidden className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 font-heading text-xs font-bold text-primary">
+            P
+        </span>
+    );
+}
+
+function Typing() {
+    return (
+        <div className="flex items-center gap-3" role="status" aria-label="Patronus is working">
+            <Avatar />
+            <span className="flex gap-1">
+                {[0, 150, 300].map((delay) => (
+                    <span key={delay} className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60 motion-reduce:animate-none" style={{ animationDelay: `${delay}ms` }} />
+                ))}
+            </span>
+        </div>
+    );
+}
+
+function greeting(): string {
+    const hour = new Date().getHours();
+    return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+}
+
 function Bubble({ message, onSend }: { message: ChatMessageView; onSend: (text: string) => void }) {
     if (message.role === 'user') {
         return (
@@ -33,25 +59,42 @@ function Bubble({ message, onSend }: { message: ChatMessageView; onSend: (text: 
         );
     }
     return (
-        <div className="max-w-[92%] space-y-2">
-            {message.text ? <p className={cn(typeStyles.body, 'whitespace-pre-wrap [overflow-wrap:anywhere]')}>{message.text}</p> : null}
-            {message.cards.map((card, i) => (
-                <ChatCardView key={`${message.id}:${i}`} card={card} onSend={onSend} />
-            ))}
+        <div className="flex gap-3">
+            <Avatar />
+            <div className="min-w-0 max-w-[92%] flex-1 space-y-2 pt-0.5">
+                {message.text ? <p className={cn(typeStyles.body, 'whitespace-pre-wrap [overflow-wrap:anywhere]')}>{message.text}</p> : null}
+                {message.cards.map((card, i) => (
+                    <ChatCardView key={`${message.id}:${i}`} card={card} onSend={onSend} />
+                ))}
+            </div>
         </div>
     );
 }
 
-function Empty({ suggestions, onPick }: { suggestions: ChatSuggestion[]; onPick: (s: ChatSuggestion) => void }) {
+function Empty({ suggestions, onPick, name }: { suggestions: ChatSuggestion[]; onPick: (s: ChatSuggestion) => void; name: string | null }) {
     return (
-        <div className="mx-auto max-w-xl py-12 text-center">
-            <h1 className={typeStyles.h1}>What are you working on?</h1>
-            <p className={cn(typeStyles.body, 'mt-2 text-muted-foreground')}>
-                Send me a job link, tell me what you shipped, or ask about a company. I keep everything in your record
-                and never make up a number.
+        <div className="mx-auto max-w-xl pb-8 pt-10 sm:pt-16">
+            <span aria-hidden className="grid size-11 place-items-center rounded-2xl bg-primary font-heading text-lg font-bold text-primary-foreground">P</span>
+            <h1 className={cn(typeStyles.display, 'mt-5')}>{greeting()}{name ? `, ${name}` : ''}.</h1>
+            <p className={cn(typeStyles.bodyRead, 'mt-2 text-muted-foreground')}>
+                Send me a job link, tell me what you shipped, or ask about a company. I keep it all in your record,
+                and I never make up a number.
             </p>
-            <Suggestions suggestions={suggestions} onPick={onPick} className="mt-6 justify-center" />
-            <p className={cn(typeStyles.small, 'mt-8 text-muted-foreground')}>
+            <div className="mt-8 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {suggestions.map((s, i) => (
+                    <button
+                        key={s.label}
+                        type="button"
+                        onClick={() => onPick(s)}
+                        // Four on a phone, so the composer never covers the last one.
+                        className={cn(i >= 4 && 'hidden sm:block', 'rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/5')}
+                    >
+                        <span className={cn(typeStyles.body, 'block font-medium text-foreground')}>{s.label}</span>
+                        <span className={cn(typeStyles.small, 'mt-0.5 block truncate text-muted-foreground')}>{s.prefill ? `${s.message}…` : s.message}</span>
+                    </button>
+                ))}
+            </div>
+            <p className={cn(typeStyles.small, 'mt-6 text-muted-foreground xl:hidden')}>
                 On your phone? <a href="/settings/channels" className="underline">Link Telegram</a> and message the same assistant there.
             </p>
         </div>
@@ -69,9 +112,9 @@ function Suggestions({
 }) {
     if (suggestions.length === 0) return null;
     return (
-        <div className={cn('flex flex-wrap gap-2', className)}>
+        <div className={cn('-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible', className)}>
             {suggestions.map((s) => (
-                <Button key={s.label} size="sm" variant="outline" className="rounded-full" onClick={() => onPick(s)}>
+                <Button key={s.label} size="sm" variant="outline" className="shrink-0 rounded-full" onClick={() => onPick(s)}>
                     {s.label}
                 </Button>
             ))}
@@ -79,7 +122,7 @@ function Suggestions({
     );
 }
 
-export function ChatScreen({ initial, links = { scout: true, workLog: true } }: { initial: ChatThread; links?: ChatLinks }) {
+export function ChatScreen({ initial, links = { scout: true, workLog: true }, name = null }: { initial: ChatThread; links?: ChatLinks; name?: string | null }) {
     const [messages, setMessages] = React.useState<ChatMessageView[]>(initial.messages);
     const [pending, setPending] = React.useState<Pending | null>(null);
     const [draft, setDraft] = React.useState('');
@@ -128,9 +171,9 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true } }: 
         <ChatLinksContext.Provider value={links}>
         {/* The page scrolls and the composer sticks: a fixed-height pane under
             an in-flow banner pushed the composer below the screen on phones. */}
-        <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col px-4 sm:px-6">
+        <div className="mx-auto flex min-h-[calc(100dvh-var(--shell-top,0px)-4rem)] w-full max-w-3xl flex-col px-4 sm:px-6 md:min-h-dvh">
             <div className="flex-1 space-y-5 py-6" aria-live="polite">
-                {messages.length === 0 && !pending ? <Empty suggestions={initial.suggestions} onPick={pick} /> : null}
+                {messages.length === 0 && !pending ? <Empty suggestions={initial.suggestions} onPick={pick} name={name} /> : null}
                 {messages.map((message) => (
                     <Bubble key={message.id} message={message} onSend={(text) => void send(text)} />
                 ))}
@@ -149,19 +192,18 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true } }: 
                                 </Button>
                             </div>
                         ) : (
-                            <p className={cn(typeStyles.small, 'inline-flex items-center gap-2 text-muted-foreground')}>
-                                <Loader2 className="size-3.5 animate-spin" aria-hidden /> Working on it
-                            </p>
+                            <Typing />
                         )}
                     </>
                 ) : null}
                 <div ref={endRef} />
             </div>
 
-            <div className="sticky bottom-0 border-t border-border bg-background pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+            {/* Above the phone tab bar (h-16); at the bottom on desktop. */}
+            <div className="sticky bottom-16 -mx-4 border-t border-border bg-background px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 md:bottom-0 md:pb-[max(1rem,env(safe-area-inset-bottom))]">
                 {messages.length > 0 ? <Suggestions suggestions={initial.suggestions} onPick={pick} className="mb-3" /> : null}
                 <form
-                    className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2 focus-within:ring-2 focus-within:ring-ring"
+                    className="flex items-end gap-2 rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20"
                     onSubmit={(event) => {
                         event.preventDefault();
                         if (!busy) void send(draft);

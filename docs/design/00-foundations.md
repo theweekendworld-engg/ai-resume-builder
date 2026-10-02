@@ -176,20 +176,37 @@ Two families, seven roles. Sora for structure, Inter for content.
 
 ### 5.2 App shell
 
+**Revised 2026-10-02** (chat-first redesign; `src/components/app/AppNav.tsx`).
+
 ```
-┌────────────────────────────────────────────────────────────┐
-│ TOP BAR  h=56                                              │
-│ logo | Home Log Documents Applications Radar |  + Log a win │  ⌘K  avatar
-├──────┬─────────────────────────────────────────────────────┤
-│      │  CONTENT   max-w-[1120px], px-24, py-32              │
-│      │                                                      │
-│      │  ┌──────────────────────┬──────────────────┐        │
-│      │  │  primary  (1fr)       │  rail  320px      │        │
-│      │  └──────────────────────┴──────────────────┘        │
-└──────┴─────────────────────────────────────────────────────┘
+┌──────────┬──────────────────────────────────────┬──────────────┐
+│ SIDEBAR  │  CONTENT (page owns its header)      │ RAIL 320px   │
+│ w-60 lg  │                                      │ chat only,   │
+│ w-16 md  │  Chat: thread max-w-3xl + composer   │ xl and up:   │
+│ Chat     │  Other pages: title, subtitle,       │ Work Log,    │
+│ Goals    │  primary action, tabs, max-w-5xl     │ job search,  │
+│ Work Log │                                      │ goal         │
+│ Jobs     │                                      │              │
+│ Resumes  │                                      │              │
+│ Packets  │                                      │              │
+│ Radar    │                                      │              │
+│ ──────── │                                      │              │
+│ Settings │                                      │              │
+└──────────┴──────────────────────────────────────┴──────────────┘
+Phone: top bar h-14 + bottom tabs h-16 (Chat, Work Log, Jobs, Resumes, More).
 ```
 
-Horizontal top nav, not a sidebar. Five items (PRD 05 §5.2) fit comfortably, it costs no horizontal space on laptops, and it keeps the content column centered — which matters because the log and the packet are both reading surfaces.
+A sidebar now, not the top nav below. Chat became the front door and the destinations grew to seven, which no longer fit a top bar, and every page had started bringing its own chrome (the dashboard had a second sidebar). One shell owns navigation; a page owns only its header and tabs. Only destinations whose flag is on are passed in, so no item leads to a switched-off page.
+
+- The phone's top bar sets `--shell-top` (3.5rem, 0 from `md`). Anything `sticky` to the page uses `top-[var(--shell-top,0px)]`, not `top-0`.
+- The chat composer sits `bottom-16` above the tab bar on phones.
+- Editor, onboarding, print views and admin render without the shell.
+
+<details><summary>Superseded: the 2026-07 top bar</summary>
+
+Horizontal top nav, not a sidebar. Five items (PRD 05 §5.2) fit comfortably, it costs no horizontal space on laptops, and it keeps the content column centered.
+
+</details>
 
 ### 5.3 Breakpoints
 

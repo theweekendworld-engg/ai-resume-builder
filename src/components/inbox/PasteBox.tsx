@@ -40,10 +40,11 @@ export function PasteBox() {
         router.push(`/scout/${result.data.run.id}`);
     };
 
+    // One row: chat is the main way in now, so this is the quick paste, not a composer.
     return (
         <div>
-            <form onSubmit={submit} className="surface-work rounded-xl border border-border bg-card p-4">
-                <label htmlFor={inputId} className={cn(typeStyles.small, 'text-muted-foreground')}>
+            <form onSubmit={submit} className="flex items-end gap-2 rounded-xl border border-border bg-card p-1.5 shadow-sm focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20">
+                <label htmlFor={inputId} className="sr-only">
                     Paste a LinkedIn job, post or any job link, or write a note about something you did
                 </label>
                 <Textarea
@@ -51,24 +52,23 @@ export function PasteBox() {
                     value={message}
                     onChange={(event) => setMessage(event.target.value)}
                     onKeyDown={(event) => {
-                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void submit(event);
+                        // Enter adds; Shift+Enter keeps a pasted post's line breaks.
+                        if (event.key === 'Enter' && !event.shiftKey) void submit(event);
                     }}
-                    placeholder="https://www.linkedin.com/jobs/view/…"
-                    rows={3}
+                    placeholder="Paste a job link, post or note"
+                    rows={1}
                     maxLength={100_000}
-                    className="mt-2 resize-y"
+                    className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-base shadow-none focus-visible:ring-0 sm:text-sm"
                     disabled={pending}
                 />
-                <div className="mt-3 flex items-center justify-between gap-3">
-                    <p className={cn(typeStyles.caption, 'text-muted-foreground')}>
-                        The same link twice opens the same analysis.
-                    </p>
-                    <Button type="submit" size="sm" className="gap-1.5" disabled={pending || !message.trim()}>
-                        {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Send aria-hidden className="size-3.5" />}
-                        Add
-                    </Button>
-                </div>
+                <Button type="submit" size="sm" className="h-9 shrink-0 gap-1.5" disabled={pending || !message.trim()}>
+                    {pending ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Send aria-hidden className="size-3.5" />}
+                    Add
+                </Button>
             </form>
+            <p className={cn(typeStyles.caption, 'mt-1.5 px-1 text-muted-foreground')}>
+                The same link twice opens the same analysis.
+            </p>
             {notice ? (
                 <div className="mt-4">
                     <EntitlementNotice message={notice.message} entitlement={notice.entitlement} />

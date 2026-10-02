@@ -598,8 +598,8 @@ export function ReviewQueue({
       }}
     >
       {/* Header */}
-      <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-card px-4">
-        <h2 className={cn(typeStyles.h2, 'text-foreground')}>
+      <header className="sticky top-0 z-10 flex h-12 items-center gap-1 border-b border-border bg-card px-4 sm:gap-3">
+        <h2 className={cn(typeStyles.h2, 'whitespace-nowrap text-foreground')}>
           {title}
           <span aria-hidden="true" className="mx-1.5 text-muted-foreground/50">
             ·
@@ -619,6 +619,7 @@ export function ReviewQueue({
               type="button"
               size="sm"
               variant="ghost"
+              className="px-2 sm:px-3"
               onClick={() => void runBulk('confirm')}
             >
               Confirm all
@@ -627,6 +628,7 @@ export function ReviewQueue({
               type="button"
               size="sm"
               variant="ghost"
+              className="px-2 sm:px-3"
               onClick={() => void runBulk('dismiss')}
             >
               Dismiss all

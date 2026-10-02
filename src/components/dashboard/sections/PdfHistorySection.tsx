@@ -22,8 +22,8 @@ export function PdfHistorySection({ result }: PdfHistorySectionProps) {
   if (!result.success) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold tracking-tight">PDF History</h1>
-        <p className="text-muted-foreground">
+        <h2 className="font-heading text-lg font-semibold tracking-tight">PDF History</h2>
+        <p className="text-sm text-muted-foreground">
           {result.error ?? 'Failed to load PDF history.'}
         </p>
       </div>
@@ -35,8 +35,8 @@ export function PdfHistorySection({ result }: PdfHistorySectionProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">PDF History</h1>
-        <p className="text-muted-foreground">Download previously generated PDFs.</p>
+        <h2 className="font-heading text-lg font-semibold tracking-tight">PDF History</h2>
+        <p className="text-sm text-muted-foreground">Download previously generated PDFs.</p>
       </div>
 
       <Card>

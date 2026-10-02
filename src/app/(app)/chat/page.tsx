@@ -4,6 +4,9 @@ import { getEnabledFlags } from '@/lib/flags';
 
 import { getChatThread } from '@/actions/chat';
 import { ChatScreen } from '@/components/chat/ChatScreen';
+import { ChatRail } from '@/components/chat/ChatRail';
+import { getChatRail } from '@/services/chat';
+import { prisma } from '@/lib/prisma';
 import { FeatureUnavailable } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
@@ -30,6 +33,19 @@ export default async function ChatPage() {
         return <FeatureUnavailable feature="Chat" reason="error" />;
     }
     const { userId } = await auth();
-    const flags = userId ? await getEnabledFlags(userId) : null;
-    return <ChatScreen initial={result.data} links={{ scout: Boolean(flags?.scout), workLog: Boolean(flags?.work_log) }} />;
+    if (!userId) notFound();
+    const flags = await getEnabledFlags(userId);
+    const [rail, profile] = await Promise.all([
+        getChatRail(userId, { missions: flags.missions, scout: flags.scout }),
+        prisma.userProfile.findUnique({ where: { userId }, select: { fullName: true } }),
+    ]);
+    const links = { scout: flags.scout, workLog: flags.work_log };
+    return (
+        <div className="flex">
+            <div className="min-w-0 flex-1">
+                <ChatScreen initial={result.data} links={links} name={profile?.fullName?.trim().split(/\s+/)[0] || null} />
+            </div>
+            <ChatRail rail={rail} links={{ ...links, goals: flags.missions }} />
+        </div>
+    );
 }

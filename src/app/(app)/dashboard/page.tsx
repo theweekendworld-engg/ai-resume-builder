@@ -53,6 +53,8 @@ export default async function DashboardPage({
 
   return (
     <DashboardShell
+      // A ?section= link to this same route remounts on the new section.
+      key={initialSection}
       overview={overview}
       resumes={resumes}
       profile={profile}

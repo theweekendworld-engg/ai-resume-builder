@@ -58,7 +58,7 @@ export function LogList({
         <section key={group.key} aria-labelledby={`month-${group.key}`}>
           <h2
             id={`month-${group.key}`}
-            className="sticky top-0 z-20 flex items-center gap-3 bg-background py-2"
+            className="sticky top-[var(--shell-top,0px)] z-20 flex items-center gap-3 bg-background py-2"
           >
             <span
               className={cn(
