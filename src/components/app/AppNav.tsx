@@ -162,7 +162,7 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                     <HydratedUserButton />
                 </header>
                 {/* Room for the tab bar on phones. */}
-                <main className="flex-1 pb-16 md:pb-0">{children}</main>
+                <main data-app-main className="flex-1 pb-16 md:pb-0 lg:pl-4">{children}</main>
             </div>
 
             {/* ── Mobile tab bar ──────────────────────────────────────────── */}

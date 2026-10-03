@@ -171,7 +171,7 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true }, na
         <ChatLinksContext.Provider value={links}>
         {/* The page scrolls and the composer sticks: a fixed-height pane under
             an in-flow banner pushed the composer below the screen on phones. */}
-        <div className="mx-auto flex min-h-[calc(100dvh-var(--shell-top,0px)-4rem)] w-full max-w-3xl flex-col px-4 sm:px-6 md:min-h-dvh">
+        <div data-center className="mx-auto flex min-h-[calc(100dvh-var(--shell-top,0px)-4rem)] w-full max-w-3xl flex-col px-4 sm:px-6 md:min-h-dvh">
             <div className="flex-1 space-y-5 py-6" aria-live="polite">
                 {messages.length === 0 && !pending ? <Empty suggestions={initial.suggestions} onPick={pick} name={name} /> : null}
                 {messages.map((message) => (

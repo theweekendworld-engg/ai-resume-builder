@@ -143,7 +143,7 @@ export function DashboardShell({
         sections are tabs, scrollable on a phone.
       */}
       <header className="border-b border-border bg-background px-4 sm:px-6">
-        <div className="mx-auto flex max-w-5xl items-end justify-between gap-4 pt-6 md:pt-8">
+        <div className="mx-auto flex max-w-5xl items-end justify-between gap-4 pt-6 md:pt-8 lg:ml-0">
           <div>
             <h1 className="font-heading text-2xl font-semibold tracking-tight">Resumes</h1>
             <p className="mt-1 text-sm text-muted-foreground">Every resume is built from your record. Nothing in it is made up.</p>
@@ -165,7 +165,7 @@ export function DashboardShell({
         </div>
         <nav
           aria-label="Resume sections"
-          className="mx-auto mt-4 flex max-w-5xl gap-1 overflow-x-auto [scrollbar-width:none] [&>button:first-child]:-ml-3"
+          className="mx-auto mt-4 flex max-w-5xl gap-1 lg:ml-0 overflow-x-auto [scrollbar-width:none] [&>button:first-child]:-ml-3"
         >
           {NAV_ITEMS.map((item) => {
             const active = activeSection === item.id;
@@ -193,7 +193,7 @@ export function DashboardShell({
       </header>
 
       <main className="flex-1 px-4 py-6 sm:px-6 md:py-8">
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto max-w-5xl lg:ml-0">
           {activeSection === 'overview' && (
             <OverviewSection overview={overview} usageStats={usageStats} />
           )}

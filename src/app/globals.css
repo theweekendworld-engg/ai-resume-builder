@@ -911,3 +911,18 @@ h1, h2, h3, h4, h5, h6 {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
 }
+
+/*
+ * App shell (AppNav.tsx): from lg, a page's own centred container sits against
+ * the sidebar instead of floating in the middle of the remaining width, which
+ * left a wide empty band between the nav and the content (2026-10-03).
+ * Only the page-level containers (two levels under <main>), so centred blocks
+ * inside a page keep their centring. `data-center` opts out (the chat thread
+ * is centred between the sidebar and its rail on purpose).
+ */
+@media (min-width: 1024px) {
+  [data-app-main] > .mx-auto:not([data-center]),
+  [data-app-main] > :not([data-center]) > .mx-auto:not([data-center]) {
+    margin-left: 0;
+  }
+}
