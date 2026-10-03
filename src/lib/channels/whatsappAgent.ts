@@ -142,6 +142,11 @@ export async function processWhatsAppMessage(message: WhatsAppInbound): Promise<
             await startWhatsAppScout(to, userId, text, routed?.kind === 'scout' && routed.company ? { company: routed.company } : undefined);
             return;
         }
+        const routed = await deps.routeChannelText?.(userId, text, 'whatsapp');
+        if (routed?.kind === 'reply') {
+            await say(to, routed.text);
+            return;
+        }
     }
     await say(to, TINY_HELP.replace('/help', 'help'));
 }

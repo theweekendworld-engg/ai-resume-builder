@@ -83,11 +83,13 @@ export function verifyTelegramWebhookSecret(headerValue: string | null): boolean
   return secretsMatch(headerValue, configuredSecret);
 }
 
-export async function sendTelegramMessage(input: SendMessageInput): Promise<void> {
+export async function sendTelegramMessage(input: SendMessageInput & { parseMode?: 'HTML' | 'Markdown' }): Promise<void> {
   const body: Record<string, unknown> = {
     chat_id: input.chatId,
     text: input.text,
-    parse_mode: 'Markdown',
+    // Legacy Markdown shows MarkdownV2 escapes as literal backslashes and
+    // fails on a stray `_`; new callers pass HTML with escaped text.
+    parse_mode: input.parseMode ?? 'Markdown',
     disable_web_page_preview: true,
   };
 

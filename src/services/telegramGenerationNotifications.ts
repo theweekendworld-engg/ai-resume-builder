@@ -2,6 +2,7 @@ import { Channel, GenerationStatus } from '@prisma/client';
 import { config } from '@/lib/config';
 import { readStoredPdf } from '@/lib/pdfStorage';
 import { prisma } from '@/lib/prisma';
+import { escapeTelegramHtml } from '@/lib/channels/format';
 import { sendTelegramDocument, sendTelegramMessage } from '@/lib/telegram';
 
 function isValidHttpUrl(url: string): boolean {
@@ -121,7 +122,8 @@ export async function notifyTelegramGenerationSession(sessionId: string): Promis
     });
     await sendTelegramMessage({
       chatId,
-      text: `${typeof session.atsScore === 'number' ? `ATS estimate: *${session.atsScore}%*\n` : ''}${resumeUrl ? `[Open resume](${resumeUrl})` : 'Resume generated.'}`,
+      parseMode: 'HTML',
+      text: `${typeof session.atsScore === 'number' ? `ATS estimate: <b>${session.atsScore}%</b>\n` : ''}${resumeUrl ? `<a href="${escapeTelegramHtml(resumeUrl)}">Open resume</a>` : 'Resume generated.'}`,
       replyMarkup: buildCompletionReplyMarkup(
         session.id,
         resumeUrl,
@@ -131,7 +133,8 @@ export async function notifyTelegramGenerationSession(sessionId: string): Promis
   } else {
     await sendTelegramMessage({
       chatId,
-      text: `Generation failed.\n${session.errorMessage ?? 'Unknown error'}\n\nUse /status to inspect the session or tap regenerate.`,
+      parseMode: 'HTML',
+      text: escapeTelegramHtml(`Generation failed.\n${session.errorMessage ?? 'Unknown error'}\n\nUse /status to inspect the session or tap regenerate.`),
       replyMarkup: {
         inline_keyboard: [[
           { text: 'Regenerate', callback_data: `regen:${session.id}` },

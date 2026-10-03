@@ -115,7 +115,10 @@ export async function handleTelegramScoutText(chatId: string, userId: string, te
             await startTelegramScout(chatId, userId, text, routed?.kind === 'scout' && routed.company ? { company: routed.company } : undefined);
             return true;
         }
-        await say(chatId, TINY_HELP);
+        // "hi", "thanks": the assistant answers when chat is on; a short
+        // message is never recorded as a note, so a Scout route falls back to help.
+        const routed = await deps.routeChannelText?.(userId, text, 'telegram');
+        await say(chatId, routed?.kind === 'reply' ? routed.text : TINY_HELP);
         return true;
     }
     return false;

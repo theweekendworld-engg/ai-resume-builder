@@ -1,7 +1,7 @@
 import { Channel, GenerationStatus } from '@prisma/client';
 import { z } from 'zod';
 import { consumeChannelLinkToken, describeAccount, unlinkChatByExternalId } from '@/actions/channelIdentity';
-import { routeClarificationReply, nextClarificationQuestion } from '@/lib/channels/clarification';
+import { clarificationProgress, routeClarificationReply, nextClarificationQuestion } from '@/lib/channels/clarification';
 import { escapeTelegramHtml } from '@/lib/channels/format';
 import {
   UNLINK_CONFIRM,
@@ -97,10 +97,6 @@ const UNLINK_KEYBOARD = {
   ]],
 };
 
-function escapeMarkdown(value: string): string {
-  return value.replace(/[_*\[\]()~`>#+\-=|{}.!]/g, '\\$&');
-}
-
 function parseStartPayload(text: string): string | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith('/start')) return null;
@@ -116,7 +112,7 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
     select: { userId: true, verified: true },
   });
   if (!identity?.verified) {
-    await sendTelegramMessage({ chatId, text: 'Channel not linked. Use /start link_<token> from your dashboard first.' });
+    await sayPlain(chatId, 'Channel not linked. Use /start link_<token> from your dashboard first.');
     return;
   }
 
@@ -140,10 +136,7 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
     },
   });
   if (!latest) {
-    await sendTelegramMessage({
-      chatId,
-      text: 'No generation sessions found yet. Use /generate <job description> to start.',
-    });
+    await sayPlain(chatId, 'No generation sessions found yet. Use /generate <job description> to start.');
     return;
   }
 
@@ -154,10 +147,7 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
   const progress = latest.status === 'completed'
     ? ''
     : `\nProgress: ${getGenerationProgressPercent(latest.currentStep)}%`;
-  await sendTelegramMessage({
-    chatId,
-    text: `Session ${latest.id}\nStatus: ${latest.status}\nStep: ${getGenerationStageLabel(latest.currentStep)}${progress}${atsText}${linkText}${errorText}`,
-  });
+  await sayPlain(chatId, `Session ${latest.id}\nStatus: ${latest.status}\nStep: ${getGenerationStageLabel(latest.currentStep)}${progress}${atsText}${linkText}${errorText}`);
 }
 
 export async function processTelegramUpdate(update: TelegramUpdatePayload): Promise<void> {
@@ -205,7 +195,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
         // is checked by the service, so the user id must come from the link.
         const userId = await findLinkedUserId(chatId);
         if (!userId) {
-          await sendTelegramMessage({ chatId, text: 'Link your account first, then try again.' });
+          await sayPlain(chatId, 'Link your account first, then try again.');
         } else {
           await handleTelegramScoutCallback(
             chatId,
@@ -229,9 +219,9 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
             })
           : null;
         if (!seed?.jobDescription) {
-          await sendTelegramMessage({ chatId, text: 'Unable to regenerate from this session.' });
+          await sayPlain(chatId, 'Unable to regenerate from this session.');
         } else {
-          await sendTelegramMessage({ chatId, text: 'Regenerating now. I will update you shortly.' });
+          await sayPlain(chatId, 'Regenerating now. I will update you shortly.');
           const regenerated = await processChannelGenerate({
             channel: Channel.telegram,
             externalId: chatId,
@@ -241,9 +231,9 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
             regenerateOfSessionId: sessionId,
           });
           if (!regenerated.success) {
-            await sendTelegramMessage({ chatId, text: `Regeneration failed: ${regenerated.error ?? 'Unknown error'}${failureNextStep(regenerated.code)}` });
+            await sayPlain(chatId, `Regeneration failed: ${regenerated.error ?? 'Unknown error'}${failureNextStep(regenerated.code)}`);
           } else {
-            await sendTelegramMessage({ chatId, text: 'Regeneration started. Use /status to track progress.' });
+            await sayPlain(chatId, 'Regeneration started. Use /status to track progress.');
           }
         }
       }
@@ -275,7 +265,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       select: { userId: true, verified: true },
     });
     if (!identity?.verified) {
-      await sendTelegramMessage({ chatId, text: 'Link your account first, then use /profile.' });
+      await sayPlain(chatId, 'Link your account first, then use /profile.');
       return;
     }
     const profile = await prisma.userProfile.findUnique({
@@ -290,16 +280,14 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       },
     });
     const notSet = 'Not set';
-    await sendTelegramMessage({
-      chatId,
-      text: `Your profile details:\n\nFull name: ${escapeMarkdown(profile?.fullName?.trim() || notSet)}\nEmail: ${escapeMarkdown(profile?.email?.trim() || notSet)}\nPhone: ${escapeMarkdown(profile?.phone?.trim() || notSet)}\nLocation: ${escapeMarkdown(profile?.location?.trim() || notSet)}\nTarget title: ${escapeMarkdown(profile?.defaultTitle?.trim() || notSet)}\nYears experience: ${escapeMarkdown(profile?.yearsExperience?.trim() || notSet)}\n\nTo update profile, use the dashboard profile section.`,
-    });
+    await sayPlain(chatId, `Your profile details:\n\nFull name: ${profile?.fullName?.trim() || notSet}\nEmail: ${profile?.email?.trim() || notSet}\nPhone: ${profile?.phone?.trim() || notSet}\nLocation: ${profile?.location?.trim() || notSet}\nTarget title: ${profile?.defaultTitle?.trim() || notSet}\nYears experience: ${profile?.yearsExperience?.trim() || notSet}\n\nTo update profile, use the dashboard profile section.`);
     return;
   }
 
   // /help needs no linked account: it is how an unlinked user finds out what
   // the bot does.
-  if (parseInboxCommand(text, { allowBare: false }) === 'help') {
+  // "/help what should i do now" is still /help (production 2026-10-03).
+  if (/^\/help\b/i.test(text) || parseInboxCommand(text, { allowBare: false }) === 'help') {
     await sendTelegramRich(chatId, renderHelp(config.app.url, { bare: false }), 'none');
     return;
   }
@@ -317,10 +305,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   }
 
   if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|help|unlink)\b/.test(text)) {
-    await sendTelegramMessage({
-      chatId,
-      text: 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat',
-    });
+    await sayPlain(chatId, 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat');
     return;
   }
 
@@ -375,10 +360,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
       return;
     }
 
-    await sendTelegramMessage({
-      chatId,
-      text: 'Invalid start payload. Generate a new link code from the dashboard and try again.',
-    });
+    await sayPlain(chatId, 'Invalid start payload. Generate a new link code from the dashboard and try again.');
     return;
   }
 
@@ -420,10 +402,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   }
 
   if (isGenerateCommand && !generatePayload) {
-    await sendTelegramMessage({
-      chatId,
-      text: 'Invalid usage. Send:\n/generate <full job description>',
-    });
+    await sayPlain(chatId, 'Invalid usage. Send:\n/generate <full job description>');
     return;
   }
 
@@ -435,14 +414,28 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   const clarificationRoute = pendingSession && !isGenerateCommand
     ? routeClarificationReply({ text, askedAt: pendingSession.updatedAt })
     : null;
+  if (pendingSession && clarificationRoute === 'cancel') {
+    // Conditional, so a session that moved on meanwhile is left alone; the
+    // notified state is set so the "Generation failed" notice never fires.
+    const message = 'Cancelled by you';
+    const cancelled = await prisma.generationSession.updateMany({
+      where: { id: pendingSession.id, status: GenerationStatus.awaiting_clarification },
+      data: { status: GenerationStatus.failed, errorMessage: message, lastNotifiedState: `failed:${message}` },
+    });
+    await sayPlain(chatId, cancelled.count > 0
+      ? 'Cancelled. That resume will not be made. Send /generate with a job description to start another.'
+      : 'That resume is already being made. Use /status to see it.');
+    return;
+  }
+
   const scoutOn = clarificationRoute === 'pass'
     ? await handleTelegramScoutText(chatId, identity.userId, text)
     : false;
   if (scoutOn && pendingSession) {
     const question = nextClarificationQuestion(pendingSession.clarifications);
     await sayPlain(chatId, question
-      ? `(Your resume question is still open: "${question}" Reply to it, or send "skip".)`
-      : '(A resume question is still open. Send /status to see it, or "skip all" to generate now.)');
+      ? `Your resume is still waiting on one question:\n\n${question}\n\nAnswer it, or say "skip", "skip all" or "cancel".`
+      : 'Your resume is still waiting on a question. Send /status to see it, "skip all" to make it now, or "cancel".');
     return;
   }
 
@@ -459,28 +452,22 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     });
 
     if (!result.success) {
-      await sendTelegramMessage({
-        chatId,
-        text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}${failureNextStep(result.code)}`,
-      });
+      await sayPlain(chatId, `Request failed: ${result.error ?? 'Unknown error'}${failureNextStep(result.code)}`);
       return;
     }
 
+    const ack = clarificationRoute === 'skip' ? 'Skipped. Nothing about it goes on the resume.' : clarificationRoute === 'skip_all' ? 'Skipped the rest.' : 'Saved.';
     if (result.status === 'awaiting_clarification') {
       const question = result.nextQuestion?.question ?? result.questions?.[0]?.question;
-      await sendTelegramMessage({
-        chatId,
-        text: question
-          ? escapeMarkdown(question)
-          : 'Please answer the next question to continue.',
-      });
+      const fresh = await prisma.generationSession.findUnique({ where: { id: pendingSession.id }, select: { clarifications: true } });
+      const progress = clarificationProgress(fresh?.clarifications);
+      await sayPlain(chatId, question
+        ? `${ack}\n\n${progress ? `Question ${progress.current} of ${progress.total}: ` : ''}${question}\n\nAnswer it, or say "skip", "skip all" or "cancel".`
+        : `${ack} Please answer the next question to continue.`);
       return;
     }
 
-    await sendTelegramMessage({
-      chatId,
-      text: 'All clarifications received. Generation started. Use /status for progress.',
-    });
+    await sayPlain(chatId, `${ack} That was the last question. Making your resume now; I will message you when it is ready.`);
     return;
   }
 
@@ -494,18 +481,12 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   }
 
   if (!isGenerateCommand) {
-    await sendTelegramMessage({
-      chatId,
-      text: 'Unsupported input. Use one of:\n/scout <LinkedIn job or post link>\n/generate <job description>\n/status\n/help',
-    });
+    await sayPlain(chatId, 'Unsupported input. Use one of:\n/scout <LinkedIn job or post link>\n/generate <job description>\n/status\n/help');
     return;
   }
 
   const jobDescription = generatePayload ?? '';
-  await sendTelegramMessage({
-    chatId,
-    text: 'Processing your request. Creating a generation session now.',
-  });
+  await sayPlain(chatId, 'Processing your request. Creating a generation session now.');
 
   const result = await processChannelGenerate({
     channel: Channel.telegram,
@@ -514,26 +495,18 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   });
 
   if (!result.success) {
-    await sendTelegramMessage({
-      chatId,
-      text: `Request failed: ${escapeMarkdown(result.error ?? 'Unknown error')}${failureNextStep(result.code)}`,
-    });
+    await sayPlain(chatId, `Request failed: ${result.error ?? 'Unknown error'}${failureNextStep(result.code)}`);
     return;
   }
 
   if (result.status === 'awaiting_clarification') {
     const question = result.nextQuestion?.question ?? result.questions?.[0]?.question;
-    await sendTelegramMessage({
-      chatId,
-      text: question
-        ? `I need one clarification before finalizing:\n\n${escapeMarkdown(question)}`
-        : 'I need clarification. Please answer the next question to continue.',
-    });
+    const total = result.questions?.length ?? 0;
+    await sayPlain(chatId, question
+        ? `Before I write it, ${total > 1 ? `${total} quick questions about things the job asks for that your record does not show yet` : 'one quick question about something the job asks for that your record does not show yet'}. Nothing you do not confirm goes on the resume.\n\n${total > 1 ? `Question 1 of ${total}: ` : ''}${question}\n\nAnswer it, or say "skip", "skip all" or "cancel".`
+        : 'I need clarification. Please answer the next question to continue.');
     return;
   }
 
-  await sendTelegramMessage({
-    chatId,
-    text: 'Generation started. Use /status for live progress.',
-  });
+  await sayPlain(chatId, 'Generation started. Use /status for live progress.');
 }
