@@ -201,6 +201,7 @@ A sidebar now, not the top nav below. Chat became the front door and the destina
 - The phone's top bar sets `--shell-top` (3.5rem, 0 from `md`). Anything `sticky` to the page uses `top-[var(--shell-top,0px)]`, not `top-0`.
 - The chat composer sits `bottom-16` above the tab bar on phones.
 - Editor, onboarding, print views and admin render without the shell.
+- **Page chrome** (`src/components/patterns/page.tsx`, 2026-10-03): every page is `PageHeader` (title, one-line description, one primary action) → `PageTabs` (underlined, on the header's border) → toolbar (`Segmented` status + one Filter popover + Sort) → content (a list in one bordered container, or cards). Pages use `pageContainer` (max-w-6xl, left-aligned to the sidebar). Status and fit are quiet `Pill`s with a coloured dot, never a coloured pill. One empty state per view, never one per column. Reference points: Linear, Vercel, Attio.
 
 <details><summary>Superseded: the 2026-07 top bar</summary>
 

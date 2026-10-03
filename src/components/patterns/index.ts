@@ -72,3 +72,4 @@ export {
   type WinCardState,
   type WinCardVariant,
 } from './win-card';
+export { InitialAvatar, PageBody, PageHeader, PageTabs, Pill, Segmented, pageContainer, type PageTab } from './page';

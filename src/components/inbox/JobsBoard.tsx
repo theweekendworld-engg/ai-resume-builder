@@ -3,29 +3,36 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Briefcase, Check, ChevronDown, ChevronRight, ExternalLink, MapPin, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowUpDown, Briefcase, Check, ExternalLink, ListFilter, Search, X } from 'lucide-react';
 
-import { EmptyState, typeStyles, focusRing } from '@/components/patterns';
+import { EmptyState, InitialAvatar, Pill, Segmented, focusRing } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { VerdictChip } from '@/components/scout/parts';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { VERDICT_LABEL } from '@/components/scout/format';
 import { cn } from '@/lib/utils';
-import type { BoardColumn, JobBoardItem } from '@/lib/inbox/types';
+import { BOARD_COLUMNS, COLUMN_LABELS, COLUMN_OF_STATUS, type BoardColumn, type JobBoardItem } from '@/lib/inbox/types';
 import type { FitVerdict, WorkMode } from '@/lib/scout/types';
 
 import { JobStatusMenu } from './JobStatusMenu';
-import {
-    DEFAULT_STATE,
-    groupByColumn,
-    hasBoardFilters,
-    hrefFor,
-    jobHref,
-    SINCE_OPTIONS,
-    toggle,
-    type BoardGroup,
-    type InboxState,
-} from './params';
+import { DEFAULT_STATE, hasBoardFilters, hrefFor, jobHref, SINCE_OPTIONS, toggle, type InboxState } from './params';
+
+/**
+ * The jobs list (redesign 2026-10-03).
+ *
+ * It was a five-column board: with a handful of jobs that is four columns of
+ * "Nothing here." and role titles wrapped three words a line. A list with a
+ * status switch reads like Linear's issues: one row per job, the fit as a
+ * quiet pill, the status menu in the row, and every filter behind one button.
+ */
 
 const VERDICT_FILTERS: FitVerdict[] = ['strong', 'possible', 'stretch', 'not_a_fit'];
 const WORK_MODE_FILTERS: { value: WorkMode; label: string }[] = [
@@ -35,19 +42,39 @@ const WORK_MODE_FILTERS: { value: WorkMode; label: string }[] = [
 ];
 const WORK_MODE_LABEL: Record<WorkMode, string> = { remote: 'Remote', hybrid: 'Hybrid', onsite: 'Onsite', unknown: '' };
 
-/* ───────────────────────────────────────────────────────────── filters */
+const VERDICT_DOT: Record<FitVerdict, 'success' | 'info' | 'warning' | 'muted'> = {
+    strong: 'success',
+    possible: 'info',
+    stretch: 'warning',
+    not_a_fit: 'muted',
+    unknown: 'muted',
+};
 
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+type View = 'open' | BoardColumn;
+
+export function FitPill({ verdict, score }: { verdict: FitVerdict | null; score: number | null }) {
+    if (!verdict && score === null) return null;
+    const v = verdict ?? 'unknown';
+    return (
+        <Pill dot={VERDICT_DOT[v]}>
+            {VERDICT_LABEL[v]}
+            {score !== null ? <span className="text-muted-foreground">{score}</span> : null}
+        </Pill>
+    );
+}
+
+/* ───────────────────────────────────────────────────────────── toolbar */
+
+function OptionChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
     return (
         <button
             type="button"
             aria-pressed={active}
             onClick={onClick}
             className={cn(
-                typeStyles.caption,
                 focusRing,
-                'inline-flex items-center gap-1 rounded-full border px-2.5 py-1',
-                active ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
+                'inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors',
+                active ? 'border-foreground/30 bg-secondary text-foreground' : 'border-border text-muted-foreground hover:text-foreground',
             )}
         >
             {active ? <Check aria-hidden className="size-3" /> : null}
@@ -56,264 +83,223 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
     );
 }
 
-function Filters({ state }: { state: InboxState }) {
+function FilterMenu({ state, active }: { state: InboxState; active: number }) {
     const router = useRouter();
     const [location, setLocation] = React.useState(state.location);
     React.useEffect(() => setLocation(state.location), [state.location]);
-
     // replace, not push: tweaking a filter is not a place to go back to.
     const go = (patch: Partial<InboxState>) => router.replace(hrefFor(state, patch), { scroll: false });
 
     return (
-        <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-1.5">
-                <span className={cn(typeStyles.caption, 'mr-1 text-muted-foreground')}>Fit</span>
-                {VERDICT_FILTERS.map((verdict) => (
-                    <FilterChip key={verdict} active={state.verdicts.includes(verdict)} onClick={() => go({ verdicts: toggle(state.verdicts, verdict) })}>
-                        {VERDICT_LABEL[verdict]}
-                    </FilterChip>
-                ))}
-                <span className={cn(typeStyles.caption, 'ml-3 mr-1 text-muted-foreground')}>Work mode</span>
-                {WORK_MODE_FILTERS.map((mode) => (
-                    <FilterChip key={mode.value} active={state.workModes.includes(mode.value)} onClick={() => go({ workModes: toggle(state.workModes, mode.value) })}>
-                        {mode.label}
-                    </FilterChip>
-                ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+        <Popover>
+            <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                    <ListFilter aria-hidden className="size-3.5" />
+                    Filter
+                    {active > 0 ? <span className="num rounded bg-foreground px-1 text-[10px] text-background">{active}</span> : null}
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 space-y-4 p-4">
+                <fieldset>
+                    <legend className="mb-2 text-xs font-medium text-muted-foreground">Fit</legend>
+                    <div className="flex flex-wrap gap-1.5">
+                        {VERDICT_FILTERS.map((verdict) => (
+                            <OptionChip key={verdict} active={state.verdicts.includes(verdict)} onClick={() => go({ verdicts: toggle(state.verdicts, verdict) })}>
+                                {VERDICT_LABEL[verdict]}
+                            </OptionChip>
+                        ))}
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend className="mb-2 text-xs font-medium text-muted-foreground">Work mode</legend>
+                    <div className="flex flex-wrap gap-1.5">
+                        {WORK_MODE_FILTERS.map((mode) => (
+                            <OptionChip key={mode.value} active={state.workModes.includes(mode.value)} onClick={() => go({ workModes: toggle(state.workModes, mode.value) })}>
+                                {mode.label}
+                            </OptionChip>
+                        ))}
+                    </div>
+                </fieldset>
+                <fieldset>
+                    <legend className="mb-2 text-xs font-medium text-muted-foreground">Added</legend>
+                    <div className="flex flex-wrap gap-1.5">
+                        {SINCE_OPTIONS.map((days) => (
+                            <OptionChip key={days} active={state.sinceDays === days} onClick={() => go({ sinceDays: state.sinceDays === days ? null : days })}>
+                                Last {days} days
+                            </OptionChip>
+                        ))}
+                    </div>
+                </fieldset>
                 <form
-                    className="relative"
                     onSubmit={(event) => {
                         event.preventDefault();
                         go({ location: location.trim() });
                     }}
                 >
-                    <MapPin aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <label htmlFor="job-location" className="mb-2 block text-xs font-medium text-muted-foreground">Location</label>
                     <Input
-                        aria-label="Filter by location"
+                        id="job-location"
                         value={location}
                         onChange={(event) => setLocation(event.target.value)}
                         onBlur={() => {
                             if (location.trim() !== state.location) go({ location: location.trim() });
                         }}
-                        placeholder="Location"
-                        className="h-8 w-44 pl-8 text-[13px]"
+                        placeholder="Bengaluru, Remote…"
                         maxLength={80}
+                        className="h-8 text-base sm:text-[13px]"
                     />
                 </form>
-                <span className={cn(typeStyles.caption, 'ml-2 mr-1 text-muted-foreground')}>Added</span>
-                {SINCE_OPTIONS.map((days) => (
-                    <FilterChip key={days} active={state.sinceDays === days} onClick={() => go({ sinceDays: state.sinceDays === days ? null : days })}>
-                        Last {days} days
-                    </FilterChip>
-                ))}
-                <span className={cn(typeStyles.caption, 'ml-2 mr-1 text-muted-foreground')}>Sort</span>
-                <FilterChip active={state.sort === 'fit'} onClick={() => go({ sort: 'fit' })}>Best fit</FilterChip>
-                <FilterChip active={state.sort === 'recent'} onClick={() => go({ sort: 'recent' })}>Newest</FilterChip>
-                {hasBoardFilters(state) ? (
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 gap-1 px-2 text-xs"
-                        onClick={() => go({ verdicts: [], workModes: [], location: '', sinceDays: null })}
-                    >
-                        <X aria-hidden className="size-3" /> Clear
+                {active > 0 ? (
+                    <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => router.replace(hrefFor(DEFAULT_STATE), { scroll: false })}>
+                        <X aria-hidden className="size-3" /> Clear filters
                     </Button>
                 ) : null}
-            </div>
-        </div>
+            </PopoverContent>
+        </Popover>
     );
 }
 
-/* ──────────────────────────────────────────────────────────────── card */
+function SortMenu({ state }: { state: InboxState }) {
+    const router = useRouter();
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1.5" aria-label="Sort">
+                    <ArrowUpDown aria-hidden className="size-3.5" />
+                    <span className="hidden sm:inline">{state.sort === 'recent' ? 'Newest' : 'Best fit'}</span>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={state.sort} onValueChange={(value) => router.replace(hrefFor(state, { sort: value as InboxState['sort'] }), { scroll: false })}>
+                    <DropdownMenuRadioItem value="fit">Best fit</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="recent">Newest</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+}
 
-export function JobCard({ item, onChanged }: { item: JobBoardItem; onChanged: () => void }) {
+/* ─────────────────────────────────────────────────────────────── row */
+
+function formatDay(iso: string): string {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function JobRow({ item, onChanged }: { item: JobBoardItem; onChanged: () => void }) {
     const target = jobHref(item);
-    const where = [item.location, item.workMode ? WORK_MODE_LABEL[item.workMode] : null].filter(Boolean).join(' · ');
     const title = item.role || 'Untitled role';
+    const meta = [item.company || 'Unknown company', item.location, item.workMode ? WORK_MODE_LABEL[item.workMode] : null].filter(Boolean).join(' · ');
+    // The strongest reason, or else the first concern: the row's one line of why.
+    const why = item.topStrength ?? item.topConcern;
 
-    const heading = target ? (
+    // The title link covers the row (after:inset-0); the controls sit above it.
+    const titleNode = target ? (
         target.external ? (
-            <a href={target.href} target="_blank" rel="noopener noreferrer nofollow" className={cn(focusRing, 'rounded-sm hover:underline')}>
+            <a href={target.href} target="_blank" rel="noopener noreferrer nofollow" className={cn(focusRing, 'rounded-sm after:absolute after:inset-0')}>
                 {title}
                 <ExternalLink aria-hidden className="ml-1 inline size-3 text-muted-foreground" />
             </a>
         ) : (
-            <Link href={target.href} className={cn(focusRing, 'rounded-sm hover:underline')}>{title}</Link>
+            <Link href={target.href} className={cn(focusRing, 'rounded-sm after:absolute after:inset-0')}>{title}</Link>
         )
     ) : (
         title
     );
 
     return (
-        <article className="surface-work rounded-lg border border-border bg-card p-3">
-            {/* The fit sits under the title: beside it, a column's width left
-                the role three words a line. */}
-            <h3 className={cn(typeStyles.h3, 'line-clamp-2 text-foreground')}>{heading}</h3>
-            <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-                <p className={cn(typeStyles.small, 'min-w-0 truncate text-muted-foreground')}>{item.company || 'Unknown company'}</p>
-                <VerdictChip verdict={item.verdict} score={item.fitScore} className="shrink-0" />
+        <li className="relative flex flex-col gap-3 px-4 py-3.5 transition-colors hover:bg-secondary/50 sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+                <InitialAvatar name={item.company} />
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-foreground">{titleNode}</p>
+                    <p className="truncate text-[13px] text-muted-foreground">{meta}</p>
+                    {why ? (
+                        <p className="mt-1 hidden truncate text-xs text-muted-foreground lg:block" title={why}>
+                            {item.topStrength ? <Check aria-hidden className="mr-1 inline size-3 text-success" /> : null}
+                            {why}
+                        </p>
+                    ) : null}
+                </div>
             </div>
-
-            {where ? (
-                <p className={cn(typeStyles.caption, 'mt-1.5 flex items-center gap-1 text-muted-foreground')}>
-                    <MapPin aria-hidden className="size-3" /> {where}
-                </p>
-            ) : null}
-            {/* The service writes the hint with its source host; it is shown as-is, never reformatted. */}
-            {item.compHint ? <p className={cn(typeStyles.caption, 'num mt-1 text-foreground')}>{item.compHint}</p> : null}
-
-            {item.topStrength ? (
-                <p className={cn(typeStyles.caption, 'mt-2 flex items-start gap-1.5 text-foreground')}>
-                    <Check aria-hidden className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-                    <span className="line-clamp-2">{item.topStrength}</span>
-                </p>
-            ) : null}
-            {item.topConcern ? (
-                <p className={cn(typeStyles.caption, 'mt-1 flex items-start gap-1.5 text-muted-foreground')}>
-                    <AlertCircle aria-hidden className="mt-0.5 size-3 shrink-0" />
-                    <span className="line-clamp-2">{item.topConcern}</span>
-                </p>
-            ) : null}
-
-            <div className="mt-3">
-                <JobStatusMenu target={{ workspaceId: item.workspaceId }} status={item.status} size="xs" onChanged={onChanged} />
+            {/* Fixed widths from md, so the columns line up row to row like a table. */}
+            <div className="relative z-10 flex items-center gap-3 pl-12 sm:pl-0">
+                <span className="md:flex md:w-32 md:justify-end">
+                    <FitPill verdict={item.verdict} score={item.fitScore} />
+                </span>
+                {/* The service writes the hint with its source host; shown as-is. */}
+                <span className="num hidden w-44 truncate text-xs text-muted-foreground xl:inline" title={item.compHint ?? undefined}>
+                    {item.compHint ?? ''}
+                </span>
+                <span className="md:flex md:w-32 md:justify-end">
+                    <JobStatusMenu target={{ workspaceId: item.workspaceId }} status={item.status} size="xs" onChanged={onChanged} />
+                </span>
+                <span className="num hidden w-12 text-right text-xs text-muted-foreground md:inline">{formatDay(item.updatedAt)}</span>
             </div>
-        </article>
+        </li>
     );
 }
 
-/* ────────────────────────────────────────────────────────────── column */
+/* ─────────────────────────────────────────────────────────────── list */
 
-function Column({ group, onChanged, collapsible }: { group: BoardGroup; onChanged: () => void; collapsible: boolean }) {
-    const [open, setOpen] = React.useState(!collapsible);
-    const regionId = React.useId();
-    const body = (
-        <div id={regionId} className="space-y-2">
-            {group.items.length === 0 ? (
-                <p className={cn(typeStyles.caption, 'rounded-lg border border-dashed border-border p-3 text-muted-foreground')}>Nothing here.</p>
-            ) : (
-                group.items.map((item) => <JobCard key={item.workspaceId} item={item} onChanged={onChanged} />)
-            )}
-        </div>
-    );
-
-    return (
-        <section aria-label={group.label} className="flex min-w-0 flex-col gap-2">
-            {collapsible ? (
-                <button
-                    type="button"
-                    aria-expanded={open}
-                    aria-controls={regionId}
-                    onClick={() => setOpen((value) => !value)}
-                    className={cn(typeStyles.small, focusRing, 'num flex items-center gap-1 rounded-sm font-medium text-muted-foreground hover:text-foreground')}
-                >
-                    {open ? <ChevronDown aria-hidden className="size-3.5" /> : <ChevronRight aria-hidden className="size-3.5" />}
-                    {group.label} · {group.items.length}
-                </button>
-            ) : (
-                <h2 className={cn(typeStyles.small, 'num font-medium text-muted-foreground')}>
-                    {group.label} · {group.items.length}
-                </h2>
-            )}
-            {open ? body : null}
-        </section>
-    );
-}
-
-/* ─────────────────────────────────────────────────────────────── board */
-
-/**
- * The job board. Desktop: the five columns side by side (scrolling sideways
- * when the window is narrow). Mobile: one column at a time, picked from a
- * switcher, because five 150px columns on a phone are five unreadable ones.
- * Closed is collapsed by default: it is history, not work.
- */
 export function JobsBoard({ state, items }: { state: InboxState; items: JobBoardItem[] }) {
     const router = useRouter();
-    const groups = groupByColumn(items);
-    const firstNonEmpty = groups.find((group) => group.items.length > 0)?.column ?? 'to_review';
-    const [mobileColumn, setMobileColumn] = React.useState<BoardColumn>(firstNonEmpty);
-    const [filtersOpen, setFiltersOpen] = React.useState(false);
-    const activeFilters = state.verdicts.length + state.workModes.length + (state.location ? 1 : 0) + (state.sinceDays ? 1 : 0);
     const refresh = React.useCallback(() => router.refresh(), [router]);
+    const [view, setView] = React.useState<View>('open');
+    const activeFilters = state.verdicts.length + state.workModes.length + (state.location ? 1 : 0) + (state.sinceDays ? 1 : 0);
 
-    const filtered = hasBoardFilters(state);
-
-    if (items.length === 0 && !filtered) {
+    if (items.length === 0 && !hasBoardFilters(state)) {
         return (
             <EmptyState
                 icon={Briefcase}
                 title="No jobs yet"
-                description="Send a job link to the Patronus bot on Telegram, or paste one above, and it lands here scored against your record."
-                action={{ label: 'Link Telegram', href: '/settings/channels' }}
-                secondary={{ label: 'Set your job-search preferences', href: '/settings/job-search' }}
+                description="Paste a job link in chat or with Add job, or send one to the Telegram bot. It lands here scored against your record."
+                action={{ label: 'Open chat', href: '/chat' }}
+                secondary={{ label: 'Link Telegram', href: '/settings/channels' }}
             />
         );
     }
 
+    const columnOf = (item: JobBoardItem) => COLUMN_OF_STATUS[item.status];
+    const open = items.filter((item) => columnOf(item) !== 'closed');
+    const visible = view === 'open' ? open : items.filter((item) => columnOf(item) === view);
+    const options: { value: View; label: string; count: number }[] = [
+        { value: 'open', label: 'Open', count: open.length },
+        ...BOARD_COLUMNS.map((column) => ({
+            value: column as View,
+            label: COLUMN_LABELS[column],
+            count: items.filter((item) => columnOf(item) === column).length,
+        })),
+    ];
+
     return (
-        <div className="flex flex-col gap-5">
-            {/* On a phone the filters fold away; they took half the screen. */}
-            <div className="md:hidden">
-                <Button variant="outline" size="sm" className="gap-1.5" aria-expanded={filtersOpen} onClick={() => setFiltersOpen((open) => !open)}>
-                    <SlidersHorizontal aria-hidden className="size-3.5" />
-                    Filters{activeFilters > 0 ? ` · ${activeFilters}` : ''}
-                </Button>
-            </div>
-            <div className={cn(filtersOpen ? 'block' : 'hidden', 'md:block')}>
-                <Filters state={state} />
+        <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <Segmented label="Job status" options={options} value={view} onChange={setView} />
+                <div className="flex items-center gap-2">
+                    <FilterMenu state={state} active={activeFilters} />
+                    <SortMenu state={state} />
+                </div>
             </div>
 
-            {items.length === 0 ? (
-                <div className="flex flex-col items-start gap-2">
-                    <p className={cn(typeStyles.small, 'flex items-center gap-1.5 text-muted-foreground')}>
-                        <Search aria-hidden className="size-3.5" /> No jobs match these filters.
+            {visible.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-12 text-center">
+                    <Search aria-hidden className="size-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                        {activeFilters > 0 ? 'No jobs match these filters.' : `No jobs in ${options.find((o) => o.value === view)?.label ?? 'this view'}.`}
                     </p>
-                    <Button asChild variant="outline" size="sm">
-                        <Link href={hrefFor(DEFAULT_STATE)}>Show all jobs</Link>
-                    </Button>
+                    {activeFilters > 0 ? (
+                        <Button asChild variant="outline" size="sm">
+                            <Link href={hrefFor(DEFAULT_STATE)}>Clear filters</Link>
+                        </Button>
+                    ) : null}
                 </div>
             ) : (
-                <>
-                    {/* Mobile: one column, chosen here. */}
-                    <div className="flex gap-1 overflow-x-auto md:hidden" role="tablist" aria-label="Board column">
-                        {groups.map((group) => (
-                            <button
-                                key={group.column}
-                                type="button"
-                                role="tab"
-                                aria-selected={mobileColumn === group.column}
-                                onClick={() => setMobileColumn(group.column)}
-                                className={cn(
-                                    typeStyles.caption,
-                                    focusRing,
-                                    'num shrink-0 rounded-full border px-2.5 py-1',
-                                    mobileColumn === group.column ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground',
-                                )}
-                            >
-                                {group.label} · {group.items.length}
-                            </button>
-                        ))}
-                    </div>
-                    <div className="md:hidden">
-                        {groups
-                            .filter((group) => group.column === mobileColumn)
-                            .map((group) => (
-                                <Column key={group.column} group={group} onChanged={refresh} collapsible={false} />
-                            ))}
-                    </div>
-
-                    {/* Desktop: all columns. */}
-                    <div className="hidden overflow-x-auto pb-2 md:block">
-                        <div className="grid min-w-[1000px] grid-cols-5 gap-3">
-                            {groups.map((group) => (
-                                <Column key={group.column} group={group} onChanged={refresh} collapsible={group.column === 'closed'} />
-                            ))}
-                        </div>
-                    </div>
-                </>
+                <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                    {visible.map((item) => (
+                        <JobRow key={item.workspaceId} item={item} onChanged={refresh} />
+                    ))}
+                </ul>
             )}
         </div>
     );

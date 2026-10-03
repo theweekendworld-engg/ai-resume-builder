@@ -924,5 +924,6 @@ h1, h2, h3, h4, h5, h6 {
   [data-app-main] > .mx-auto:not([data-center]),
   [data-app-main] > :not([data-center]) > .mx-auto:not([data-center]) {
     margin-left: 0;
+    padding-left: 2rem;
   }
 }

@@ -11,7 +11,7 @@ import {
 } from '@/actions/billing';
 import type { PlanPageData, UsageLineView } from '@/actions/billing.types';
 import { ProactiveDowngradeCard } from '@/components/paywall';
-import { QuotaMeter, formatWinDate, typeStyles } from '@/components/patterns';
+import { PageHeader, QuotaMeter, formatWinDate, pageContainer, typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import {
@@ -121,11 +121,9 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
   const currentPlan = COMPARISON_PLANS.find((plan) => plan.tier === data.tier) ?? null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-8">
-      <header className="mb-6">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Plan</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{FREE_FOREVER_PROMISE}</p>
-      </header>
+    <main>
+      <PageHeader title="Plan" description={FREE_FOREVER_PROMISE} />
+      <div className={cn(pageContainer, 'py-6')}>
 
       {notice ? (
         <p className={cn(typeStyles.small, 'mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-foreground')}>
@@ -328,6 +326,7 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
           {NO_DELETION_PROMISE}
         </p>
       </section>
+      </div>
     </main>
   );
 }

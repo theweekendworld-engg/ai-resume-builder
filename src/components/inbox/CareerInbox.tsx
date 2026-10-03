@@ -1,8 +1,6 @@
-import Link from 'next/link';
 import { BookOpen, Briefcase, Building2, History, NotebookPen, type LucideIcon } from 'lucide-react';
 
-import { typeStyles, focusRing } from '@/components/patterns';
-import { cn } from '@/lib/utils';
+import { PageBody, PageHeader, PageTabs } from '@/components/patterns';
 import type { CompanyItem, InboxCounts, InsightItem, JobBoardItem, NoteItem } from '@/lib/inbox/types';
 import type { ScoutRunSummary } from '@/lib/scout/types';
 
@@ -11,8 +9,8 @@ import { CompaniesTable } from './CompaniesTable';
 import { InsightsShelf } from './InsightsShelf';
 import { JobsBoard } from './JobsBoard';
 import { NotesList } from './NotesList';
-import { INBOX_TABS, pipelineSummary, tabHref, tabLabel, type InboxState, type InboxTab } from './params';
-import { PasteBox } from './PasteBox';
+import { AddJobButton } from './AddJobButton';
+import { INBOX_TABS, TAB_LABELS, tabHref, type InboxState, type InboxTab } from './params';
 
 const TAB_ICON: Record<InboxTab, LucideIcon> = {
     jobs: Briefcase,
@@ -48,61 +46,38 @@ export function CareerInbox({
     panel: InboxPanelData | null;
     panelError: string | null;
 }) {
-    const summary = pipelineSummary(counts);
+    const tabCount: Record<InboxTab, number | null> = {
+        jobs: counts ? counts.toReview + counts.applied + counts.interviewing : null,
+        insights: counts?.insights ?? null,
+        companies: null,
+        notes: counts?.draftNotes ?? null,
+        activity: null,
+    };
 
     return (
-        <div className={cn('mx-auto w-full px-4 py-6 sm:px-6 md:py-8', state.tab === 'jobs' ? 'max-w-[1200px]' : 'max-w-[860px]')}>
-            <header className="flex flex-col gap-1">
-                <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Jobs</h1>
-                <p className="text-sm text-muted-foreground">
-                    Everything you share from chat, Telegram or the extension: jobs scored against your record, posts
-                    worth keeping, and notes on their way into your Work Log.
-                </p>
-                {summary ? <p className={cn(typeStyles.small, 'num mt-1 font-medium text-foreground')}>{summary}</p> : null}
-            </header>
+        <div>
+            <PageHeader
+                title="Jobs"
+                description="Everything you share from chat, Telegram or the extension, scored against your record."
+                actions={<AddJobButton />}
+            >
+                <PageTabs
+                    label="Inbox sections"
+                    active={state.tab}
+                    tabs={INBOX_TABS.map((tab) => ({ key: tab, label: TAB_LABELS[tab], href: tabHref(tab), icon: TAB_ICON[tab], count: tabCount[tab] }))}
+                />
+            </PageHeader>
 
-            <div className="mt-5 max-w-[760px]">
-                <PasteBox />
-            </div>
-
-            <nav aria-label="Inbox sections" className="mt-8 border-b border-border">
-                <ul className="-mb-px flex gap-1 overflow-x-auto">
-                    {INBOX_TABS.map((tab) => {
-                        const Icon = TAB_ICON[tab];
-                        const active = state.tab === tab;
-                        return (
-                            <li key={tab} className="shrink-0">
-                                <Link
-                                    href={tabHref(tab)}
-                                    aria-current={active ? 'page' : undefined}
-                                    className={cn(
-                                        typeStyles.small,
-                                        focusRing,
-                                        'num inline-flex items-center gap-1.5 rounded-t-md border-b-2 px-3 py-2',
-                                        active
-                                            ? 'border-primary font-medium text-foreground'
-                                            : 'border-transparent text-muted-foreground hover:text-foreground',
-                                    )}
-                                >
-                                    <Icon aria-hidden className="size-3.5" strokeWidth={1.5} />
-                                    {tabLabel(tab, counts)}
-                                </Link>
-                            </li>
-                        );
-                    })}
-                </ul>
-            </nav>
-
-            <div className="mt-6">
+            <PageBody>
                 {panelError ? (
-                    <p className={cn(typeStyles.small, 'text-warning')} role="alert">{panelError}</p>
+                    <p className="mb-4 rounded-lg border border-warning/40 px-3 py-2 text-sm text-warning" role="alert">{panelError}</p>
                 ) : null}
                 {panel?.tab === 'jobs' ? <JobsBoard state={state} items={panel.items} /> : null}
                 {panel?.tab === 'insights' ? <InsightsShelf state={state} items={panel.items} /> : null}
                 {panel?.tab === 'companies' ? <CompaniesTable items={panel.items} /> : null}
                 {panel?.tab === 'notes' ? <NotesList items={panel.items} /> : null}
                 {panel?.tab === 'activity' ? <ActivityList runs={panel.items} /> : null}
-            </div>
+            </PageBody>
         </div>
     );
 }
