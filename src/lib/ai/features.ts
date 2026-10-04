@@ -25,6 +25,7 @@ export const FEATURE_TAGS = [
     'scout',
     'outreach',
     'chat',
+    'job_journey',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];

@@ -441,6 +441,8 @@ model ApplicationWorkspace {
   createdAt                 DateTime              @default(now())
   updatedAt                 DateTime              @updatedAt
   questions                 ApplicationQuestion[]
+  events                    ApplicationEvent[]
+  emails                    JobEmail[]
 
   @@unique([userId, sourceUrl])
   @@index([userId, updatedAt])
@@ -1722,4 +1724,129 @@ model ApiKey {
   revokedAt  DateTime?
 
   @@index([userId, createdAt])
+}
+
+
+// ─────────────────────────────────────────────────── job-search journey
+// docs/prd/11-job-journey.md. Email arrives by forwarding (no Gmail scopes),
+// the calendar by direct Google OAuth (calendar.events only).
+
+/// A user's personal forwarding address: `jobs+<token>@<INBOUND_EMAIL_DOMAIN>`.
+model EmailInbox {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  /// Unguessable; the address is the credential, so it can be rotated.
+  token                String    @unique
+  /// Gmail's forwarding confirmation, shown in Settings so setup can finish.
+  forwardingCode       String?
+  forwardingConfirmUrl String?
+  forwardingSeenAt     DateTime?
+  lastReceivedAt       DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+enum JobEmailKind {
+  recruiter_outreach
+  application_received
+  interview_request
+  assessment
+  rejection
+  offer
+  scheduling
+  other_job
+  not_job
+}
+
+enum JobEmailStatus {
+  pending
+  processed
+  failed
+  ignored
+}
+
+model JobEmail {
+  id             String                @id @default(cuid())
+  userId         String
+  /// RFC 5322 Message-ID (or the provider's id). Idempotency: a re-delivered
+  /// message is the same row.
+  messageId      String
+  fromEmail      String
+  fromName       String?
+  subject        String
+  receivedAt     DateTime
+  /// Plain text, capped. Purged after the retention window (purge_expired).
+  textBody       String
+  status         JobEmailStatus        @default(pending)
+  kind           JobEmailKind?
+  /// One line, written by the classifier and checked by the numeric guard.
+  summary        String?
+  /// As the email names them, for "create a job from this email".
+  company        String?
+  role           String?
+  workspaceId    String?
+  workspace      ApplicationWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  /// The move this email made, so it can be shown and undone.
+  previousStatus ApplicationStatus?
+  appliedStatus  ApplicationStatus?
+  draftSubject   String?
+  draftBody      String?
+  draftedAt      DateTime?
+  handledAt      DateTime?
+  error          String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([userId, messageId])
+  @@index([userId, receivedAt])
+  @@index([workspaceId])
+}
+
+enum ApplicationEventKind {
+  status_change
+  email
+  interview
+  follow_up_due
+  note
+}
+
+/// The application's journey, one row per thing that happened.
+model ApplicationEvent {
+  id          String               @id @default(cuid())
+  userId      String
+  workspaceId String
+  workspace   ApplicationWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  kind        ApplicationEventKind
+  occurredAt  DateTime
+  title       String
+  detail      String?
+  /// email | calendar | user | scout | system
+  source      String
+  /// The source item (JobEmail id, calendar event id, follow-up key). One
+  /// event per item: re-syncs and re-deliveries are no-ops.
+  refId       String?
+  fromStatus  ApplicationStatus?
+  toStatus    ApplicationStatus?
+  createdAt   DateTime             @default(now())
+
+  @@unique([workspaceId, kind, refId])
+  @@index([userId, occurredAt])
+  @@index([workspaceId, occurredAt])
+}
+
+/// Google Calendar, connected directly (not through Clerk). Tokens are
+/// AES-256-GCM encrypted with TOKEN_ENCRYPTION_KEY (src/lib/crypto/tokens.ts).
+model GoogleConnection {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  googleEmail      String
+  scopes           String[]
+  accessTokenEnc   String
+  refreshTokenEnc  String?
+  expiresAt        DateTime
+  timeZone         String?
+  calendarSyncedAt DateTime?
+  lastError        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }

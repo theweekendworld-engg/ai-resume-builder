@@ -14,13 +14,19 @@ export const PURGE_EXPIRED_JOB_KIND = 'purge_expired' as const;
 const DAY = 86_400_000;
 export const STALE_RUN_MS = 15 * 60_000;
 export const STALE_GENERATION_MS = 30 * 60_000;
+/** Forwarded email text is kept this long, then blanked; the summary and the timeline stay (docs/prd/11 §8). */
+export const JOB_EMAIL_BODY_RETENTION_DAYS = 180;
 
 export const purgeExpiredHandler: JobHandler = async (_payload, ctx): Promise<JobResultObject> => {
     const now = Date.now();
-    const [rateLimits, grants, scores] = await Promise.all([
+    const [rateLimits, grants, scores, emailBodies] = await Promise.all([
         prisma.rateLimitHit.deleteMany({ where: { windowStart: { lt: new Date(now - 2 * DAY) } } }),
         prisma.extensionConnectGrant.deleteMany({ where: { expiresAt: { lt: new Date(now - DAY) } } }),
         prisma.pendingScore.deleteMany({ where: { expiresAt: { lt: new Date(now) } } }),
+        prisma.jobEmail.updateMany({
+            where: { receivedAt: { lt: new Date(now - JOB_EMAIL_BODY_RETENTION_DAYS * DAY) }, textBody: { not: '' } },
+            data: { textBody: '', draftBody: null },
+        }),
     ]);
     // Work a killed function left mid-flight. Marked failed so it can be
     // retried; before this, nothing ever moved it, and a stalled Scout run
@@ -35,7 +41,7 @@ export const purgeExpiredHandler: JobHandler = async (_payload, ctx): Promise<Jo
             data: { status: 'failed', errorMessage: 'Generation stopped before it finished. Retry it.' },
         }),
     ]);
-    const result = { rateLimits: rateLimits.count, grants: grants.count, scores: scores.count, staleRuns: runs.count, staleGenerations: sessions.count };
+    const result = { rateLimits: rateLimits.count, grants: grants.count, scores: scores.count, emailBodies: emailBodies.count, staleRuns: runs.count, staleGenerations: sessions.count };
     ctx.log('purge_expired: done', result);
     return result;
 };

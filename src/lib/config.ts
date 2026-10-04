@@ -190,6 +190,10 @@ export const config = {
             // Chat routing: high volume, latency-felt, classification-shaped.
             // Scout's cheap default, with its own override.
             chatRoute: process.env.OPENAI_MODEL_CHAT || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            // Job email: classification on every forwarded message, and a
+            // short reply draft on request. Scout's cheap default.
+            jobEmailClassify: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            jobEmailReply: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
         },
         /**
          * Embeddings keep their own credentials, and that is load-bearing.

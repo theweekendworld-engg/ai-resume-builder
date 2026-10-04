@@ -135,6 +135,13 @@ export const SERVER_EVENTS = [
     'inbox_job_status_changed',
     // Chat — docs/prd/10-chat.md. One event per message, with the action chosen.
     'chat_message',
+    // Job-search journey (docs/prd/11-job-journey.md)
+    'job_email_received',
+    'job_email_drafted',
+    'job_status_from_email',
+    'calendar_connected',
+    'calendar_synced',
+    'follow_up_due',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];

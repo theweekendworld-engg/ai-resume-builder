@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, Inbox, NotebookPen, Send, Target } from 'lucide-react';
+import { ArrowRight, Inbox, Mail, NotebookPen, Send, Target } from 'lucide-react';
 
 import { typeStyles } from '@/components/patterns';
 import type { ChatRail as RailData } from '@/services/chat';
@@ -56,6 +56,15 @@ export function ChatRail({ rail, links }: { rail: RailData; links: { scout: bool
                                 </div>
                             ))}
                         </dl>
+                        {rail.emailsToReply ? (
+                            <Link href="/scout?tab=email" className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2 transition-colors hover:border-primary/40">
+                                <span className={cn(typeStyles.small, 'flex items-center gap-2 font-medium')}>
+                                    <Mail className="size-3.5 text-muted-foreground" aria-hidden />
+                                    {rail.emailsToReply} email{rail.emailsToReply === 1 ? '' : 's'} need a reply
+                                </span>
+                                <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden />
+                            </Link>
+                        ) : null}
                         <Link href="/scout" className={cn(typeStyles.small, 'mt-2 inline-flex items-center gap-1 font-medium text-primary hover:underline')}>
                             Open your jobs <ArrowRight className="size-3.5" aria-hidden />
                         </Link>

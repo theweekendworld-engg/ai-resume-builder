@@ -54,6 +54,7 @@ export type PeriodicScheduleResult = {
     purgeJobId: string | null;
     operatorDigestJobId: string | null;
     downgradeJobId: string | null;
+    journeyJobId: string | null;
 };
 
 /**
@@ -78,6 +79,7 @@ export async function schedulePeriodicWork(
         purgeJobId: null,
         operatorDigestJobId: null,
         downgradeJobId: null,
+        journeyJobId: null,
     };
 
     // Priority: lower runs first. Capture before anything that reads drafts;
@@ -91,6 +93,8 @@ export async function schedulePeriodicWork(
         // Daily; the per-mission cadence is enforced inside the handler.
         ['missionNudgeJobId', MISSION_NUDGE_JOB_KIND, `${MISSION_NUDGE_JOB_KIND}:${day}`, 75],
         ['downgradeJobId', 'proactive_downgrade', `proactive_downgrade:${day}`, 90],
+        // Job-search journey: calendar sync, follow-up nudges, stuck email (docs/prd/11 §7).
+        ['journeyJobId', 'journey_daily', `journey_daily:${day}`, 70],
         // Monthly. Keyed to the month, so the first tick of the month runs it
         // and any later tick that month (or a recovery after a missed day) is a no-op.
         ['radarSnapshotJobId', RADAR_SNAPSHOT_JOB_KIND, `${RADAR_SNAPSHOT_JOB_KIND}:${month}`, 80],

@@ -79,3 +79,14 @@ it closes. Status: ✅ shipped · 🔨 in progress · ⏳ next · 👤 needs the
 | 🔨 | End-to-end QA harness over every flow (real model, local stack), each step pass/fail, run before launch |
 | 👤 | Clerk production instance: user ID migration (every table keys on the dev-instance id), DNS, own GitHub OAuth app |
 | 👤 | Razorpay keys → payments |
+
+## Wave 7 — the job-search journey (docs/prd/11-job-journey.md)
+
+| | Item |
+|---|---|
+| ✅ | Forwarded job email filed per application, forward-only moves with undo, reply drafts → Gmail compose |
+| ✅ | Google Calendar (direct OAuth, calendar.events): interviews on the timeline, follow-up reminders |
+| ✅ | Daily follow-up nudges for quiet applications; per-job timeline |
+| 👤 | Inbound email provider + MX for `in.patronus.cv`; `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_SECRET` |
+| 👤 | Google Cloud OAuth client + consent screen; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`; verification |
+| 👤 | Enable `job_journey` in /admin |

@@ -18,11 +18,13 @@ import {
 } from '@/lib/inbox/types';
 import type { FitVerdict, WorkMode } from '@/lib/scout/types';
 
-export const INBOX_TABS = ['jobs', 'insights', 'companies', 'notes', 'activity'] as const;
+export const INBOX_TABS = ['jobs', 'email', 'insights', 'companies', 'notes', 'activity'] as const;
 export type InboxTab = (typeof INBOX_TABS)[number];
 
 export const TAB_LABELS: Record<InboxTab, string> = {
     jobs: 'Jobs',
+    // Forwarded job email (docs/prd/11-job-journey.md); shown with `job_journey`.
+    email: 'Email',
     insights: 'Insights',
     companies: 'Companies',
     notes: 'Notes',

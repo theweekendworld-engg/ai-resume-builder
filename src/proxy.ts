@@ -57,6 +57,8 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/whatsapp/webhook',
     // Svix-signed (src/app/api/clerk/webhook/route.ts).
     '/api/clerk/webhook',
+    // Forwarded job email: INBOUND_EMAIL_SECRET (src/app/api/inbound/email/route.ts).
+    '/api/inbound/email',
     // Personal API keys (src/lib/apiKeys.ts); the user comes from the key.
     '/api/cli(.*)',
 ]);
@@ -102,7 +104,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process') && !pathname.startsWith('/api/stripe/webhook');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/inbound/email');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

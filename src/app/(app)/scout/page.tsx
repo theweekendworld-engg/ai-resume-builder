@@ -37,6 +37,22 @@ async function loadPanel(state: InboxState): Promise<Result<InboxPanelData>> {
             const result = await getChatNotes();
             return result.success ? { success: true, data: { tab: 'notes', items: result.data } } : result;
         }
+        case 'email': {
+            const { userId } = await auth();
+            if (!userId || !(await isEnabled(userId, 'job_journey'))) return { success: false, error: 'not_available' } as Result<InboxPanelData>;
+            const { listJobEmails } = await import('@/services/journey');
+            const { prisma } = await import('@/lib/prisma');
+            const [items, jobs] = await Promise.all([
+                listJobEmails(userId),
+                prisma.applicationWorkspace.findMany({
+                    where: { userId, applicationStatus: { not: 'archived' } },
+                    orderBy: { updatedAt: 'desc' },
+                    take: 100,
+                    select: { id: true, companyName: true, roleTitle: true },
+                }),
+            ]);
+            return { success: true, data: { tab: 'email', items, jobs: jobs.map((j) => ({ workspaceId: j.id, label: `${j.roleTitle ?? 'Untitled role'}${j.companyName ? ` · ${j.companyName}` : ''}` })) } };
+        }
         case 'activity': {
             const result = await listScouts();
             return result.success ? { success: true, data: { tab: 'activity', items: result.data } } : result;
@@ -60,7 +76,13 @@ export default async function InboxPage({
     }
 
     const state = parseInboxState(await searchParams);
-    const [counts, panel] = await Promise.all([getInboxCounts(), loadPanel(state)]);
+    const journey = await isEnabled(userId, 'job_journey');
+    const { unhandledEmailCount } = await import('@/services/journey');
+    const [counts, panel, unhandledEmails] = await Promise.all([
+        getInboxCounts(),
+        loadPanel(state),
+        journey ? unhandledEmailCount(userId) : Promise.resolve(0),
+    ]);
 
     return (
         <CareerInbox
@@ -68,6 +90,8 @@ export default async function InboxPage({
             counts={counts.success ? counts.data : null}
             panel={panel.success ? panel.data : null}
             panelError={panel.success ? null : 'This part of your inbox did not load. Refresh to try again.'}
+            journey={journey}
+            unhandledEmails={unhandledEmails}
         />
     );
 }

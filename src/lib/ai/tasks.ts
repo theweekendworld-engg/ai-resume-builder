@@ -54,6 +54,10 @@ export const TASK_KEYS = [
     // Chat (docs/prd/10-chat.md): one routing call per message. It picks an
     // action from a closed list; the code runs it.
     'chatRoute',
+    // Job-search journey (docs/prd/11-job-journey.md): file a forwarded email
+    // against an application, and draft the reply or follow-up.
+    'jobEmailClassify',
+    'jobEmailReply',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];
@@ -127,6 +131,7 @@ export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 
     scoutPostingRead: 'low',
     // A person is waiting on every message; routing is classification.
     chatRoute: 'low',
+    jobEmailClassify: 'low',
 };
 
 export function resolveTaskReasoningEffort(

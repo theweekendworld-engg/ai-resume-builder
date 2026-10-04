@@ -24,6 +24,7 @@ import { proactiveDowngradeHandler } from './handlers/proactiveDowngrade';
 import { monthInReviewHandler } from './handlers/monthInReview';
 import { weeklyDigestHandler } from './handlers/weeklyDigest';
 import { reconcileGraphHandler } from './handlers/reconcileGraph';
+import { journeyDailyHandler } from './handlers/journeyDaily';
 
 let registered = false;
 
@@ -46,6 +47,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('radar_snapshot', radarSnapshotHandler);
     registerHandler('mission_nudge', missionNudgeHandler);
     registerHandler('reconcile_qdrant', reconcileGraphHandler);
+    registerHandler('journey_daily', journeyDailyHandler);
     // `email_send` stays deliberately unregistered — mail is sent inline by
     // the handler that composes it, and registry.test.ts asserts the absence.
 

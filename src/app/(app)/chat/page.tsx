@@ -36,7 +36,7 @@ export default async function ChatPage() {
     if (!userId) notFound();
     const flags = await getEnabledFlags(userId);
     const [rail, profile] = await Promise.all([
-        getChatRail(userId, { missions: flags.missions, scout: flags.scout }),
+        getChatRail(userId, { missions: flags.missions, scout: flags.scout, journey: flags.job_journey }),
         prisma.userProfile.findUnique({ where: { userId }, select: { fullName: true } }),
     ]);
     const links = { scout: flags.scout, workLog: flags.work_log };

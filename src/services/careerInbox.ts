@@ -190,6 +190,8 @@ export async function setJobStatus(
         data: { applicationStatus: next as ApplicationStatus },
         select: workspaceSelect,
     });
+    const { recordStatusChange } = await import('@/services/journey');
+    await recordStatusChange({ userId, workspaceId: row.id, from: current as ApplicationStatus, to: next as ApplicationStatus, source: 'user' });
     await track(userId, INBOX_EVENTS.statusChanged, {
         feature: 'scout',
         workspaceId: row.id,

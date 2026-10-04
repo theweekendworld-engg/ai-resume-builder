@@ -1,4 +1,4 @@
-import { BookOpen, Briefcase, Building2, History, NotebookPen, type LucideIcon } from 'lucide-react';
+import { BookOpen, Briefcase, Building2, History, Mail, NotebookPen, type LucideIcon } from 'lucide-react';
 
 import { PageBody, PageHeader, PageTabs } from '@/components/patterns';
 import type { CompanyItem, InboxCounts, InsightItem, JobBoardItem, NoteItem } from '@/lib/inbox/types';
@@ -8,12 +8,15 @@ import { ActivityList } from './ActivityList';
 import { CompaniesTable } from './CompaniesTable';
 import { InsightsShelf } from './InsightsShelf';
 import { JobsBoard } from './JobsBoard';
+import { EmailList, type JobOption } from '@/components/journey/EmailList';
+import type { JobEmailView } from '@/services/journey';
 import { NotesList } from './NotesList';
 import { AddJobButton } from './AddJobButton';
 import { INBOX_TABS, TAB_LABELS, tabHref, type InboxState, type InboxTab } from './params';
 
 const TAB_ICON: Record<InboxTab, LucideIcon> = {
     jobs: Briefcase,
+    email: Mail,
     insights: BookOpen,
     companies: Building2,
     notes: NotebookPen,
@@ -25,7 +28,8 @@ export type InboxPanelData =
     | { tab: 'insights'; items: InsightItem[] }
     | { tab: 'companies'; items: CompanyItem[] }
     | { tab: 'notes'; items: NoteItem[] }
-    | { tab: 'activity'; items: ScoutRunSummary[] };
+    | { tab: 'activity'; items: ScoutRunSummary[] }
+    | { tab: 'email'; items: JobEmailView[]; jobs: JobOption[] };
 
 /**
  * `/scout` — the career inbox. Everything shared from any channel, arranged:
@@ -40,14 +44,20 @@ export function CareerInbox({
     counts,
     panel,
     panelError,
+    journey = false,
+    unhandledEmails = 0,
 }: {
     state: InboxState;
     counts: InboxCounts | null;
     panel: InboxPanelData | null;
     panelError: string | null;
+    /** `job_journey` is on: the Email tab and each job's timeline. */
+    journey?: boolean;
+    unhandledEmails?: number;
 }) {
     const tabCount: Record<InboxTab, number | null> = {
         jobs: counts ? counts.toReview + counts.applied + counts.interviewing : null,
+        email: unhandledEmails || null,
         insights: counts?.insights ?? null,
         companies: null,
         notes: counts?.draftNotes ?? null,
@@ -64,7 +74,7 @@ export function CareerInbox({
                 <PageTabs
                     label="Inbox sections"
                     active={state.tab}
-                    tabs={INBOX_TABS.map((tab) => ({ key: tab, label: TAB_LABELS[tab], href: tabHref(tab), icon: TAB_ICON[tab], count: tabCount[tab] }))}
+                    tabs={INBOX_TABS.filter((tab) => tab !== 'email' || journey).map((tab) => ({ key: tab, label: TAB_LABELS[tab], href: tabHref(tab), icon: TAB_ICON[tab], count: tabCount[tab] }))}
                 />
             </PageHeader>
 
@@ -72,7 +82,8 @@ export function CareerInbox({
                 {panelError ? (
                     <p className="mb-4 rounded-lg border border-warning/40 px-3 py-2 text-sm text-warning" role="alert">{panelError}</p>
                 ) : null}
-                {panel?.tab === 'jobs' ? <JobsBoard state={state} items={panel.items} /> : null}
+                {panel?.tab === 'jobs' ? <JobsBoard state={state} items={panel.items} journey={journey} /> : null}
+                {panel?.tab === 'email' ? <EmailList initial={panel.items} jobs={panel.jobs} /> : null}
                 {panel?.tab === 'insights' ? <InsightsShelf state={state} items={panel.items} /> : null}
                 {panel?.tab === 'companies' ? <CompaniesTable items={panel.items} /> : null}
                 {panel?.tab === 'notes' ? <NotesList items={panel.items} /> : null}

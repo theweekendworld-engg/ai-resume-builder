@@ -24,6 +24,9 @@ export const FEATURE_FLAGS = [
     'scout',
     // The chat front door (docs/prd/10-chat.md).
     'chat',
+    // Email forwarding, Google Calendar and the application timeline
+    // (docs/prd/11-job-journey.md).
+    'job_journey',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];

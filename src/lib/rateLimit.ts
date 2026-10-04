@@ -44,6 +44,10 @@ export const RATE_LIMITS = {
     kick: { limit: 1, windowSec: 60, message: 'Already draining.' },
     /** Retrying one failed generation: a few tries, not a free loop. Keyed by session. */
     retry: { limit: 3, windowSec: 86_400, message: 'This one has been retried a few times today. Start a new resume instead.' },
+    /** Forwarded job email, per user: each one is a model call. A forwarding loop or a newsletter flood stops here. */
+    inboundEmail: { limit: 150, windowSec: 86_400, message: 'Too many forwarded emails today.' },
+    /** Google Calendar "sync now", per user. */
+    calendarSync: { limit: 6, windowSec: 3_600, message: 'Synced a few times already. Try again later.' },
 } as const satisfies Record<string, Window>;
 
 export type RateBucket = keyof typeof RATE_LIMITS;

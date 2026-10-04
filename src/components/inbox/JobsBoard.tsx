@@ -23,6 +23,7 @@ import { BOARD_COLUMNS, COLUMN_LABELS, COLUMN_OF_STATUS, type BoardColumn, type 
 import type { FitVerdict, WorkMode } from '@/lib/scout/types';
 
 import { JobStatusMenu } from './JobStatusMenu';
+import { JourneySheet } from '@/components/journey/JourneySheet';
 import { DEFAULT_STATE, hasBoardFilters, hrefFor, jobHref, SINCE_OPTIONS, toggle, type InboxState } from './params';
 
 /**
@@ -186,7 +187,7 @@ function formatDay(iso: string): string {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function JobRow({ item, onChanged }: { item: JobBoardItem; onChanged: () => void }) {
+export function JobRow({ item, onChanged, journey = false }: { item: JobBoardItem; onChanged: () => void; journey?: boolean }) {
     const target = jobHref(item);
     const title = item.role || 'Untitled role';
     const meta = [item.company || 'Unknown company', item.location, item.workMode ? WORK_MODE_LABEL[item.workMode] : null].filter(Boolean).join(' · ');
@@ -235,6 +236,7 @@ export function JobRow({ item, onChanged }: { item: JobBoardItem; onChanged: () 
                     <JobStatusMenu target={{ workspaceId: item.workspaceId }} status={item.status} size="xs" onChanged={onChanged} />
                 </span>
                 <span className="num hidden w-12 text-right text-xs text-muted-foreground md:inline">{formatDay(item.updatedAt)}</span>
+                {journey ? <JourneySheet workspaceId={item.workspaceId} title={`${title}${item.company ? ` · ${item.company}` : ''}`} /> : null}
             </div>
         </li>
     );
@@ -242,7 +244,7 @@ export function JobRow({ item, onChanged }: { item: JobBoardItem; onChanged: () 
 
 /* ─────────────────────────────────────────────────────────────── list */
 
-export function JobsBoard({ state, items }: { state: InboxState; items: JobBoardItem[] }) {
+export function JobsBoard({ state, items, journey = false }: { state: InboxState; items: JobBoardItem[]; journey?: boolean }) {
     const router = useRouter();
     const refresh = React.useCallback(() => router.refresh(), [router]);
     const [view, setView] = React.useState<View>('open');
@@ -297,7 +299,7 @@ export function JobsBoard({ state, items }: { state: InboxState; items: JobBoard
             ) : (
                 <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
                     {visible.map((item) => (
-                        <JobRow key={item.workspaceId} item={item} onChanged={refresh} />
+                        <JobRow key={item.workspaceId} item={item} onChanged={refresh} journey={journey} />
                     ))}
                 </ul>
             )}

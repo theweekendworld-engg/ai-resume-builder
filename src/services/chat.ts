@@ -434,9 +434,11 @@ export type ChatRail = {
     pipeline: { toReview: number; applied: number; interviewing: number };
     goal: { title: string; percent: number; nextStep: { title: string; href: string | null } | null } | null;
     telegramLinked: boolean;
+    /** Forwarded job emails waiting on a reply; null when the journey is off. */
+    emailsToReply: number | null;
 };
 
-export async function getChatRail(userId: string, flags: { missions: boolean; scout: boolean }): Promise<ChatRail> {
+export async function getChatRail(userId: string, flags: { missions: boolean; scout: boolean; journey?: boolean }): Promise<ChatRail> {
     const monthStart = new Date();
     monthStart.setUTCDate(1);
     monthStart.setUTCHours(0, 0, 0, 0);
@@ -472,5 +474,6 @@ export async function getChatRail(userId: string, flags: { missions: boolean; sc
         pipeline: { toReview: counts?.toReview ?? 0, applied: counts?.applied ?? 0, interviewing: counts?.interviewing ?? 0 },
         goal,
         telegramLinked: telegram > 0,
+        emailsToReply: flags.journey ? await (await import('@/services/journey')).unhandledEmailCount(userId) : null,
     };
 }
