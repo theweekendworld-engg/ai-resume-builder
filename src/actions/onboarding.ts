@@ -196,9 +196,11 @@ export async function finishOnboarding(requestedNext?: string): Promise<Result<{
     // Never the builder by default: a job-description box is a dead end for
     // someone with no resume in the product yet (audit 2026-09-27, D). The
     // dashboard's first-run card names the one next step for their state.
-    // Chat, when it is on, is where everything starts (src/lib/homeRoute.ts).
-    if (chatEnabled) return ok({ next: '/chat' });
-    return ok({ next: experiences > 0 && missionsEnabled ? '/home' : '/dashboard' });
+    // Home is where everything starts (src/lib/homeRoute.ts): its setup
+    // checklist names the next step for their state.
+    void chatEnabled;
+    void missionsEnabled;
+    return ok({ next: '/overview' });
 }
 
 /** Leave without importing. Recorded, because a skip is a real signal. */

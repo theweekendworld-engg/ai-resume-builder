@@ -277,26 +277,27 @@ describe('the welcome state decides what to ask', () => {
 });
 
 describe('where it sends people', () => {
-    test('no history goes to the dashboard, never a job-description box', async () => {
-        // The builder cannot use an empty profile; the dashboard names the
-        // next step (audit 2026-09-27, D).
+    // Since 2026-10-04 everyone lands on Home (/overview): its setup checklist
+    // names the next step for their state, and the mission they picked is on it.
+    test('no history goes to Home, never a job-description box', async () => {
+        // The builder cannot use an empty profile (audit 2026-09-27, D).
         signIn('exit-empty');
         const result = await onboarding.finishOnboarding();
         if (!result.success) throw new Error(result.error);
-        expect(result.data.next).toBe('/dashboard');
+        expect(result.data.next).toBe('/overview');
     });
 
-    test('history but no missions also goes to the dashboard', async () => {
+    test('history but no missions also goes to Home', async () => {
         const userId = signIn('exit-history');
         await prisma.userExperience.create({
             data: { userId, company: 'Flexport', role: 'Engineer', startDate: '2021-01', highlights: [] },
         });
         const result = await onboarding.finishOnboarding();
         if (!result.success) throw new Error(result.error);
-        expect(result.data.next).toBe('/dashboard');
+        expect(result.data.next).toBe('/overview');
     });
 
-    test('history plus missions goes to Home, where the mission they picked lives', async () => {
+    test('history plus missions goes to Home, where the mission they picked shows', async () => {
         // The one destination with something on it. Sending this user to the
         // builder instead would hide the mission they chose thirty seconds ago.
         const userId = signIn('exit-home');
@@ -307,7 +308,7 @@ describe('where it sends people', () => {
         try {
             const result = await onboarding.finishOnboarding();
             if (!result.success) throw new Error(result.error);
-            expect(result.data.next).toBe('/home');
+            expect(result.data.next).toBe('/overview');
         } finally {
             await setMissionsFlag(false);
         }

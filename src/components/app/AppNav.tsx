@@ -15,6 +15,7 @@ import {
     Radar,
     Settings,
     Sparkles,
+    Target,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -37,14 +38,16 @@ import { cn } from '@/lib/utils';
  * admin) render without the shell.
  */
 
-export type NavDestination = 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
+export type NavDestination = 'overview' | 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
 
 type Item = { key: NavDestination; href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
 const DESTINATIONS: Record<NavDestination, Omit<Item, 'key'>> = {
+    // Everything on one screen: what needs you, the pipeline, the record.
+    overview: { href: '/overview', label: 'Home', icon: Home },
     chat: { href: '/chat', label: 'Chat', icon: MessageSquare },
     // Missions: the goal you are working toward and its next step.
-    home: { href: '/home', label: 'Goals', icon: Home },
+    home: { href: '/home', label: 'Goals', icon: Target },
     log: { href: '/log', label: 'Work Log', icon: NotebookPen },
     // The route stays /scout (links in chat messages point there).
     scout: { href: '/scout', label: 'Jobs', icon: Inbox },
@@ -53,11 +56,11 @@ const DESTINATIONS: Record<NavDestination, Omit<Item, 'key'>> = {
     radar: { href: '/radar', label: 'Radar', icon: Radar },
 };
 
-/** The order of the user's day: talk, then what they are working toward, then the records. */
-const ORDER: NavDestination[] = ['chat', 'home', 'log', 'scout', 'resumes', 'packets', 'radar'];
+/** The order of the user's day: what needs me, talk, what I am working toward, then the records. */
+const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'resumes', 'packets', 'radar'];
 
 /** On a phone, four tabs and "More". Chosen by how often each is opened. */
-const MOBILE_TABS: NavDestination[] = ['chat', 'scout', 'log', 'resumes'];
+const MOBILE_TABS: NavDestination[] = ['overview', 'chat', 'scout', 'log'];
 
 const OWNS_CHROME = [/^\/editor(\/|$)/, /^\/welcome(\/|$)/, /\/print(\/|$)/, /^\/admin(\/|$)/];
 

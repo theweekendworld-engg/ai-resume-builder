@@ -122,10 +122,10 @@ function Suggestions({
     );
 }
 
-export function ChatScreen({ initial, links = { scout: true, workLog: true }, name = null }: { initial: ChatThread; links?: ChatLinks; name?: string | null }) {
+export function ChatScreen({ initial, links = { scout: true, workLog: true }, name = null, prefill = '' }: { initial: ChatThread; links?: ChatLinks; name?: string | null; /** From Home's "Ask Patronus": put in the composer, not sent. */ prefill?: string }) {
     const [messages, setMessages] = React.useState<ChatMessageView[]>(initial.messages);
     const [pending, setPending] = React.useState<Pending | null>(null);
-    const [draft, setDraft] = React.useState('');
+    const [draft, setDraft] = React.useState(prefill);
     const endRef = React.useRef<HTMLDivElement>(null);
     const inputRef = React.useRef<HTMLTextAreaElement>(null);
 

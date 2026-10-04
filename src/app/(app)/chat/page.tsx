@@ -17,7 +17,7 @@ export const metadata = {
  * `/chat` — the front door (docs/prd/10-chat.md). Flag-gated like every R2
  * surface: a stranger gets a 404, a signed-in customer is told it is coming.
  */
-export default async function ChatPage() {
+export default async function ChatPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
     const result = await getChatThread();
     if (!result.success) {
         if (result.code === 'unauthenticated') notFound();
@@ -35,6 +35,7 @@ export default async function ChatPage() {
     const { userId } = await auth();
     if (!userId) notFound();
     const flags = await getEnabledFlags(userId);
+    const { q } = await searchParams;
     const [rail, profile] = await Promise.all([
         getChatRail(userId, { missions: flags.missions, scout: flags.scout, journey: flags.job_journey }),
         prisma.userProfile.findUnique({ where: { userId }, select: { fullName: true } }),
@@ -43,7 +44,7 @@ export default async function ChatPage() {
     return (
         <div className="flex">
             <div className="min-w-0 flex-1">
-                <ChatScreen initial={result.data} links={links} name={profile?.fullName?.trim().split(/\s+/)[0] || null} />
+                <ChatScreen initial={result.data} links={links} name={profile?.fullName?.trim().split(/\s+/)[0] || null} prefill={typeof q === 'string' ? q.slice(0, 2000) : ''} />
             </div>
             <ChatRail rail={rail} links={{ ...links, goals: flags.missions }} />
         </div>

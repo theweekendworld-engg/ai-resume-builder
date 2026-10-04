@@ -17,10 +17,11 @@ import { getEnabledFlags } from '@/lib/flags';
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { userId } = await auth();
 
-  let destinations: NavDestination[] = ['resumes'];
+  let destinations: NavDestination[] = ['overview', 'resumes'];
   if (userId) {
     const flags = await getEnabledFlags(userId);
     destinations = [
+      'overview',
       ...(flags.chat ? (['chat'] as const) : []),
       ...(flags.missions ? (['home'] as const) : []),
       ...(flags.work_log ? (['log'] as const) : []),

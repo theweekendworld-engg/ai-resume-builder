@@ -193,7 +193,9 @@ Two families, seven roles. Sora for structure, Inter for content.
 │ ──────── │                                      │              │
 │ Settings │                                      │              │
 └──────────┴──────────────────────────────────────┴──────────────┘
-Phone: top bar h-14 + bottom tabs h-16 (Chat, Work Log, Jobs, Resumes, More).
+Phone: top bar h-14 + bottom tabs h-16 (Home, Chat, Work Log, Jobs, More).
+
+Home (`/overview`, 2026-10-04) is where sign-in and onboarding land: "Needs you" (ranked: interviews, an open resume question, replies, follow-ups, drafts, jobs to review, the goal's next step), the pipeline, recent activity, upcoming interviews, the record, the goal, resumes, and a setup checklist that leaves once done. Sections whose feature is off are absent, not empty.
 ```
 
 A sidebar now, not the top nav below. Chat became the front door and the destinations grew to seven, which no longer fit a top bar, and every page had started bringing its own chrome (the dashboard had a second sidebar). One shell owns navigation; a page owns only its header and tabs. Only destinations whose flag is on are passed in, so no item leads to a switched-off page.

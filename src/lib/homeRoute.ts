@@ -7,8 +7,10 @@
  * logo cannot disagree (launch audit 2026-10-02: four of them pointed at
  * /dashboard while the product had moved to chat).
  */
-export function homeFor(flags: { chat?: boolean; missions?: boolean }): '/chat' | '/home' | '/dashboard' {
-    if (flags.chat) return '/chat';
-    if (flags.missions) return '/home';
-    return '/dashboard';
+export function homeFor(_flags: { chat?: boolean; missions?: boolean } = {}): '/overview' {
+    // Home is the overview for everyone (2026-10-04): one screen with every
+    // section, whatever is switched on. Chat stays one click away, and the
+    // overview's "Ask Patronus" box hands off to it.
+    void _flags;
+    return '/overview';
 }
