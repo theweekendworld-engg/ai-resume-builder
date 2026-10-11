@@ -34,7 +34,7 @@ import type { FitData, NetworkData } from '@/lib/scout/types';
 import { sendTelegramMessageDetailed } from '@/lib/telegram';
 import { track } from '@/lib/track';
 import { sendWhatsAppText } from '@/lib/whatsapp';
-import { alertItem, renderChatAlert, type AlertItem } from '@/lib/watch/alert';
+import { alertItem, alertKeyboard, renderChatAlert, type AlertItem, type ChatButton } from '@/lib/watch/alert';
 import { shortlist, type CandidatePosting } from '@/lib/watch/candidates';
 import { alertGate, ALERT_MAX_AGE_DAYS } from '@/lib/watch/gate';
 import { resolveCompanyBoard } from '@/lib/watch/resolve';
@@ -532,14 +532,19 @@ async function scoreAndStore(params: {
 // ─────────────────────────────────────────────────────────────── alerting
 
 export type AlertSenders = {
-    telegram: (chatId: string, text: string) => Promise<boolean>;
+    /** With one row of buttons per job (`alertKeyboard`). */
+    telegram: (chatId: string, text: string, keyboard: ChatButton[][]) => Promise<boolean>;
     whatsapp: (to: string, text: string) => Promise<boolean>;
     email: (userId: string, to: string, items: AlertItem[]) => Promise<boolean>;
 };
 
 const defaultSenders: AlertSenders = {
-    async telegram(chatId, text) {
-        const sent = await sendTelegramMessageDetailed({ chatId, text: escapeTelegramHtml(text) });
+    async telegram(chatId, text, keyboard) {
+        const sent = await sendTelegramMessageDetailed({
+            chatId,
+            text: escapeTelegramHtml(text),
+            replyMarkup: keyboard.length ? { inline_keyboard: keyboard } : undefined,
+        });
         return sent.ok;
     },
     async whatsapp(to, text) {
@@ -642,7 +647,10 @@ async function deliver(userId: string, items: AlertItem[], send: AlertSenders): 
         select: { channel: true, externalId: true },
     });
     const telegram = identities.find((identity) => identity.channel === Channel.telegram);
-    if (telegram && (await send.telegram(telegram.externalId, text).catch(() => false))) return 'telegram';
+    // On Telegram the buttons do the work, so the text drops its trailing
+    // "draft outreach, track or pass" line in favour of them.
+    const telegramText = renderChatAlert(items, watchUrl(), { buttons: true });
+    if (telegram && (await send.telegram(telegram.externalId, telegramText, alertKeyboard(items)).catch(() => false))) return 'telegram';
     const whatsapp = identities.find((identity) => identity.channel === Channel.whatsapp);
     if (whatsapp && (await send.whatsapp(whatsapp.externalId, text).catch(() => false))) return 'whatsapp';
 

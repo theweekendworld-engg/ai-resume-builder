@@ -205,6 +205,21 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
             callback.message?.reply_markup?.inline_keyboard ?? null,
           );
         }
+      } else if (callback.data.startsWith('jw:')) {
+        // Job-watch alert buttons. Ownership is checked against the linked user.
+        const userId = await findLinkedUserId(chatId);
+        if (!userId) {
+          await sayPlain(chatId, 'Link your account first, then try again.');
+        } else {
+          const { handleTelegramWatchCallback } = await import('@/lib/channels/telegramWatch');
+          await handleTelegramWatchCallback(
+            chatId,
+            userId,
+            callback.data,
+            callback.message?.message_id ?? null,
+            (callback.message?.reply_markup?.inline_keyboard ?? null) as Parameters<typeof handleTelegramWatchCallback>[4],
+          );
+        }
       } else if (callback.data.startsWith('status:')) {
         await sendTelegramStatus(chatId, callback.data.split(':')[1]);
       } else if (callback.data.startsWith('regen:')) {

@@ -264,23 +264,23 @@ function Held({ held }: { held: MatchView[] }) {
     }
     return (
         <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-            Anything that scored 60 or more is checked again the night after you confirm a Win or change a preference.
-        </p>
-        <div className="overflow-hidden rounded-xl border border-border">
-            <ul className="divide-y divide-border">
-                {held.map((match) => (
-                    <li key={match.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                        <div className="min-w-0 flex-1">
-                            <a href={match.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-foreground hover:underline">{match.title}</a>
-                            <p className="text-xs text-muted-foreground">{match.company}{match.location ? ` · ${match.location}` : ''}</p>
-                        </div>
-                        <p className="max-w-md text-sm text-muted-foreground">{match.holdReason}</p>
-                        {match.score !== null ? <Pill dot="muted">{match.score}</Pill> : null}
-                    </li>
-                ))}
-            </ul>
-        </div>
+            <p className="text-sm text-muted-foreground">
+                Anything that scored 60 or more is checked again the night after you confirm a Win or change a preference.
+            </p>
+            <div className="overflow-hidden rounded-xl border border-border">
+                <ul className="divide-y divide-border">
+                    {held.map((match) => (
+                        <li key={match.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                            <div className="min-w-0 flex-1">
+                                <a href={match.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-foreground hover:underline">{match.title}</a>
+                                <p className="text-xs text-muted-foreground">{match.company}{match.location ? ` · ${match.location}` : ''}</p>
+                            </div>
+                            <p className="max-w-md text-sm text-muted-foreground">{match.holdReason}</p>
+                            {match.score !== null ? <Pill dot="muted">{match.score}</Pill> : null}
+                        </li>
+                    ))}
+                </ul>
+            </div>
         </div>
     );
 }
