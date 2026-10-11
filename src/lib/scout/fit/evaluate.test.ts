@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { defaultUserGenerationPreferences, type UserGenerationPreferences } from '@/lib/userPreferences';
 import type { JdData } from '@/lib/scout/types';
-import { buildFitRecord, decideVerdict, evaluateFit, placeMatches, type FitRecord } from './evaluate';
+import { buildFitRecord, decideVerdict, evaluateFit, MAX_RECORD_WINS, placeMatches, WORK_LOG_SOURCE, type FitRecord } from './evaluate';
 
 function jd(overrides: Partial<JdData> = {}): JdData {
     return {
@@ -262,5 +262,53 @@ describe('placeMatches', () => {
         expect(placeMatches('Pune, Maharashtra, India', ['Remote India'])).toBe(true);
         expect(placeMatches('Pune, Maharashtra, India', ['Bengaluru'])).toBe(false);
         expect(placeMatches('New York, NY', ['Newark'])).toBe(false);
+    });
+});
+
+describe('confirmed Wins in the record', () => {
+    const kafka = jd({
+        requirements: [
+            { id: 'r1', text: 'Strong experience with Go', kind: 'must' },
+            { id: 'r2', text: 'Experience with PostgreSQL', kind: 'must' },
+            { id: 'r3', text: 'Built event pipelines on Kafka', kind: 'must' },
+        ],
+        skills: ['Go', 'PostgreSQL', 'Kafka'],
+    });
+
+    test('a Win is an evidence line, labelled as the work log, after the roles', () => {
+        const r = record({ wins: [{ title: 'Moved settlement onto Kafka', narrative: 'Replaced the nightly batch with a Kafka event pipeline; reconciliation now runs hourly.' }] });
+        const line = r.lines.find((l) => l.source === WORK_LOG_SOURCE);
+        expect(line?.text).toStartWith('Moved settlement onto Kafka. Replaced the nightly batch');
+        expect(r.lines.findIndex((l) => l.source === WORK_LOG_SOURCE)).toBeGreaterThan(r.lines.findIndex((l) => l.source.includes(' at ')));
+        expect(r.corpus).toContain('kafka');
+    });
+
+    test('evidence that lives only in a Win lifts coverage and the score', () => {
+        const without = evaluateFit({ jd: kafka, jdText: '', record: record(), prefs: prefs(), answers: {} });
+        const withWin = evaluateFit({
+            jd: kafka, jdText: '', prefs: prefs(), answers: {},
+            record: record({ wins: [{ title: 'Moved settlement onto Kafka', narrative: '' }] }),
+        });
+        expect(withWin.coverage.mustCovered).toBeGreaterThan(without.coverage.mustCovered);
+        expect(withWin.fit.score!).toBeGreaterThan(without.fit.score!);
+        expect(withWin.fit.matched.some((m) => m.evidence.includes('Kafka') && m.evidence.includes(WORK_LOG_SOURCE))).toBe(true);
+    });
+
+    test('a record of Wins alone is not empty', () => {
+        const winsOnly = buildFitRecord({
+            profile: { location: '', defaultTitle: '', defaultSummary: '', yearsExperience: '' },
+            experiences: [],
+            projects: [],
+            wins: [{ title: 'Shipped the Go ledger rewrite', narrative: '' }],
+        });
+        expect(winsOnly.empty).toBe(false);
+    });
+
+    test('capped, long narratives cut, blank titles skipped', () => {
+        const many = Array.from({ length: MAX_RECORD_WINS + 5 }, (_, i) => ({ title: `Win ${i}`, narrative: 'x'.repeat(1_000) }));
+        const r = record({ wins: [{ title: '  ', narrative: 'ignored' }, ...many] });
+        const winLines = r.lines.filter((l) => l.source === WORK_LOG_SOURCE);
+        expect(winLines).toHaveLength(MAX_RECORD_WINS);
+        expect(winLines[0].text.length).toBeLessThan(320);
     });
 });

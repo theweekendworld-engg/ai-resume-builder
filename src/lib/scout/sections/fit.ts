@@ -20,10 +20,13 @@
 import { z } from 'zod';
 import type { GenerateStructuredOptions, GenerateStructuredResult } from '@/lib/ai/structured';
 import { getExtensionProfileBundle } from '@/lib/extension/profile';
+import { externalRetrievalFilter } from '@/lib/graph/visibility';
+import { prisma } from '@/lib/prisma';
 import { getSkillsWithEvidence } from '@/lib/resume/tools/evidence';
 import { dataOf, type ScoutSection } from '@/lib/scout/section';
 import {
     buildFitRecord,
+    MAX_RECORD_WINS,
     deterministicSummary,
     evaluateFit,
     summaryAgrees,
@@ -50,9 +53,17 @@ export type FitSources = {
 
 /** The user's record and preferences as fit reads them. Shared with the job watch. */
 export async function loadFitSources(userId: string): Promise<FitSources> {
-    const [bundle, skills] = await Promise.all([
+    const [bundle, skills, wins] = await Promise.all([
         getExtensionProfileBundle(userId),
         getSkillsWithEvidence(userId).catch(() => []),
+        // Rule 3: sensitivity in the query. Matched lines are quoted on the
+        // card and into outreach, so only confirmed shareable Wins may match.
+        prisma.win.findMany({
+            where: externalRetrievalFilter(userId),
+            orderBy: { occurredAt: 'desc' },
+            take: MAX_RECORD_WINS,
+            select: { title: true, narrative: true },
+        }),
     ]);
     return {
         record: buildFitRecord({
@@ -65,6 +76,7 @@ export async function loadFitSources(userId: string): Promise<FitSources> {
                 fieldOfStudy: school.fieldOfStudy,
             })),
             skills,
+            wins,
         }),
         // The bundle's wire type widens this to unknown; re-parse to the real shape.
         prefs: parseUserGenerationPreferences(bundle.profile.preferences),

@@ -32,6 +32,15 @@ export type RecordLine = { text: string; source: string };
 
 export const PROFILE_SUMMARY_SOURCE = 'Profile summary';
 
+/** Source label for a confirmed Win. Never contains " at ", which marks a role line. */
+export const WORK_LOG_SOURCE = 'Work log';
+
+/** Wins read into a record, newest first. The matcher sees 120 lines in all. */
+export const MAX_RECORD_WINS = 30;
+
+/** A Win's narrative, cut to what a requirement can be matched against. */
+const WIN_NARRATIVE_CHARS = 280;
+
 /** The user's working life, flattened for matching. Current AND past roles. */
 export type FitRecord = {
     lines: RecordLine[];
@@ -66,6 +75,13 @@ export type RecordInput = {
     education?: { institution: string; degree: string; fieldOfStudy: string }[];
     /** skill → where it is evidenced (from `getSkillsWithEvidence`). */
     skills?: { skill: string; evidence: string[] }[];
+    /**
+     * Confirmed, SHAREABLE Wins, newest first. The caller filters in its query
+     * (`externalRetrievalFilter`, CLAUDE.md rule 3): a matched line is quoted
+     * as evidence on the fit card and into outreach drafts, so a confidential
+     * Win must never become one.
+     */
+    wins?: { title: string; narrative: string }[];
     now?: Date;
 };
 
@@ -86,6 +102,15 @@ export function buildFitRecord(input: RecordInput): FitRecord {
         }
         // The title itself is evidence ("Senior Backend Engineer at X").
         lines.push({ text: where, source: where });
+    }
+    // Wins after roles: the user's own confirmed record of what they did,
+    // usually more specific than any resume bullet ("cut p99 from 800ms to
+    // 120ms"), which is exactly what a requirement is matched against.
+    for (const win of (input.wins ?? []).filter((w) => w.title.trim()).slice(0, MAX_RECORD_WINS)) {
+        const title = win.title.trim();
+        const narrative = win.narrative.trim();
+        const story = narrative.length > WIN_NARRATIVE_CHARS ? `${narrative.slice(0, WIN_NARRATIVE_CHARS - 1).trimEnd()}…` : narrative;
+        lines.push({ text: story ? `${title}. ${story}` : title, source: WORK_LOG_SOURCE });
     }
     for (const project of input.projects) {
         const tech = project.technologies.length ? ` (${project.technologies.join(', ')})` : '';
@@ -115,7 +140,7 @@ export function buildFitRecord(input: RecordInput): FitRecord {
         }
     }
 
-    const hasWork = input.experiences.length > 0 || input.projects.length > 0;
+    const hasWork = input.experiences.length > 0 || input.projects.length > 0 || lines.some((line) => line.source === WORK_LOG_SOURCE);
     return {
         lines,
         corpus: normalizeForMatch(lines.map((line) => line.text).join(' ')),
