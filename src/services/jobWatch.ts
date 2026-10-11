@@ -38,7 +38,7 @@ import { alertItem, renderChatAlert, type AlertItem } from '@/lib/watch/alert';
 import { shortlist, type CandidatePosting } from '@/lib/watch/candidates';
 import { alertGate, ALERT_MAX_AGE_DAYS } from '@/lib/watch/gate';
 import { resolveCompanyBoard } from '@/lib/watch/resolve';
-import { scorePosting } from '@/lib/watch/score';
+import { recordKeyFor, scorePosting } from '@/lib/watch/score';
 
 /** Postings older than this are not "new" for a first run either. */
 const CANDIDATE_WINDOW_DAYS = 30;
@@ -48,6 +48,12 @@ const FRESH_BOARD_MS = 6 * 60 * 60 * 1000;
 const MAX_INLINE_REFRESH = 10;
 /** A fallback-scored match is retried this many times before it stays held. */
 const MAX_ATTEMPTS = 3;
+/**
+ * A held match is re-scored after the record changes only if it was this
+ * close. New evidence moves a score by a requirement or two, not from 30 to
+ * 85, and every re-score is a model call.
+ */
+export const RECHECK_MIN_SCORE = 60;
 /** Qualifying matches carried into one message (three shown, the rest counted). */
 const ALERT_POOL = 10;
 
@@ -297,6 +303,8 @@ export type WatchRunResult = {
     considered: number;
     shortlisted: number;
     scored: number;
+    /** Held near-misses re-scored because the record or preferences changed. */
+    rechecked: number;
     qualified: number;
     errors: number;
     alert: AlertOutcome | null;
@@ -337,7 +345,7 @@ function recordTitles(record: { defaultTitle: string; lines: Array<{ source: str
 
 export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Promise<WatchRunResult> {
     const now = deps.now ?? new Date();
-    const result: WatchRunResult = { refreshed: 0, considered: 0, shortlisted: 0, scored: 0, qualified: 0, errors: 0, alert: null };
+    const result: WatchRunResult = { refreshed: 0, considered: 0, shortlisted: 0, scored: 0, rechecked: 0, qualified: 0, errors: 0, alert: null };
     if (!(await isEnabled(userId, 'job_watch'))) return { ...result, skipped: 'flag_off' };
 
     const [watched, { record, prefs }, tier] = await Promise.all([
@@ -377,6 +385,27 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
         take: budget,
     });
 
+    // 2b. Re-checks: near-misses held against an older record. A Win the
+    //     user confirmed yesterday, or a location they finally stated, is
+    //     exactly what turns an 82 into an 88; without this, a held job stays
+    //     held forever.
+    const recordKey = recordKeyFor(record, prefs);
+    const oldest = new Date(now.getTime() - ALERT_MAX_AGE_DAYS * 86_400_000);
+    const rechecks = await prisma.jobMatch.findMany({
+        where: {
+            userId,
+            qualifies: false,
+            status: JobMatchStatus.new,
+            matchedVia: { in: ['model', 'deterministic'] },
+            score: { gte: RECHECK_MIN_SCORE },
+            OR: [{ recordKey: null }, { recordKey: { not: recordKey } }],
+            posting: { closedAt: null, OR: [{ postedAt: { gte: oldest } }, { postedAt: null }] },
+        },
+        orderBy: { score: 'desc' },
+        select: { postingId: true, origin: true },
+        take: Math.max(0, budget - retries.length),
+    });
+
     // 3. Shortlist the postings this user has never been scored on.
     const since = new Date(now.getTime() - CANDIDATE_WINDOW_DAYS * 86_400_000);
     const fresh = await prisma.jobPosting.findMany({
@@ -408,20 +437,22 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
             recordTitles: recordTitles(record),
             corpus: record.corpus,
         },
-        limit: Math.max(0, budget - retries.length),
+        limit: Math.max(0, budget - retries.length - rechecks.length),
     });
     result.shortlisted = candidates.length;
 
     // 4. Score and gate, one posting at a time. A failure on one posting
     //    leaves no row, so it is simply a candidate again tomorrow.
     const queue = [
-        ...retries.map((row) => ({ postingId: row.postingId, origin: row.origin })),
-        ...candidates.map((candidate) => ({ postingId: candidate.posting.id, origin: candidate.origin })),
+        ...retries.map((row) => ({ postingId: row.postingId, origin: row.origin, recheck: false })),
+        ...rechecks.map((row) => ({ postingId: row.postingId, origin: row.origin, recheck: true })),
+        ...candidates.map((candidate) => ({ postingId: candidate.posting.id, origin: candidate.origin, recheck: false })),
     ];
     for (const item of queue) {
         try {
-            const qualified = await scoreAndStore({ userId, postingId: item.postingId, origin: item.origin, record, prefs, now, ai: deps.ai });
+            const qualified = await scoreAndStore({ userId, postingId: item.postingId, origin: item.origin, record, prefs, recordKey, now, ai: deps.ai });
             result.scored += 1;
+            if (item.recheck) result.rechecked += 1;
             if (qualified) result.qualified += 1;
         } catch (error) {
             result.errors += 1;
@@ -432,7 +463,7 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
     // 5. Alert.
     result.alert = await sendMorningAlert(userId, { now, send: deps.send });
     await track(userId, 'watch_run', {
-        considered: result.considered, shortlisted: result.shortlisted, scored: result.scored,
+        considered: result.considered, shortlisted: result.shortlisted, scored: result.scored, rechecked: result.rechecked,
         qualified: result.qualified, errors: result.errors, alerted: result.alert?.sent ?? 0,
     });
     return result;
@@ -444,6 +475,7 @@ async function scoreAndStore(params: {
     origin: string;
     record: Awaited<ReturnType<typeof loadFitSources>>['record'];
     prefs: Awaited<ReturnType<typeof loadFitSources>>['prefs'];
+    recordKey: string;
     now: Date;
     ai?: MatchAi;
 }): Promise<boolean> {
@@ -491,8 +523,8 @@ async function scoreAndStore(params: {
 
     await prisma.jobMatch.upsert({
         where: { userId_postingId: { userId: params.userId, postingId: posting.id } },
-        create: { userId: params.userId, postingId: posting.id, origin: params.origin, ...data },
-        update: { ...data, attempts: { increment: 1 }, evaluatedAt: params.now },
+        create: { userId: params.userId, postingId: posting.id, origin: params.origin, recordKey: params.recordKey, ...data },
+        update: { ...data, recordKey: params.recordKey, attempts: { increment: 1 }, evaluatedAt: params.now },
     });
     return data.qualifies === true;
 }

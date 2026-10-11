@@ -263,6 +263,10 @@ function Held({ held }: { held: MatchView[] }) {
         return <EmptyState icon={Telescope} title="Nothing held back" description="Jobs that were scored but did not clear the bar appear here, each with the reason." />;
     }
     return (
+        <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+            Anything that scored 60 or more is checked again the night after you confirm a Win or change a preference.
+        </p>
         <div className="overflow-hidden rounded-xl border border-border">
             <ul className="divide-y divide-border">
                 {held.map((match) => (
@@ -276,6 +280,7 @@ function Held({ held }: { held: MatchView[] }) {
                     </li>
                 ))}
             </ul>
+        </div>
         </div>
     );
 }

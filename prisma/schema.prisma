@@ -1935,6 +1935,10 @@ model JobMatch {
   status      JobMatchStatus @default(new)
   /// Evaluations so far. A fallback-scored match is retried, up to a cap.
   attempts    Int            @default(1)
+  /// Fingerprint of the record and preferences it was scored against
+  /// (`recordKeyFor`). A held near-miss whose key is stale is re-scored: a
+  /// newly confirmed Win or a newly stated preference can clear the bar.
+  recordKey   String?
   alertedAt   DateTime?
   workspaceId String?
   evaluatedAt DateTime       @default(now())

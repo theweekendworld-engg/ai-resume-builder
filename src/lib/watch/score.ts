@@ -64,6 +64,26 @@ export type PostingScore =
     }
     | { kind: 'unscorable'; reason: string };
 
+/**
+ * Fingerprint of everything a score depends on besides the posting: the
+ * record's lines and years, and the preferences the checks read. Equal keys
+ * mean re-scoring would give the same answer, so a held match is only
+ * re-scored when this moves.
+ */
+export function recordKeyFor(record: FitRecord, prefs: UserGenerationPreferences): string {
+    const material = JSON.stringify({
+        lines: record.lines.map((line) => `${line.source}|${line.text}`),
+        years: record.years,
+        location: record.location,
+        title: record.defaultTitle,
+        prefs: [
+            prefs.targetRoles, prefs.targetLocations, prefs.preferredWorkModes, prefs.willingToRelocate,
+            prefs.requiresSponsorship, prefs.minCompensationText, prefs.companySizePreference,
+        ],
+    });
+    return createHash('sha256').update(material).digest('hex').slice(0, 32);
+}
+
 export function parsedKeyFor(description: string): string {
     return `${WATCH_PARSE_VERSION}:${createHash('sha256').update(description).digest('hex').slice(0, 32)}`;
 }

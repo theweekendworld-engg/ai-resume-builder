@@ -6,14 +6,14 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { Channel, JobMatchStatus } from '@prisma/client';
+import { Channel, JobMatchStatus, WinCategory, WinSensitivity, WinSource, WinStatus } from '@prisma/client';
 
 import { __testing as aiTesting } from '@/lib/ai/structured';
 import { restoreFlags, setFlagForTest, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test-utils';
 import { prisma } from '@/lib/prisma';
 import type { MatchAi } from '@/lib/scout/sections/fit';
 import { parsedKeyFor } from '@/lib/watch/score';
-import { dismissMatch, listMatches, runWatchForUser, sendMorningAlert, trackMatch, type AlertSenders } from './jobWatch';
+import { dismissMatch, listMatches, RECHECK_MIN_SCORE, runWatchForUser, sendMorningAlert, trackMatch, type AlertSenders } from './jobWatch';
 
 const RUN = `itest-watch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const USER = `${RUN}-user`;
@@ -35,7 +35,7 @@ const senders: AlertSenders = {
  * numbered requirement, the first evidence line sharing a keyword with it.
  * Requirements with no keyword in the record get null.
  */
-const KEYWORDS = ['go', 'postgresql', 'kafka', 'distributed', 'clearance', 'mainframe', 'cobol'];
+const KEYWORDS = ['go', 'postgresql', 'kafka', 'distributed', 'clearance', 'mainframe', 'cobol', 'rust'];
 const matcher: MatchAi = (async (opts: { prompt: string }) => {
     const [reqBlock, evBlock] = opts.prompt.split('\n\nEVIDENCE:\n');
     const requirements = reqBlock.replace('REQUIREMENTS:\n', '').split('\n');
@@ -127,6 +127,7 @@ beforeEach(async () => {
 afterEach(() => aiTesting.reset());
 
 afterAll(async () => {
+    await prisma.win.deleteMany({ where: { userId: USER } });
     await prisma.jobMatch.deleteMany({ where: { userId: USER } });
     await prisma.watchedCompany.deleteMany({ where: { userId: USER } });
     await prisma.jobPosting.deleteMany({ where: { sourceId } });
@@ -222,6 +223,68 @@ describe('the nightly run', () => {
             expect((await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders })).skipped).toBe('flag_off');
         } finally {
             await setFlagForTest('job_watch', { enabled: true, allowUserIds: [USER] });
+        }
+    });
+});
+
+describe('re-checking held matches when the record changes', () => {
+    test('a near-miss held at ~75 is re-scored after a Win fills the gap, then sent', async () => {
+        const rustRole = await prisma.jobPosting.create({
+            data: {
+                sourceId, externalId: `${RUN}-rust`, title: 'Senior Backend Engineer, Ledger', location: 'Bengaluru, India (Hybrid)',
+                absoluteUrl: `https://boards.greenhouse.io/${RUN}/jobs/rust`, contentHash: 'rust', postedAt: new Date(NOW.getTime() - 86_400_000),
+                description: `Hybrid role in Bengaluru. Go and Rust services on PostgreSQL with Kafka.${LONG}`,
+                skills: ['go', 'postgresql', 'kafka', 'rust'],
+                parsed: brief(['Production experience writing Go', 'Operating PostgreSQL at scale', 'Event pipelines with Kafka', 'Performance work in Rust'], ['Go', 'PostgreSQL', 'Kafka', 'Rust']),
+                parsedKey: parsedKeyFor(`Hybrid role in Bengaluru. Go and Rust services on PostgreSQL with Kafka.${LONG}`),
+            },
+            select: { id: true },
+        });
+        try {
+            await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+            const before = await prisma.jobMatch.findFirstOrThrow({ where: { userId: USER, postingId: rustRole.id } });
+            expect(before.qualifies).toBe(false);
+            expect(before.score!).toBeGreaterThanOrEqual(RECHECK_MIN_SCORE);
+            expect(before.score!).toBeLessThan(85);
+            expect(before.recordKey).toBeTruthy();
+
+            // Nothing changed: the held match is not paid for again.
+            const quiet = await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+            expect(quiet.rechecked).toBe(0);
+
+            await prisma.win.create({
+                data: {
+                    userId: USER, title: 'Rewrote the ledger hot path in Rust', narrative: 'p99 fell from 40ms to 9ms.',
+                    occurredAt: new Date('2026-09-20'), category: WinCategory.shipped, status: WinStatus.confirmed,
+                    sensitivity: WinSensitivity.shareable, source: WinSource.manual, confirmedAt: new Date(),
+                },
+            });
+            sent = [];
+            const after = await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+            expect(after.rechecked).toBe(1);
+            const now = await prisma.jobMatch.findFirstOrThrow({ where: { userId: USER, postingId: rustRole.id } });
+            expect(now.qualifies).toBe(true);
+            expect(now.recordKey).not.toBe(before.recordKey);
+            expect(sent).toHaveLength(1);
+            expect(sent[0].text).toContain('Senior Backend Engineer, Ledger');
+        } finally {
+            await prisma.win.deleteMany({ where: { userId: USER } });
+        }
+    });
+
+    test('a far miss is never re-checked, whatever changes', async () => {
+        await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+        await prisma.win.create({
+            data: {
+                userId: USER, title: 'Learned some COBOL', narrative: '', occurredAt: new Date('2026-09-20'), category: WinCategory.learned,
+                status: WinStatus.confirmed, sensitivity: WinSensitivity.shareable, source: WinSource.manual,
+            },
+        });
+        try {
+            const again = await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+            expect(again.rechecked).toBe(0);
+        } finally {
+            await prisma.win.deleteMany({ where: { userId: USER } });
         }
     });
 });
