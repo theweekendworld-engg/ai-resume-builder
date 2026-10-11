@@ -26,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ...(flags.missions ? (['home'] as const) : []),
       ...(flags.work_log ? (['log'] as const) : []),
       ...(flags.scout ? (['scout'] as const) : []),
+      ...(flags.job_watch ? (['watch'] as const) : []),
       'resumes',
       ...(flags.review_packet ? (['packets'] as const) : []),
       ...(flags.career_radar ? (['radar'] as const) : []),

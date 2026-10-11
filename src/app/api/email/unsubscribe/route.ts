@@ -30,6 +30,7 @@ const CATEGORY_LABEL: Record<UnsubscribableCategory, string> = {
     monthlyReview: 'the month in review',
     radarDigest: 'the radar digest',
     missionNudges: 'mission nudges',
+    jobAlerts: 'job match alerts',
     productUpdates: 'product updates',
 };
 

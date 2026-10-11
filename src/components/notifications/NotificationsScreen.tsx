@@ -43,7 +43,7 @@ function hourLabel(hour: number): string {
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => ({ value: String(hour), label: hourLabel(hour) }));
 
-type CategoryKey = 'weeklyDigest' | 'monthlyReview' | 'radarDigest' | 'missionNudges' | 'productUpdates';
+type CategoryKey = 'weeklyDigest' | 'monthlyReview' | 'radarDigest' | 'missionNudges' | 'jobAlerts' | 'productUpdates';
 
 const CATEGORIES: Array<{ key: CategoryKey; title: string; description: string }> = [
     {
@@ -65,6 +65,11 @@ const CATEGORIES: Array<{ key: CategoryKey; title: string; description: string }
         key: 'missionNudges',
         title: 'Mission nudges',
         description: 'Reminders when something you started is going stale.',
+    },
+    {
+        key: 'jobAlerts',
+        title: 'Job matches',
+        description: 'New openings you match 85% or more, in the morning. On Telegram or WhatsApp when linked, otherwise by email.',
     },
     {
         key: 'productUpdates',

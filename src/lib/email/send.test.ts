@@ -26,6 +26,7 @@ const allOn: PreferenceSnapshot = {
     monthlyReview: true,
     radarDigest: true,
     missionNudges: true,
+    jobAlerts: true,
     productUpdates: true,
 };
 

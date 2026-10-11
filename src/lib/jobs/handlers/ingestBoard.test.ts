@@ -136,6 +136,10 @@ describe('storing postings', () => {
         expect(all).toHaveLength(2);
         expect(all.find((p) => p.externalId === '1')?.closedAt).toBeNull();
         expect(all.find((p) => p.externalId === '2')?.closedAt).not.toBeNull();
+        // The text is kept while open (the job watch reads it) and dropped on
+        // close, so storage follows the live market.
+        expect(all.find((p) => p.externalId === '1')?.description).toBe('Role description.');
+        expect(all.find((p) => p.externalId === '2')?.description).toBeNull();
     });
 
     test('a posting that comes back is reopened', async () => {
@@ -250,11 +254,14 @@ describe('due-board selection', () => {
         expect(due.map((d) => d.id)).not.toContain(src.id);
     });
 
-    test('a board for an unimplemented provider is skipped, not dead-lettered', async () => {
+    test('a Lever board is polled now that Lever has an adapter', async () => {
+        // It used to be skipped as unimplemented. Every provider in the enum now
+        // has an adapter; the skip path for one that does not is covered by
+        // `adapterFor` returning null (boards.test.ts).
         const t = token('lever');
         const src = await makeSource({ boardToken: t, provider: 'lever' });
         const due = await dueBoards(500);
-        expect(due.map((d) => d.id)).not.toContain(src.id);
+        expect(due.find((d) => d.id === src.id)?.host).toBe('api.lever.co');
     });
 
     test('a never-fetched board is due', async () => {

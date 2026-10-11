@@ -407,6 +407,34 @@ const MASTER_RESUME_LIMITS: Record<Tier, number> = {
   team: UNLIMITED,
 };
 
+/**
+ * Job watch (PRD 12 §7). Companies a user may watch, and how many postings the
+ * nightly watch fully scores for them (each is one model call; the posting
+ * read is shared across users). Placeholders until pricing is decided: the
+ * scoring cap is the cost ceiling, roughly $0.001 per scored posting.
+ */
+const JOB_WATCH_COMPANY_LIMITS: Record<Tier, number> = {
+  free: 3,
+  always_on: 10,
+  pro: 30,
+  team: 30,
+};
+
+const JOB_WATCH_NIGHTLY_SCORES: Record<Tier, number> = {
+  free: 5,
+  always_on: 10,
+  pro: 25,
+  team: 25,
+};
+
+export function jobWatchCompanyLimit(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_JOB_WATCH_COMPANIES_${tier.toUpperCase()}`, JOB_WATCH_COMPANY_LIMITS[tier]);
+}
+
+export function jobWatchNightlyScoreLimit(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_JOB_WATCH_SCORES_${tier.toUpperCase()}`, JOB_WATCH_NIGHTLY_SCORES[tier]);
+}
+
 /** Connected capture sources allowed on a tier (PRD 06 §2.1, PW7). */
 export function sourceLimit(tier: Tier): number {
   return envNumber(`ENTITLEMENT_SOURCE_LIMIT_${tier.toUpperCase()}`, SOURCE_LIMITS[tier]);

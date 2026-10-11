@@ -31,6 +31,7 @@ import {
 import { monthInReviewTemplate, type MonthInReviewEmailData } from './monthInReview';
 import { radarDigestTemplate, type RadarDigestEmailData } from './radarDigest';
 import { missionNudgeTemplate, type MissionNudgeEmailData } from './missionNudge';
+import { jobAlertTemplate, type JobAlertEmailData } from './jobAlert';
 
 /** Maps 1:1 onto the boolean columns of EmailPreference, plus `transactional`. */
 export type EmailCategory =
@@ -39,6 +40,7 @@ export type EmailCategory =
     | 'monthlyReview'
     | 'radarDigest'
     | 'missionNudges'
+    | 'jobAlerts'
     | 'productUpdates';
 
 /** The EmailPreference column that governs a category. `transactional` has none. */
@@ -48,6 +50,7 @@ export const PREFERENCE_FIELD_BY_CATEGORY = {
     monthlyReview: 'monthlyReview',
     radarDigest: 'radarDigest',
     missionNudges: 'missionNudges',
+    jobAlerts: 'jobAlerts',
     productUpdates: 'productUpdates',
 } as const satisfies Record<EmailCategory, string | null>;
 
@@ -121,6 +124,7 @@ export type TransactionalTemplateData = {
     digest_nudge: DigestNudgeData;
     month_in_review: MonthInReviewEmailData;
     radar_digest: RadarDigestEmailData;
+    job_alert: JobAlertEmailData;
     mission_nudge: MissionNudgeEmailData;
 };
 
@@ -260,6 +264,7 @@ export const transactionalTemplates: {
     digest_nudge: digestNudgeTemplate,
     month_in_review: monthInReviewTemplate,
     radar_digest: radarDigestTemplate,
+    job_alert: jobAlertTemplate,
     mission_nudge: missionNudgeTemplate,
 };
 

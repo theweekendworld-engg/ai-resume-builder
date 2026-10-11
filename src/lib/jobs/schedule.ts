@@ -55,6 +55,7 @@ export type PeriodicScheduleResult = {
     operatorDigestJobId: string | null;
     downgradeJobId: string | null;
     journeyJobId: string | null;
+    jobWatchJobId: string | null;
 };
 
 /**
@@ -80,6 +81,7 @@ export async function schedulePeriodicWork(
         operatorDigestJobId: null,
         downgradeJobId: null,
         journeyJobId: null,
+        jobWatchJobId: null,
     };
 
     // Priority: lower runs first. Capture before anything that reads drafts;
@@ -95,6 +97,10 @@ export async function schedulePeriodicWork(
         ['downgradeJobId', 'proactive_downgrade', `proactive_downgrade:${day}`, 90],
         // Job-search journey: calendar sync, follow-up nudges, stuck email (docs/prd/11 §7).
         ['journeyJobId', 'journey_daily', `journey_daily:${day}`, 70],
+        // Job watch: after ingest (it reads postings), before the digest. Each
+        // child also refreshes its own watched boards, so it never waits a day
+        // on the staggered ingest (docs/prd/12 §4).
+        ['jobWatchJobId', 'job_watch', `job_watch:${day}`, 40],
         // Monthly. Keyed to the month, so the first tick of the month runs it
         // and any later tick that month (or a recovery after a missed day) is a no-op.
         ['radarSnapshotJobId', RADAR_SNAPSHOT_JOB_KIND, `${RADAR_SNAPSHOT_JOB_KIND}:${month}`, 80],

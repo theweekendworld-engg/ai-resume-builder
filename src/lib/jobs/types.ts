@@ -30,7 +30,8 @@ export type JobKind =
     | 'reconcile_qdrant'
     | 'proactive_downgrade'
     | 'email_send'
-    | 'journey_daily';
+    | 'journey_daily'
+    | 'job_watch';
 
 export const JOB_KINDS: readonly JobKind[] = [
     'noop',
@@ -50,6 +51,7 @@ export const JOB_KINDS: readonly JobKind[] = [
     'proactive_downgrade',
     'email_send',
     'journey_daily',
+    'job_watch',
 ] as const;
 
 export function isJobKind(value: unknown): value is JobKind {

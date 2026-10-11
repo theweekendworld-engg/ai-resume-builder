@@ -80,6 +80,7 @@ export type PreferenceSnapshot = {
     monthlyReview: boolean;
     radarDigest: boolean;
     missionNudges: boolean;
+    jobAlerts: boolean;
     productUpdates: boolean;
 };
 
@@ -337,6 +338,7 @@ export async function ensureEmailPreference(
             monthlyReview: true,
             radarDigest: true,
             missionNudges: true,
+            jobAlerts: true,
             productUpdates: true,
             unsubscribeToken: true,
         },
@@ -423,6 +425,7 @@ export const UNSUBSCRIBABLE_CATEGORIES = [
     'monthlyReview',
     'radarDigest',
     'missionNudges',
+    'jobAlerts',
     'productUpdates',
 ] as const;
 

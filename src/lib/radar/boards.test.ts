@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { adapterFor, ashbyAdapter, greenhouseAdapter, supportedProviders } from './boards';
+import { adapterFor, ashbyAdapter, greenhouseAdapter, leverAdapter, smartRecruitersAdapter, supportedProviders } from './boards';
 import type { FetchOutcome } from './boards';
 
 /** A stub `fetch` returning one canned response. */
@@ -229,13 +229,101 @@ describe('adapter registry', () => {
     test('resolves the providers we implement', () => {
         expect(adapterFor('greenhouse')).not.toBeNull();
         expect(adapterFor('ashby')).not.toBeNull();
-        expect(supportedProviders().sort()).toEqual(['ashby', 'greenhouse']);
+        expect(supportedProviders().sort()).toEqual(['ashby', 'greenhouse', 'lever', 'smartrecruiters']);
     });
 
     test('an unimplemented provider returns null rather than throwing', () => {
-        // A `lever` JobSource row is legitimate; we just cannot read it yet,
-        // and it must not dead-letter the ingest job.
-        expect(adapterFor('lever')).toBeNull();
+        // A row for a provider we cannot read must not dead-letter the ingest job.
+        expect(adapterFor('workable')).toBeNull();
         expect(adapterFor('nonsense')).toBeNull();
+    });
+});
+
+describe('lever', () => {
+    test('reads postings, keeps requirements from `lists`, marks remote', async () => {
+        const out = await leverAdapter.fetchBoard({
+            boardToken: 'cred',
+            fetchImpl: stubFetch({
+                body: [
+                    {
+                        id: 'aa98a938',
+                        text: 'Backend Engineer ',
+                        hostedUrl: 'https://jobs.lever.co/cred/aa98a938',
+                        createdAt: 1_760_000_000_000,
+                        categories: { location: 'bengaluru', department: 'engineering', allLocations: ['bengaluru'] },
+                        workplaceType: 'remote',
+                        descriptionPlain: 'Build payment systems.',
+                        lists: [{ text: 'What you need', content: '<li>4+ years of Go</li><li>PostgreSQL</li>' }],
+                    },
+                    { text: 'no id, skipped' },
+                ],
+            }),
+        });
+        expect(out.kind).toBe('ok');
+        if (out.kind !== 'ok') return;
+        expect(out.postings).toHaveLength(1);
+        const [posting] = out.postings;
+        expect(posting).toMatchObject({ externalId: 'aa98a938', title: 'Backend Engineer', location: 'bengaluru (Remote)', department: 'engineering' });
+        expect(posting.description).toContain('4+ years of Go');
+        expect(posting.postedAt?.getTime()).toBe(1_760_000_000_000);
+    });
+
+    test('a real board with no openings is ok and empty; an unknown one is not_found', async () => {
+        expect(await leverAdapter.fetchBoard({ boardToken: 'plivo', fetchImpl: stubFetch({ body: [] }) })).toMatchObject({ kind: 'ok', postings: [] });
+        expect((await leverAdapter.fetchBoard({ boardToken: 'nope', fetchImpl: stubFetch({ status: 404 }) })).kind).toBe('not_found');
+    });
+});
+
+describe('smartrecruiters', () => {
+    test('reads the list and builds the public URL; description comes later', async () => {
+        const out = await smartRecruitersAdapter.fetchBoard({
+            boardToken: 'swiggy',
+            fetchImpl: stubFetch({
+                body: {
+                    totalFound: 1,
+                    content: [{
+                        id: '6000000001476424',
+                        name: 'Senior Backend Engineer',
+                        releasedDate: '2026-10-10T19:30:43.578Z',
+                        company: { identifier: 'SWIGGY', name: 'SWIGGY' },
+                        location: { fullLocation: 'Bengaluru, , India', remote: false, hybrid: true },
+                        function: { label: 'Engineering' },
+                    }],
+                },
+            }),
+        });
+        expect(out.kind).toBe('ok');
+        if (out.kind !== 'ok') return;
+        expect(out.postings[0]).toMatchObject({
+            externalId: '6000000001476424',
+            location: 'Bengaluru, India (Hybrid)',
+            absoluteUrl: 'https://jobs.smartrecruiters.com/SWIGGY/6000000001476424',
+            description: '',
+        });
+    });
+
+    test('an empty list is not_found: SmartRecruiters answers 200 for any name', async () => {
+        expect((await smartRecruitersAdapter.fetchBoard({ boardToken: 'nobody', fetchImpl: stubFetch({ body: { totalFound: 0, content: [] } }) })).kind).toBe('not_found');
+    });
+
+    test('the description is the job sections, company blurb last', async () => {
+        const text = await smartRecruitersAdapter.fetchDescription!({
+            boardToken: 'swiggy',
+            externalId: '1',
+            fetchImpl: stubFetch({
+                body: {
+                    jobAd: {
+                        sections: {
+                            companyDescription: { title: 'About us', text: '<p>We deliver food.</p>' },
+                            jobDescription: { title: 'Job Description', text: '<p>Own the order service.</p>' },
+                            qualifications: { title: 'Qualifications', text: '<ul><li>5+ years Java</li></ul>' },
+                        },
+                    },
+                },
+            }),
+        });
+        expect(text).toBeTruthy();
+        expect(text!.indexOf('Own the order service')).toBeLessThan(text!.indexOf('We deliver food'));
+        expect(text).toContain('5+ years Java');
     });
 });
