@@ -271,6 +271,7 @@ export type GenerateOutreachParams = {
     target: DraftTarget;
     format: DraftFormat;
     contactId?: string | null;
+    personUrl?: string | null;
     note?: string | null;
 };
 
@@ -302,6 +303,12 @@ export async function generateOutreachDraft(params: GenerateOutreachParams): Pro
         if (!contact) throw new Error('Contact not found');
         const target = network?.targets.find((t) => t.contactId === contact.id);
         recipient = { name: contact.fullName, position: contact.position, company: contact.company, why: target?.why ?? null };
+    } else if (params.personUrl) {
+        // Only someone this run's search actually found: the URL is matched
+        // against the stored section, so a client cannot name a stranger.
+        const person = network?.targets.find((t) => t.tier === 'found' && t.profileUrl === params.personUrl);
+        if (!person) throw new Error('Person not found in this analysis');
+        recipient = { name: person.fullName, position: person.position, company: person.company, why: person.why };
     } else if (params.target === 'poster') {
         const poster = network?.targets.find((t) => t.tier === 'poster');
         recipient = {

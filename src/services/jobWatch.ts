@@ -29,6 +29,8 @@ import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import type { Coverage } from '@/lib/scout/fit/evaluate';
 import { findPeople } from '@/lib/scout/sections/network';
+import { SourceSet } from '@/lib/agent/sources';
+import type { PeopleSearchStep } from '@/lib/research/people';
 import { loadFitSources, type MatchAi } from '@/lib/scout/sections/fit';
 import type { FitData, NetworkData } from '@/lib/scout/types';
 import { sendTelegramMessageDetailed } from '@/lib/telegram';
@@ -54,6 +56,12 @@ const MAX_ATTEMPTS = 3;
  * 85, and every re-score is a model call.
  */
 export const RECHECK_MIN_SCORE = 60;
+/**
+ * Companies whose recruiters and hiring managers are searched for per run.
+ * Each is two web searches unless cached (14 days, shared across users), and
+ * only qualifying matches are looked up.
+ */
+const MAX_PEOPLE_SEARCHES = 5;
 /** Qualifying matches carried into one message (three shown, the rest counted). */
 const ALERT_POOL = 10;
 
@@ -317,7 +325,20 @@ export type WatchDeps = {
     /** Injected in tests: refreshing a board. */
     refresh?: (sourceId: string) => Promise<unknown>;
     send?: AlertSenders;
+    /** Injected in tests: the web step for people search, or null for none. */
+    peopleStep?: PeopleSearchStep | null;
 };
+
+/** A step for people search outside a Scout run: its own sources, a deadline, logs. */
+function watchPeopleStep(userId: string): PeopleSearchStep {
+    return {
+        userId,
+        sources: new SourceSet(),
+        signal: AbortSignal.timeout(20_000),
+        addCost: () => {},
+        log: (message, extra) => console.info(`[watch] ${message}`, { userId, ...extra }),
+    };
+}
 
 /** Users the dispatcher should run for: someone watching a company, or targeting a role. */
 export async function watchUserIds(limit = 5_000): Promise<string[]> {
@@ -448,9 +469,10 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
         ...rechecks.map((row) => ({ postingId: row.postingId, origin: row.origin, recheck: true })),
         ...candidates.map((candidate) => ({ postingId: candidate.posting.id, origin: candidate.origin, recheck: false })),
     ];
+    const people = { left: MAX_PEOPLE_SEARCHES, step: deps.peopleStep === undefined ? watchPeopleStep(userId) : deps.peopleStep };
     for (const item of queue) {
         try {
-            const qualified = await scoreAndStore({ userId, postingId: item.postingId, origin: item.origin, record, prefs, recordKey, now, ai: deps.ai });
+            const qualified = await scoreAndStore({ userId, postingId: item.postingId, origin: item.origin, record, prefs, recordKey, now, ai: deps.ai, people });
             result.scored += 1;
             if (item.recheck) result.rechecked += 1;
             if (qualified) result.qualified += 1;
@@ -478,11 +500,13 @@ async function scoreAndStore(params: {
     recordKey: string;
     now: Date;
     ai?: MatchAi;
+    /** Web people-search allowance for this run, shared across its matches. */
+    people?: { left: number; step: PeopleSearchStep | null };
 }): Promise<boolean> {
     const posting = await prisma.jobPosting.findUnique({
         where: { id: params.postingId },
         select: {
-            id: true, externalId: true, title: true, location: true, absoluteUrl: true, description: true,
+            id: true, externalId: true, title: true, location: true, absoluteUrl: true, description: true, department: true,
             parsed: true, parsedKey: true, postedAt: true, closedAt: true,
             source: { select: { provider: true, boardToken: true, companyName: true } },
         },
@@ -507,8 +531,16 @@ async function scoreAndStore(params: {
         });
         // People are looked up only for what will be sent: it is the user's own
         // contacts, so there is no reason to compute it for a job they never see.
+        let web: PeopleSearchStep | null = null;
+        if (gate.qualifies && params.people?.step && params.people.left > 0) {
+            params.people.left -= 1;
+            web = params.people.step;
+        }
         const people = gate.qualifies
-            ? await findPeople({ userId: params.userId, company: posting.source.companyName, role: posting.title, domain: scored.jd.domain })
+            ? await findPeople({
+                userId: params.userId, company: posting.source.companyName, role: posting.title, domain: scored.jd.domain,
+                team: posting.department, web,
+            })
             : null;
         data = {
             score: evaluation.fit.score,

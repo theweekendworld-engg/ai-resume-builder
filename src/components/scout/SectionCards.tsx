@@ -456,6 +456,7 @@ const TIER_LABEL: Record<NetworkTier, string> = {
     ex_colleague: 'Former colleague',
     alumni: 'Alumni',
     search: 'Suggested',
+    found: 'Found by search',
 };
 
 /** Which draft a person gets. The poster is asked directly; a connection is asked for a referral. */
@@ -465,12 +466,21 @@ const TIER_TARGET: Record<NetworkTier, DraftTarget> = {
     ex_colleague: 'referral',
     alumni: 'alumni',
     search: 'referral',
+    found: 'recruiter',
 };
+
+/** A found person's own role picks the draft: a recruiter note or a hiring-manager note. */
+function draftTargetFor(target: NetworkTarget): DraftTarget {
+    if (target.tier === 'found' && target.role) return target.role;
+    return TIER_TARGET[target.tier];
+}
 
 export type DraftRequest = {
     target: DraftTarget;
     format: DraftFormat;
     contactId: string | null;
+    /** A found person's profile URL; the server looks them up in the run, never trusting a name from here. */
+    personUrl: string | null;
     /** Display only, so the pending state can say who the draft is for. */
     label: string;
     /** Identifies the menu that asked, so only its button shows progress. */
@@ -482,6 +492,7 @@ function DraftMenu({
     label,
     target,
     contactId,
+    personUrl,
     onDraft,
     pending,
     disabled,
@@ -490,6 +501,7 @@ function DraftMenu({
     label: string;
     target: DraftTarget;
     contactId: string | null;
+    personUrl: string | null;
     onDraft: (request: DraftRequest) => void;
     pending: boolean;
     disabled: boolean;
@@ -506,7 +518,7 @@ function DraftMenu({
             <DropdownMenuContent align="end">
                 <DropdownMenuLabel>{label}</DropdownMenuLabel>
                 {(Object.keys(DRAFT_FORMAT_LABEL) as DraftFormat[]).map((format) => (
-                    <DropdownMenuItem key={format} onSelect={() => onDraft({ target, format, contactId, label, key: draftKey })}>
+                    <DropdownMenuItem key={format} onSelect={() => onDraft({ target, format, contactId, personUrl, label, key: draftKey })}>
                         {DRAFT_FORMAT_LABEL[format]}
                     </DropdownMenuItem>
                 ))}
@@ -546,12 +558,22 @@ function TargetRow({
                     {TIER_LABEL[target.tier]}
                     {target.why ? ` · ${target.why}` : ''}
                 </p>
+                {target.citation ? (
+                    <p className={cn(typeStyles.caption, 'mt-0.5 text-muted-foreground')}>
+                        Source:{' '}
+                        <a href={safeHref(target.citation.url) ?? undefined} target="_blank" rel="noopener noreferrer nofollow" className="underline underline-offset-2">
+                            {target.citation.title}
+                        </a>
+                        {' '}· people change jobs, so check the profile is current before writing.
+                    </p>
+                ) : null}
             </div>
             <DraftMenu
                 draftKey={key}
                 label={`To ${target.fullName}`}
-                target={TIER_TARGET[target.tier]}
+                target={draftTargetFor(target)}
                 contactId={target.contactId}
+                personUrl={target.tier === 'found' ? target.profileUrl : null}
                 onDraft={onDraft}
                 pending={pendingKey === key}
                 disabled={draftsDisabled}
@@ -617,6 +639,7 @@ function NetworkBody({
                     label="To a recruiter"
                     target="recruiter"
                     contactId={null}
+                    personUrl={null}
                     onDraft={onDraft}
                     pending={pendingKey === 'recruiter'}
                     disabled={draftsDisabled}
@@ -626,6 +649,7 @@ function NetworkBody({
                     label="To the hiring manager"
                     target="hiring_manager"
                     contactId={null}
+                    personUrl={null}
                     onDraft={onDraft}
                     pending={pendingKey === 'hiring_manager'}
                     disabled={draftsDisabled}

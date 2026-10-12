@@ -115,6 +115,44 @@ describe('generateOutreachDraft', () => {
         expect(costUsd).toBeGreaterThan(0);
     });
 
+    test('a found person is addressed by name only if this run found them', async () => {
+        const userId = user();
+        const { run } = await createOrGetRun({ userId, agent: 'scout', inputKey: 'k-found', input: { url: 'https://example.com/found' } });
+        const at = new Date().toISOString();
+        await prisma.agentRun.update({
+            where: { id: run.id },
+            data: {
+                kind: 'job_posting',
+                result: {
+                    network: {
+                        status: 'ok', sources: [], finishedAt: at,
+                        data: {
+                            hasContactsImported: false,
+                            searchLinks: [],
+                            targets: [{
+                                contactId: null, fullName: 'Priya Rao', position: 'Technical Recruiter', company: 'Acme',
+                                profileUrl: 'https://linkedin.com/in/priya', tier: 'found', role: 'recruiter',
+                                why: 'Recruits at Acme · public profile found by search, 2026-10-11',
+                                citation: { url: 'https://linkedin.com/in/priya', title: 'Priya Rao - Technical Recruiter - Acme | LinkedIn', foundAt: '2026-10-11' },
+                            }],
+                        },
+                    },
+                },
+            },
+        });
+        structuredTesting.setObjectRunner(async ({ prompt }) => {
+            prompts.push(prompt);
+            return { object: { subject: 'Backend role', body: 'Hi Priya, a short note about the Backend Engineer role.' }, inputTokens: 10, outputTokens: 10 };
+        });
+
+        const { draft } = await generateOutreachDraft({ userId, runId: run.id, target: 'recruiter', format: 'email', personUrl: 'https://linkedin.com/in/priya' });
+        expect(draft.recipientName).toBe('Priya Rao');
+        expect(prompts.at(-1)).toContain('Priya Rao');
+
+        await expect(generateOutreachDraft({ userId, runId: run.id, target: 'recruiter', format: 'email', personUrl: 'https://linkedin.com/in/someone-else' }))
+            .rejects.toThrow('Person not found');
+    });
+
     test('refuses another user\'s run', async () => {
         const owner = user();
         const { run } = await createOrGetRun({ userId: owner, agent: 'scout', inputKey: 'k2', input: {} });

@@ -161,19 +161,44 @@ cost nothing.
   `JobBoardProvider` gained `smartrecruiters`. `EmailPreference` gained
   `jobAlerts`.
 
-## 9. Not yet
+## 9. Added after launch (2026-10-11)
 
-- **Telegram buttons on the alert.** It links to `/watch` for now.
-- **Re-scoring when the record changes.** A posting held at 80 is not looked
-  at again after the user adds a Win that would lift it. Wins are also not in
-  the fit record at all, for Scout or the watch (`buildFitRecord` reads
-  experience, projects, education and skills).
-- **Recruiter and hiring-manager discovery by web search.** It would need
-  cited sources, as Scout's research sections have. Today it is 1st-degree
-  contacts plus people-search links.
-- **More ATSes** (Workable with a real existence check, Workday, Darwinbox).
+- **Wins in the fit record**, for Scout and the watch. Confirmed, shareable
+  Wins only, filtered in the query (`externalRetrievalFilter`, rule 3),
+  because a matched line is quoted on the fit card and into outreach drafts.
+  The newest 30 are added as "Work log" lines after the roles.
+- **Re-checks.** Each `JobMatch` stores `recordKey`, a fingerprint of the
+  record and preferences it was scored against. Held matches that scored 60
+  or more, and are still open and fresh, are re-scored when it changes. That
+  happens when a Win is confirmed or a preference is set. An unchanged record
+  re-scores nothing.
+- **Telegram buttons.** One row per job: `jw:t` (track), `jw:o` (outreach:
+  starts Scout on the posting) and `jw:x` (not for me). Each tap is scoped to
+  the user the chat is linked to, and spent buttons are removed from the
+  message. WhatsApp stays text plus a link.
+- **Recruiters and hiring managers by search** (`src/lib/research/people.ts`).
+  - **Searches:** two Tavily searches restricted to public `linkedin.com/in`
+    profiles, one for recruiters and one for managers in the role's family
+    and team.
+  - **No model:** the name and headline come from the result's page title.
+    It is accepted only when the title itself names the company exactly, so
+    a snippet mentioning a former employer is rejected.
+  - **Citation:** each person cites the page and the date it was found, and
+    the UI asks the user to check the profile is current.
+  - **Cache:** 14 days, shared across users, keyed by public facts only.
+  - **Where it shows:** in Scout's people list (tier `found`). Drafts are
+    addressed by name only to someone the run actually found, resolved
+    server-side by profile URL. In the job watch, it runs for qualifying
+    matches only, at most 5 companies per run.
+
+## 10. Not yet
+
+- WhatsApp buttons. Alerts are long, and interactive messages cap the body
+  at 1,024 characters.
+- More ATSes: Workable with a real existence check, Workday, Darwinbox.
 - **Unproven live:**
   - an end-to-end run against a real model;
-  - an alert landing on a real Telegram chat;
-  - a SmartRecruiters board at scale (the adapter caps at 10 pages, 1,000
-    postings).
+  - an alert in a real Telegram chat;
+  - live Tavily results for people search. Title parsing is tested against
+    LinkedIn's title formats, but no key was available to run a real query;
+  - a SmartRecruiters board at scale (the adapter caps at 1,000 postings).

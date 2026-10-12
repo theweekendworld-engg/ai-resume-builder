@@ -14,6 +14,8 @@ import { prisma } from '@/lib/prisma';
 import type { MatchAi } from '@/lib/scout/sections/fit';
 import { parsedKeyFor } from '@/lib/watch/score';
 import { dismissMatch, listMatches, RECHECK_MIN_SCORE, runWatchForUser, sendMorningAlert, trackMatch, type AlertSenders } from './jobWatch';
+import { __testing as providerTesting } from '@/lib/research/providers';
+import { __testing as cacheTesting, createMemoryStore } from '@/lib/research/cache';
 
 const RUN = `itest-watch-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const USER = `${RUN}-user`;
@@ -76,6 +78,8 @@ async function makePosting(key: keyof typeof postingIds, title: string, descript
 }
 
 beforeAll(async () => {
+    // Hermetic: no live people search even where TAVILY_API_KEY is set.
+    providerTesting.setProvider(null);
     flags = await snapshotFlags();
     await setFlagForTest('job_watch', { enabled: true, allowUserIds: [USER] });
     await prisma.userProfile.create({
@@ -127,6 +131,7 @@ beforeEach(async () => {
 afterEach(() => aiTesting.reset());
 
 afterAll(async () => {
+    providerTesting.setProvider(undefined);
     await prisma.win.deleteMany({ where: { userId: USER } });
     await prisma.jobMatch.deleteMany({ where: { userId: USER } });
     await prisma.watchedCompany.deleteMany({ where: { userId: USER } });
@@ -223,6 +228,36 @@ describe('the nightly run', () => {
             expect((await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders })).skipped).toBe('flag_off');
         } finally {
             await setFlagForTest('job_watch', { enabled: true, allowUserIds: [USER] });
+        }
+    });
+});
+
+describe('people on the alert', () => {
+    test('with no connection there, a recruiter found by search is named, with the page it came from', async () => {
+        cacheTesting.setStore(createMemoryStore());
+        providerTesting.setProvider({
+            name: 'fake',
+            async search(args: { query: string }) {
+                const recruiter = /recruiter/.test(args.query);
+                return {
+                    kind: 'ok',
+                    costUsd: 0,
+                    results: recruiter
+                        ? [{ url: 'https://linkedin.com/in/meera', title: 'Meera Nair - Technical Recruiter - Acme Pay | LinkedIn', content: '', rawContent: null, publishedDate: null, score: 1 }]
+                        : [],
+                };
+            },
+        } as never);
+        try {
+            await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+            expect(sent[0].text).toContain('Talk to: Meera Nair (Recruits at Acme Pay');
+            expect(sent[0].text).toContain('https://linkedin.com/in/meera');
+            const [match] = await listMatches(USER, 'qualified');
+            const found = match.people?.targets.find((t) => t.tier === 'found');
+            expect(found?.citation?.title).toBe('Meera Nair - Technical Recruiter - Acme Pay | LinkedIn');
+        } finally {
+            providerTesting.setProvider(null);
+            cacheTesting.setStore(null);
         }
     });
 });

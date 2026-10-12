@@ -381,6 +381,8 @@ export type DraftParams = {
     target: DraftTarget;
     format: DraftFormat;
     contactId?: string | null;
+    /** A person found by search, by profile URL. Resolved against the run's own section. */
+    personUrl?: string | null;
     /** Optional steer from the user, e.g. "mention I used their SDK". */
     note?: string | null;
 };

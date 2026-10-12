@@ -189,6 +189,13 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   claim-then-send. Never loosen the gate to "get more alerts": a held match
   shows its reason on the page instead. LinkedIn is not crawled (owner
   decision, 2026-10-11).
+  - **Fit reads confirmed, shareable Wins** (`loadFitSources`, filtered in
+    the query).
+  - **Held near-misses (60+) are re-scored** when `recordKey` changes.
+  - **Alerts carry Telegram buttons** (`jw:`).
+  - **Recruiters and hiring managers come from public profile search**
+    (`src/lib/research/people.ts`, tier `found`): code-parsed from page
+    titles, cited, and never written by a model.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

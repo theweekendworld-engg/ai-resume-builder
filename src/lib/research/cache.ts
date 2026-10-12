@@ -31,6 +31,8 @@ export const TTL_DAYS = {
     comp: 14,
     interviews: 14,
     talent: 30,
+    /** People move; a recruiter found in March may have left by June. */
+    people: 14,
     /** A posting's text does not change; its id does not get reused. */
     posting: 30,
     /** Nothing found. Short, so a company that gets written about is re-tried. */
@@ -44,7 +46,7 @@ export const TTL_DAYS = {
  * makes the same link give the same requirements, and the same score, to
  * everyone.
  */
-export type ResearchKind = 'company' | 'comp' | 'interviews' | 'talent' | 'posting';
+export type ResearchKind = 'company' | 'comp' | 'interviews' | 'talent' | 'posting' | 'people';
 
 /** A page a cached claim rests on, with enough text to re-verify it. */
 export type CachedPage = {

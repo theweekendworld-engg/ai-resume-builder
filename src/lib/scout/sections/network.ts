@@ -24,8 +24,11 @@ import { prisma } from '@/lib/prisma';
 import { canonicalCompanyKey, longestNameToken, normalizeCompanyName } from '@/lib/enrichment/companyName';
 import { dataOf, type ScoutSection } from '@/lib/scout/section';
 import type { NetworkData, NetworkTarget } from '@/lib/scout/types';
+import { findPeopleOnWeb, type PeopleSearchStep } from '@/lib/research/people';
 
 const MAX_TARGETS = 8;
+/** People found by search, on top of the user's own connections. */
+const MAX_FOUND = 4;
 const PEOPLE_SEARCH = 'https://www.linkedin.com/search/results/people/';
 
 /** A LinkedIn people-search URL. `network`: F = 1st, S = 2nd, O = 3rd+. */
@@ -104,6 +107,7 @@ export const networkSection: ScoutSection<'network'> = async (ctx) => {
         role,
         domain: jd?.domain ?? null,
         poster: classify?.kind === 'hiring_post' && ingest?.author ? { name: ingest.author, url: ingest.authorUrl } : null,
+        web: ctx.step,
     });
     return { status: 'ok', data };
 };
@@ -119,6 +123,13 @@ export async function findPeople(params: {
     domain?: string | null;
     /** The author of a hiring post, when there is one. */
     poster?: { name: string; url: string | null } | null;
+    /** The posting's department or team, which sharpens the manager search. */
+    team?: string | null;
+    /**
+     * Search for recruiters and hiring managers on public profiles. Omitted:
+     * the user's own connections and search links only, no web calls.
+     */
+    web?: PeopleSearchStep | null;
 }): Promise<NetworkData> {
     const { company, role } = params;
     const targets: NetworkTarget[] = [];
@@ -171,7 +182,30 @@ export async function findPeople(params: {
         }
     }
 
-    // 3. Searches, built by code. Always safe: they are links to LinkedIn,
+    // 3. Recruiters and hiring managers on public profiles, each citing the
+    //    page the search returned. Never someone already listed above.
+    if (params.web) {
+        const found = await findPeopleOnWeb({ step: params.web, company, role, team: params.team ?? null }).catch(() => []);
+        const listed = new Set(targets.map((t) => (t.profileUrl ?? '').toLowerCase().replace(/\/$/, '')).filter(Boolean));
+        const listedNames = new Set(targets.map((t) => t.fullName.toLowerCase()));
+        for (const person of found) {
+            if (targets.filter((t) => t.tier === 'found').length >= MAX_FOUND) break;
+            if (listed.has(person.profileUrl.toLowerCase().replace(/\/$/, '')) || listedNames.has(person.fullName.toLowerCase())) continue;
+            targets.push({
+                contactId: null,
+                fullName: person.fullName,
+                position: person.headline,
+                company,
+                profileUrl: person.profileUrl,
+                tier: 'found',
+                role: person.role,
+                why: `${person.role === 'recruiter' ? 'Recruits' : 'Could be the hiring manager'} at ${company} · public profile found by search, ${person.foundAt}`,
+                citation: { url: person.profileUrl, title: person.sourceTitle, foundAt: person.foundAt },
+            });
+        }
+    }
+
+    // 4. Searches, built by code. Always safe: they are links to LinkedIn,
     //    run in the user's own logged-in session.
     const searchLinks: NetworkData['searchLinks'] = [
         { label: `Recruiters at ${company}`, url: peopleSearchUrl(`${company} recruiter`) },

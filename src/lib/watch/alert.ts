@@ -84,7 +84,7 @@ export function renderChatAlert(items: readonly AlertItem[], watchUrl: string, o
         ];
         if (item.strongest) lines.push(`Why: "${item.strongest.requirement}" ← ${item.strongest.evidence}`);
         if (item.gap) lines.push(`Gap: ${item.gap}`);
-        if (item.person) lines.push(`Talk to: ${item.person.name} (${item.person.why})`);
+        if (item.person) lines.push(`Talk to: ${item.person.name} (${item.person.why})${item.person.url ? ` ${item.person.url}` : ''}`);
         else if (item.searchLink) lines.push(`Find someone: ${item.searchLink.url}`);
         lines.push(item.url);
         return lines.join('\n');
