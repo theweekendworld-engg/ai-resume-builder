@@ -1,3 +1,9 @@
+# Patronus
+
+![Patronus](docs/thumbnail.png)
+
+An AI career companion. Live at [patronus.cv](https://www.patronus.cv).
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
