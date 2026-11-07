@@ -29,12 +29,12 @@ async function dispatch(ctx: JobContext): Promise<JobResultObject> {
     return { mode: 'dispatch', due: userIds.length, enqueued };
 }
 
-async function runOne(userId: string): Promise<JobResultObject> {
-    const result = await runWatchForUser(userId);
+async function runOne(userId: string, ctx: JobContext): Promise<JobResultObject> {
+    const result = await runWatchForUser(userId, { deadline: ctx.deadline });
     return { mode: 'user', ...result, alert: result.alert ? { ...result.alert } : null };
 }
 
 export const jobWatchHandler: JobHandler = async (payload, ctx) => {
     const parsed = PayloadSchema.parse(payload ?? {});
-    return parsed.userId ? runOne(parsed.userId) : dispatch(ctx);
+    return parsed.userId ? runOne(parsed.userId, ctx) : dispatch(ctx);
 };

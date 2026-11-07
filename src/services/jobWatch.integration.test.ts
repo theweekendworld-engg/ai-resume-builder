@@ -222,6 +222,31 @@ describe('the nightly run', () => {
         }
     });
 
+    test('near the deadline it stops scoring, still sends what it found, and leaves the rest for next run', async () => {
+        // The matcher takes 1s of fake time per posting; the deadline leaves room for exactly one
+        // score before the 10s alert reserve. The first queued posting is the newest (`weak` vs
+        // `strong` order is by createdAt desc), so assert on counts, not on which one.
+        let fake = 0;
+        const slowMatcher = (async (opts: { prompt: string }) => {
+            fake += 1_000;
+            return (matcher as unknown as (o: { prompt: string }) => Promise<unknown>)(opts);
+        }) as unknown as MatchAi;
+        const result = await runWatchForUser(USER, {
+            now: NOW, ai: slowMatcher, send: senders,
+            deadline: new Date(10_500), clock: () => fake,
+        });
+        expect(result.scored).toBe(1);
+        expect(result.deferred).toBe(1);
+        expect(result.alert).not.toBeNull();
+        expect(await prisma.jobMatch.count({ where: { userId: USER } })).toBe(1);
+
+        // Next run, no deadline: the deferred posting is still a candidate.
+        const next = await runWatchForUser(USER, { now: NOW, ai: matcher, send: senders });
+        expect(next.scored).toBe(1);
+        expect(next.deferred).toBe(0);
+        expect(await prisma.jobMatch.count({ where: { userId: USER } })).toBe(2);
+    });
+
     test('flag off: nothing runs', async () => {
         await setFlagForTest('job_watch', { enabled: false, allowUserIds: [] });
         try {

@@ -636,6 +636,16 @@ export async function executeJob(job: Job, deadline: Date): Promise<JobOutcome> 
             console.error(`[job ${job.id}] failed to record failure`, writeError);
         }
 
+        if (outcome.status === JobStatus.dead) {
+            // Out of retries: nobody finds out from logs that expire in an hour.
+            const { alertOperators } = await import('@/lib/opsAlert');
+            await alertOperators({
+                key: `job_dead:${job.kind}`,
+                title: `Job died: ${job.kind}`,
+                lines: [`id ${job.id} after ${outcome.attempts} attempts`, outcome.lastError ?? 'no error recorded', '/admin/ops'],
+            });
+        }
+
         return {
             jobId: job.id,
             kind: job.kind,

@@ -46,6 +46,9 @@ import { recordKeyFor, scorePosting } from '@/lib/watch/score';
 const CANDIDATE_WINDOW_DAYS = 30;
 /** A board fetched more recently than this is fresh enough to score from. */
 const FRESH_BOARD_MS = 6 * 60 * 60 * 1000;
+/** Time kept back from the job deadline for the alert and bookkeeping. */
+const ALERT_RESERVE_MS = 10_000;
+
 /** Watched boards refreshed inline per run, at most. The rest wait for ingest. */
 const MAX_INLINE_REFRESH = 10;
 /** A fallback-scored match is retried this many times before it stays held. */
@@ -315,11 +318,21 @@ export type WatchRunResult = {
     rechecked: number;
     qualified: number;
     errors: number;
+    /** Queue items left unscored because the run reached its deadline; they are candidates again next run. */
+    deferred: number;
     alert: AlertOutcome | null;
 };
 
 export type WatchDeps = {
     now?: Date;
+    /**
+     * The job's hard deadline (JobContext.deadline). Refresh and scoring stop
+     * early enough to leave time for the alert, so a slow night still sends
+     * what it found instead of being killed and retried a day later.
+     */
+    deadline?: Date;
+    /** Injected in tests: the clock used for deadline checks. */
+    clock?: () => number;
     /** Injected in tests: the matcher call. */
     ai?: MatchAi;
     /** Injected in tests: refreshing a board. */
@@ -366,7 +379,9 @@ function recordTitles(record: { defaultTitle: string; lines: Array<{ source: str
 
 export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Promise<WatchRunResult> {
     const now = deps.now ?? new Date();
-    const result: WatchRunResult = { refreshed: 0, considered: 0, shortlisted: 0, scored: 0, rechecked: 0, qualified: 0, errors: 0, alert: null };
+    const result: WatchRunResult = { refreshed: 0, considered: 0, shortlisted: 0, scored: 0, rechecked: 0, qualified: 0, errors: 0, deferred: 0, alert: null };
+    const clock = deps.clock ?? Date.now;
+    const outOfTime = (): boolean => deps.deadline !== undefined && deps.deadline.getTime() - clock() < ALERT_RESERVE_MS;
     if (!(await isEnabled(userId, 'job_watch'))) return { ...result, skipped: 'flag_off' };
 
     const [watched, { record, prefs }, tier] = await Promise.all([
@@ -390,6 +405,7 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
             && (!row.source.lastFetchedAt || now.getTime() - row.source.lastFetchedAt.getTime() > FRESH_BOARD_MS))
         .slice(0, MAX_INLINE_REFRESH);
     for (const row of stale) {
+        if (outOfTime()) break;
         try {
             await refresh(row.sourceId!);
             result.refreshed += 1;
@@ -470,7 +486,12 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
         ...candidates.map((candidate) => ({ postingId: candidate.posting.id, origin: candidate.origin, recheck: false })),
     ];
     const people = { left: MAX_PEOPLE_SEARCHES, step: deps.peopleStep === undefined ? watchPeopleStep(userId) : deps.peopleStep };
-    for (const item of queue) {
+    for (const [index, item] of queue.entries()) {
+        if (outOfTime()) {
+            result.deferred = queue.length - index;
+            console.warn('[watch] deadline near; alerting with what was scored', { userId, deferred: result.deferred });
+            break;
+        }
         try {
             const qualified = await scoreAndStore({ userId, postingId: item.postingId, origin: item.origin, record, prefs, recordKey, now, ai: deps.ai, people });
             result.scored += 1;
@@ -486,7 +507,7 @@ export async function runWatchForUser(userId: string, deps: WatchDeps = {}): Pro
     result.alert = await sendMorningAlert(userId, { now, send: deps.send });
     await track(userId, 'watch_run', {
         considered: result.considered, shortlisted: result.shortlisted, scored: result.scored, rechecked: result.rechecked,
-        qualified: result.qualified, errors: result.errors, alerted: result.alert?.sent ?? 0,
+        qualified: result.qualified, errors: result.errors, deferred: result.deferred, alerted: result.alert?.sent ?? 0,
     });
     return result;
 }

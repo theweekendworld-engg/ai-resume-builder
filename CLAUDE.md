@@ -196,6 +196,16 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   - **Recruiters and hiring managers come from public profile search**
     (`src/lib/research/people.ts`, tier `found`): code-parsed from page
     titles, cited, and never written by a model.
+- **Queue cadence and alerts** (2026-11-07). Vercel Hobby allows one cron a
+  day, so `.github/workflows/tick.yml` hits `/api/cron/tick` every 10 minutes
+  (repo secret `CRON_SECRET`, same value as Vercel production). A failed run
+  is the missed-tick alert. Dead jobs and uncaught server errors go to the
+  admins' linked Telegram through `src/lib/opsAlert.ts`, throttled per key,
+  never with user content. CI runs the suite against a pgvector service.
+- **Comped plans.** `/admin/<userId>` → Grant plan writes a `Subscription`
+  row with an `admin_grant:` customer id. It never overwrites a live paid row.
+- **Job watch respects its deadline.** `runWatchForUser({ deadline })` stops
+  10s early, sends what it scored, and reports `deferred`.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

@@ -43,3 +43,25 @@ export async function register(): Promise<void> {
         });
     }
 }
+
+/**
+ * Next.js calls this for every uncaught error in a route handler, server
+ * action, page render or middleware. Forward it to the admins' Telegram,
+ * throttled per route + message (src/lib/opsAlert.ts). Nothing from the
+ * request body is included.
+ */
+export async function onRequestError(
+    error: unknown,
+    request: { path: string; method: string },
+    context: { routerKind: string; routePath: string; routeType: string },
+): Promise<void> {
+    if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+    const message = error instanceof Error ? error.message : String(error);
+    const digest = (error as { digest?: string } | null)?.digest;
+    const { alertOperators } = await import('@/lib/opsAlert');
+    await alertOperators({
+        key: `request_error:${context.routePath}:${message.slice(0, 80)}`,
+        title: `Server error on ${context.routeType} ${context.routePath}`,
+        lines: [`${request.method} ${request.path.split('?')[0]}`, message, ...(digest ? [`digest ${digest}`] : [])],
+    });
+}

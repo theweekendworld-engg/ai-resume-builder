@@ -4,9 +4,12 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import type { Tier } from '@prisma/client';
+import { planName } from '@/lib/plans';
 
 import {
     adminDeleteUserData,
+    grantTier,
     resetUserUsage,
     suspendUser,
     unsuspendUser,
@@ -30,6 +33,7 @@ export function AdminUserPanel({ userId, detail }: { userId: string; detail: Adm
     const [busy, setBusy] = React.useState(false);
     const [reason, setReason] = React.useState('');
     const [confirm, setConfirm] = React.useState('');
+    const [grant, setGrant] = React.useState<Tier>('team');
 
     const run = async (label: string, fn: () => Promise<{ success: boolean; error?: string }>) => {
         setBusy(true);
@@ -84,6 +88,16 @@ export function AdminUserPanel({ userId, detail }: { userId: string; detail: Adm
                     <button type="button" disabled={busy} onClick={() => void run('Reset usage', () => resetUserUsage({ target: userId }))} className="rounded-md border border-border px-3 py-1.5 text-sm">
                         Reset this period&apos;s usage
                     </button>
+                    <span className="flex items-center gap-2">
+                        <select value={grant} onChange={(e) => setGrant(e.target.value as Tier)} className="rounded-md border border-border bg-background px-2 py-1.5 text-sm" aria-label="Plan to grant">
+                            {(['team', 'pro', 'always_on', 'free'] as const).map((t) => (
+                                <option key={t} value={t}>{t === 'free' ? `${planName(t)} (revoke grant)` : planName(t)}</option>
+                            ))}
+                        </select>
+                        <button type="button" disabled={busy} onClick={() => void run('Grant plan', () => grantTier({ target: userId, tier: grant }))} className="rounded-md border border-border px-3 py-1.5 text-sm">
+                            Grant plan
+                        </button>
+                    </span>
                     <span className="ml-auto flex items-center gap-2">
                         <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Type the user id to delete" className="w-64 rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs" />
                         <button type="button" disabled={busy || confirm !== userId} onClick={() => void run('Delete data', () => adminDeleteUserData({ target: userId, confirm }))} className="rounded-md bg-destructive px-3 py-1.5 text-sm text-destructive-foreground disabled:opacity-50">
