@@ -141,6 +141,8 @@ const DraftSchema = z.object({
     target: z.enum(['poster', 'recruiter', 'hiring_manager', 'referral', 'alumni']),
     format: z.enum(['linkedin_note', 'linkedin_message', 'email']),
     contactId: z.string().max(64).nullable().optional(),
+    /** A `found` person in this run's network section, by profile URL. */
+    personUrl: z.string().url().max(500).nullable().optional(),
     note: z.string().max(500).nullable().optional(),
 });
 

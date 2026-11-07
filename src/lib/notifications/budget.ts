@@ -49,6 +49,7 @@ export const NOTIFICATION_PRIORITY: readonly EmailCategory[] = [
     'transactional',
     'missionNudges',
     'weeklyDigest',
+    'jobAlerts',
     'monthlyReview',
     'radarDigest',
     'productUpdates',
@@ -109,6 +110,9 @@ export type BudgetDecision =
  *                     suppressed for being third is a broken promise.
  *   monthlyReview  2  Monthly, so it competes rarely — but it must not be the
  *                     message that crowds out a nudge.
+ *   jobAlerts      2  Email only stands in when no chat app is linked; the
+ *                     chat message carries the daily cadence. Two a week by
+ *                     email is the most an inbox should take of it.
  *   radarDigest    2  Monthly and about the market rather than about them.
  *   productUpdates 1  Ours, not theirs. Never takes more than the first slot.
  */
@@ -117,6 +121,7 @@ const CATEGORY_CEILING: Record<EmailCategory, number> = {
     missionNudges: WEEKLY_NOTIFICATION_BUDGET,
     weeklyDigest: WEEKLY_NOTIFICATION_BUDGET,
     monthlyReview: 2,
+    jobAlerts: 2,
     radarDigest: 2,
     productUpdates: 1,
 };

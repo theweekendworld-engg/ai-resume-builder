@@ -21,8 +21,10 @@
 
 import { prisma } from '@/lib/prisma';
 
+import type { BoardProvider } from '@/lib/radar/boards';
+
 export type DiscoveredBoard = {
-    provider: 'greenhouse' | 'ashby';
+    provider: BoardProvider;
     boardToken: string;
 };
 
@@ -60,6 +62,8 @@ function isPlausibleToken(token: string): boolean {
  *   https://boards.greenhouse.io/figma/jobs/5364702004?gh_jid=…
  *   https://job-boards.greenhouse.io/figma/jobs/5364702004
  *   https://jobs.ashbyhq.com/ramp/34413f8d-…/application
+ *   https://jobs.lever.co/cred/aa98a938-…
+ *   https://jobs.smartrecruiters.com/SWIGGY/6000000001476424-lead-bd
  *
  * Returns null for anything else, including LinkedIn and company career pages
  * that merely link onward to a board — guessing a token from those produces a
@@ -91,6 +95,17 @@ export function boardFromUrl(rawUrl: string | null | undefined): DiscoveredBoard
         return isPlausibleToken(token) ? { provider: 'ashby', boardToken: token } : null;
     }
 
+    if (host === 'jobs.lever.co' || host === 'jobs.eu.lever.co') {
+        const token = segments[0];
+        return isPlausibleToken(token) ? { provider: 'lever', boardToken: token } : null;
+    }
+
+    if (host === 'jobs.smartrecruiters.com' || host === 'careers.smartrecruiters.com') {
+        // Identifiers are case-insensitive to the API; URLs often upper-case them.
+        const token = segments[0].toLowerCase();
+        return isPlausibleToken(token) ? { provider: 'smartrecruiters', boardToken: token } : null;
+    }
+
     return null;
 }
 
@@ -105,7 +120,7 @@ export function boardFromUrl(rawUrl: string | null | undefined): DiscoveredBoard
 export async function registerBoard(params: {
     board: DiscoveredBoard;
     companyName?: string | null;
-    discoveredVia: 'seed' | 'workspace' | 'extension';
+    discoveredVia: 'seed' | 'workspace' | 'extension' | 'watchlist';
     discoveredByUserId?: string | null;
 }): Promise<{ id: string; created: boolean }> {
     const existing = await prisma.jobSource.findUnique({
@@ -143,7 +158,7 @@ export async function registerBoard(params: {
 export async function registerBoardFromUrl(params: {
     url: string | null | undefined;
     companyName?: string | null;
-    discoveredVia: 'seed' | 'workspace' | 'extension';
+    discoveredVia: 'seed' | 'workspace' | 'extension' | 'watchlist';
     discoveredByUserId?: string | null;
 }): Promise<DiscoveredBoard | null> {
     const board = boardFromUrl(params.url);

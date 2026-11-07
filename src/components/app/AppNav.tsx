@@ -16,6 +16,7 @@ import {
     Settings,
     Sparkles,
     Target,
+    Telescope,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -38,7 +39,7 @@ import { cn } from '@/lib/utils';
  * admin) render without the shell.
  */
 
-export type NavDestination = 'overview' | 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout';
+export type NavDestination = 'overview' | 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout' | 'watch';
 
 type Item = { key: NavDestination; href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -51,13 +52,14 @@ const DESTINATIONS: Record<NavDestination, Omit<Item, 'key'>> = {
     log: { href: '/log', label: 'Work Log', icon: NotebookPen },
     // The route stays /scout (links in chat messages point there).
     scout: { href: '/scout', label: 'Jobs', icon: Inbox },
+    watch: { href: '/watch', label: 'Job watch', icon: Telescope },
     resumes: { href: '/dashboard', label: 'Resumes', icon: FileText },
     packets: { href: '/packets', label: 'Packets', icon: Compass },
     radar: { href: '/radar', label: 'Radar', icon: Radar },
 };
 
 /** The order of the user's day: what needs me, talk, what I am working toward, then the records. */
-const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'resumes', 'packets', 'radar'];
+const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'watch', 'resumes', 'packets', 'radar'];
 
 /** On a phone, four tabs and "More". Chosen by how often each is opened. */
 const MOBILE_TABS: NavDestination[] = ['overview', 'chat', 'scout', 'log'];

@@ -1,0 +1,44 @@
+name: tick
+
+# External pinger for the job queue (ADR-2). Vercel Hobby only allows one cron a
+# day, so retries and near-real-time work would otherwise wait up to 24 hours.
+# This hits the same dispatcher every 10 minutes. GitHub runs schedules on a
+# best-effort basis, so expect some drift; the daily Vercel cron stays as a
+# backstop.
+#
+# A failed run means the tick did not return 2xx. GitHub emails the repo owner
+# about failed scheduled runs, which doubles as the missed-tick alert.
+#
+# Needs one repository secret: CRON_SECRET, the same value as the Vercel
+# production env var. Set it with:  gh secret set CRON_SECRET
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Call /api/cron/tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TICK_URL: https://patronus.cv/api/cron/tick
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            # Not configured yet: skip instead of failing every 10 minutes
+            # (each failed scheduled run emails the owner).
+            echo "::warning::CRON_SECRET repository secret is not set; tick skipped"
+            exit 0
+          fi
+          curl --silent --show-error --fail-with-body --max-time 75 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$TICK_URL"
+          echo

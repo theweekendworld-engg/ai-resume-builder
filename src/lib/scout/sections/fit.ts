@@ -18,11 +18,15 @@
  */
 
 import { z } from 'zod';
+import type { GenerateStructuredOptions, GenerateStructuredResult } from '@/lib/ai/structured';
 import { getExtensionProfileBundle } from '@/lib/extension/profile';
+import { externalRetrievalFilter } from '@/lib/graph/visibility';
+import { prisma } from '@/lib/prisma';
 import { getSkillsWithEvidence } from '@/lib/resume/tools/evidence';
-import { dataOf, type ScoutSection, type SectionContext } from '@/lib/scout/section';
+import { dataOf, type ScoutSection } from '@/lib/scout/section';
 import {
     buildFitRecord,
+    MAX_RECORD_WINS,
     deterministicSummary,
     evaluateFit,
     summaryAgrees,
@@ -47,10 +51,19 @@ export type FitSources = {
     prefs: UserGenerationPreferences;
 };
 
-async function loadFitSources(userId: string): Promise<FitSources> {
-    const [bundle, skills] = await Promise.all([
+/** The user's record and preferences as fit reads them. Shared with the job watch. */
+export async function loadFitSources(userId: string): Promise<FitSources> {
+    const [bundle, skills, wins] = await Promise.all([
         getExtensionProfileBundle(userId),
         getSkillsWithEvidence(userId).catch(() => []),
+        // Rule 3: sensitivity in the query. Matched lines are quoted on the
+        // card and into outreach, so only confirmed shareable Wins may match.
+        prisma.win.findMany({
+            where: externalRetrievalFilter(userId),
+            orderBy: { occurredAt: 'desc' },
+            take: MAX_RECORD_WINS,
+            select: { title: true, narrative: true },
+        }),
     ]);
     return {
         record: buildFitRecord({
@@ -63,6 +76,7 @@ async function loadFitSources(userId: string): Promise<FitSources> {
                 fieldOfStudy: school.fieldOfStudy,
             })),
             skills,
+            wins,
         }),
         // The bundle's wire type widens this to unknown; re-parse to the real shape.
         prefs: parseUserGenerationPreferences(bundle.profile.preferences),
@@ -82,14 +96,29 @@ export const __testing = {
 
 // ────────────────────────────────────────────────────────────────── match
 
-type MatchOutcome = { judgements: Map<string, Judgement>; softIds: Set<string>; via: 'model' | 'fallback' | 'none' };
+export type MatchOutcome = { judgements: Map<string, Judgement>; softIds: Set<string>; via: 'model' | 'fallback' | 'none' };
 
-async function matchRequirements(ctx: SectionContext, plan: MatchPlan, record: FitRecord): Promise<MatchOutcome> {
+/** `generateStructured` with the caller's identity already filled in. */
+export type MatchAi = <T extends z.ZodType>(
+    opts: Omit<GenerateStructuredOptions<T>, 'userId' | 'sessionId' | 'feature'>,
+) => Promise<GenerateStructuredResult<z.infer<T>>>;
+
+/**
+ * Ask the matcher about what code could not settle. Shared by Scout (one
+ * link) and the job watch (the nightly shortlist), so both produce the same
+ * judgements, and therefore the same score, for the same posting and record.
+ */
+export async function matchRequirements(
+    ai: MatchAi,
+    plan: MatchPlan,
+    record: FitRecord,
+    log: (message: string, extra?: Record<string, unknown>) => void = () => {},
+): Promise<MatchOutcome> {
     if (plan.toAsk.length === 0 || record.empty) {
         return { judgements: new Map(), softIds: new Set(), via: 'none' };
     }
     try {
-        const { data } = await ctx.step.ai({
+        const { data } = await ai({
             task: 'scoutFitMatch',
             schema: MatchResponseSchema,
             system: MATCH_SYSTEM,
@@ -103,7 +132,7 @@ async function matchRequirements(ctx: SectionContext, plan: MatchPlan, record: F
         for (const [id, judgement] of fallbackJudgements(missing, record)) resolved.judgements.set(id, judgement);
         return { ...resolved, via: 'model' };
     } catch (error) {
-        ctx.step.log('matching fell back to keywords', { error: String(error) });
+        log('matching fell back to keywords', { error: String(error) });
         return { judgements: fallbackJudgements(plan.toAsk, record), softIds: new Set(), via: 'fallback' };
     }
 }
@@ -148,7 +177,7 @@ export const fitSection: ScoutSection<'fit'> = async (ctx) => {
     const { record, prefs } = await loader(ctx.userId);
     const jdText = ingest?.text ?? '';
     const plan = planMatching(jd, record);
-    const match = await matchRequirements(ctx, plan, record);
+    const match = await matchRequirements(ctx.step.ai, plan, record, ctx.step.log);
     const evaluation = evaluateFit({
         jd,
         jdText,

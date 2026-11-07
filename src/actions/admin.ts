@@ -753,6 +753,57 @@ export async function unsuspendUser(input: { target: string }): Promise<{ succes
   return { success: true };
 }
 
+/**
+ * Comp a plan without Stripe: the owner's own account, testers, goodwill.
+ *
+ * Written as a `Subscription` row so every entitlement read (tier, budgets,
+ * history window) sees it through the one path that already exists. The row is
+ * marked with an `admin_grant:` customer id, which no Stripe webhook will ever
+ * match, and a real paid subscription in the same slot is never overwritten.
+ * `tier: 'free'` revokes a grant (status → canceled).
+ */
+const ADMIN_GRANT_PREFIX = 'admin_grant:';
+const GrantTierSchema = z.object({
+  target: TargetSchema,
+  tier: z.nativeEnum(Tier),
+});
+
+export async function grantTier(input: { target: string; tier: Tier }): Promise<{ success: boolean; error?: string }> {
+  const adminId = await requireAdminUserId();
+  const parsed = GrantTierSchema.safeParse(input);
+  if (!parsed.success) return { success: false, error: 'Give a user id and a plan' };
+  const { target, tier } = parsed.data;
+
+  const existing = await prisma.subscription.findUnique({
+    where: { userId_slot: { userId: target, slot: 'career' } },
+    select: { stripeCustomerId: true, status: true },
+  });
+  if (existing && !existing.stripeCustomerId.startsWith(ADMIN_GRANT_PREFIX) && existing.status !== 'canceled') {
+    return { success: false, error: 'This user has a live paid subscription; change it in Stripe' };
+  }
+
+  const revoke = tier === Tier.free;
+  await prisma.subscription.upsert({
+    where: { userId_slot: { userId: target, slot: 'career' } },
+    create: {
+      userId: target,
+      slot: 'career',
+      stripeCustomerId: `${ADMIN_GRANT_PREFIX}${target}`,
+      tier,
+      status: revoke ? 'canceled' : 'active',
+    },
+    update: {
+      stripeCustomerId: `${ADMIN_GRANT_PREFIX}${target}`,
+      stripeSubId: null,
+      tier,
+      status: revoke ? 'canceled' : 'active',
+      currentPeriodEnd: null,
+    },
+  });
+  await audit(adminId, revoke ? 'revoke_tier' : 'grant_tier', target, { tier });
+  return { success: true };
+}
+
 /** Clear this period's metered-usage counters for one user (support goodwill). */
 export async function resetUserUsage(input: { target: string }): Promise<{ success: boolean; cleared?: number; error?: string }> {
   const adminId = await requireAdminUserId();

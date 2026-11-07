@@ -54,6 +54,26 @@ const samples: { [K in TransactionalTemplateKey]: TransactionalTemplateData[K] }
         missionUrl: 'https://app.example.com/home',
         logUrl: 'https://app.example.com/log?compose=1&src=mission',
     },
+    job_alert: {
+        items: [
+            {
+                matchId: 'm1',
+                title: 'Senior Backend Engineer',
+                company: 'Stripe',
+                location: 'Bengaluru',
+                url: 'https://boards.greenhouse.io/stripe/jobs/1',
+                score: 91,
+                mustCovered: 5,
+                mustTotal: 5,
+                strongest: { requirement: 'Production Go services', evidence: 'Built the billing ledger in Go at Plivo' },
+                gap: 'Kafka',
+                person: { name: 'Priya Rao', why: '1st-degree · Recruiter at Stripe · recruiting', url: 'https://www.linkedin.com/in/priya' },
+                searchLink: null,
+                compensation: null,
+            },
+        ],
+        watchUrl: 'https://app.example.com/watch',
+    },
     radar_digest: {
         monthLabel: 'August',
         roleLabel: 'Senior · software engineering',

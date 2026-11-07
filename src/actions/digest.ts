@@ -39,6 +39,7 @@ export type NotificationSettings = {
     monthlyReview: boolean;
     radarDigest: boolean;
     missionNudges: boolean;
+    jobAlerts: boolean;
     productUpdates: boolean;
     unsubscribedAll: boolean;
     /** "Next digest: Friday, Aug 7 at 4:00 PM" — the live preview line. */
@@ -56,6 +57,7 @@ const SettingsPatchSchema = z.object({
     monthlyReview: z.boolean().optional(),
     radarDigest: z.boolean().optional(),
     missionNudges: z.boolean().optional(),
+    jobAlerts: z.boolean().optional(),
     productUpdates: z.boolean().optional(),
     unsubscribedAll: z.boolean().optional(),
 });
@@ -71,6 +73,7 @@ const SELECT = {
     monthlyReview: true,
     radarDigest: true,
     missionNudges: true,
+    jobAlerts: true,
     productUpdates: true,
     unsubscribedAll: true,
 } as const;
@@ -84,6 +87,7 @@ type PreferenceRow = {
     monthlyReview: boolean;
     radarDigest: boolean;
     missionNudges: boolean;
+    jobAlerts: boolean;
     productUpdates: boolean;
     unsubscribedAll: boolean;
 };
@@ -98,6 +102,7 @@ function toSettings(row: PreferenceRow, telegramLinked: boolean): NotificationSe
         monthlyReview: row.monthlyReview,
         radarDigest: row.radarDigest,
         missionNudges: row.missionNudges,
+        jobAlerts: row.jobAlerts,
         productUpdates: row.productUpdates,
         unsubscribedAll: row.unsubscribedAll,
         nextDigestLabel: describeNextDigest(row),

@@ -24,12 +24,13 @@
  */
 
 import { z } from 'zod';
-import { JobSourceStatus } from '@prisma/client';
+import { JobSourceStatus, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { buildDedupeKey, enqueue } from '@/lib/jobs/runner';
 import type { JobHandler, JobResultObject } from '@/lib/jobs/types';
 import {
     adapterFor,
+    DESCRIPTION_MAX_CHARS,
     MIN_REQUEST_SPACING_MS,
     NOT_FOUND_STREAK_LIMIT,
     type RawPosting,
@@ -83,7 +84,7 @@ export async function dueBoards(limit: number): Promise<Array<{ id: string; host
 
     return rows.flatMap((row) => {
         const adapter = adapterFor(row.provider);
-        // A source for a provider we do not implement (Lever today) is skipped
+        // A source for a provider we do not implement is skipped
         // rather than dead-lettered — the row is legitimate, we just cannot
         // read it yet.
         return adapter ? [{ id: row.id, host: adapter.host }] : [];
@@ -177,6 +178,9 @@ async function storePostings(
             department: posting.department,
             absoluteUrl: posting.absoluteUrl,
             contentHash: hashOf(posting.description),
+            // Empty for list-only providers (SmartRecruiters): leave whatever a
+            // lazy detail fetch stored rather than wiping it every night.
+            ...(posting.description ? { description: posting.description.slice(0, DESCRIPTION_MAX_CHARS) } : {}),
             postedAt: posting.postedAt,
             updatedAtSource: posting.updatedAtSource,
             closedAt: null,
@@ -206,9 +210,11 @@ async function storePostings(
     }
 
     // Anything we hold as open but the board no longer lists has closed.
+    // Its text goes with it: nothing scores a closed posting, and keeping every
+    // description ever published would grow without bound.
     const closed = await prisma.jobPosting.updateMany({
         where: { sourceId, closedAt: null, externalId: { notIn: [...seen] } },
-        data: { closedAt: new Date() },
+        data: { closedAt: new Date(), description: null, parsed: Prisma.DbNull, parsedKey: null },
     });
 
     return { upserted: postings.length, closed: closed.count, withComp };
@@ -224,7 +230,12 @@ function hashOf(text: string): string {
     return (h >>> 0).toString(36);
 }
 
-async function ingestOne(sourceId: string): Promise<JobResultObject> {
+/**
+ * Fetch and store one board now. Exported for the job watch, which refreshes a
+ * user's watched boards before scoring them rather than trusting that the
+ * night's ingest children already ran.
+ */
+export async function ingestOne(sourceId: string): Promise<JobResultObject> {
     const source = await prisma.jobSource.findUnique({
         where: { id: sourceId },
         select: { id: true, provider: true, boardToken: true, companyName: true, etag: true, lastModified: true, notFoundStreak: true },

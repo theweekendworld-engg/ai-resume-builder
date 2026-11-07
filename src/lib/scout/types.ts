@@ -293,7 +293,8 @@ export type InterviewsData = {
  * connection's CURRENT company and no school, so neither can be asserted about
  * a person today. Both are served as code-built people-search links instead.
  */
-export type NetworkTier = 'poster' | 'first_degree' | 'ex_colleague' | 'alumni' | 'search';
+/** `found`: a public profile from a web search, cited (`src/lib/research/people.ts`). */
+export type NetworkTier = 'poster' | 'first_degree' | 'ex_colleague' | 'alumni' | 'search' | 'found';
 
 export type NetworkTarget = {
     contactId: string | null;
@@ -304,6 +305,10 @@ export type NetworkTarget = {
     tier: NetworkTier;
     /** Why this person, e.g. "1st-degree · Senior SDE at Amazon since 2024". */
     why: string;
+    /** For `found` people: who they are for this role, which picks the draft. */
+    role?: 'recruiter' | 'hiring_manager';
+    /** For `found` people: the page the search returned, and when it was read. */
+    citation?: { url: string; title: string; foundAt: string };
 };
 
 export type NetworkData = {

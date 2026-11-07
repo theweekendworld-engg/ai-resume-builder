@@ -70,12 +70,14 @@ function stripMediaBlocks(css: string): string {
  * `@layer base` both resolve.
  */
 function tokensIn(rawCss: string, needle: string): Map<string, string> {
-    const css = stripMediaBlocks(rawCss);
+    const css = stripMediaBlocks(rawCss).replace(/\/\*[\s\S]*?\*\//g, '');
     const out = new Map<string, string>();
     // The needle is grouped: an ungrouped alternation binds looser than the
     // surrounding pattern, so the trailing `\{` became optional and the depth
     // scan ran straight past the block into `@theme inline`.
-    const selector = new RegExp(`(^|\\n)[^\\n{}]*(?:${needle})[^\\n{}]*\\{`, 'g');
+    // A selector list may span lines and carry comments (`.dark,\n/* why */\nhtml:has(...) {`),
+    // so strip comments and let the match cross newlines, but never a `;`, `{` or `}`.
+    const selector = new RegExp(`(^|\\n)[^\\n{};]*(?:${needle})[^{};]*\\{`, 'g');
 
     for (const match of css.matchAll(selector)) {
         const start = (match.index ?? 0) + match[0].length;

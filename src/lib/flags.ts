@@ -27,6 +27,9 @@ export const FEATURE_FLAGS = [
     // Email forwarding, Google Calendar and the application timeline
     // (docs/prd/11-job-journey.md).
     'job_journey',
+    // Watched companies, nightly matching and morning alerts
+    // (docs/prd/12-job-watch.md).
+    'job_watch',
 ] as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[number];

@@ -746,6 +746,8 @@ model EmailPreference {
   weeklyDigest     Boolean  @default(true)
   monthlyReview    Boolean  @default(true)
   radarDigest      Boolean  @default(true)
+  /// Job-watch matches by email, used only when no chat app is linked.
+  jobAlerts        Boolean  @default(true)
   missionNudges    Boolean  @default(true)
   productUpdates   Boolean  @default(true)
   unsubscribedAll  Boolean  @default(false)
@@ -1151,6 +1153,9 @@ enum JobBoardProvider {
   greenhouse
   lever
   ashby
+  /// Lists postings without their descriptions; the detail is fetched lazily,
+  /// only for a posting someone's job watch is about to score.
+  smartrecruiters
 }
 
 enum JobSourceStatus {
@@ -1194,6 +1199,7 @@ model JobSource {
   updatedAt DateTime @updatedAt
 
   postings JobPosting[]
+  watchers WatchedCompany[]
 
   /// One row per board per provider. Re-registering a known board is a no-op,
   /// which is what makes extension-driven discovery safe to fire repeatedly.
@@ -1224,6 +1230,17 @@ model JobPosting {
   updatedAtSource DateTime?
   /// Null while live; set when the posting leaves the board.
   closedAt        DateTime?
+
+  /// Plain text, capped. Held only while the posting is open: closing it
+  /// clears this, so storage tracks the live market rather than all history.
+  /// Null on providers whose list omits it until a job watch needs it.
+  description String?
+  /// The posting read once into requirements (`readPosting`), shared by every
+  /// user it is scored for: the same posting gives everyone the same
+  /// requirements, and the model is paid once.
+  parsed      Json?
+  /// `${parse version}:${contentHash}`. A changed posting is re-read.
+  parsedKey   String?
 
   // ── compensation, exactly as disclosed ──
   /// Null when the posting disclosed nothing, which is the common case.
@@ -1262,7 +1279,8 @@ model JobPosting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  source JobSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  source  JobSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  matches JobMatch[]
 
   @@unique([sourceId, externalId])
   /// The band query: eligible rows for a geo, recent first.
@@ -1462,13 +1480,13 @@ model AgentRun {
 
   /// Dedupe key for the input (normalized URL or text hash). The same link
   /// shared twice returns the same run; refresh is explicit.
-  inputKey String
+  inputKey   String
   /// {url?, text?, source}
-  input    Json
+  input      Json
   /// Classified kind, null until classification runs.
-  kind     String?
-  status   AgentRunStatus @default(queued)
-  channel  Channel        @default(web)
+  kind       String?
+  status     AgentRunStatus @default(queued)
+  channel    Channel        @default(web)
   /// Channel-specific handle for edit-in-place progress, e.g. {chatId, messageId}.
   channelRef Json?
 
@@ -1476,9 +1494,9 @@ model AgentRun {
   /// {id, prompt, options?, field} while status = awaiting_input.
   pendingQuestion Json?
   /// Answers the user has given this run, keyed by question id.
-  answers         Json @default("{}")
+  answers         Json    @default("{}")
   /// Section name → SectionResult. Written as each section finishes.
-  result          Json @default("{}")
+  result          Json    @default("{}")
 
   costUsd   Float   @default(0)
   stepCount Int     @default(0)
@@ -1631,7 +1649,7 @@ model VectorPoint {
   sourceId   String?
   payload    Json
   embedding  Unsupported("vector")
-  updatedAt  DateTime                 @default(now()) @updatedAt
+  updatedAt  DateTime              @default(now()) @updatedAt
 
   @@id([collection, id])
   @@index([collection, userId, type])
@@ -1725,7 +1743,6 @@ model ApiKey {
 
   @@index([userId, createdAt])
 }
-
 
 // ─────────────────────────────────────────────────── job-search journey
 // docs/prd/11-job-journey.md. Email arrives by forwarding (no Gmail scopes),
@@ -1849,4 +1866,87 @@ model GoogleConnection {
   lastError        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────── job watch
+// docs/prd/12-job-watch.md. The companies a user is aiming for, and every
+// posting the nightly watch has scored for them.
+
+enum WatchStatus {
+  /// Resolved to a public board we poll.
+  watching
+  /// No public board answered for this name. Kept so the user sees it and can
+  /// paste a careers link instead.
+  not_found
+}
+
+model WatchedCompany {
+  id          String      @id @default(cuid())
+  userId      String
+  /// As the user typed it.
+  companyName String
+  /// `canonicalCompanyKey`, so "Stripe, Inc." and "stripe" are one watch.
+  companyKey  String
+  sourceId    String?
+  status      WatchStatus @default(watching)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  source JobSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, companyKey])
+  @@index([sourceId])
+}
+
+enum JobMatchStatus {
+  /// Scored; not yet sent (or never will be, when it does not qualify).
+  new
+  /// In a morning message.
+  alerted
+  /// Became an application (`workspaceId`).
+  tracked
+  /// "Not interested". Never shown again.
+  dismissed
+}
+
+/// One posting scored for one user. Unique per (user, posting), which is both
+/// the "already seen" set and the guarantee that a double-fired watch cannot
+/// alert the same job twice.
+model JobMatch {
+  id          String         @id @default(cuid())
+  userId      String
+  postingId   String
+  /// `watchlist` (a company they named) or `preferences` (their target roles).
+  origin      String
+  /// 0–100 from `scoreFit`. Null when it could not be computed.
+  score       Int?
+  verdict     String
+  /// `model` | `deterministic` | `fallback`. Only the first two can qualify:
+  /// a keyword fallback is never trusted with an alert.
+  matchedVia  String
+  /// Passed every gate in `src/lib/watch/gate.ts`. Fail-closed.
+  qualifies   Boolean        @default(false)
+  /// The first gate it failed, in words. Null when it qualifies.
+  holdReason  String?
+  /// FitData, minus the model summary.
+  fit         Json
+  /// NetworkData for the company, computed when it qualified.
+  people      Json?
+  status      JobMatchStatus @default(new)
+  /// Evaluations so far. A fallback-scored match is retried, up to a cap.
+  attempts    Int            @default(1)
+  /// Fingerprint of the record and preferences it was scored against
+  /// (`recordKeyFor`). A held near-miss whose key is stale is re-scored: a
+  /// newly confirmed Win or a newly stated preference can clear the bar.
+  recordKey   String?
+  alertedAt   DateTime?
+  workspaceId String?
+  evaluatedAt DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  posting JobPosting @relation(fields: [postingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postingId])
+  @@index([userId, qualifies, status, score])
 }

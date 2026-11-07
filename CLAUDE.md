@@ -97,7 +97,7 @@ Four waves shipped with the tree unbuildable because `groundState.ts` and `claim
 | Path | What |
 |---|---|
 | `docs/career-os-v3.md` | Strategy — the thesis and why |
-| `docs/prd/00-09` | Product specs. 00 is the index; 09 is the value model |
+| `docs/prd/00-12` | Product specs. 00 is the index; 09 is the value model; 12 is the job watch |
 | `docs/impl/00` | Architecture decisions (ADRs) and shared primitives |
 | `docs/impl/01` | Phase 0 foundation |
 | `docs/impl/02` | Phased build plan for R1 |
@@ -177,6 +177,35 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   id; its reply runs the numeric guard. **It can draft a Win, never confirm
   one**: Confirm is a button on the card (rule 5). Card buttons go through
   `src/actions/chat.ts`, gated on `chat`, not on the Scout flag.
+- **Job watch** (`docs/prd/12-job-watch.md`, flag `job_watch`, page `/watch`).
+  Users name companies; a resolver finds their Greenhouse, Lever, Ashby or
+  SmartRecruiters board, accepting only what it can verify. Each night
+  `job_watch` shortlists new postings in code, scores the shortlist with
+  Scout's own reader, matcher and `evaluateFit` (`src/lib/watch/score.ts`), and
+  sends one Telegram, WhatsApp or email message, but only for matches that pass
+  the **fail-closed gate** in `src/lib/watch/gate.ts`: 85+, strong, model-matched,
+  no open preference question, no conflict, at least 3 musts. `JobMatch(userId,
+  postingId)` is the seen-set and the alert idempotency key. Alerts are
+  claim-then-send. Never loosen the gate to "get more alerts": a held match
+  shows its reason on the page instead. LinkedIn is not crawled (owner
+  decision, 2026-10-11).
+  - **Fit reads confirmed, shareable Wins** (`loadFitSources`, filtered in
+    the query).
+  - **Held near-misses (60+) are re-scored** when `recordKey` changes.
+  - **Alerts carry Telegram buttons** (`jw:`).
+  - **Recruiters and hiring managers come from public profile search**
+    (`src/lib/research/people.ts`, tier `found`): code-parsed from page
+    titles, cited, and never written by a model.
+- **Queue cadence and alerts** (2026-11-07). Vercel Hobby allows one cron a
+  day, so `.github/workflows/tick.yml` hits `/api/cron/tick` every 10 minutes
+  (repo secret `CRON_SECRET`, same value as Vercel production). A failed run
+  is the missed-tick alert. Dead jobs and uncaught server errors go to the
+  admins' linked Telegram through `src/lib/opsAlert.ts`, throttled per key,
+  never with user content. CI runs the suite against a pgvector service.
+- **Comped plans.** `/admin/<userId>` → Grant plan writes a `Subscription`
+  row with an `admin_grant:` customer id. It never overwrites a live paid row.
+- **Job watch respects its deadline.** `runWatchForUser({ deadline })` stops
+  10s early, sends what it scored, and reports `deferred`.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

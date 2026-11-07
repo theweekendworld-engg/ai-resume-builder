@@ -37,10 +37,14 @@ describe('recovering a board from a posting URL', () => {
         expect(boardFromUrl(url)).toEqual({ provider: provider as 'greenhouse' | 'ashby', boardToken: token });
     });
 
+    test('Lever and SmartRecruiters postings, with SmartRecruiters ids lower-cased', () => {
+        expect(boardFromUrl('https://jobs.lever.co/spotify/abc-123')).toEqual({ provider: 'lever', boardToken: 'spotify' });
+        expect(boardFromUrl('https://jobs.smartrecruiters.com/SWIGGY/6000000001476424-lead')).toEqual({ provider: 'smartrecruiters', boardToken: 'swiggy' });
+    });
+
     test('a URL from a provider we cannot read yields nothing', () => {
-        // Lever has no adapter. Registering it would create a source that can
-        // never be fetched.
-        expect(boardFromUrl('https://jobs.lever.co/spotify/abc-123')).toBeNull();
+        // Registering it would create a source that can never be fetched.
+        expect(boardFromUrl('https://apply.workable.com/acme/j/ABC123/')).toBeNull();
     });
 
     test('an aggregator or company careers page is not a board', () => {

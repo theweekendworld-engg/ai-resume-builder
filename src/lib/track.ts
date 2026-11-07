@@ -142,6 +142,13 @@ export const SERVER_EVENTS = [
     'calendar_connected',
     'calendar_synced',
     'follow_up_due',
+    // Job watch (docs/prd/12-job-watch.md)
+    'watch_company_added',
+    'watch_company_removed',
+    'watch_run',
+    'watch_alert_sent',
+    'watch_match_tracked',
+    'watch_match_dismissed',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];

@@ -660,10 +660,13 @@ describe('archive, unarchive, delete', () => {
         expect(await prisma.evidence.count({ where: { userId } })).toBe(1);
         expect(await prisma.claimLink.count({ where: { userId } })).toBe(1);
 
-        const defaultView = await listWins({ userId, filters: {} });
+        // Pin `now` near the fixture's occurredAt (2026-07-14) so the free tier's
+        // 90-day history window doesn't hide the Win once the fixed date ages out.
+        const now = new Date('2026-07-20T00:00:00.000Z');
+        const defaultView = await listWins({ userId, filters: {}, now });
         expect(defaultView.success && defaultView.data.total).toBe(0);
 
-        const explicit = await listWins({ userId, filters: { status: [WinStatus.archived] } });
+        const explicit = await listWins({ userId, filters: { status: [WinStatus.archived] }, now });
         expect(explicit.success && explicit.data.total).toBe(1);
     });
 

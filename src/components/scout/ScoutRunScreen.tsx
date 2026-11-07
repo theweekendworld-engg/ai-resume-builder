@@ -108,6 +108,7 @@ export function ScoutRunScreen({
             target: request.target,
             format: request.format,
             contactId: request.contactId,
+            personUrl: request.personUrl,
         });
         setDraftPending(null);
         if (!result.success) {

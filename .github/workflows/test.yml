@@ -8,6 +8,25 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The suite has integration tests against Postgres + pgvector (the vector
+    # store lives in Postgres). .env.test points at localhost:5432.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: resume_builder
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/resume_builder
+      DIRECT_URL: postgres://postgres:postgres@localhost:5432/resume_builder
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +39,9 @@ jobs:
 
       - name: Generate Prisma client
         run: bunx prisma generate
+
+      - name: Apply migrations
+        run: bunx prisma migrate deploy
 
       - name: Run all tests
         run: bun test

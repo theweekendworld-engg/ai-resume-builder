@@ -26,6 +26,8 @@ export const FEATURE_TAGS = [
     'outreach',
     'chat',
     'job_journey',
+    // The nightly job watch (docs/prd/12-job-watch.md).
+    'job_watch',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];

@@ -1,15 +1,20 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { prisma } from '@/lib/prisma';
 import { importConnectionsCsv } from '@/lib/contacts/import';
 import { CONNECTIONS_FIXTURE } from '@/lib/contacts/linkedinExport.fixture';
 import type { ClassifyData, IngestData, JdData } from '@/lib/scout/types';
 import { fakeContext, okSection } from '@/lib/scout/fit/testContext.test-utils';
 import { contactRank, networkSection, peopleSearchUrl, sameCompany } from './network';
+import { __testing as providerTesting } from '@/lib/research/providers';
 
 const USER = `itest-network-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const EMPTY = `${USER}-empty`;
 
+// Hermetic: no live people search even where TAVILY_API_KEY is set.
+beforeAll(() => providerTesting.setProvider(null));
+
 afterAll(async () => {
+    providerTesting.setProvider(undefined);
     for (const userId of [USER, EMPTY]) {
         await prisma.contact.deleteMany({ where: { userId } });
         await prisma.userExperience.deleteMany({ where: { userId } });
