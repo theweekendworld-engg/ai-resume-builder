@@ -32,8 +32,10 @@ jobs:
           TICK_URL: https://patronus.cv/api/cron/tick
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "CRON_SECRET repository secret is not set" >&2
-            exit 1
+            # Not configured yet: skip instead of failing every 10 minutes
+            # (each failed scheduled run emails the owner).
+            echo "::warning::CRON_SECRET repository secret is not set; tick skipped"
+            exit 0
           fi
           curl --silent --show-error --fail-with-body --max-time 75 \
             --retry 2 --retry-delay 10 --retry-all-errors \
