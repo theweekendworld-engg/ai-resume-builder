@@ -33,6 +33,8 @@ export function resumeDataFromParsed(parsed: ParsedResumeData): ResumeData {
                 current: Boolean(item.current),
                 location: item.location ?? '',
                 description: bullets(item.description, item.highlights),
+                ...(item.companyNote?.trim() ? { companyNote: item.companyNote.trim() } : {}),
+                ...(item.stack?.trim() ? { stack: item.stack.trim() } : {}),
             })),
         projects: parsed.projects
             .filter((item) => item.name?.trim())
@@ -42,7 +44,8 @@ export function resumeDataFromParsed(parsed: ParsedResumeData): ResumeData {
                 return {
                     id: `proj-${index + 1}`,
                     name: item.name,
-                    description: item.description ?? '',
+                    // One bullet per line, as the template renders them.
+                    description: bullets(item.description, []),
                     url: liveUrl || repoUrl,
                     liveUrl,
                     repoUrl,
@@ -61,18 +64,31 @@ export function resumeDataFromParsed(parsed: ParsedResumeData): ResumeData {
                 current: Boolean(item.current),
             })),
         skills: [...new Set((parsed.skills ?? []).map((skill) => skill.trim()).filter(Boolean))],
+        ...(parsed.skillGroups?.length
+            ? {
+                skillGroups: parsed.skillGroups
+                    .map((group) => ({ label: group.label.trim(), items: group.items.map((item) => item.trim()).filter(Boolean) }))
+                    .filter((group) => group.items.length > 0),
+            }
+            : {}),
         sectionOrder: [...initialResumeData.sectionOrder],
     };
 }
 
-/** The description paragraph plus highlights, as "• " lines the editor renders. */
+/**
+ * A role's lines as "• " bullets the editor renders.
+ *
+ * Highlights when there are any, otherwise the description. It used to print
+ * BOTH, so a role the model summarised in `description` and listed in
+ * `highlights` came out with the same claim twice (a one-line internship,
+ * once without its metric and once with it), and a description invented from
+ * the company's tag line became the first bullet (QA 2026-11-07).
+ */
 function bullets(description: string | undefined, highlights: string[] | undefined): string {
-    const lines = [
-        ...(description ?? '').split('\n'),
-        ...(highlights ?? []),
-    ]
-        .map((line) => line.replace(/^[\s•\-*·]+/, '').trim())
-        .filter(Boolean);
+    const clean = (lines: readonly string[]) =>
+        lines.map((line) => line.replace(/^[\s•\-*·]+/, '').trim()).filter(Boolean);
+    const fromHighlights = clean(highlights ?? []);
+    const lines = fromHighlights.length > 0 ? fromHighlights : clean((description ?? '').split('\n'));
     return [...new Set(lines)].map((line) => `• ${line}`).join('\n');
 }
 

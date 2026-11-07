@@ -230,9 +230,12 @@ README:
 - Rubric-parse accuracy, theme-grouping quality and backfill question quality
   are validated against fixtures, not live models.
 - The GitHub `repo`-scoped OAuth token path has never returned a real token.
-- **Stripe Prices for $5 Career / $2 Search do not exist yet.** `plans.ts`
-  carries the display numbers; nothing can be purchased until the Price objects
-  are created and their ids are in the environment. This blocks launch.
+- **Launch: everything is free** (owner decision 2026-11-07). `launchOpenAccess()`
+  in `src/lib/plans.ts` (on unless `ENTITLEMENT_LAUNCH_OPEN=false`) gives every
+  tier every feature and the `LAUNCH_ALLOWANCE` limits; the per-user monthly
+  cost ceiling ($5 Free) stays as abuse protection and its message never says
+  "upgrade". Paid plans come back later through a Merchant of Record (Dodo or
+  Paddle); the Stripe code stays but no Stripe Prices exist.
 
 `prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned
 during parallel builds. Feature agents must not edit them.

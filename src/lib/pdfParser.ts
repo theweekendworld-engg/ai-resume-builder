@@ -12,7 +12,7 @@ type PdfJsModule = {
     promise: Promise<{
       numPages: number;
       getPage: (pageNumber: number) => Promise<{
-        getTextContent: () => Promise<{ items: Array<{ str?: string; transform?: number[] }> }>;
+        getTextContent: () => Promise<{ items: Array<{ str?: string; transform?: number[]; hasEOL?: boolean }> }>;
         getAnnotations: () => Promise<Array<Record<string, unknown>>>;
       }>;
       destroy: () => Promise<void>;
@@ -58,12 +58,95 @@ function extractAnnotationUrl(annotation: Record<string, unknown>): string | nul
   return null;
 }
 
-function joinTextItems(items: Array<{ str?: string }>): string {
-  return items
-    .map((item) => (typeof item.str === 'string' ? item.str.trim() : ''))
+/**
+ * A page's text, one visual line per line.
+ *
+ * This used to trim every item and join them all with spaces, so a whole page
+ * came out as one line. Import reads bullets, headings and skills rows off
+ * line structure (`src/lib/resume/sourceText.ts`), and a page with no line
+ * breaks has none to read. pdfjs marks the end of each line with `hasEOL`;
+ * a change of baseline is the fallback for producers that do not.
+ */
+export function joinTextItems(items: Array<{ str?: string; transform?: number[]; hasEOL?: boolean }>): string {
+  let text = '';
+  let lastY: number | null = null;
+  for (const item of items) {
+    const str = typeof item.str === 'string' ? item.str : '';
+    const y = Array.isArray(item.transform) ? item.transform[5] : null;
+    if (str && lastY !== null && y !== null && Math.abs(y - lastY) > 2 && !text.endsWith('\n')) text += '\n';
+    text += str;
+    if (item.hasEOL) text += '\n';
+    if (str && y !== null) lastY = y;
+  }
+  return text
+    .split('\n')
+    .map((line) => line.replace(/[ \t]+/g, ' ').trim())
     .filter(Boolean)
-    .join(' ')
-    .trim();
+    .join('\n');
+}
+
+/**
+ * Pages, and how many printed lines sit past the first `budget` pages.
+ * The line count lets the page-fit loop trim enough in one pass.
+ */
+export async function measurePdf(
+  buffer: Buffer | Uint8Array,
+  budget = 1,
+): Promise<{ pages: number | null; overflowLines: number | null }> {
+  try {
+    const pdfjs = await loadPdfJs();
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      disableWorker: true,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+    });
+    try {
+      const pdf = await task.promise;
+      const pages = pdf.numPages;
+      let overflowLines = 0;
+      for (let pageNumber = budget + 1; pageNumber <= Math.min(pages, MAX_PAGES); pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const baselines = new Set<number>();
+        for (const item of content.items) {
+          if (typeof item.str === 'string' && item.str.trim() && Array.isArray(item.transform)) {
+            baselines.add(Math.round(item.transform[5]));
+          }
+        }
+        overflowLines += baselines.size;
+      }
+      await pdf.destroy();
+      return { pages, overflowLines };
+    } finally {
+      await task.destroy();
+    }
+  } catch {
+    return { pages: null, overflowLines: null };
+  }
+}
+
+/** How many pages a PDF has. Null when it cannot be read. */
+export async function countPdfPages(buffer: Buffer | Uint8Array): Promise<number | null> {
+  try {
+    const pdfjs = await loadPdfJs();
+    const task = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      disableWorker: true,
+      useWorkerFetch: false,
+      isEvalSupported: false,
+    });
+    try {
+      const pdf = await task.promise;
+      const pages = pdf.numPages;
+      await pdf.destroy();
+      return pages;
+    } finally {
+      await task.destroy();
+    }
+  } catch {
+    return null;
+  }
 }
 
 async function loadPdfJs(): Promise<PdfJsModule> {

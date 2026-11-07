@@ -59,3 +59,15 @@ export function resolveLengthConstraints(targetLength: '1-page' | '2-page' | 'au
     maxBulletsPerRole: 5,
   };
 }
+
+/**
+ * Pages the compiled PDF may run to: the same resolution as the length
+ * constraints, so "auto" means one page below five years and two above.
+ * `pageFit.ts` enforces it after compiling.
+ */
+export function pageBudget(targetLength: '1-page' | '2-page' | 'auto', yearsExperience: number): 1 | 2 {
+  const resolved = targetLength === 'auto'
+    ? (yearsExperience >= 5 ? '2-page' : '1-page')
+    : targetLength;
+  return resolved === '2-page' ? 2 : 1;
+}

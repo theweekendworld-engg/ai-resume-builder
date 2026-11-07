@@ -41,10 +41,11 @@ const call = (userId: string) =>
 
 describe('the monthly cost cap covers generateStructured', () => {
     test('a user over the free budget is refused before the model runs', async () => {
-        // $3 of spend, over the $2 free-tier backstop, and logged as FAILED:
-        // failed calls bill tokens too, and used to be invisible to the cap.
+        // $6 of spend, over the $5 free-tier backstop (raised from $2 for the
+        // launch, 2026-11-07), and logged as FAILED: failed calls bill tokens
+        // too, and used to be invisible to the cap.
         await prisma.apiUsageLog.create({
-            data: { userId: SPENDER, operation: 'ai.test', provider: 'openai', model: 'm', costUsd: 3, totalTokens: 10, status: 'failed' },
+            data: { userId: SPENDER, operation: 'ai.test', provider: 'openai', model: 'm', costUsd: 6, totalTokens: 10, status: 'failed' },
         });
         __usageTesting.clearCache();
         let ran = false;
@@ -52,8 +53,26 @@ describe('the monthly cost cap covers generateStructured', () => {
             ran = true;
             return { object: { ok: true }, inputTokens: 1, outputTokens: 1 };
         });
-        await expect(call(SPENDER)).rejects.toBeInstanceOf(UsageLimitError);
+        const error = await call(SPENDER).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(UsageLimitError);
         expect(ran).toBe(false);
+        // Friendly and specific: when it comes back and that nothing is lost.
+        // Never "upgrade" (nothing can be bought) and never a number or a
+        // variable name (those go to the server log).
+        const message = (error as UsageLimitError).message;
+        expect(message).toMatch(/resets on [A-Z][a-z]+ 1/);
+        expect(message).toContain('everything you');
+        expect(message).not.toMatch(/upgrade|\$\d|token|[A-Z]{3,}_[A-Z]/i);
+    });
+
+    test('$4 of spend is still under the free ceiling', async () => {
+        // The old $2 ceiling would have refused this user.
+        await prisma.apiUsageLog.create({
+            data: { userId: USER, operation: 'ai.test', provider: 'openai', model: 'm', costUsd: 4, totalTokens: 10, status: 'success' },
+        });
+        __usageTesting.clearCache();
+        aiTesting.setObjectRunner(async () => ({ object: { ok: true }, inputTokens: 1, outputTokens: 1 }));
+        expect((await call(USER)).data).toEqual({ ok: true });
     });
 
     test('a user under budget is served', async () => {

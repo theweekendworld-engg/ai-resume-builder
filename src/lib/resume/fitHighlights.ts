@@ -1,15 +1,23 @@
 /**
- * Make parsed highlights fit the experience schema (each ≤ 300 chars, ≤ 100),
- * without dropping the role or the words.
+ * Make parsed highlights fit the experience schema (each ≤ HIGHLIGHT_MAX
+ * chars, ≤ 100), without dropping the role or the words.
  *
  * Until 2026-10-02 one long bullet from a PDF failed the whole role's insert,
  * and import moved on silently: the base resume showed the role, the history
  * did not, and every tailored copy lost it (launch audit). Long lines are split
  * at sentence or clause boundaries; a single unbroken sentence is cut at a word
  * boundary as a last resort.
+ *
+ * The ceiling was 300, which is shorter than a real two-line bullet. The
+ * owner's media-path bullet (320 characters) was split at its last comma
+ * before 300, so history held "…used on 7.5M calls" and, separately,
+ * "raising concurrent call capacity 2x … cost by 50%" — and tailoring picked
+ * the first half, shipping the bullet without its outcome (QA 2026-11-07,
+ * finding 2). 1000 is a paragraph, not a bullet; splitting is now for text
+ * that was never a bullet in the first place.
  */
 
-export const HIGHLIGHT_MAX = 300;
+export const HIGHLIGHT_MAX = 1000;
 export const HIGHLIGHTS_MAX = 100;
 
 function splitLong(line: string): string[] {

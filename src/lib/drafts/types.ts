@@ -21,6 +21,10 @@ export type DraftView = {
     subject: string | null;
     body: string;
     createdAt: string;
+    /** The version this one revised; null for a first draft. */
+    parentId?: string | null;
+    /** The instruction that produced this version, verbatim ("Make it shorter: …"). */
+    instruction?: string | null;
 };
 
 /** The fixed revisions behind the Shorter / Stronger buttons. */

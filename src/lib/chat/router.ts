@@ -53,6 +53,7 @@ Rules:
 - jobIndex is the number shown in the job list below. If they say "it" or "this job", use the job the conversation was just about. If you are not sure which job, use clarify. Never guess an index that is not in the list.
 - Never invent a number, salary, date, statistic or fact about the user or a company. In reply, use only figures that appear in the user's message, the conversation, or the context below. If they ask for a figure you do not have, say you will not guess and suggest the action that would find it.
 - reply is one or two plain sentences. No markdown headings, no lists unless the action is answer.
+- In a job title, a segment after "|" is usually a tool, model or skill the job uses ("Forward Deployed AI Engineer | Claude", "Backend Engineer | Go"), not the employer. Claude, GPT and Gemini are AI models, not companies. Only treat it as a company if the user says so.
 - Leave every field you do not need as null.`;
 
 /** A message that is only a link (or links) needs no model to understand. */
@@ -108,6 +109,40 @@ export function renderContext(context: ChatContext): string {
 
 export type HistoryTurn = { role: 'user' | 'assistant'; text: string };
 
+/**
+ * Models, languages and platforms a job title names after a "|". Not a
+ * company: "Forward Deployed AI Engineer (#C3) | Claude" was answered with a
+ * question about openings "at Claude" (QA 2026-11-07). Deliberately short:
+ * only names that are almost never an employer in a title.
+ */
+const TOOL_SEGMENT = /^(?:claude(?:\s+code)?|chat\s?gpt|gpt(?:[\s-]?\d+(?:\.\d+)?[a-z]?)?|gemini|llama|mistral|copilot|gen\s?ai|llms?|ai\/ml|ml|ai|mcp|rag|python|java|javascript|typescript|golang|go|rust|react|node(?:\.js)?|aws|gcp|azure|kubernetes|k8s|salesforce|sap)$/i;
+
+/**
+ * A short, one-line message shaped like a job title whose trailing "| X"
+ * names a tool. Returns the title before the pipe and the tool, or null.
+ */
+export function trailingToolInTitle(message: string): { title: string; tool: string } | null {
+    const text = message.trim();
+    if (!text || text.length > 160 || /\n/.test(text) || !text.includes('|')) return null;
+    const segments = text.split('|').map((segment) => segment.trim()).filter(Boolean);
+    if (segments.length < 2) return null;
+    const tool = segments[segments.length - 1].replace(/[.!?]+$/, '');
+    if (!TOOL_SEGMENT.test(tool)) return null;
+    const title = segments.slice(0, -1).join(' | ').replace(/\s*\(#?[\w-]+\)\s*$/, '').trim();
+    return title ? { title, tool } : null;
+}
+
+function sameName(a: string, b: string): boolean {
+    const n = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    return n(a) === n(b);
+}
+
+/** A reply that frames the tool as the employer ("openings at Claude"). */
+function framesToolAsCompany(reply: string, tool: string): boolean {
+    const escaped = tool.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b(?:at|for|with|from|join|joining)\\s+${escaped}\\b`, 'i').test(reply);
+}
+
 /** Re-check what the model returned against what it was shown. */
 export function sanitizeDecision(raw: RouteDecision, context: ChatContext, message: string): RouteDecision {
     const decision = { ...raw };
@@ -142,6 +177,26 @@ export function sanitizeDecision(raw: RouteDecision, context: ChatContext, messa
     }
     if (decision.action === 'research_company' && !decision.company?.trim()) {
         return emptyDecision('clarify', 'Which company?');
+    }
+
+    // "Title | Claude": Claude is what the job uses, not who is hiring.
+    const titled = trailingToolInTitle(message);
+    if (titled) {
+        const toolAsCompany = Boolean(decision.company && sameName(decision.company, titled.tool));
+        if (toolAsCompany || framesToolAsCompany(decision.reply, titled.tool)) {
+            if (decision.action === 'find_jobs') {
+                return {
+                    ...decision,
+                    company: toolAsCompany ? null : decision.company,
+                    query: decision.query?.trim() && !sameName(decision.query, titled.tool) ? decision.query : titled.title,
+                    reply: `Looking for ${titled.title} roles.`,
+                };
+            }
+            return emptyDecision(
+                'clarify',
+                `That looks like a job title, and ${titled.tool} is what the role works with, not the employer. Paste the full posting or send the link and I will check it against your record.`,
+            );
+        }
     }
     return decision;
 }

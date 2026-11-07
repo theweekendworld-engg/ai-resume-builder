@@ -18,6 +18,8 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { isActive, NAV_ROUTES, SETTINGS_ROUTE } from '@/components/app/navRoutes';
+
 const APP_DIR = join(import.meta.dir);
 const SRC_DIR = join(import.meta.dir, '..');
 
@@ -150,5 +152,95 @@ describe('route matching handles Next.js dynamic segments', () => {
         ['/log/packet/new', '/packets/new', false],
     ])('%s vs %s → %p', (target, route, expected) => {
         expect(matches(target, route)).toBe(expected);
+    });
+});
+
+/**
+ * The sidebar's labels as URLs (e2e QA 2026-11-07, finding 8): /jobs, /goals
+ * and /resumes redirect to the real routes, which keep their names because
+ * Telegram messages and deep links point at them. Read from `next.config.ts`
+ * as text, the same way the links above are read, so the config is never
+ * executed by a test.
+ */
+describe('route aliases in next.config.ts', () => {
+    const routes = realRoutes();
+    const config = readFileSync(join(SRC_DIR, '..', 'next.config.ts'), 'utf8');
+    const aliases = [...config.matchAll(/\{\s*source:\s*'([^']+)',\s*destination:\s*'([^']+)'\s*\}/g)].map(
+        ([, source, destination]) => ({ source, destination }),
+    );
+
+    test('the sidebar names resolve', () => {
+        expect(aliases).toEqual(
+            expect.arrayContaining([
+                { source: '/jobs', destination: '/scout' },
+                { source: '/goals', destination: '/home' },
+                { source: '/resumes', destination: '/dashboard' },
+            ]),
+        );
+        expect(config).toMatch(/redirects\(\)[\s\S]*permanent: true/);
+    });
+
+    test.each([
+        ['/jobs'],
+        ['/goals'],
+        ['/resumes'],
+    ])('%s is an alias, not a page', (source) => {
+        // An alias that shadows a real page would make the page unreachable.
+        expect(routes.some((r) => matches(source, r))).toBe(false);
+    });
+
+    test('every alias lands on a real page', () => {
+        expect(aliases.length).toBeGreaterThan(0);
+        for (const { destination } of aliases) {
+            expect(routes.some((r) => matches(destination, r)), destination).toBe(true);
+        }
+    });
+});
+
+/**
+ * The sidebar's active state matches the route, never the label, and exactly
+ * one destination is lit on every page a destination owns.
+ */
+describe('sidebar destinations', () => {
+    const routes = realRoutes();
+    const all = [...Object.values(NAV_ROUTES), SETTINGS_ROUTE];
+
+    test.each(all.map((d) => [d.label, d.href]))('%s (%s) is a real page', (_label, href) => {
+        expect(routes.some((r) => matches(href, r))).toBe(true);
+    });
+
+    test.each([
+        ['/overview', 'Home'],
+        ['/home', 'Goals'],
+        ['/scout', 'Jobs'],
+        ['/scout/run_123', 'Jobs'],
+        ['/watch', 'Job watch'],
+        ['/dashboard', 'Resumes'],
+        ['/editor/abc', 'Resumes'],
+        ['/build', 'Resumes'],
+        ['/log/review/2026-10', 'Work Log'],
+        ['/packets/new', 'Packets'],
+        ['/settings/email', 'Settings'],
+        ['/account/security', 'Settings'],
+        ['/chat', 'Chat'],
+    ])('%s lights %s and nothing else', (pathname, label) => {
+        const lit = all.filter((d) => isActive(pathname, d.href)).map((d) => d.label);
+        expect(lit).toEqual([label]);
+    });
+
+    test('a prefix that is not a path segment does not light a destination', () => {
+        // `/homework` is not Goals, `/scouting` is not Jobs.
+        expect(isActive('/homework', NAV_ROUTES.home.href)).toBe(false);
+        expect(isActive('/scouting', NAV_ROUTES.scout.href)).toBe(false);
+    });
+
+    test('each label URL redirects to the destination with that label', () => {
+        const config = readFileSync(join(SRC_DIR, '..', 'next.config.ts'), 'utf8');
+        const aliases = [...config.matchAll(/\{\s*source:\s*'([^']+)',\s*destination:\s*'([^']+)'\s*\}/g)];
+        for (const [, source, destination] of aliases) {
+            const target = Object.values(NAV_ROUTES).find((d) => d.href === destination);
+            // /jobs → the destination labelled "Jobs", and so on.
+            expect(target?.label.toLowerCase()).toBe(source.slice(1));
+        }
     });
 });

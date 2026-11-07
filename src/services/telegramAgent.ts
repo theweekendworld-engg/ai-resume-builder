@@ -104,7 +104,8 @@ async function sayPlain(chatId: string, text: string, replyMarkup?: Record<strin
 /** A generation refusal's way forward, keyed on the service's machine code. */
 function failureNextStep(code: string | undefined): string {
   const app = config.app.url.replace(/\/$/, '');
-  if (code === 'entitlement_required') return `\n\nSee plans: ${app}/settings/plan`;
+  // "Your usage", not "plans": during the launch there is nothing to buy.
+  if (code === 'entitlement_required') return `\n\nYour usage: ${app}/settings/plan`;
   if (code === 'empty_profile' || code === 'no_base_resume') return `\n\nAdd your resume first: ${app}/dashboard?section=profile`;
   return '';
 }

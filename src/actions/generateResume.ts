@@ -867,6 +867,9 @@ export async function generateSmartResumePipeline(
           maxRoles: lengthConstraints.maxExperiences,
           maxSkills: lengthConstraints.maxSkills,
         },
+        // The resume being tailored from: tag lines, stacks and skills rows
+        // that history has no column for.
+        base: parsedOptions.fallbackResumeData ?? null,
         userId,
         sessionId,
       });

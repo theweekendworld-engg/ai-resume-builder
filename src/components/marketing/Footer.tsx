@@ -23,14 +23,14 @@ export function Footer() {
                                 Patronus
                             </p>
                         </div>
-                        <p className="text-[13px] leading-relaxed text-muted-foreground/70">
+                        <p className="text-[13px] leading-relaxed text-muted-foreground">
                             The private, evidence-backed record of your working life.
                         </p>
                     </div>
 
                     <div className="flex flex-wrap gap-x-14 gap-y-8">
                         <div>
-                            <p className="ledger text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground/50">
+                            <p className="ledger text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                                 Product
                             </p>
                             <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
@@ -44,6 +44,12 @@ export function Footer() {
                                     How it works
                                 </Link>
                                 <Link
+                                    href="/#job-search"
+                                    className="transition-colors hover:text-primary"
+                                >
+                                    Job search
+                                </Link>
+                                <Link
                                     href={START_FREE_HREF}
                                     className="transition-colors hover:text-primary"
                                 >
@@ -53,7 +59,7 @@ export function Footer() {
                         </div>
 
                         <div>
-                            <p className="ledger text-[10.5px] uppercase tracking-[0.18em] text-muted-foreground/50">
+                            <p className="ledger text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                                 Company
                             </p>
                             <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
@@ -74,7 +80,7 @@ export function Footer() {
                 </div>
 
                 <div className="mt-12 border-t border-border/40 pt-6">
-                    <p className="text-xs text-muted-foreground/50">
+                    <p className="text-xs text-muted-foreground">
                         Never sold, never used to train anything. Operated by {OPERATOR}, {OPERATOR_LOCATION}.
                     </p>
                 </div>

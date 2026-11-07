@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
 
+import { getApplyEmailState } from '@/actions/drafts';
 import { getScout, getScoutSteps } from '@/actions/scout';
 import { FeatureUnavailable } from '@/components/app/FeatureUnavailable';
 import { ScoutRunScreen } from '@/components/scout/ScoutRunScreen';
@@ -25,5 +26,11 @@ export default async function ScoutRunPage({ params }: { params: Promise<{ runId
         return <FeatureUnavailable feature="Scout" reason="error" />;
     }
 
-    return <ScoutRunScreen initialRun={run.data} initialSteps={steps.success ? steps.data : []} />;
+    // Apply by email: only for jobs, and only worth showing when the posting
+    // gives an address or a draft already exists (e.g. started in Telegram).
+    const isJob = run.data.kind === 'job_posting' || run.data.kind === 'hiring_post';
+    const apply = isJob ? await getApplyEmailState(runId) : null;
+    const initialApply = apply?.success && (apply.data.applyEmails.length > 0 || apply.data.versions.length > 0) ? apply.data : null;
+
+    return <ScoutRunScreen initialRun={run.data} initialSteps={steps.success ? steps.data : []} initialApply={initialApply} />;
 }

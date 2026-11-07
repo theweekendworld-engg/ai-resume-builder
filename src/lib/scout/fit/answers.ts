@@ -7,11 +7,13 @@
  * user could answer "no relocation" and still be asked on the next job.
  */
 
+import { parseWorkAuthorization } from '@/lib/scout/fit/eligibility';
 import type { UserGenerationPreferences } from '@/lib/userPreferences';
 
 export const PREFERENCE_QUESTION_IDS = [
     'pref.location',
     'pref.relocate',
+    'pref.workAuth',
     'pref.workMode',
     'pref.targetRoles',
     'pref.minComp',
@@ -22,6 +24,14 @@ export type PreferenceQuestionId = (typeof PREFERENCE_QUESTION_IDS)[number];
 export function isPreferenceQuestionId(value: string): value is PreferenceQuestionId {
     return (PREFERENCE_QUESTION_IDS as readonly string[]).includes(value);
 }
+
+/**
+ * Questions that never hold the fit back. A pay floor changes one check, and
+ * a first-time user waiting on "what is the lowest you would take?" before
+ * seeing any result was QA finding 5 (2026-11-07): the fit is shown, and the
+ * question follows it. Its answer still re-runs the fit.
+ */
+export const NON_BLOCKING_QUESTIONS: ReadonlySet<PreferenceQuestionId> = new Set<PreferenceQuestionId>(['pref.minComp']);
 
 type Relocate = UserGenerationPreferences['willingToRelocate'];
 type WorkModes = UserGenerationPreferences['preferredWorkModes'];
@@ -90,6 +100,10 @@ export function applyAnswer(
         }
         case 'pref.minComp':
             return /\d/.test(answer) ? { ...prefs, minCompensationText: answer.slice(0, 120) } : null;
+        case 'pref.workAuth':
+            // Kept as the user's words, the way Settings stores it; only an
+            // answer the eligibility check can read replaces what is there.
+            return parseWorkAuthorization(answer) ? { ...prefs, workAuthorization: answer.slice(0, 160) } : null;
     }
 }
 

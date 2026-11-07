@@ -28,6 +28,7 @@ import {
   headlinePrice,
   isPriceKey,
   isUnlimited,
+  launchOpenAccess,
   planName,
   priceFor,
   slotForPriceKey,
@@ -337,6 +338,7 @@ export async function getPlanPageData(): Promise<Result<PlanPageData>> {
     // Search sits on top of Career (enforced in startCheckout). Offering it to
     // someone without Career only produced a guaranteed rejection.
     canAddSearch: Boolean(career?.active) && !search?.active,
+    launchOpen: launchOpenAccess(),
   });
 }
 

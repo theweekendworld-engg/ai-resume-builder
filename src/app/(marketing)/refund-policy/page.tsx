@@ -15,10 +15,11 @@ export default function RefundPolicyPage() {
         <LegalPage title="Refund and cancellation policy">
             <LegalSection heading="What you are buying">
                 <p>
-                    Patronus is an online software service. Paid plans are monthly subscriptions that unlock more of
-                    it; the prices are listed on the <Link href="/pricing" className="underline-offset-4 hover:underline">pricing page</Link>.
-                    The free plan costs nothing and needs no payment details. Paid plans are not on sale yet; this
-                    policy applies from the day they are.
+                    Patronus is an online software service. While it launches, every account is free and includes
+                    every feature, with no payment details needed; see the{' '}
+                    <Link href="/pricing" className="underline-offset-4 hover:underline">pricing page</Link>. Paid plans,
+                    when they arrive, will be monthly subscriptions with their prices listed there first. This policy
+                    applies from the day they go on sale.
                 </p>
             </LegalSection>
             <LegalSection heading="Cancelling">

@@ -249,7 +249,8 @@ describe('email drafts on Telegram', () => {
         const drafts = draftDeps({ createDraftForRun: async () => ({ success: false, error: 'You have used your drafts on Free', code: 'entitlement_required' }) });
         const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'recruiter', format: 'email' }, deps({ drafts }));
         expect(textOf(reply)).toBe('You have used your drafts on Free');
-        expect(reply.actions?.[0]).toMatchObject({ kind: 'open', label: 'See plans' });
+        // Was "See plans"; during the launch the page shows usage, not prices.
+        expect(reply.actions?.[0]).toMatchObject({ kind: 'open', label: 'See your usage' });
         expect(drafts.focused).toEqual([]);
     });
 

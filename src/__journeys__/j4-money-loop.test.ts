@@ -24,6 +24,11 @@
  *   - **Search is a second subscription, not a bigger one.** Turning it off has
  *     to leave Career standing, which is only observable if the two are
  *     genuinely separate rows driven by separate Stripe objects.
+ *
+ * Launch (2026-11-07): every feature is free for every account and nothing
+ * can be bought, so there is no money loop to walk today. This journey runs
+ * with `ENTITLEMENT_LAUNCH_OPEN=false`, which is exactly the switch that brings
+ * paid plans back, so the loop stays proven for that day.
  */
 
 import { afterAll, beforeAll, beforeEach, expect, test } from 'bun:test';
@@ -46,8 +51,22 @@ import { restoreFlags, snapshotFlags, type FlagSnapshot } from '@/lib/flags.test
 /** Restored in `afterAll` — the suite shares a database with development. */
 let __flagSnapshot: FlagSnapshot = [];
 
-/** Free's context-interview trial, read from the catalog rather than assumed. */
-const TRIAL = meteredLimit(Tier.free, 'context_interview').limit;
+/**
+ * Free's context-interview trial, read from the catalog rather than assumed,
+ * and with the launch off (read lazily: module scope runs before `beforeAll`
+ * switches it, and setting env at import time would leak into other files).
+ */
+function trialUses(): number {
+    const before = process.env.ENTITLEMENT_LAUNCH_OPEN;
+    process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+    try {
+        return meteredLimit(Tier.free, 'context_interview').limit;
+    } finally {
+        if (before === undefined) delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+        else process.env.ENTITLEMENT_LAUNCH_OPEN = before;
+    }
+}
+const TRIAL = trialUses();
 
 const WEBHOOK_SECRET = 'whsec_journey_d4';
 
@@ -88,6 +107,7 @@ let restoreFlag: (() => Promise<void>) | null = null;
 beforeAll(async () => {
     __flagSnapshot = await snapshotFlags();
     setEnv('ENTITLEMENTS_ENFORCE', 'true');
+    setEnv('ENTITLEMENT_LAUNCH_OPEN', 'false');
     setEnv('STRIPE_SECRET_KEY', 'sk_test_journey_d4');
     setEnv('STRIPE_WEBHOOK_SECRET', WEBHOOK_SECRET);
     for (const [name, value] of Object.entries(PRICE_IDS)) setEnv(name, value);

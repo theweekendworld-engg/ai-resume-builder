@@ -23,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
+import { isActive, NAV_ROUTES, SETTINGS_ROUTE, type NavDestination } from './navRoutes';
+
 /**
  * The app shell (redesign 2026-10-02, docs/design/00 §5.2).
  *
@@ -39,24 +41,25 @@ import { cn } from '@/lib/utils';
  * admin) render without the shell.
  */
 
-export type NavDestination = 'overview' | 'chat' | 'home' | 'log' | 'resumes' | 'packets' | 'radar' | 'scout' | 'watch';
+export type { NavDestination } from './navRoutes';
 
 type Item = { key: NavDestination; href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
-const DESTINATIONS: Record<NavDestination, Omit<Item, 'key'>> = {
-    // Everything on one screen: what needs you, the pipeline, the record.
-    overview: { href: '/overview', label: 'Home', icon: Home },
-    chat: { href: '/chat', label: 'Chat', icon: MessageSquare },
-    // Missions: the goal you are working toward and its next step.
-    home: { href: '/home', label: 'Goals', icon: Target },
-    log: { href: '/log', label: 'Work Log', icon: NotebookPen },
-    // The route stays /scout (links in chat messages point there).
-    scout: { href: '/scout', label: 'Jobs', icon: Inbox },
-    watch: { href: '/watch', label: 'Job watch', icon: Telescope },
-    resumes: { href: '/dashboard', label: 'Resumes', icon: FileText },
-    packets: { href: '/packets', label: 'Packets', icon: Compass },
-    radar: { href: '/radar', label: 'Radar', icon: Radar },
+const ICONS: Record<NavDestination, Item['icon']> = {
+    overview: Home,
+    chat: MessageSquare,
+    home: Target,
+    log: NotebookPen,
+    scout: Inbox,
+    watch: Telescope,
+    resumes: FileText,
+    packets: Compass,
+    radar: Radar,
 };
+
+const DESTINATIONS = Object.fromEntries(
+    (Object.keys(NAV_ROUTES) as NavDestination[]).map((key) => [key, { ...NAV_ROUTES[key], icon: ICONS[key] }]),
+) as Record<NavDestination, Omit<Item, 'key'>>;
 
 /** The order of the user's day: what needs me, talk, what I am working toward, then the records. */
 const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'watch', 'resumes', 'packets', 'radar'];
@@ -65,11 +68,6 @@ const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'wa
 const MOBILE_TABS: NavDestination[] = ['overview', 'chat', 'scout', 'log'];
 
 const OWNS_CHROME = [/^\/editor(\/|$)/, /^\/welcome(\/|$)/, /\/print(\/|$)/, /^\/admin(\/|$)/];
-
-function isActive(pathname: string, href: string): boolean {
-    if (href === '/dashboard') return pathname === '/dashboard' || pathname.startsWith('/editor') || pathname.startsWith('/build');
-    return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 /**
  * Clerk's UserButton, held back until after hydration: it renders a different
@@ -102,14 +100,18 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
             aria-current={active ? 'page' : undefined}
             title={item.label}
             className={cn(
-                'flex h-9 items-center justify-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors lg:justify-start',
+                'flex h-10 items-center justify-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors lg:justify-start',
+                // `text-accent-foreground` on `bg-accent` is 6.7:1. The old
+                // `text-primary` on `bg-primary/10` measured 4.1:1, under AA.
                 active
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-accent text-accent-foreground'
                     : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
             )}
         >
             <Icon className="size-[18px] shrink-0" aria-hidden />
-            <span className="hidden lg:inline">{item.label}</span>
+            {/* Visually hidden, not `hidden`, at the icon-only width: the
+                label is the link's accessible name at every size. */}
+            <span className="sr-only lg:not-sr-only">{item.label}</span>
         </Link>
     );
 }
@@ -117,6 +119,8 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
 export function AppShell({ destinations, children }: { destinations: NavDestination[]; children: React.ReactNode }) {
     const pathname = usePathname() ?? '';
     const [moreOpen, setMoreOpen] = React.useState(false);
+    const [mounted, setMounted] = React.useState(false);
+    React.useEffect(() => setMounted(true), []);
 
     if (OWNS_CHROME.some((pattern) => pattern.test(pathname))) return <>{children}</>;
 
@@ -125,7 +129,9 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
     const hasChat = items.some((item) => item.key === 'chat');
     const tabs = items.filter((item) => MOBILE_TABS.includes(item.key));
     const overflow = items.filter((item) => !MOBILE_TABS.includes(item.key));
-    const settingsItem: Item = { key: 'home', href: '/settings', label: 'Settings', icon: Settings };
+    const settingsItem: Item = { key: 'home', ...SETTINGS_ROUTE, icon: Settings };
+    const sheetItems = [...overflow, settingsItem];
+    const moreActive = sheetItems.some((item) => isActive(pathname, item.href));
 
     return (
         <div className="flex min-h-dvh [--shell-top:3.5rem] md:[--shell-top:0px]">
@@ -139,7 +145,7 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                     <Button asChild size="sm" className="mt-4 gap-1.5 lg:justify-start" title="Tailor a resume">
                         <Link href="/build">
                             <Sparkles className="size-4" aria-hidden />
-                            <span className="hidden lg:inline">Tailor a resume</span>
+                            <span className="sr-only lg:not-sr-only">Tailor a resume</span>
                         </Link>
                     </Button>
                 )}
@@ -149,7 +155,7 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                 </nav>
 
                 <div className="mt-auto flex flex-col gap-0.5 border-t border-border pt-3">
-                    <NavLink item={settingsItem} active={pathname.startsWith('/settings') || pathname === '/account'} />
+                    <NavLink item={settingsItem} active={isActive(pathname, settingsItem.href)} />
                     <div className="mt-2 flex h-10 items-center justify-center gap-3 px-1 lg:justify-start lg:px-2">
                         <HydratedUserButton />
                         <span className="hidden text-xs text-muted-foreground lg:inline">Account</span>
@@ -190,9 +196,27 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                         </Link>
                     );
                 })}
+                {!mounted ? (
+                    // Radix ids (aria-controls) came out different on the server and
+                    // the client and failed hydration. The bar is phone-only, so the
+                    // sheet mounts on the client; this placeholder looks the same.
+                    <button
+                        type="button"
+                        aria-label="More"
+                        className={cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', moreActive ? 'text-primary' : 'text-muted-foreground')}
+                    >
+                        <MoreHorizontal className="size-5" aria-hidden />
+                        More
+                    </button>
+                ) : (
                 <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
                     <SheetTrigger asChild>
-                        <button type="button" className="flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium text-muted-foreground">
+                        {/* Lit when the page you are on lives behind it, so
+                            the bar never shows "nowhere" as the current place. */}
+                        <button
+                            type="button"
+                            className={cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', moreActive ? 'text-primary' : 'text-muted-foreground')}
+                        >
                             <MoreHorizontal className="size-5" aria-hidden />
                             More
                         </button>
@@ -200,20 +224,28 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                     <SheetContent side="bottom" className="rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]">
                         <SheetTitle className="mb-3 text-base">More</SheetTitle>
                         <nav aria-label="More" className="grid grid-cols-1 gap-1">
-                            {[...overflow, settingsItem].map((item) => (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={() => setMoreOpen(false)}
-                                    className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-foreground hover:bg-secondary"
-                                >
-                                    <item.icon className="size-[18px] text-muted-foreground" aria-hidden />
-                                    {item.label}
-                                </Link>
-                            ))}
+                            {sheetItems.map((item) => {
+                                const active = isActive(pathname, item.href);
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setMoreOpen(false)}
+                                        aria-current={active ? 'page' : undefined}
+                                        className={cn(
+                                            'flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium',
+                                            active ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-secondary',
+                                        )}
+                                    >
+                                        <item.icon className={cn('size-[18px]', active ? 'text-accent-foreground' : 'text-muted-foreground')} aria-hidden />
+                                        {item.label}
+                                    </Link>
+                                );
+                            })}
                         </nav>
                     </SheetContent>
                 </Sheet>
+                )}
             </nav>
         </div>
     );

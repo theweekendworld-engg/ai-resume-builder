@@ -7,7 +7,7 @@ import {
     ResumeFontFamily,
     ResumeDensity,
 } from '@/types/resume';
-import { groupSkills as sharedGroupSkills } from '@/lib/resume/skillGroups';
+import { resolveSkillGroups } from '@/lib/resume/skillGroups';
 import { contactParts } from '@/lib/resume/contact';
 
 function escapeLatex(text: string): string {
@@ -145,27 +145,44 @@ function shouldOmitSkill(skill: string): boolean {
  * template's own hygiene (casing, and stripping the generic filler the old
  * pipeline used to emit) and are applied before the shared grouping sees them.
  */
-function groupSkills(skills: string[]): SkillGroup[] {
+function groupSkills(data: Pick<ResumeData, 'skills' | 'skillGroups'>): SkillGroup[] {
     const cleaned: string[] = [];
-    for (const rawSkill of skills) {
+    for (const rawSkill of data.skills) {
         const skill = normalizeSkillValue(rawSkill);
         if (shouldOmitSkill(skill)) continue;
         cleaned.push(skill);
     }
-    return sharedGroupSkills(cleaned);
+    // The resume's own rows when it has them ("Speech / AI: …"), else grouped.
+    return resolveSkillGroups({ skills: cleaned, skillGroups: data.skillGroups });
+}
+
+/** "Software Engineer I | Go, C, Python": the title, and the stack printed with it. */
+function roleLine(exp: { role: string; stack?: string }): string {
+    const stack = exp.stack?.trim();
+    return `${escapeLatex(exp.role)}${stack ? `{\\normalfont\\ $|$ ${escapeLatex(stack)}}` : ''}`;
+}
+
+/** "Plivo (established CPaaS, AI voice agents)": the company, and its tag line. */
+function companyLine(exp: { company: string; companyNote?: string }): string {
+    const note = exp.companyNote?.trim();
+    return `${escapeLatex(exp.company)}${note ? ` {\\small (${escapeLatex(note)})}` : ''}`;
 }
 
 function renderSkillsSection(groups: SkillGroup[], style: 'simple' | 'modern'): string {
     if (groups.length === 0) return '';
 
+    // An unlabelled row prints its skills alone, not after a stray colon.
+    const label = (group: SkillGroup) =>
+        group.label.trim() ? `\\textbf{${escapeLatex(group.label)}:} ` : '';
+
     if (style === 'modern') {
         return groups
-            .map((group) => `{\\color{darktext}\\textbf{${escapeLatex(group.label)}:} ${group.skills.map((skill) => escapeLatex(skill)).join(' \\textbullet{} ')}}`)
+            .map((group) => `{\\color{darktext}${label(group)}${group.skills.map((skill) => escapeLatex(skill)).join(' \\textbullet{} ')}}`)
             .join('\\\\[4pt]\n');
     }
 
     return groups
-        .map((group) => `\\textbf{${escapeLatex(group.label)}:} ${group.skills.map((skill) => escapeLatex(skill)).join(', ')}`)
+        .map((group) => `${label(group)}${group.skills.map((skill) => escapeLatex(skill)).join(', ')}`)
         .join('\\\\[4pt]\n');
 }
 
@@ -288,9 +305,9 @@ export function generateLatexFromResume(data: ResumeData, themeArg: LatexThemeAr
 }
 
 function generateATSSimpleTemplate(data: ResumeData, theme: ResumeTheme = DEFAULT_RESUME_THEME): string {
-    const { personalInfo, experience, projects, education, skills, sectionOrder } = data;
+    const { personalInfo, experience, projects, education, sectionOrder } = data;
     const order = sectionOrder || ['summary', 'education', 'experience', 'projects', 'skills'];
-    const skillGroups = groupSkills(skills);
+    const skillGroups = groupSkills(data);
     const accentRgb = hexToLatexRgb(theme.accentColor);
     const density = densitySpec(theme.density);
 
@@ -369,7 +386,7 @@ ${education.map(edu => `\\textbf{${escapeLatex(edu.degree)} in ${escapeLatex(edu
 
 ${experience.map(exp => {
     const bullets = parseDescription(exp.description);
-    return `\\textbf{${escapeLatex(exp.role)}} \\hfill \\textit{${escapeLatex(exp.company)}${exp.location ? `, ${escapeLatex(exp.location)}` : ''}} \\\\
+    return `\\textbf{${roleLine(exp)}} \\hfill \\textit{${companyLine(exp)}${exp.location ? `, ${escapeLatex(exp.location)}` : ''}} \\\\
 \\textit{${formatDateLatex(exp.startDate)} -- ${exp.current ? 'Present' : formatDateLatex(exp.endDate)}}
 ${bullets.length > 0 ? `\\begin{itemize}
 ${bullets.map(bullet => `  \\item ${markdownToLatex(bullet)}`).join('\n')}
@@ -427,9 +444,9 @@ ${renderSkillsSection(skillGroups, 'simple')}
 }
 
 function generateModernProfessionalTemplate(data: ResumeData, theme: ResumeTheme = { ...DEFAULT_RESUME_THEME, templateId: 'modern' }): string {
-    const { personalInfo, experience, projects, education, skills, sectionOrder } = data;
+    const { personalInfo, experience, projects, education, sectionOrder } = data;
     const order = sectionOrder || ['summary', 'education', 'experience', 'projects', 'skills'];
-    const skillGroups = groupSkills(skills);
+    const skillGroups = groupSkills(data);
     const accentRgb = hexToLatexRgb(theme.accentColor);
     const density = densitySpec(theme.density);
 
@@ -511,8 +528,8 @@ ${education.map(edu => `{\\color{darktext}\\textbf{${escapeLatex(edu.degree)} in
 
 ${experience.map(exp => {
     const bullets = parseDescription(exp.description);
-    return `{\\color{darktext}\\textbf{${escapeLatex(exp.role)}}} \\hfill {\\color{lighttext}${formatDateLatex(exp.startDate)} -- ${exp.current ? 'Present' : formatDateLatex(exp.endDate)}}\\\\
-{\\color{accent}${escapeLatex(exp.company)}}${exp.location ? ` {\\color{lighttext}| ${escapeLatex(exp.location)}}` : ''}
+    return `{\\color{darktext}\\textbf{${roleLine(exp)}}} \\hfill {\\color{lighttext}${formatDateLatex(exp.startDate)} -- ${exp.current ? 'Present' : formatDateLatex(exp.endDate)}}\\\\
+{\\color{accent}${companyLine(exp)}}${exp.location ? ` {\\color{lighttext}| ${escapeLatex(exp.location)}}` : ''}
 ${bullets.length > 0 ? `\\begin{itemize}
 ${bullets.map(bullet => `  \\item {\\color{darktext}${markdownToLatex(bullet)}}`).join('\n')}
 \\end{itemize}` : ''}`;
@@ -568,9 +585,9 @@ ${renderSkillsSection(skillGroups, 'modern')}
  * selectable text, no images, no multi-column.
  */
 function generateMinimalTemplate(data: ResumeData, theme: ResumeTheme = { ...DEFAULT_RESUME_THEME, templateId: 'minimal' }): string {
-    const { personalInfo, experience, projects, education, skills, sectionOrder } = data;
+    const { personalInfo, experience, projects, education, sectionOrder } = data;
     const order = sectionOrder || ['summary', 'education', 'experience', 'projects', 'skills'];
-    const skillGroups = groupSkills(skills);
+    const skillGroups = groupSkills(data);
     const accentRgb = hexToLatexRgb(theme.accentColor);
     // Minimal leans on extra whitespace: bump the base margin for each density.
     const baseDensity = densitySpec(theme.density);
@@ -643,7 +660,7 @@ ${education.map(edu => `\\textbf{${escapeLatex(edu.degree)} in ${escapeLatex(edu
             return `\\section*{Experience}
 ${experience.map(exp => {
     const bullets = parseDescription(exp.description);
-    return `\\textbf{${escapeLatex(exp.role)}}, ${escapeLatex(exp.company)}${exp.location ? `, ${escapeLatex(exp.location)}` : ''} \\hfill {\\color{subtle}\\small ${formatDateLatex(exp.startDate)} -- ${exp.current ? 'Present' : formatDateLatex(exp.endDate)}}
+    return `\\textbf{${roleLine(exp)}}, ${companyLine(exp)}${exp.location ? `, ${escapeLatex(exp.location)}` : ''} \\hfill {\\color{subtle}\\small ${formatDateLatex(exp.startDate)} -- ${exp.current ? 'Present' : formatDateLatex(exp.endDate)}}
 ${bullets.length > 0 ? `\\begin{itemize}
 ${bullets.map(bullet => `  \\item ${markdownToLatex(bullet)}`).join('\n')}
 \\end{itemize}` : ''}`;

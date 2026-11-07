@@ -32,6 +32,14 @@ export type TailorInput = {
     candidateSkills: string[];
     sectionOrder: ResumeData['sectionOrder'];
     caps?: { maxBulletsPerRole?: number; maxRoles?: number; maxSkills?: number };
+    /**
+     * The resume being tailored from (the per-job copy's content). History has
+     * no column for a company's tag line, a role's stack or the skills rows'
+     * labels, so they travel from here.
+     */
+    base?: ResumeData | null;
+    /** Reword bullets only when the user asked. Default false: the record's lines, verbatim. */
+    allowRewrite?: boolean;
     userId: string;
     sessionId?: string;
 };

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, BarChart3, FileText, ListChecks, Repeat2, ScanSearch, Briefcase, MessageSquare } from 'lucide-react';
+import { ArrowRight, BarChart3, FileText, ListChecks, Repeat2, ScanSearch } from 'lucide-react';
 import { Section, SectionIntro } from './Section';
 import { Reveal } from './Reveal';
 import { START_FREE_HREF } from './links';
@@ -18,9 +18,15 @@ import { START_FREE_HREF } from './links';
  */
 
 /**
- * `soon` = built, not yet switched on for a new user. Those cards stay on the
- * page, because they are where the record is going, but they say so. Before
- * 2026-09-27 every one of them read as a shipped feature (audit, flow A).
+ * `soon` = built, not yet switched on for a new user, and labelled as such.
+ * Nothing on this list is soon any more: since the launch (2026-11-07) every
+ * feature is on for every account, so packets, level readiness and the
+ * weekly ritual dropped their labels. The field stays for the next thing that
+ * ships behind a switch.
+ *
+ * The job-search cards ("Any job, checked", "One assistant") moved to their
+ * own section (`JobSearch.tsx`) and to `Channels.tsx`, so this grid is the
+ * record's payoffs only: five cards and the call to action, a full 3×2.
  */
 export const PAYOFFS: ReadonlyArray<{
     icon: typeof FileText;
@@ -32,47 +38,32 @@ export const PAYOFFS: ReadonlyArray<{
     {
         icon: ScanSearch,
         title: 'A resume check with the fixes spelled out',
-        body: 'Upload your resume and get a score with a prioritised list of what to change — no account needed. Sign up to fix it in the editor.',
-        proof: 'The same coverage analysis the paid product uses.',
+        body: 'Upload your resume and get a score with a prioritised list of what to change, no account needed. Sign up to fix it in the editor.',
+        proof: 'The same coverage analysis the full product uses.',
     },
     {
         icon: BarChart3,
         title: 'A resume assembled from evidence',
-        body: 'Paste any job posting and get a version tailored to it, built from your history and the wins you logged instead of a blank page — then scored for ATS parsing before you send it.',
+        body: 'Paste any job posting and get a version tailored to it, built from your history and the wins you logged instead of a blank page, then scored for ATS parsing before you send it.',
         proof: 'Numbers are copied from your record, never generated.',
-    },
-    {
-        icon: Briefcase,
-        title: 'Any job, checked against your record',
-        body: 'Send a LinkedIn job or post, from chat or Telegram. You get the fit, what the company does and how it is funded, published pay, interview write-ups and who to talk to, then a tailored resume and a draft message to the recruiter.',
-        proof: 'Every company fact links to the page it came from.',
-    },
-    {
-        icon: MessageSquare,
-        title: 'One assistant, wherever you are',
-        body: 'Chat on the web or message the Telegram bot: log a win, check a job, ask what you shipped last quarter. It all lands in the same record.',
-        proof: 'Everything you send, from anywhere, lands in the same record.',
     },
     {
         icon: FileText,
         title: 'Review and promotion packets',
         body: 'Six or twelve months of confirmed wins, grouped into themes and written into a document you can hand to a manager. Every line traces back to a win you confirmed.',
-        proof: 'Free plan includes a brag doc; paid plans add performance-review and promotion formats.',
-        soon: true,
+        proof: 'Brag doc, performance review and promotion case, from the same record.',
     },
     {
         icon: ListChecks,
         title: 'Level readiness',
-        body: 'Paste your company’s leveling rubric and see your wins mapped against it — including the competencies where the evidence is thin.',
+        body: 'Paste your company’s leveling rubric and see your wins mapped against it, including the competencies where the evidence is thin.',
         proof: '“One instance of cross-team influence in eight months” is a more useful sentence than a score.',
-        soon: true,
     },
     {
         icon: Repeat2,
         title: 'A weekly ritual that maintains itself',
-        body: 'A short weekly digest of what we noticed, and a monthly review written only from what you confirmed. If a paragraph cannot be grounded in the log, it is dropped rather than padded.',
+        body: 'A short weekly digest of what was noticed, on Telegram or by email, and a monthly review written only from what you confirmed. If a paragraph cannot be grounded in the log, it is dropped rather than padded.',
         proof: 'Nothing is generated about a month you did not log.',
-        soon: true,
     },
 ];
 
@@ -112,7 +103,7 @@ export function Features() {
                             className="mk-card mk-card-hover mk-rail group flex flex-col overflow-hidden p-7 pl-8"
                         >
                             <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                                <Icon className="h-5 w-5" strokeWidth={1.75} />
+                                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
                             </span>
                             <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {item.title}
@@ -125,7 +116,7 @@ export function Features() {
                             <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                                 {item.body}
                             </p>
-                            <p className="ledger mt-5 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground/60">
+                            <p className="ledger mt-5 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
                                 {item.proof}
                             </p>
                         </Reveal>
@@ -146,12 +137,12 @@ export function Features() {
                         Start with the record.
                     </h3>
                     <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                        Keeping a log is free, permanently. The payoffs are there when you need
-                        them.
+                        Keeping a log is free, permanently, and every payoff is included while we
+                        launch.
                     </p>
                     <Link href={START_FREE_HREF} className="mk-btn group mt-6">
                         Start free
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
                     </Link>
                 </Reveal>
             </div>

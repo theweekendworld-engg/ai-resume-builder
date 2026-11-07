@@ -1,8 +1,8 @@
 import { assembleResume } from '@/lib/ai/resumeLoop';
 import { computeCoverage, gapAdvice, reconcileSkillGaps } from '@/lib/resume/coverage';
 import { readPosting } from '@/lib/resume/posting';
-import { resumeFromDraft } from '@/lib/resume/fromDraft';
-import { getContactCard, listRoles } from '@/lib/resume/tools/evidence';
+import { recordLineFor, resumeFromDraft } from '@/lib/resume/fromDraft';
+import { getContactCard, getRecordLines, listProjects, listRoles } from '@/lib/resume/tools/evidence';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import type { TailorInput, TailorResult } from './tailor.types';
@@ -58,12 +58,24 @@ export async function tailorViaLoop(input: TailorInput): Promise<TailorResult> {
 
     const preferences = parseUserGenerationPreferences(profile?.preferences);
 
+    // The record behind the draft, so every bullet prints as the candidate's
+    // own line, whole (QA 2026-11-07, finding 2). Read after the loop rather
+    // than trusted from it: the model may cite part of a line, never print it.
+    const [recordLines, storedProjects] = await Promise.all([
+        getRecordLines(userId, assembly.draft.experience.map((role) => role.roleId)),
+        listProjects(userId),
+    ]);
+
     const checked = resumeFromDraft({
         draft: assembly.draft,
         contact,
         availableRoles: roles.length,
         evidenceSeen: assembly.evidenceSeen,
         sectionOrder: preferences.defaultSectionOrder,
+        record: { roles: recordLines, projects: storedProjects },
+        base: input.base ?? null,
+        allowRewrite: input.allowRewrite ?? false,
+        maxBulletsPerRole: input.caps?.maxBulletsPerRole,
     });
     if (checked.ok && checked.violations.length > 0) {
         console.warn('[resume v2] dropped lines the record does not support', { userId, count: checked.violations.length, sample: checked.violations.slice(0, 3) });
@@ -81,9 +93,20 @@ export async function tailorViaLoop(input: TailorInput): Promise<TailorResult> {
     // rather than index because the guard may have dropped a bullet between the
     // draft and the resume, and a positional join would then attribute one
     // line's requirements to another.
+    //
+    // A stored line is the RECORD's line, not the model's text (see
+    // fromDraft), so each bullet's tags are filed under the record line it
+    // resolved to as well; keyed on the model's text alone, every bullet would
+    // lose its tags and coverage would read zero.
     const tagsByText = new Map<string, string[]>();
     for (const role of assembly.draft.experience) {
-        for (const bullet of role.bullets) tagsByText.set(bullet.text.trim(), bullet.answers);
+        const lines = recordLines.get(role.roleId)?.lines ?? [];
+        for (const bullet of role.bullets) {
+            for (const key of [bullet.text, bullet.sourceLine, recordLineFor(bullet, lines) ?? '']) {
+                const text = key.trim();
+                if (text && !tagsByText.has(text)) tagsByText.set(text, bullet.answers);
+            }
+        }
     }
 
     const bullets = resume.experience.flatMap((role) =>

@@ -2,7 +2,7 @@ import { Pricing } from '@/components/marketing/Pricing';
 
 export const metadata = {
     title: 'Pricing · Patronus',
-    description: 'The free plan, and the paid plans with their prices.',
+    description: 'Free while Patronus launches, with every feature included.',
 };
 
 export default function PricingPage() {

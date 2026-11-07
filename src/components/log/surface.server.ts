@@ -1,6 +1,7 @@
 import { CaptureSourceStatus, Tier } from '@prisma/client';
 import type { ProgressStage } from '@/components/patterns/progress-stages';
 import { getUserTier } from '@/lib/entitlements';
+import { launchOpenAccess } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
 import type { LogSurfaceState } from './data-source';
 
@@ -26,7 +27,9 @@ export async function loadLogSurface(userId: string): Promise<LogSurfaceState> {
         }),
         getUserTier(userId).catch(() => Tier.free),
     ]);
-    const plan: LogSurfaceState['plan'] = tier === Tier.free ? 'free' : 'career';
+    // Only the empty state's "last 30 / 90 days" line reads this, so it follows
+    // `backfillDaysForTier`: the paid depth for everyone during the launch.
+    const plan: LogSurfaceState['plan'] = tier === Tier.free && !launchOpenAccess() ? 'free' : 'career';
 
     if (sources.length === 0) {
         return { sourceConnected: false, sync: { state: 'idle', lastSyncedAt: null }, plan };

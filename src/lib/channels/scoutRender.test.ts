@@ -184,3 +184,28 @@ describe('final: job tracker line', () => {
         expect(callbacks.length).toBeGreaterThan(3);
     });
 });
+
+describe('the pay follow-up on a finished job', () => {
+    test('is asked under the result, as a typed reply, without holding the fit back', () => {
+        const fit = (JOB_SECTIONS.fit as { data: FitData }).data;
+        const withFollowUp = view({
+            status: 'succeeded',
+            sections: {
+                ...JOB_SECTIONS,
+                fit: ok<FitData>({ ...fit, followUp: { id: 'pref.compFloor', step: 'fit', prompt: 'This posting states $90/hr. What is the lowest pay you would take?' } }),
+            },
+        });
+        const message = renderScoutFinal(withFollowUp, APP);
+        const text = message.lines.map((line) => line.map((span) => span.text).join('')).join('\n');
+        expect(text).toContain('What is the lowest pay you would take?');
+        expect(text).toContain('Reply here with your answer');
+        // The job's own buttons stay; the follow-up does not replace them.
+        expect(message.actions.some((action) => action.kind === 'tailor')).toBe(true);
+    });
+
+    test('nothing extra when there is no follow-up', () => {
+        const message = renderScoutFinal(view({ status: 'succeeded', sections: JOB_SECTIONS }), APP);
+        const text = message.lines.map((line) => line.map((span) => span.text).join('')).join('\n');
+        expect(text).not.toContain('Reply here with your answer');
+    });
+});

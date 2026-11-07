@@ -15,6 +15,7 @@ import { LATEX_BUILD_URL, getLatexFetch } from '@/lib/latexClient';
 import { config } from '@/lib/config';
 import { ResumeData } from '@/types/resume';
 import { ATSScore } from '@/store/resumeStore';
+import { countPdfPages } from '@/lib/pdfParser';
 import { ATSScoreSchema, ResumeDataSchema, KeywordsResponseSchema, parseWithRetry } from '@/lib/aiSchemas';
 import { logUsageEvent, trackedChatCompletion } from '@/lib/usageTracker';
 import { requireAuth } from '@/lib/auth';
@@ -535,7 +536,7 @@ Output ONLY valid JSON, no markdown, no explanations.`;
 export async function compileLatex(
     latexCode: string,
     tracking?: { userId?: string; sessionId?: string }
-): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string }> {
+): Promise<{ success: boolean; pdfBase64?: string; error?: string; log?: string; pages?: number | null }> {
     if (!latexCode) {
         return { success: false, error: "No LaTeX code provided" };
     }
@@ -593,6 +594,9 @@ export async function compileLatex(
 
         const pdfBuffer = await response.arrayBuffer();
         const pdfBase64 = Buffer.from(pdfBuffer).toString('base64');
+        // The real page count, so the editor and generation can say "2 pages"
+        // instead of trusting an estimate. Best effort: null if unreadable.
+        const pages = await countPdfPages(Buffer.from(pdfBuffer));
 
         await logUsageEvent({
             userId,
@@ -604,10 +608,11 @@ export async function compileLatex(
             status: 'success',
             metadata: {
                 fileSizeBytes: pdfBuffer.byteLength,
+                pages,
             },
         });
 
-        return { success: true, pdfBase64 };
+        return { success: true, pdfBase64, pages };
     } catch (error: unknown) {
         console.error('LaTeX compilation error:', error);
         await logUsageEvent({

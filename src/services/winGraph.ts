@@ -28,6 +28,7 @@ import {
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { getUserTier } from '@/lib/entitlements';
+import { logHistoryDays } from '@/lib/plans';
 import { mayEmbed } from '@/lib/graph/visibility';
 import { deleteWinPoint, enqueueEmbedWin } from '@/lib/jobs/handlers/embedWin';
 import type {
@@ -97,17 +98,12 @@ const IMPACT_SOURCE_BY_WIN_SOURCE: Record<WinSource, string> = {
  * Log history depth is a *plan attribute*, not a quota (PRD 01 §10). Older Wins
  * are hidden and restored on upgrade — never deleted.
  *
- * TODO(plans): move to `src/lib/plans.ts` PLAN_CATALOG when it lands (rule 4).
+ * Read from `logHistoryDays` in plans.ts (rule 2: no limit literal at a call
+ * site). It used to be a table here with Free at 90, which kept hiding a free
+ * user's older wins after the launch made full history free (2026-11-07).
  */
-export const WIN_HISTORY_DAYS_BY_TIER: Record<Tier, number> = {
-    [Tier.free]: 90,
-    [Tier.always_on]: Number.POSITIVE_INFINITY,
-    [Tier.pro]: Number.POSITIVE_INFINITY,
-    [Tier.team]: Number.POSITIVE_INFINITY,
-};
-
 export function historyCutoff(tier: Tier, now: Date = new Date()): Date | null {
-    const days = WIN_HISTORY_DAYS_BY_TIER[tier];
+    const days = logHistoryDays(tier);
     if (!Number.isFinite(days)) return null;
     return new Date(now.getTime() - days * 86_400_000);
 }

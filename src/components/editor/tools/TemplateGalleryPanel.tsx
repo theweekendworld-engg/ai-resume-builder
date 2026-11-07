@@ -11,7 +11,7 @@ import {
   ResumeFontFamily,
 } from '@/types/resume';
 import { TEMPLATE_OPTIONS } from '@/templates/latex';
-import { groupSkills } from '@/lib/resume/skillGroups';
+import { resolveSkillGroups } from '@/lib/resume/skillGroups';
 import { contactParts, projectLinks } from '@/lib/resume/contact';
 
 // ---------------------------------------------------------------------------
@@ -159,13 +159,18 @@ export function ResumeHtmlPreview({ data, theme, variant = 'full', className }: 
                 {data.experience.map((exp) => (
                   <div key={exp.id}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontWeight: 700, color: '#222' }}>{exp.role || 'Role'}</span>
+                      <span style={{ fontWeight: 700, color: '#222' }}>
+                        {exp.role || 'Role'}
+                        {exp.stack ? <span style={{ fontWeight: 400 }}> | {exp.stack}</span> : null}
+                      </span>
                       <span style={{ color: '#888', whiteSpace: 'nowrap' }}>
                         {[exp.startDate, exp.current ? 'Present' : exp.endDate].filter(Boolean).join(' – ')}
                       </span>
                     </div>
                     <div style={{ color: t === 'modern' ? accent : '#555' }}>
-                      {[exp.company, exp.location].filter(Boolean).join(', ')}
+                      {[exp.companyNote ? `${exp.company} (${exp.companyNote})` : exp.company, exp.location]
+                        .filter(Boolean)
+                        .join(', ')}
                     </div>
                     <ul style={{ margin: '2px 0 0', paddingLeft: 14 }}>
                       {plainBullets(exp.description).slice(0, isThumb ? 2 : 6).map((b, i) => (
@@ -246,7 +251,8 @@ export function ResumeHtmlPreview({ data, theme, variant = 'full', className }: 
         // Was `data.skills.join(' · ')` — one undifferentiated run of text,
         // which is what the user was looking at while the LaTeX export grouped
         // them properly. Same grouping in both now.
-        const groups = groupSkills(data.skills);
+        // The resume's own rows ("Speech / AI: …") when it has them.
+        const groups = resolveSkillGroups(data);
         if (groups.length === 0) return null;
         return section(
           'skills',

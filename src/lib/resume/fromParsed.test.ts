@@ -22,8 +22,32 @@ describe('resumeDataFromParsed', () => {
         expect(data.education).toHaveLength(1);
     });
 
-    test('description and highlights become deduplicated bullets', () => {
-        expect(data.experience[0].description).toBe('• Cut p95 from 4.2s to 900ms.\n• Led 9-service migration');
+    test('highlights become the bullets; the description is not printed beside them', () => {
+        // Printing both made a role say the same thing twice, and a summary the
+        // model wrote became the first bullet (QA 2026-11-07, finding 1).
+        expect(data.experience[0].description).toBe('• Led 9-service migration\n• Cut p95 from 4.2s to 900ms.');
+    });
+
+    test('a role with no highlights falls back to its description lines', () => {
+        const only = resumeDataFromParsed(ParsedResumeSchema.parse({
+            personalInfo: {},
+            experiences: [{ company: 'Acme', role: 'Engineer', description: 'Built X.\nShipped Y.' }],
+        }));
+        expect(only.experience[0].description).toBe('• Built X.\n• Shipped Y.');
+    });
+
+    test('tag line, stack and the resume\'s own skills rows are carried', () => {
+        const rich = resumeDataFromParsed(ParsedResumeSchema.parse({
+            personalInfo: {},
+            experiences: [{ company: 'Plivo', role: 'Software Engineer I', companyNote: 'established CPaaS', stack: 'Go, C', highlights: ['Shipped it.'] }],
+            projects: [{ name: 'Voice agent', description: 'Built every stage.\nWrote a suppressor.' }],
+            skills: ['PyTorch', 'TTS'],
+            skillGroups: [{ label: 'Speech / AI', items: ['PyTorch', 'TTS'] }],
+        }));
+        expect(rich.experience[0].companyNote).toBe('established CPaaS');
+        expect(rich.experience[0].stack).toBe('Go, C');
+        expect(rich.projects[0].description).toBe('• Built every stage.\n• Wrote a suppressor.');
+        expect(rich.skillGroups).toEqual([{ label: 'Speech / AI', items: ['PyTorch', 'TTS'] }]);
     });
 
     test('a current role has no end date; urls map to url/repoUrl', () => {

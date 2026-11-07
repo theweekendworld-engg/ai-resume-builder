@@ -400,8 +400,16 @@ export function renderScoutFinal(view: ScoutRunView, appUrl: string): RichMessag
         };
     }
 
+    // The fit is never withheld for the pay floor any more; it is asked after
+    // the result, and a typed reply answers it (findOpenQuestionRun).
+    const fitData = okData<FitData>(view.sections.fit);
+    const followUp = isJob(view) ? fitData?.followUp ?? null : null;
+    const followUpLines: Line[] = followUp
+        ? [[], [{ text: '❓ ' }, { text: followUp.prompt, bold: true }], [{ text: 'Reply here with your answer, or ignore it.', italic: true }]]
+        : [];
+
     return {
-        lines: [headline, ...(body.length ? [[] as Line, ...body] : [])],
+        lines: [headline, ...(body.length ? [[] as Line, ...body] : []), ...followUpLines],
         footer,
         actions: isJob(view) ? jobActions(view, appUrl) : view.kind === 'work_note' ? noteActions(view, appUrl) : [],
     };

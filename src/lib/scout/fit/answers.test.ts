@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { defaultUserGenerationPreferences } from '@/lib/userPreferences';
-import { applyAnswer, applyAnswers, parseRelocate, parseWorkModes } from './answers';
+import { NON_BLOCKING_QUESTIONS, applyAnswer, applyAnswers, parseRelocate, parseWorkModes } from './answers';
 
 const base = defaultUserGenerationPreferences;
 
@@ -36,5 +36,15 @@ describe('answer parsing', () => {
         expect(next.defaultTemplate).toBe('modern');
         expect(next.preferredWorkModes).toEqual(['remote']);
         expect(next.willingToRelocate).toBe('no');
+    });
+
+    test('work authorization keeps the user\'s words, only when the eligibility check can read them', () => {
+        expect(applyAnswer(base, 'pref.workAuth', 'US citizen')?.workAuthorization).toBe('US citizen');
+        expect(applyAnswer(base, 'pref.workAuth', 'Not authorized to work in the US')?.workAuthorization).toBe('Not authorized to work in the US');
+        expect(applyAnswer(base, 'pref.workAuth', 'maybe')).toBeNull();
+    });
+
+    test('only the pay floor is a follow-up; the rest still hold the fit', () => {
+        expect([...NON_BLOCKING_QUESTIONS]).toEqual(['pref.minComp']);
     });
 });

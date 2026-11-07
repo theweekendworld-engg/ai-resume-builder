@@ -259,6 +259,20 @@ export function computeHiringSignal(
     };
 }
 
+/** Display names for geography keys: "India", "the US". Never the raw key in caps. */
+export const GEOGRAPHY_NAME: Record<string, string> = {
+    india: 'India',
+    us: 'the US',
+    uk: 'the UK',
+    canada: 'Canada',
+    germany: 'Germany',
+    singapore: 'Singapore',
+};
+
+export function geographyName(geography: string): string {
+    return GEOGRAPHY_NAME[geography] ?? geography.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /**
  * Sentence for the signal, with its provenance inline.
  *
@@ -271,7 +285,7 @@ export function describeHiringSignal(signal: HiringSignal): string {
         1,
         Math.round((signal.windowEnd.getTime() - signal.windowStart.getTime()) / 86_400_000),
     );
-    const geo = signal.geography.toUpperCase();
+    const geo = geographyName(signal.geography);
 
     if (signal.verdict === 'hires_there') {
         const where = signal.buckets.map((b) => `${b.bucket} (${b.n})`).join(', ');
@@ -283,7 +297,7 @@ export function describeHiringSignal(signal: HiringSignal): string {
 
 /** Why we declined to answer, in the user's words rather than an enum. */
 export function describeHiringRefusal(refusal: HiringRefusal, geography: string): string {
-    const geo = geography.toUpperCase();
+    const geo = geographyName(geography);
     switch (refusal.reason) {
         case 'no_postings':
             return `No postings observed for this company yet, so there is nothing to say about ${geo} hiring.`;

@@ -5,7 +5,7 @@ import {
   hasFeature,
   type PlanFeature,
 } from '@/lib/entitlements';
-import { CAREER_PLAN, logHistoryDays, sourceLimit } from '@/lib/plans';
+import { CAREER_PLAN, launchOpenAccess, logHistoryDays, sourceLimit } from '@/lib/plans';
 import { prisma } from '@/lib/prisma';
 
 import {
@@ -34,11 +34,21 @@ function alreadyEntitled(tier: Tier, feature: PlanFeature): boolean {
 }
 
 /**
+ * During the launch every feature is free and nothing can be bought, so no
+ * paywall has anything to offer. Each loader checks this first; turning the
+ * launch off (`ENTITLEMENT_LAUNCH_OPEN=false`) brings every paywall back.
+ */
+function noPaywallsDuringLaunch(): boolean {
+  return launchOpenAccess();
+}
+
+/**
  * PW1 — the greyed competency section at the end of a brag doc.
  *
  * Their win count and the level they're being measured against, both real.
  */
 export async function loadPw1(userId: string): Promise<PaywallContent | null> {
+  if (noPaywallsDuringLaunch()) return null;
   const tier = await getUserTier(userId);
   if (alreadyEntitled(tier, 'rubric_mapping')) return null;
 
@@ -63,6 +73,7 @@ export async function loadPw1(userId: string): Promise<PaywallContent | null> {
  * literally true: nothing is deleted, ever.
  */
 export async function loadPw2(userId: string): Promise<PaywallContent | null> {
+  if (noPaywallsDuringLaunch()) return null;
   const tier = await getUserTier(userId);
   const days = logHistoryDays(tier);
   if (!Number.isFinite(days)) return null;
@@ -82,6 +93,7 @@ export async function loadPw2(userId: string): Promise<PaywallContent | null> {
 
 /** PW3 — at submit, after the free tailored generations are gone. */
 export async function loadPw3(userId: string): Promise<PaywallContent | null> {
+  if (noPaywallsDuringLaunch()) return null;
   const tier = await getUserTier(userId);
   const decision = await checkEntitlementForTier(userId, tier, 'tailored_generation');
   if (!Number.isFinite(decision.limit) || decision.limit <= 0) return null;
@@ -93,6 +105,7 @@ export async function loadPw3(userId: string): Promise<PaywallContent | null> {
 
 /** PW7 — connecting a second source on a one-source plan. */
 export async function loadPw7(userId: string): Promise<PaywallContent | null> {
+  if (noPaywallsDuringLaunch()) return null;
   const tier = await getUserTier(userId);
   const limit = sourceLimit(tier);
   if (!Number.isFinite(limit)) return null;

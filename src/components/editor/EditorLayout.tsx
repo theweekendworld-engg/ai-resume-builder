@@ -209,7 +209,9 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     if (stashId) {
       void getScoreStashFixes(stashId).then((result) => {
         if (!result.success || result.data.fixes.length === 0) return;
-        setFixChecklist(result.data.fixes);
+        // The fixes belong to the resume the stash became, and only to it.
+        if (result.data.resumeId && result.data.resumeId !== resumeId) return;
+        setFixChecklist(result.data.fixes, resumeId);
         setActivePanel('fix-checklist');
         toast.message('Your fix checklist is ready', {
           description: `${result.data.fixes.length} item${result.data.fixes.length === 1 ? '' : 's'} from your free resume score.`,
@@ -223,7 +225,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     if (!pending) return;
 
     if (pending.fixes.length > 0) {
-      setFixChecklist(pending.fixes);
+      // Carried to the resume opened now, and scoped to it.
+      setFixChecklist(pending.fixes, resumeId);
       setActivePanel('fix-checklist');
       toast.message('Your fix checklist is ready', {
         description: `${pending.fixes.length} item${pending.fixes.length === 1 ? '' : 's'} carried over from your free resume score.`,
@@ -309,7 +312,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       case 'score-improve':
         return <ScoreImprovePanel />;
       case 'fix-checklist':
-        return <FixChecklistPanel />;
+        return <FixChecklistPanel resumeId={resumeId} />;
       case 'truthfulness':
         return <TruthfulnessPanel resumeId={resumeId} />;
       case 'latex':

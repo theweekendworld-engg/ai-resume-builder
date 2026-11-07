@@ -82,7 +82,7 @@ export function HowItWorks() {
                             </span>
 
                             <span className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
-                                <Icon className="h-5 w-5" strokeWidth={1.75} />
+                                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
                             </span>
 
                             <h3 className="font-heading relative mt-5 text-lg font-bold leading-snug tracking-tight">
@@ -91,7 +91,7 @@ export function HowItWorks() {
                             <p className="relative mt-2.5 text-sm leading-relaxed text-muted-foreground">
                                 {step.body}
                             </p>
-                            <p className="ledger relative mt-5 border-t border-border/60 pt-4 text-[11px] leading-relaxed text-muted-foreground/60">
+                            <p className="ledger relative mt-5 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
                                 {step.note}
                             </p>
                         </Reveal>

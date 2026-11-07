@@ -10,7 +10,7 @@
  * The loader tests run against the live Postgres; `.env.test` pins it local.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { CaptureSourceKind, WinCategory, WinSource, WinStatus } from '@prisma/client';
 
 import { gateMeteredAction } from '@/lib/entitlements';
@@ -187,7 +187,32 @@ async function addWin(userId: string, occurredAt: Date) {
   });
 }
 
-describe('loaders — real data or nothing', () => {
+/**
+ * Launch (2026-11-07): every feature is included and nothing can be bought,
+ * so no paywall has anything to offer. Every loader is silent, even for a
+ * user whose data would otherwise trigger it.
+ */
+describe('during the launch, no paywall appears', () => {
+  test('PW1, PW2, PW3 and PW7 are all null, with real data present', async () => {
+    const userId = newUser('launch');
+    await addWin(userId, new Date());
+    await addWin(userId, new Date(Date.now() - 200 * 86_400_000));
+    expect(await loadPw1(userId)).toBeNull();
+    expect(await loadPw2(userId)).toBeNull();
+    expect(await loadPw3(userId)).toBeNull();
+    expect(await loadPw7(userId)).toBeNull();
+  });
+});
+
+/** The loaders as they behave once paid plans return (`ENTITLEMENT_LAUNCH_OPEN=false`). */
+describe('loaders — real data or nothing (after the launch)', () => {
+  beforeAll(() => {
+    process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+  });
+  afterAll(() => {
+    delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+  });
+
   test('PW1 is silent for an empty log and speaks once there are wins', async () => {
     const userId = newUser('pw1');
     expect(await loadPw1(userId)).toBeNull();

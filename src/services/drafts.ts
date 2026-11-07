@@ -79,6 +79,8 @@ function toView(row: MessageDraft): DraftView {
         subject: row.subject,
         body: row.body,
         createdAt: row.createdAt.toISOString(),
+        parentId: row.parentId,
+        instruction: row.instruction,
     };
 }
 
@@ -227,6 +229,67 @@ export async function reviseDraft(userId: string, draftId: string, instruction: 
 }
 
 // ───────────────────────────────────────────────────────────────── reads
+
+/** Every live version drafted for one Scout run, oldest first. Scoped by user in the query. */
+export async function listDraftsForRun(userId: string, runId: string): Promise<DraftView[]> {
+    const rows = await prisma.messageDraft.findMany({
+        where: { userId, runId, status: { not: 'discarded' } },
+        orderBy: [{ createdAt: 'asc' }, { version: 'asc' }],
+        take: 100,
+    });
+    return rows.map(toView);
+}
+
+/** The tailored resume to attach, as links the web page can open. */
+export type TailoredAttachment = {
+    resumeId: string;
+    title: string;
+    /** The latest unexpired PDF of the tailored copy; null when none has been made yet. */
+    pdfUrl: string | null;
+    editorUrl: string;
+};
+
+/**
+ * The per-job resume for a run (the copy `tailorResumeForRun` made), and its
+ * latest PDF. Null when the job has no tailored copy yet. Only the user's own
+ * rows: every query carries `userId`.
+ */
+export async function tailoredAttachmentForRun(userId: string, runId: string, now: Date = new Date()): Promise<TailoredAttachment | null> {
+    const workspace = await prisma.applicationWorkspace.findFirst({
+        where: { userId, scoutRunId: runId },
+        select: { id: true, selectedResumeId: true, selectedGeneratedPdfId: true },
+    });
+    if (!workspace) return null;
+
+    const selected = workspace.selectedResumeId
+        ? await prisma.resume.findFirst({
+            where: { id: workspace.selectedResumeId, userId, NOT: { baseResumeId: null } },
+            select: { id: true, title: true },
+        })
+        : null;
+    const resume = selected ?? await prisma.resume.findFirst({
+        where: { userId, workspaceId: workspace.id, NOT: { baseResumeId: null } },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, title: true },
+    });
+    if (!resume) return null;
+
+    const live = { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] };
+    const chosen = workspace.selectedGeneratedPdfId
+        ? await prisma.generatedPdf.findFirst({ where: { id: workspace.selectedGeneratedPdfId, userId, resumeId: resume.id, ...live }, select: { id: true } })
+        : null;
+    const pdf = chosen ?? await prisma.generatedPdf.findFirst({
+        where: { userId, resumeId: resume.id, ...live },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+    });
+    return {
+        resumeId: resume.id,
+        title: resume.title,
+        pdfUrl: pdf ? `/api/pdfs/${encodeURIComponent(pdf.id)}` : null,
+        editorUrl: `/editor/${encodeURIComponent(resume.id)}`,
+    };
+}
 
 export async function getDraft(userId: string, draftId: string): Promise<DraftView | null> {
     const row = await prisma.messageDraft.findFirst({ where: { id: draftId, userId } });

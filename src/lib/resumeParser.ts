@@ -1,7 +1,20 @@
 import { config } from '@/lib/config';
 import { ParsedResumeSchema, RESUME_PARSE_PROMPT, type ParsedResumeData } from '@/lib/aiSchemas';
-import { trackedChatCompletion, trackedResponsesCreate } from '@/lib/usageTracker';
+import { trackedResponsesCreate } from '@/lib/usageTracker';
 import { repairJSON } from '@/lib/aiSchemas';
+import { generateStructured } from '@/lib/ai/structured';
+import { reconcileWithSource } from '@/lib/resume/faithfulImport';
+import { IMPORT_PARSE_SYSTEM, ImportParseSchema, toParsedResume } from '@/lib/resume/importParse';
+import { normalizeSourceText } from '@/lib/resume/sourceText';
+
+/**
+ * How much resume text the parser reads. Callers pass up to 40k; this used to
+ * cut at 12k, so the tail of a long resume never reached the model while the
+ * caller believed it had been read.
+ */
+export const MAX_PARSE_CHARS = 40_000;
+/** Below this, a PDF has no usable text layer (a scan) and is read as a file. */
+const MIN_TEXT_LAYER_CHARS = 80;
 
 type ExtractedPdfLink = {
   pageNumber: number;
@@ -254,6 +267,18 @@ function normalizeAchievementType(type: string): ParsedResumeData['achievements'
   return 'achievement';
 }
 
+/** Links and types only. Bullets are the source's business (see `faithfulImport`). */
+function normalizeLinksAndTypes(data: ParsedResumeData): ParsedResumeData {
+  return {
+    ...data,
+    projects: data.projects.map((project) => ({ ...project, ...normalizeProjectUrls(project) })),
+    achievements: data.achievements.map((achievement) => ({
+      ...achievement,
+      type: normalizeAchievementType(achievement.type),
+    })),
+  };
+}
+
 function normalizeParsedResumeData(data: ParsedResumeData, extractedLinks: ExtractedPdfLink[] = []): ParsedResumeData {
   return {
     ...data,
@@ -296,9 +321,22 @@ async function safeExtractTextFromPdf(buffer: Buffer): Promise<string> {
   }
 }
 
+/**
+ * A PDF → parsed resume.
+ *
+ * Reads the text layer first and parses THAT, because only text can be
+ * checked: the faithful-import guard compares every stored line with the
+ * source, and a PDF handed to the model as a file leaves nothing to compare
+ * against. The file path remains for scans, which have no text layer.
+ */
 export async function parseResumeFromPdf(buffer: Buffer, userId: string): Promise<ParsedResumeData> {
-  const base64 = buffer.toString('base64');
   const extractedLinks = await safeExtractHyperlinksFromPdf(buffer);
+  const textLayer = await safeExtractTextFromPdf(buffer);
+  if (textLayer.trim().length >= MIN_TEXT_LAYER_CHARS) {
+    return parseResumeText(textLayer, userId, extractedLinks);
+  }
+
+  const base64 = buffer.toString('base64');
   const linksContext = buildPdfHyperlinkContext(extractedLinks);
   try {
     const response = await trackedResponsesCreate(
@@ -353,50 +391,49 @@ export async function parseResumeFromPdf(buffer: Buffer, userId: string): Promis
   }
 }
 
+/**
+ * Resume text → parsed resume, in the resume's own words.
+ *
+ * One guarded model call proposes the structure (`generateStructured`, task
+ * `resumeParse`, numeric guard against the text), then
+ * `reconcileWithSource` rebuilds every bullet, skills row, tag line and stack
+ * from the text itself and drops anything the text does not contain. What the
+ * model wrote is never stored on its own authority.
+ */
 export async function parseResumeText(
   text: string,
   userId: string,
-  extractedLinks: ExtractedPdfLink[] = []
+  extractedLinks: ExtractedPdfLink[] = [],
+  options: { sessionId?: string } = {},
 ): Promise<ParsedResumeData> {
-  const truncated = text.slice(0, 12000);
+  const source = normalizeSourceText(text).slice(0, MAX_PARSE_CHARS);
   const linksContext = buildPdfHyperlinkContext(extractedLinks);
 
-  const response = await trackedChatCompletion(
-    {
-      model: config.openai.models.resumeParse,
-      messages: [
-        {
-          role: 'system',
-          content: RESUME_PARSE_PROMPT,
-        },
-        {
-          role: 'user',
-          content: `Resume text:\n\n${truncated}${linksContext ? `\n\nEmbedded PDF hyperlink annotations:\n${linksContext}\nUse these links to populate project githubUrl/liveUrl when the visible text is only labels like [repo] or [live].` : ''}\n\nReturn ONLY a valid JSON object.`,
-        },
-      ],
-      response_format: { type: 'json_object' },
+  const { data } = await generateStructured({
+    task: 'resumeParse',
+    feature: 'resume',
+    userId,
+    sessionId: options.sessionId,
+    schema: ImportParseSchema,
+    system: IMPORT_PARSE_SYSTEM,
+    prompt: `Resume text:\n\n${source}${linksContext ? `\n\nEmbedded PDF hyperlink annotations:\n${linksContext}\nUse these links to populate project githubUrl/liveUrl when the visible text is only labels like [repo] or [live].` : ''}`,
+    guard: {
+      sourceText: source,
+      fields: ['experiences', 'projects', 'achievements', 'personalInfo.summary'],
     },
-    {
+  });
+
+  const proposed = normalizeLinksAndTypes(toParsedResume(data));
+  const { data: faithful, audit } = reconcileWithSource(proposed, source);
+  if (audit.rejected.length > 0 || audit.unplaced.length > 0) {
+    // Counts and a short sample only: this is resume text, and logs are not
+    // where it should live.
+    console.warn('[resume import] kept the source, not the model', {
       userId,
-      operation: 'resume_parse',
-      metadata: { textLength: truncated.length },
-    }
-  );
-
-  const raw = response.choices[0]?.message?.content ?? '{}';
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    parsed = JSON.parse(repairJSON(raw));
+      rejected: audit.rejected.length,
+      unplaced: audit.unplaced.length,
+      sample: audit.rejected.slice(0, 2).map((entry) => `${entry.where}: ${entry.text.slice(0, 60)}`),
+    });
   }
-
-  const result = ParsedResumeSchema.safeParse(parsed);
-  if (!result.success) {
-    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-    throw new Error(`Resume parse validation failed: ${issues}`);
-  }
-
-  return normalizeParsedResumeData(result.data, extractedLinks);
+  return faithful;
 }

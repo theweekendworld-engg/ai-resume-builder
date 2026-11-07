@@ -13,6 +13,7 @@ import { getResumeCoverage } from '@/actions/coverage';
 import Link from 'next/link';
 import type { PreferenceConflict } from '@/lib/resume/preferenceConflicts';
 import { openItems, verdict, type DroppedLine, type ResumeCoverage } from '@/lib/resume/report';
+import { describeFit } from '@/lib/resume/pageFit';
 import { GapCaptureRow } from './GapCaptureRow';
 
 /**
@@ -114,9 +115,11 @@ function DroppedRow({ line, onRestore }: { line: DroppedLine; onRestore: (line: 
                     {' · '}
                     {line.reason === 'cap'
                         ? 'no room on the page'
-                        : 'reads as a duty rather than an achievement'}
+                        : line.reason === 'page'
+                            ? 'cut so the PDF fits the page'
+                            : 'reads as a duty rather than an achievement'}
                 </p>
-                {line.targetKind === 'experience' && line.targetId ? (
+                {line.targetId ? (
                     <Button
                         variant="outline"
                         size="sm"
@@ -136,7 +139,7 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
     const [report, setReport] = useState<ResumeCoverage | null>(null);
     const [conflicts, setConflicts] = useState<PreferenceConflict[]>([]);
     const [loading, setLoading] = useState(true);
-    const { resumeData, updateExperience } = useResumeStore();
+    const { resumeData, updateExperience, updateProject } = useResumeStore();
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -154,18 +157,20 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
     }, [load]);
 
     const restore = (line: DroppedLine) => {
-        const target = resumeData.experience.find((item) => item.id === line.targetId);
+        const target = line.targetKind === 'project'
+            ? resumeData.projects.find((item) => item.id === line.targetId)
+            : resumeData.experience.find((item) => item.id === line.targetId);
         if (!target) {
-            toast.error('That role is no longer on this resume.');
+            toast.error(line.targetKind === 'project' ? 'That project is no longer on this resume.' : 'That role is no longer on this resume.');
             return;
         }
         if (target.description.includes(line.text)) {
             toast.info('That line is already there.');
             return;
         }
-        updateExperience(target.id, {
-            description: [target.description, line.text].filter(Boolean).join('\n'),
-        });
+        const description = [target.description, line.text].filter(Boolean).join('\n');
+        if (line.targetKind === 'project') updateProject(target.id, { description });
+        else updateExperience(target.id, { description });
         // Removed from the list rather than left sitting there looking undone.
         setReport((current) =>
             current
@@ -226,6 +231,44 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
                     </div>
                 </CardHeader>
             </Card>
+
+            {/*
+              The page budget, measured on the compiled PDF. "Over" is never
+              left for the user to discover in the download.
+            */}
+            {report.pageFit && describeFit(report.pageFit) ? (
+                <Card className={report.pageFit.status === 'over' ? 'border-warning/40' : undefined}>
+                    <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-sm">
+                            {report.pageFit.status === 'over' ? (
+                                <AlertTriangle className="size-4 text-warning" aria-hidden />
+                            ) : (
+                                <Check className="size-4 text-success" aria-hidden />
+                            )}
+                            {report.pageFit.status === 'over'
+                                ? `${report.pageFit.pages} pages: over the page budget`
+                                : 'Fits the page'}
+                        </CardTitle>
+                        <CardDescription>{describeFit(report.pageFit)}</CardDescription>
+                    </CardHeader>
+                    {report.pageFit.trimmed.some((item) => item.kind === 'project' || item.kind === 'summary' || item.kind === 'skills_row') ? (
+                        <CardContent className="pt-0">
+                            <ul className="space-y-1">
+                                {report.pageFit.trimmed
+                                    .filter((item) => item.kind === 'project' || item.kind === 'summary' || item.kind === 'skills_row')
+                                    .map((item) => (
+                                        <li key={`${item.kind}:${item.text}`} className="flex gap-2 text-xs text-muted-foreground">
+                                            <span aria-hidden>·</span>
+                                            <span>
+                                                {item.kind === 'project' ? `Project: ${item.text}` : item.kind === 'summary' ? 'The About line' : `Skills row: ${item.text}`}
+                                            </span>
+                                        </li>
+                                    ))}
+                            </ul>
+                        </CardContent>
+                    ) : null}
+                </Card>
+            ) : null}
 
             {/*
               What their own defaults cost on this posting.

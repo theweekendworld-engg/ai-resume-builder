@@ -46,7 +46,6 @@ import {
     unconfirmWin,
     updateWin,
     userSourceRef,
-    WIN_HISTORY_DAYS_BY_TIER,
 } from '@/services/winGraph';
 import { embedWinHandler, __testing as embedTesting } from '@/lib/jobs/handlers/embedWin';
 import {
@@ -394,7 +393,26 @@ describe('listWins', () => {
         expect(bySearch.success && bySearch.data.total).toBe(1);
     });
 
-    test('free-plan history limit hides older wins but never deletes them', async () => {
+    test('free-plan history limit hides older wins but never deletes them (after the launch)', async () => {
+        // During the launch nothing is hidden on Free; this is the limit that
+        // returns with paid plans (`ENTITLEMENT_LAUNCH_OPEN=false`).
+        process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+        try {
+            await historyLimitHidesNeverDeletes();
+        } finally {
+            delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+        }
+    });
+
+    test('during the launch a free account lists its oldest wins too', async () => {
+        const userId = user('history-launch');
+        const old = await makeWin({ userId, title: 'Ancient', occurredAt: new Date(Date.now() - 400 * 86_400_000) });
+        const page = await listWins({ userId, filters: {} });
+        expect(page.success && page.data.items.map((item) => item.id)).toEqual([old.id]);
+        expect(page.success && page.data.hiddenByPlan).toBe(0);
+    });
+
+    async function historyLimitHidesNeverDeletes(): Promise<void> {
         const userId = user('history');
         const now = Date.now();
         const recent = await makeWin({ userId, title: 'Recent', occurredAt: new Date(now - 10 * 86_400_000) });
@@ -413,13 +431,22 @@ describe('listWins', () => {
         );
         expect(unlocked.success && unlocked.data.hiddenByPlan).toBe(0);
         expect(await prisma.win.count({ where: { userId } })).toBe(2);
+    }
+
+    test('the free history window is 90 rolling days (after the launch)', () => {
+        process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+        try {
+            const now = new Date('2026-08-01T00:00:00.000Z');
+            expect(historyCutoff('free', now)?.toISOString()).toBe('2026-05-03T00:00:00.000Z');
+            expect(historyCutoff('pro', now)).toBeNull();
+        } finally {
+            delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+        }
     });
 
-    test('the free history window is 90 rolling days', () => {
-        expect(WIN_HISTORY_DAYS_BY_TIER.free).toBe(90);
-        const now = new Date('2026-08-01T00:00:00.000Z');
-        expect(historyCutoff('free', now)?.toISOString()).toBe('2026-05-03T00:00:00.000Z');
-        expect(historyCutoff('pro', now)).toBeNull();
+    // Launch (2026-11-07): full history is free, so nothing is hidden on Free.
+    test('during the launch a free account sees its whole history', () => {
+        expect(historyCutoff('free', new Date('2026-08-01T00:00:00.000Z'))).toBeNull();
     });
 });
 

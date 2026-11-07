@@ -31,7 +31,8 @@ import {
     resolvePick,
     toCachedPage,
 } from '@/lib/research/verify';
-import type { ScoutSection } from '@/lib/scout/section';
+import { dataOf, type ScoutSection } from '@/lib/scout/section';
+import { hiringStatementFor, roleGeography } from '@/lib/scout/sections/hiringCopy';
 import type { CitedFact, CompanyData } from '@/lib/scout/types';
 
 const NEWS_DOMAINS = [
@@ -134,7 +135,7 @@ export function verifyFacts(
 
 // ────────────────────────────────────────────────────────────── mapping
 
-function fromEnrichment(name: string, enrichment: EnrichCompanyResult | null, geography: string) {
+function fromEnrichment(name: string, enrichment: EnrichCompanyResult | null, geography: string, roleGeo: string | null) {
     const facts = enrichment?.providerFacts ?? {};
     const provenance: Record<string, string> = {};
     for (const [field, entry] of Object.entries(enrichment?.provenance ?? {})) {
@@ -153,7 +154,8 @@ function fromEnrichment(name: string, enrichment: EnrichCompanyResult | null, ge
         headquarters: facts.headquarters ?? null,
         foundedYear: facts.foundedYear ?? null,
         provenance,
-        hiringStatement: hiring?.statement ?? null,
+        // The role's own geography, named properly; never a default market.
+        hiringStatement: hiringStatementFor(hiring, roleGeo),
     };
 }
 
@@ -165,11 +167,17 @@ export const companySection: ScoutSection<'company'> = async (ctx) => {
     const target = researchTarget(ctx.sections);
     if (!target) return { status: 'unavailable', reason: 'No company is named in this link' };
 
-    const enrichment = await enricher({ companyName: target.company, geography: target.geography }).catch((error: unknown) => {
+    // The hiring read is about where THIS role is: its location field, else
+    // the region the posting scopes itself to ("Remote, DMV preferred" is
+    // the US). `target.geography` falls back to India for anything it cannot
+    // place, which framed a US remote role around India (QA 2026-11-07).
+    const roleGeo = roleGeography(target.location, dataOf(ctx.sections, 'ingest')?.text ?? '');
+    const geography = roleGeo ?? target.geography;
+    const enrichment = await enricher({ companyName: target.company, geography }).catch((error: unknown) => {
         ctx.step.log('enrichment failed', { error: String(error) });
         return null;
     });
-    const base = fromEnrichment(target.company, enrichment, target.geography);
+    const base = fromEnrichment(target.company, enrichment, geography, roleGeo);
 
     // Only a hint the user gave: never one the model inferred from a post.
     const hint = ctx.input.intent === 'company_research' ? ctx.input.companyHint?.trim() || null : null;

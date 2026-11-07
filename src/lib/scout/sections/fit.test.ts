@@ -76,6 +76,37 @@ describe('fitSection', () => {
         if (outcome.status === 'ok') expect(outcome.data.summary).toContain('strong fit');
     });
 
+    test('a pay floor question never holds the fit back: ok, with the question as a follow-up', async () => {
+        const remote: JdData = { ...JD, location: 'Bengaluru, Karnataka, India', workMode: 'hybrid', compensationText: '₹30-40 LPA' };
+        __testing.setLoader(async () => ({ record: RECORD, prefs: { ...defaultUserGenerationPreferences, preferredWorkModes: ['hybrid'] } }));
+        let summaries = 0;
+        const ctx = fakeContext({
+            sections: { jd: okSection<'jd'>(remote) },
+            ai: (async () => {
+                summaries += 1;
+                return { data: { summary: 'A strong fit: your Go work at Razorpay covers the core requirement.' }, degraded: false };
+            }) as never,
+        });
+        const outcome = await fitSection(ctx);
+        expect(outcome.status).toBe('ok');
+        if (outcome.status !== 'ok') return;
+        expect(outcome.data.verdict).toBe('strong');
+        expect(outcome.data.followUp?.id).toBe('pref.minComp');
+        expect(outcome.data.followUp?.prompt).toContain('₹30-40 LPA');
+        // The user sees the full result now, prose included.
+        expect(summaries).toBe(1);
+        expect(outcome.data.summary).toContain('Razorpay');
+    });
+
+    test('a blocking question still keeps the computed fit as data', async () => {
+        __testing.setLoader(async () => ({ record: RECORD, prefs: { ...defaultUserGenerationPreferences, preferredWorkModes: ['onsite'] } }));
+        const outcome = await fitSection(fakeContext({ sections: { jd: okSection<'jd'>(JD) } }));
+        expect(outcome.status).toBe('needs_input');
+        if (outcome.status !== 'needs_input') return;
+        expect(outcome.data?.verdict).toBeTruthy();
+        expect(outcome.data?.followUp ?? null).toBeNull();
+    });
+
     test('no JD, no fit', async () => {
         const outcome = await fitSection(fakeContext({}));
         expect(outcome.status).toBe('unavailable');

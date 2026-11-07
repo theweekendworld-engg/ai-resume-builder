@@ -166,7 +166,8 @@ describe('files', () => {
         expect(outcome).toBe('handled');
         expect(urls).toHaveLength(2);
         expect(started).toHaveLength(1);
-        expect(started[0].input.text).toBe(`Is this one worth it?\n\n${JD_LINES.join(' ')}`);
+        // Line breaks kept, the same as a text file (see pdfParser.joinTextItems).
+        expect(started[0].input.text).toBe(`Is this one worth it?\n\n${JD_LINES.join('\n')}`);
         expect(toUser()[0]).toContain('Reading the post');
     });
 

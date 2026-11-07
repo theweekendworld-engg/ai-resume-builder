@@ -64,7 +64,9 @@ describe('reading a file', () => {
         const bytes = minimalPdf(['Senior Backend Engineer', 'Send resumes to jobs@example.com']);
         const urls = serve({ bytes });
         const read = await readTelegramDocument({ document: pdfDoc({ file_size: bytes.length }), format: 'pdf' });
-        expect(read).toEqual({ ok: true, text: 'Senior Backend Engineer Send resumes to jobs@example.com', truncated: false });
+        // One line per printed line, as a pasted text file reads: the PDF
+        // extractor keeps line breaks now (import reads bullets off them).
+        expect(read).toEqual({ ok: true, text: 'Senior Backend Engineer\nSend resumes to jobs@example.com', truncated: false });
         expect(urls).toEqual([
             `https://api.telegram.org/bot${TOKEN}/getFile`,
             `https://api.telegram.org/file/bot${TOKEN}/documents/file_1.pdf`,

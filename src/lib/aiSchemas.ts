@@ -77,6 +77,8 @@ export const ExperienceItemSchema = z.object({
     current: z.boolean().default(false),
     location: z.string().default(''),
     description: z.string().default(''),
+    companyNote: z.string().optional(),
+    stack: z.string().optional(),
 });
 
 /**
@@ -114,6 +116,8 @@ export const ResumeDataSchema = z.object({
     projects: z.array(ProjectItemSchema).default([]),
     education: z.array(EducationItemSchema).default([]),
     skills: z.array(z.string()).default([]),
+    /** Optional: the resume's own skills rows. Without it the renderer groups `skills`. */
+    skillGroups: z.array(z.object({ label: z.string(), items: z.array(z.string()) })).optional(),
     sectionOrder: z.array(z.enum(['experience', 'projects', 'education', 'skills', 'summary'])).default(['summary', 'experience', 'projects', 'education', 'skills']),
 });
 
@@ -202,6 +206,10 @@ export const ParsedResumeExperienceSchema = z.object({
     location: z.string().default(''),
     description: z.string().default(''),
     highlights: z.array(z.string()).default([]),
+    /** Printed next to the employer's name: "(established CPaaS, AI voice agents)". */
+    companyNote: z.string().optional(),
+    /** Printed with the title: "Software Engineer I | Go, C, Python". */
+    stack: z.string().optional(),
 });
 
 export const ParsedResumeEducationSchema = z.object({
@@ -234,6 +242,8 @@ export const ParsedResumeSchema = z.object({
     projects: z.array(ParsedResumeProjectSchema).default([]),
     achievements: z.array(ParsedResumeAchievementSchema).default([]),
     skills: z.array(z.string()).default([]),
+    /** The resume's own skills rows, labels as written. `skills` is their union. */
+    skillGroups: z.array(z.object({ label: z.string(), items: z.array(z.string()) })).optional(),
 });
 
 export const RESUME_PARSE_PROMPT = `You are a resume parser. Extract structured data from the resume pdf file below.

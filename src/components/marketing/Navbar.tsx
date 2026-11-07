@@ -32,6 +32,7 @@ import { START_FREE_HREF } from './links';
 const LINKS = [
     { href: '/score', label: 'Check resume' },
     { href: '/#how-it-works', label: 'How it works' },
+    { href: '/#job-search', label: 'Job search' },
     { href: '/#features', label: 'Features' },
     { href: '/#pricing', label: 'Pricing' },
     { href: '/#faq', label: 'Questions' },
@@ -80,7 +81,7 @@ export function Navbar() {
                     Patronus
                 </Link>
 
-                <nav className="hidden items-center gap-8 text-[13px] font-medium text-muted-foreground md:flex">
+                <nav aria-label="Sections" className="hidden items-center gap-6 text-[13px] font-medium text-muted-foreground lg:flex xl:gap-8">
                     {LINKS.map((link) => (
                         <Link
                             key={link.href}
@@ -111,28 +112,27 @@ export function Navbar() {
                         </Link>
                     </SignedOut>
                     <SignedIn>
-                        <Link href="/dashboard">
-                            <Button size="sm" variant="secondary" className="text-[13px]">
-                                Dashboard
-                            </Button>
-                        </Link>
+                        <Button asChild size="sm" variant="secondary" className="text-[13px]">
+                            <Link href="/dashboard">Dashboard</Link>
+                        </Button>
                         <UserButton />
                     </SignedIn>
 
                     <button
                         type="button"
                         onClick={() => setOpen((v) => !v)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground md:hidden"
+                        className="flex h-11 w-11 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground lg:hidden"
                         aria-label={open ? 'Close menu' : 'Open menu'}
                         aria-expanded={open}
+                        aria-controls="marketing-mobile-nav"
                     >
-                        {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+                        {open ? <X className="h-4 w-4" aria-hidden /> : <Menu className="h-4 w-4" aria-hidden />}
                     </button>
                 </div>
             </div>
 
             {open ? (
-                <nav className="border-t border-border/60 px-5 pb-6 pt-2 sm:px-6 md:hidden">
+                <nav id="marketing-mobile-nav" aria-label="Sections" className="border-t border-border/60 px-5 pb-6 pt-2 sm:px-6 lg:hidden">
                     {LINKS.map((link) => (
                         <Link
                             key={link.href}

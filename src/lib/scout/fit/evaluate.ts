@@ -22,7 +22,10 @@ import { classifyFamily } from '@/lib/radar/role';
 import type { UserGenerationPreferences } from '@/lib/userPreferences';
 import type { FitData, FitVerdict, JdData, PreferenceCheck, PreferenceKey } from '@/lib/scout/types';
 import { applyAnswers, isPreferenceQuestionId, type PreferenceQuestionId } from '@/lib/scout/fit/answers';
-import { minYearsFrom, detectSponsorship } from '@/lib/scout/fit/jdSignals';
+import { evaluateEligibility, workAuthQuestionPrompt, type EligibilityOutcome } from '@/lib/scout/fit/eligibility';
+import { detectEligibility, detectRegionScope, minYearsFrom, detectSponsorship, type EligibilityRestriction, type RegionScope } from '@/lib/scout/fit/jdSignals';
+import { REGION_NAME, regionContains, regionOf } from '@/lib/scout/fit/region';
+import { computeTenure, describeFullTime, NEAR_MISS_MONTHS, type RoleSpan } from '@/lib/scout/fit/tenure';
 import { comparePay, parseMoney } from '@/lib/scout/fit/money';
 import { fallbackJudgements, planMatching, type Judgement, type MatchPlan } from '@/lib/scout/fit/match';
 
@@ -46,9 +49,18 @@ export type FitRecord = {
     lines: RecordLine[];
     /** Normalised text of every line, for skill matching. */
     corpus: string;
-    /** Stated years, else derived from role dates; null when neither exists. */
+    /**
+     * Stated years, else FULL-TIME years from role dates (internships apart,
+     * overlaps merged); null when neither exists.
+     */
     years: number | null;
     yearsSource: 'stated' | 'roles' | null;
+    /** Full-time months from role dates; null when no role has a usable date. */
+    fullTimeMonths: number | null;
+    /** Internship, trainee and co-op months, never added to full-time. */
+    internshipMonths: number;
+    /** Each role's dated span, keyed by its line source ("Role at Company"). */
+    roleSpans: Record<string, RoleSpan>;
     location: string;
     defaultTitle: string;
     /** True when there is nothing to match against. */
@@ -84,11 +96,6 @@ export type RecordInput = {
     wins?: { title: string; narrative: string }[];
     now?: Date;
 };
-
-function yearOf(value: string): number | null {
-    const match = String(value || '').match(/\b(19[5-9]\d|20\d{2})\b/);
-    return match ? Number(match[1]) : null;
-}
 
 export function buildFitRecord(input: RecordInput): FitRecord {
     const lines: RecordLine[] = [];
@@ -128,16 +135,13 @@ export function buildFitRecord(input: RecordInput): FitRecord {
         lines.push({ text: `${entry.skill} — ${entry.evidence.join('; ')}`, source: entry.evidence[0] ?? 'Skills' });
     }
 
+    const tenure = computeTenure(input.experiences, input.now ?? new Date());
     const stated = parseStatedYears(input.profile.yearsExperience);
     let years = stated;
     let yearsSource: FitRecord['yearsSource'] = stated === null ? null : 'stated';
-    if (years === null && input.experiences.length) {
-        const now = (input.now ?? new Date()).getUTCFullYear();
-        const starts = input.experiences.map((role) => yearOf(role.startDate)).filter((y): y is number => y !== null);
-        if (starts.length) {
-            years = Math.max(0, now - Math.min(...starts));
-            yearsSource = 'roles';
-        }
+    if (years === null && tenure.fullTimeMonths !== null) {
+        years = Math.round((tenure.fullTimeMonths / 12) * 10) / 10;
+        yearsSource = 'roles';
     }
 
     const hasWork = input.experiences.length > 0 || input.projects.length > 0 || lines.some((line) => line.source === WORK_LOG_SOURCE);
@@ -146,6 +150,9 @@ export function buildFitRecord(input: RecordInput): FitRecord {
         corpus: normalizeForMatch(lines.map((line) => line.text).join(' ')),
         years,
         yearsSource,
+        fullTimeMonths: tenure.fullTimeMonths,
+        internshipMonths: tenure.internshipMonths,
+        roleSpans: tenure.spans,
         location: input.profile.location.trim(),
         defaultTitle: input.profile.defaultTitle.trim(),
         empty: !hasWork,
@@ -157,6 +164,40 @@ function parseStatedYears(value: string): number | null {
     if (!match) return null;
     const years = Number(match[1]);
     return Number.isFinite(years) && years <= 60 ? years : null;
+}
+
+/** Months a years requirement is judged against: stated, else full-time from dates. */
+export function tenureMonths(record: Pick<FitRecord, 'years' | 'yearsSource' | 'fullTimeMonths'>): number | null {
+    if (record.yearsSource === 'stated' && record.years !== null) return record.years * 12;
+    return record.fullTimeMonths ?? null;
+}
+
+/** "5 years, as stated on your profile" or "about 2 years full-time (plus internships)". */
+export function describeTenure(record: Pick<FitRecord, 'years' | 'yearsSource' | 'fullTimeMonths' | 'internshipMonths'>): string | null {
+    if (record.yearsSource === 'stated' && record.years !== null) return `${record.years} years, as stated on your profile`;
+    if (record.fullTimeMonths === null || record.fullTimeMonths === undefined) return null;
+    return describeFullTime(record.fullTimeMonths, record.internshipMonths ?? 0);
+}
+
+/** The evidence line for a years requirement. Never says more than the dates do. */
+function tenureEvidence(record: FitRecord): string {
+    if (record.yearsSource === 'stated') return `${record.years} years of experience (stated on your profile)`;
+    const words = describeFullTime(record.fullTimeMonths ?? 0, record.internshipMonths);
+    return `${words.charAt(0).toUpperCase()}${words.slice(1)} (from your role dates)`;
+}
+
+/**
+ * "2+ recent years building GenAI": the qualifier needs a line, and the years
+ * need dates. A bullet alone shows the work happened, not that it ran for two
+ * years, so it is direct only when the dated role it sits in spans the years
+ * asked (and, for "recent", is current or ended within the last year).
+ */
+function datedSpanCovers(line: RecordLine, minYears: number, requirementText: string, record: FitRecord): boolean {
+    const span = record.roleSpans?.[line.source];
+    if (!span || span.internship) return false;
+    if (span.months < minYears * 12) return false;
+    if (/\brecent(?:ly)?\b|\b(?:last|past)\s+\d+\s+years?\b/i.test(requirementText) && !span.current && span.monthsSinceEnd > 12) return false;
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────── requirements
@@ -194,8 +235,7 @@ export function applyJudgements(params: {
     record: FitRecord;
 }): RequirementResult[] {
     const { plan, judgements, record } = params;
-    const years = record.years;
-    const yearsBasis = record.yearsSource === 'stated' ? 'stated on your profile' : 'from your role dates';
+    const months = tenureMonths(record);
 
     return plan.hard.map((requirement): RequirementResult => {
         const kind = requirement.kind === 'nice' ? 'nice' : 'must';
@@ -204,11 +244,16 @@ export function applyJudgements(params: {
 
         const pure = plan.pureTenure.get(requirement.id);
         if (pure) {
-            if (years !== null && years >= pure.minYears) {
-                return { ...base, credit: 1, evidence: `${years} years of experience (${yearsBasis})`, severity: null };
+            const need = pure.minYears * 12;
+            if (months !== null && months >= need) {
+                return { ...base, credit: 1, evidence: tenureEvidence(record), severity: null };
             }
-            // Unknown years, or short by at most a year: a gap, but not a wall.
-            const close = years === null || years >= pure.minYears - 1;
+            // A few months short: partial, and the line says so.
+            if (months !== null && months >= need - NEAR_MISS_MONTHS) {
+                return { ...base, credit: 0.5, evidence: `${tenureEvidence(record)}, a few months short of ${pure.minYears}`, severity: null };
+            }
+            // Unknown, or short by at most a year: a gap, but not a wall.
+            const close = months === null || months >= need - 12;
             return { ...base, credit: 0, evidence: null, severity: isMust && !close ? 'blocking' : 'minor' };
         }
 
@@ -222,8 +267,8 @@ export function applyJudgements(params: {
 
         const qualified = plan.qualifiedTenure.get(requirement.id);
         if (qualified && line) {
-            const tenureMet = years !== null && years >= qualified.minYears;
-            if (!tenureMet) credit = Math.min(credit, 0.5);
+            const tenureMet = months !== null && months >= qualified.minYears * 12;
+            if (!tenureMet || !datedSpanCovers(line, qualified.minYears, requirement.text, record)) credit = Math.min(credit, 0.5);
         }
 
         if (!line) return { ...base, credit: 0, evidence: null, severity: isMust ? 'blocking' : 'minor' };
@@ -282,6 +327,12 @@ export type EvaluatedCheck = PreferenceCheck & {
     resolves?: PreferenceQuestionId;
     /** Detail to show if the simulation turns out to be a conflict. */
     conflictDetail?: string;
+    /**
+     * False for a conflict that is shown but already priced in elsewhere: a
+     * years shortfall of up to a year is also the tenure gap, which costs
+     * coverage, so it does not drop the verdict a second time.
+     */
+    downgrades?: boolean;
 };
 
 const CITY_ALIASES: [RegExp, string][] = [
@@ -351,10 +402,57 @@ function checkWorkMode(jd: JdData, prefs: UserGenerationPreferences): EvaluatedC
     };
 }
 
-function checkLocation(jd: JdData, prefs: UserGenerationPreferences, record: FitRecord): EvaluatedCheck | null {
-    if (jd.workMode === 'remote') {
-        return { key: 'location', status: 'match', detail: 'Remote role, so location should not decide it', blocking: false };
+/**
+ * A remote role scoped to a region ("Remote - US", "DMV preferred") is only
+ * remote for people inside it. Outside it, it is a location conflict, not a
+ * pass: QA 2026-11-07 had a Bengaluru engineer told "Remote role, so location
+ * should not decide it" for a US government contract.
+ */
+export const REMOTE_SCOPE_PREFIX = 'Remote within ';
+
+/** A location check about a region-scoped remote role (the job watch holds these when unclear). */
+export function isRemoteScopeCheck(check: Pick<PreferenceCheck, 'key' | 'detail'>): boolean {
+    return check.key === 'location' && check.detail.startsWith(REMOTE_SCOPE_PREFIX);
+}
+
+function checkRemoteScope(scope: RegionScope, places: readonly string[], prefs: UserGenerationPreferences, record: FitRecord): EvaluatedCheck {
+    const where = `${REMOTE_SCOPE_PREFIX}${REGION_NAME[scope.region]}${scope.quote ? ` (${scope.quote})` : ''}`;
+    if (places.length === 0) {
+        return {
+            key: 'location',
+            status: 'unknown',
+            detail: `${where}; you have not said where you are or want to work`,
+            blocking: true,
+            resolves: 'pref.location',
+            conflictDetail: `${where}, which is not where you work`,
+        };
     }
+    const regions = places.map((place) => regionOf(place));
+    if (regions.some((region) => regionContains(scope.region, region))) {
+        return { key: 'location', status: 'match', detail: `${where}, which covers where you want to work`, blocking: false };
+    }
+    if (regions.every((region) => region === null)) {
+        return { key: 'location', status: 'unknown', detail: `${where}; could not tell whether ${places[0]} is inside it`, blocking: false };
+    }
+    const home = record.location || places[0];
+    if (prefs.willingToRelocate === 'yes') {
+        return {
+            key: 'location',
+            status: 'unknown',
+            detail: `${where}; you are in ${home} and open to relocating, which would need the right to work in ${REGION_NAME[scope.region]}`,
+            blocking: false,
+        };
+    }
+    return { key: 'location', status: 'conflict', detail: `${where}; you are based in ${home}`, blocking: true };
+}
+
+function checkLocation(jd: JdData, prefs: UserGenerationPreferences, record: FitRecord, scope: RegionScope | null): EvaluatedCheck | null {
+    const scopedPlaces = [...prefs.targetLocations, record.location].filter((place) => place.trim());
+    if (jd.workMode === 'remote') {
+        if (scope) return checkRemoteScope(scope, scopedPlaces, prefs, record);
+        return { key: 'location', status: 'match', detail: 'Remote, with no region stated, so location should not decide it', blocking: false };
+    }
+    if (!jd.location && scope) return checkRemoteScope(scope, scopedPlaces, prefs, record);
     if (!jd.location) {
         return { key: 'location', status: 'unknown', detail: 'The posting does not state a location', blocking: false };
     }
@@ -427,25 +525,60 @@ function checkCompensation(jd: JdData, prefs: UserGenerationPreferences): Evalua
 function checkSeniority(jd: JdData, record: FitRecord): EvaluatedCheck | null {
     const min = minYearsFrom(jd.experienceText);
     if (min === null) return null;
-    if (record.years === null) {
+    const months = tenureMonths(record);
+    const have = describeTenure(record);
+    if (months === null || have === null) {
         return { key: 'seniority', status: 'unknown', detail: `Asks for ${jd.experienceText}; your years of experience are not on your profile`, blocking: false };
     }
-    const years = record.years;
-    if (years >= min) {
-        if (min <= 2 && years >= min + 6) {
-            return { key: 'seniority', status: 'conflict', detail: `Asks for ${jd.experienceText}; with ${years} years this may be junior for you`, blocking: false };
+    const need = min * 12;
+    if (months >= need) {
+        if (min <= 2 && months >= (min + 6) * 12) {
+            return { key: 'seniority', status: 'conflict', detail: `Asks for ${jd.experienceText}; with ${have} this may be junior for you`, blocking: false };
         }
-        return { key: 'seniority', status: 'match', detail: `Asks for ${jd.experienceText}; you have ${years}`, blocking: false };
+        return { key: 'seniority', status: 'match', detail: `Asks for ${jd.experienceText}; you have ${have}`, blocking: false };
     }
-    if (years >= min - 1) {
-        return { key: 'seniority', status: 'match', detail: `Asks for ${jd.experienceText}; you have ${years}, close enough to apply`, blocking: false };
+    // Below the floor is below it. A few months short is worth a try, and says so.
+    if (months >= need - NEAR_MISS_MONTHS) {
+        return { key: 'seniority', status: 'unknown', detail: `Asks for ${jd.experienceText}; you have ${have}, a few months short`, blocking: false };
     }
     return {
         key: 'seniority',
         status: 'conflict',
-        detail: `Asks for ${jd.experienceText}; you have ${years}`,
+        detail: `Asks for ${jd.experienceText}; you have ${have}`,
         // Half the stated floor, and at least three years short, is not a stretch.
-        blocking: years < min / 2 && min - years >= 3,
+        blocking: months < need / 2 && need - months >= 36,
+        // Up to a year short: unmet, and shown as such, but the tenure gap
+        // already costs coverage. "Possible, short on years" stays possible.
+        downgrades: need - months > 12,
+    };
+}
+
+/**
+ * Citizenship, clearance, Public Trust, work authorization: whether the user
+ * can hold the job at all (`fit/eligibility.ts`). A conflict rules it out; an
+ * unknown is asked, never passed.
+ */
+function checkEligibility(
+    restrictions: readonly EligibilityRestriction[],
+    jd: JdData,
+    prefs: UserGenerationPreferences,
+    record: FitRecord,
+): (EvaluatedCheck & { outcome: EligibilityOutcome }) | null {
+    const outcome = evaluateEligibility({
+        restrictions,
+        workAuthorization: prefs.workAuthorization ?? '',
+        requiresSponsorship: prefs.requiresSponsorship,
+        userLocation: record.location,
+        fallbackRegion: regionOf(jd.location),
+    });
+    if (!outcome) return null;
+    return {
+        key: 'eligibility',
+        status: outcome.status,
+        detail: outcome.detail,
+        blocking: outcome.status !== 'match',
+        ...(outcome.status === 'unknown' && outcome.askable ? { resolves: 'pref.workAuth' as const, conflictDetail: `You may not be eligible: ${outcome.detail}` } : {}),
+        outcome,
     };
 }
 
@@ -529,24 +662,37 @@ export function decideVerdict(inputs: VerdictInputs): FitVerdict {
         : inputs.score >= 50 && mustOk(POSSIBLE_MIN_MUST_COVERAGE)
             ? 'possible'
             : 'stretch';
-    const softConflicts = inputs.checks.filter((check) => check.status === 'conflict' && !check.blocking).length;
+    const softConflicts = inputs.checks.filter((check) => check.status === 'conflict' && !check.blocking && check.downgrades !== false).length;
     if (softConflicts > 0) verdict = DOWNGRADE[verdict];
     return verdict;
 }
 
 /** Priority when more than one question could change the verdict. */
-const QUESTION_PRIORITY: PreferenceQuestionId[] = ['pref.location', 'pref.relocate', 'pref.workMode', 'pref.targetRoles', 'pref.minComp'];
+const QUESTION_PRIORITY: PreferenceQuestionId[] = ['pref.location', 'pref.relocate', 'pref.workAuth', 'pref.workMode', 'pref.targetRoles', 'pref.minComp'];
 
-export function questionFor(id: PreferenceQuestionId, jd: JdData): PendingQuestion {
+export function questionFor(id: PreferenceQuestionId, jd: JdData, context: { eligibility?: EligibilityOutcome | null; scope?: RegionScope | null } = {}): PendingQuestion {
     const place = jd.location ?? 'this location';
     const mode = jd.workMode === 'unknown' ? '' : `${jd.workMode} `;
     switch (id) {
         case 'pref.location':
+            if (context.scope && (jd.workMode === 'remote' || !jd.location)) {
+                return {
+                    id,
+                    step: 'fit',
+                    prompt: `This role is remote within ${REGION_NAME[context.scope.region]}. Where are you based, or where do you want to work? (a city, several, or e.g. "Remote India")`,
+                };
+            }
             return {
                 id,
                 step: 'fit',
                 prompt: `This role is ${mode}in ${place}. Where do you want to work? (a city, several, or e.g. "Remote India")`,
             };
+        case 'pref.workAuth': {
+            const asked = context.eligibility
+                ? workAuthQuestionPrompt(context.eligibility)
+                : { prompt: 'This role has a work authorization requirement. Which describes you?', options: [] };
+            return { id, step: 'fit', prompt: asked.prompt, ...(asked.options.length ? { options: asked.options } : {}) };
+        }
         case 'pref.relocate':
             return {
                 id,
@@ -664,13 +810,27 @@ export function evaluateFit(params: {
         .filter((result) => result.evidence === null)
         .map((result) => ({ requirementId: result.requirementId, text: result.text, severity: result.severity ?? 'minor' }));
 
+    // Eligibility and region scope read the whole posting: the body, the
+    // location field and the requirement lines (a pasted post's JD may be
+    // the only place "Must obtain HHS Public Trust" survives).
+    const postingText = [params.jdText, jd.location ?? '', ...jd.requirements.map((requirement) => requirement.text)].join('\n');
+    const restrictions = detectEligibility(postingText);
+    const scope = detectRegionScope({ location: jd.location, text: postingText });
+    const sponsorship = checkSponsorship(params.jdText, prefs);
+    let eligibility = checkEligibility(restrictions, jd, prefs, record);
+    // "Does not sponsor, and you need it" already says this; once is enough.
+    if (eligibility && sponsorship?.status === 'conflict' && eligibility.outcome.restriction.kind === 'work_authorization') eligibility = null;
+
+    // Eligibility first: it is the one reason no skill can outweigh, so it
+    // leads the reasons, the Telegram line and the job watch's hold reason.
     const checks = [
+        eligibility,
         checkRole(jd, prefs, record),
         checkSeniority(jd, record),
         checkWorkMode(jd, prefs),
-        checkLocation(jd, prefs, record),
+        checkLocation(jd, prefs, record, scope),
         checkCompensation(jd, prefs),
-        checkSponsorship(params.jdText, prefs),
+        sponsorship,
     ].filter((check): check is EvaluatedCheck => check !== null);
 
     const inputs: VerdictInputs = { checks, coverage, score, recordEmpty: record.empty };
@@ -686,7 +846,7 @@ export function evaluateFit(params: {
             const asConflict = checks.map((c, i) => (i === index ? { ...c, status: 'conflict' as const } : c));
             const asMatch = checks.map((c, i) => (i === index ? { ...c, status: 'match' as const, blocking: false } : c));
             if (decideVerdict({ ...inputs, checks: asConflict }) !== decideVerdict({ ...inputs, checks: asMatch })) {
-                question = questionFor(id, jd);
+                question = questionFor(id, jd, { eligibility: eligibility?.outcome ?? null, scope });
                 break;
             }
         }

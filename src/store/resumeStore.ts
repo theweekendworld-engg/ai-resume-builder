@@ -27,6 +27,19 @@ export type CopilotSectionKey = 'summary' | 'experience' | 'projects' | 'skills'
  * A fix carried over from the Phase 1 anonymous score, plus local resolution
  * state so the editor checklist can check items off as they are addressed.
  */
+const NO_FIXES: FixChecklistItem[] = [];
+
+/**
+ * The checklist for one resume: empty unless it was carried to `resumeId`.
+ * Returns a stable empty array, so it is safe as a store selector.
+ */
+export function fixChecklistFor(
+    state: { fixChecklist: FixChecklistItem[]; fixChecklistResumeId: string | null },
+    resumeId: string,
+): FixChecklistItem[] {
+    return state.fixChecklistResumeId === resumeId ? state.fixChecklist : NO_FIXES;
+}
+
 export interface FixChecklistItem extends ScoreFix {
     id: string;
     resolved: boolean;
@@ -80,6 +93,13 @@ interface ResumeState {
 
     // Fix checklist (carried from the Phase 1 anonymous score)
     fixChecklist: FixChecklistItem[];
+    /**
+     * The resume the checklist was carried to. The checklist is about THAT
+     * document; it was persisted unscoped, so every resume opened afterwards,
+     * a tailored copy included, showed the original's fixes (QA 2026-11-07,
+     * finding 12). Null: carried before scoping existed, shown nowhere.
+     */
+    fixChecklistResumeId: string | null;
 
     // Setters
     setResumeData: (data: ResumeData) => void;
@@ -115,7 +135,7 @@ interface ResumeState {
     clearCopilotSession: () => void;
 
     // Fix checklist actions
-    setFixChecklist: (fixes: ScoreFix[]) => void;
+    setFixChecklist: (fixes: ScoreFix[], resumeId: string) => void;
     toggleFixResolved: (id: string, resolved?: boolean) => void;
     clearFixChecklist: () => void;
 
@@ -191,6 +211,7 @@ export const useResumeStore = create<ResumeState>()(
 
             // Fix checklist
             fixChecklist: [],
+            fixChecklistResumeId: null,
 
             setResumeData: (data) => {
                 const { visualDataVersion } = get();
@@ -368,12 +389,13 @@ export const useResumeStore = create<ResumeState>()(
             }),
 
             // Fix checklist actions
-            setFixChecklist: (fixes) => set({
+            setFixChecklist: (fixes, resumeId) => set({
                 fixChecklist: fixes.map((fix, index) => ({
                     ...fix,
                     id: `fix-${index}-${uuidv4()}`,
                     resolved: false,
                 })),
+                fixChecklistResumeId: resumeId,
             }),
             toggleFixResolved: (id, resolved) => {
                 const { fixChecklist } = get();
@@ -385,7 +407,7 @@ export const useResumeStore = create<ResumeState>()(
                     ),
                 });
             },
-            clearFixChecklist: () => set({ fixChecklist: [] }),
+            clearFixChecklist: () => set({ fixChecklist: [], fixChecklistResumeId: null }),
 
             generateLatexFromData: () => {
                 const { resumeData, theme } = get();
@@ -597,6 +619,7 @@ export const useResumeStore = create<ResumeState>()(
                 visualDataVersion: state.visualDataVersion,
                 latexVersion: state.latexVersion,
                 fixChecklist: state.fixChecklist,
+                fixChecklistResumeId: state.fixChecklistResumeId,
             }),
             merge: (persistedState: unknown, currentState) => {
                 const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;

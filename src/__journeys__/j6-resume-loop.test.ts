@@ -303,6 +303,108 @@ describe('J6 — the resume loop', () => {
     });
 });
 
+/** A real PDF with `pages` pages, so `measurePdf` counts what pdfjs counts. */
+function pdfWithPages(pages: number): Buffer {
+    const kids = Array.from({ length: pages }, (_, i) => `${3 + i * 2} 0 R`).join(' ');
+    const objects: string[] = ['<< /Type /Catalog /Pages 2 0 R >>', `<< /Type /Pages /Kids [${kids}] /Count ${pages} >>`];
+    for (let i = 0; i < pages; i += 1) {
+        const stream = `BT /F1 12 Tf 72 720 Td (Page ${i + 1}) Tj ET`;
+        objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${3 + pages * 2} 0 R >> >> /Contents ${4 + i * 2} 0 R >>`);
+        objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    }
+    objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    let out = '%PDF-1.4\n';
+    const offsets: number[] = [];
+    objects.forEach((body, i) => {
+        offsets.push(Buffer.byteLength(out));
+        out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+    });
+    const xref = Buffer.byteLength(out);
+    out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+    out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    return Buffer.from(out, 'latin1');
+}
+
+/** A build service whose page count depends on what it was sent. */
+function installPagedLatexDouble(pagesFor: (latex: string) => number): string[] {
+    const sent: string[] = [];
+    latexTesting.setFetch(async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? '{}')) as { resources?: Array<{ content?: string }> };
+        const latex = body.resources?.[0]?.content ?? '';
+        sent.push(latex);
+        return new Response(new Uint8Array(pdfWithPages(pagesFor(latex))), { status: 201, headers: { 'content-type': 'application/pdf' } });
+    });
+    return sent;
+}
+
+async function tailorSession(label: string) {
+    const base = await prisma.resume.create({
+        data: { userId: journey.userId, title: `Base ${label}`, content: { personalInfo: { fullName: 'Ada Fowler' }, experience: [], projects: [], education: [], skills: [], sectionOrder: ['summary', 'experience', 'projects', 'education', 'skills'] } },
+        select: { id: true },
+    });
+    // A source resume skips the reuse check, as Scout's tailor does.
+    return prisma.generationSession.create({
+        data: {
+            userId: journey.userId,
+            channel: Channel.web,
+            jobDescription: `${JOB_DESCRIPTION}\n\n(${label})`,
+            currentStep: PipelineStep.reuse_check,
+            stepStartedAt: new Date(),
+            status: GenerationStatus.generating,
+            sourceResumeId: base.id,
+        },
+        select: { id: true },
+    });
+}
+
+describe('J6 — one page, measured (QA 2026-11-07, finding 2)', () => {
+    test('a PDF over one page is trimmed in order, recompiled, and the stored resume is the one that fits', async () => {
+        scriptAtsReply();
+        // Two pages while the About line is in it, one page without.
+        const sent = installPagedLatexDouble((latex) => (latex.includes('ABOUT ME') ? 2 : 1));
+        const session = await tailorSession('fit');
+
+        const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
+        expect(result.status).toBe('completed');
+        expect(result.pageFit).toMatchObject({ status: 'trimmed', pages: 1, maxPages: 1, attempts: 2 });
+        expect(result.pageFit?.trimmed.map((item) => item.kind)).toEqual(['summary']);
+        expect(sent).toHaveLength(2);
+
+        const stored = await prisma.resume.findUniqueOrThrow({ where: { id: result.resumeId! } });
+        const content = stored.content as unknown as ResumeData;
+        expect(content.personalInfo.summary).toBe('');
+        // Whole lines only: every source bullet that is printed is printed whole.
+        for (const line of content.experience[0].description.split('\n')) {
+            expect(EXPERIENCE.highlights).toContain(line);
+        }
+        // The editor's Job Match panel reads the fit from the stored report.
+        const report = stored.coverageReport as { pageFit?: { status: string; pages: number } } | null;
+        expect(report?.pageFit).toMatchObject({ status: 'trimmed', pages: 1 });
+
+        // The stored PDF is the second, one-page build.
+        const pdf = await prisma.generatedPdf.findFirst({ where: { sessionId: session.id } });
+        expect(pdf!.fileSizeBytes).toBe(pdfWithPages(1).length);
+    });
+
+    test('a PDF that cannot be brought to one page is stored with a status that says so, after a bounded number of builds', async () => {
+        scriptAtsReply();
+        const sent = installPagedLatexDouble(() => 2);
+        const session = await tailorSession('over');
+
+        const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
+        expect(result.status).toBe('completed');
+        expect(result.pageFit?.status).toBe('over');
+        expect(result.pageFit?.pages).toBe(2);
+        expect(sent.length).toBeLessThanOrEqual(6);
+
+        const stored = await prisma.resume.findUniqueOrThrow({ where: { id: result.resumeId! } });
+        const report = stored.coverageReport as { pageFit?: { status: string } } | null;
+        expect(report?.pageFit?.status).toBe('over');
+        const events = await prisma.funnelEvent.findMany({ where: { userId: journey.userId, type: 'resume_generated' }, orderBy: { occurredAt: 'desc' }, take: 1 });
+        expect(events[0].payload).toMatchObject({ pageFit: 'over', pages: 2 });
+    });
+});
+
 describe('teardown', () => {
     // Production, 2026-09-27: the Qdrant Cloud cluster was suspended and
     // refused connections, and every generation failed at semantic_search.

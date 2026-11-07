@@ -96,6 +96,13 @@ export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { 
     }
 }
 
+/** The fit's non-blocking follow-up on a finished run, if any. */
+function followUpOf(view: { sections: Record<string, { status: string; data?: unknown } | undefined> }): { id: string; prompt: string; options?: { label: string; value: string }[] } | null {
+    const fit = view.sections.fit;
+    if (!fit || fit.status !== 'ok') return null;
+    return ((fit.data as { followUp?: { id: string; prompt: string; options?: { label: string; value: string }[] } | null }).followUp) ?? null;
+}
+
 const ID = /^[a-z0-9]{8,40}$/i;
 
 export function decodeScoutAction(data: string): DecodedScoutAction | null {
@@ -269,8 +276,10 @@ export async function executeScoutAction(
         case 'answer': {
             const run = await svc.getScoutRun(userId, action.runId);
             if (!run.success) return { lines: [text('I could not find that analysis.')] };
-            const option = run.data.pendingQuestion?.options?.[action.index];
-            if (!run.data.pendingQuestion || !option) {
+            // A blocking question, or the fit's non-blocking follow-up (the pay floor).
+            const question = run.data.pendingQuestion ?? followUpOf(run.data);
+            const option = question?.options?.[action.index];
+            if (!question || !option) {
                 return { lines: [text('That question has already been answered.')] };
             }
             const answered = await svc.answerScoutQuestion(userId, action.runId, option.value);
@@ -369,7 +378,8 @@ async function reviseReply(
 /** The one link that unblocks a refused generation. */
 export function nextStepFor(code: string | undefined): ScoutAction | null {
     const app = config.app.url.replace(/\/$/, '');
-    if (code === 'entitlement_required') return { kind: 'open', label: 'See plans', url: `${app}/settings/plan` };
+    // "See your usage", not "See plans": during the launch there is nothing to buy.
+    if (code === 'entitlement_required') return { kind: 'open', label: 'See your usage', url: `${app}/settings/plan` };
     if (code === 'no_base_resume' || code === 'empty_profile') {
         return { kind: 'open', label: 'Add your resume', url: `${app}/dashboard?section=profile` };
     }

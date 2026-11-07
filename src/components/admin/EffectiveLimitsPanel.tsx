@@ -21,6 +21,15 @@ export function EffectiveLimitsPanel({ limits }: { limits: EffectiveLimits }) {
                 </p>
             </div>
 
+            {limits.launchOpen ? (
+                <p className="mb-3 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">
+                    The launch is <strong>on</strong>: every feature is open on every plan and Free
+                    gets the monthly launch allowance (<code className="font-mono">LAUNCH_ALLOWANCE</code>{' '}
+                    in <code className="font-mono">src/lib/plans.ts</code>). The trial numbers below
+                    apply once <code className="font-mono">ENTITLEMENT_LAUNCH_OPEN=false</code>.
+                </p>
+            ) : null}
+
             {!limits.enforced ? (
                 <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-foreground">
                     Enforcement is <strong>off</strong>. Every limit below is recorded and

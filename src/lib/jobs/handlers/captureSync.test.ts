@@ -133,10 +133,20 @@ describe('dedupe keys', () => {
 });
 
 describe('entitlements (§9)', () => {
-    test('free backfills 30 days, paid tiers 90', () => {
-        expect(backfillDaysForTier(Tier.free)).toBe(BACKFILL_DAYS_FREE);
-        expect(backfillDaysForTier(Tier.always_on)).toBe(BACKFILL_DAYS_PAID);
-        expect(backfillDaysForTier(Tier.pro)).toBe(BACKFILL_DAYS_PAID);
+    test('free backfills 30 days, paid tiers 90 (after the launch)', () => {
+        process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+        try {
+            expect(backfillDaysForTier(Tier.free)).toBe(BACKFILL_DAYS_FREE);
+            expect(backfillDaysForTier(Tier.always_on)).toBe(BACKFILL_DAYS_PAID);
+            expect(backfillDaysForTier(Tier.pro)).toBe(BACKFILL_DAYS_PAID);
+        } finally {
+            delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+        }
+    });
+
+    // Launch (2026-11-07): every account gets the paid depth.
+    test('during the launch free backfills the paid 90 days', () => {
+        expect(backfillDaysForTier(Tier.free)).toBe(BACKFILL_DAYS_PAID);
     });
 });
 

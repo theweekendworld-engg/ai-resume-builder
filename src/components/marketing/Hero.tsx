@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { ArrowRight, ChevronDown } from 'lucide-react';
-import { freeResumeCap } from '@/lib/plans';
 import { cn } from '@/lib/utils';
 import { START_FREE_HREF } from './links';
 import { marketingContainer, marketingType } from './Section';
@@ -91,7 +90,7 @@ export function Hero() {
                     {/* The one pulsing element on the page. */}
                     <Link href="/score" className="mk-btn mk-pulse group w-full sm:w-auto">
                         Check your resume — free
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
                     </Link>
                     <Link href={START_FREE_HREF} className="mk-btn-ghost w-full sm:w-auto">
                         Start free
@@ -99,9 +98,9 @@ export function Hero() {
                 </Reveal>
 
                 <Reveal delay={320}>
-                    <p className="mx-auto mt-7 max-w-lg text-[13px] leading-relaxed text-muted-foreground/70">
-                        Chat on the web or on Telegram ·{' '}
-                        {freeResumeCap()} tailored resumes free · Never sold, never used to train anything
+                    <p className="mx-auto mt-7 max-w-lg text-[13px] leading-relaxed text-muted-foreground">
+                        Chat on the web or on Telegram · Free while we launch, every feature
+                        included · Never sold, never used to train anything
                     </p>
                 </Reveal>
 
@@ -113,7 +112,7 @@ export function Hero() {
                 */}
                 <Reveal delay={400} direction="scale" className="mx-auto mt-20 max-w-2xl">
                     <ChatDemo />
-                    <p className="mt-5 text-center text-[13px] text-muted-foreground/60">
+                    <p className="mt-5 text-center text-[13px] text-muted-foreground">
                         The figure on the resume is the one you typed. No other resume tool can print the line beneath it.
                     </p>
                 </Reveal>

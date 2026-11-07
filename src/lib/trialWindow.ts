@@ -22,11 +22,14 @@
 
 import type { Tier } from '@prisma/client';
 
-import { PLAN_FEATURES, freeTrialDays, type PlanFeature } from '@/lib/plans';
+import { freeTrialDays, planHasFeature, type PlanFeature } from '@/lib/plans';
 
-/** Local rather than imported from `entitlements`, which imports Prisma. */
+/**
+ * Local rather than imported from `entitlements`, which imports Prisma. During
+ * the launch every tier has every feature, so no trial is ever "granted".
+ */
 function hasFeature(tier: Tier, feature: PlanFeature): boolean {
-    return PLAN_FEATURES[tier][feature];
+    return planHasFeature(tier, feature);
 }
 
 /** The capabilities a free account gets in full for the trial window. */

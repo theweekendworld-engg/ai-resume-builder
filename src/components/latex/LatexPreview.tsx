@@ -1,19 +1,32 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { compileLatex } from '@/actions/ai';
 
 interface LatexPreviewProps {
     code: string;
+    /**
+     * Compile on open and again after edits settle. The Final PDF tab used to
+     * show an empty pane until "Refresh Preview" was clicked (QA 2026-11-07,
+     * finding 9); the button stays for a forced rebuild.
+     */
+    autoCompile?: boolean;
+    /** Pages the document may run to; past it, the header says so. */
+    maxPages?: number;
 }
 
-export function LatexPreview({ code }: LatexPreviewProps) {
+/** Wait this long after the last edit before compiling again. */
+export const AUTO_COMPILE_DEBOUNCE_MS = 1200;
+
+export function LatexPreview({ code, autoCompile = false, maxPages = 1 }: LatexPreviewProps) {
     const [isCompiling, setIsCompiling] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null);
+    const [pages, setPages] = useState<number | null>(null);
     const lastCodeRef = useRef<string>('');
+    const inFlightRef = useRef(false);
     const isStale = useMemo(
         () => Boolean(pdfDataUrl) && code.trim() !== lastCodeRef.current,
         [code, pdfDataUrl]
@@ -31,7 +44,10 @@ export function LatexPreview({ code }: LatexPreviewProps) {
         if (!forceCompile && code === lastCodeRef.current && pdfDataUrl) {
             return;
         }
+        // One build at a time; the debounce schedules the next one.
+        if (inFlightRef.current && !forceCompile) return;
 
+        inFlightRef.current = true;
         setIsCompiling(true);
         setError(null);
 
@@ -41,18 +57,32 @@ export function LatexPreview({ code }: LatexPreviewProps) {
             if (result.success && result.pdfBase64) {
                 const dataUrl = `data:application/pdf;base64,${result.pdfBase64}`;
                 setPdfDataUrl(dataUrl);
+                setPages(typeof result.pages === 'number' ? result.pages : null);
                 lastCodeRef.current = code;
                 setError(null);
             } else {
+                // A failed auto-build is not retried until the code changes.
+                lastCodeRef.current = code;
                 setError(result.error || 'Compilation failed');
             }
         } catch (err: unknown) {
             console.error('Compilation error:', err);
+            lastCodeRef.current = code;
             setError(err instanceof Error ? err.message : 'Unknown compilation error');
         } finally {
+            inFlightRef.current = false;
             setIsCompiling(false);
         }
     }, [code, pdfDataUrl]);
+
+    // Opening the tab compiles; edits recompile once they settle.
+    // Re-checked when a build finishes, so an edit made during it is built next.
+    useEffect(() => {
+        if (!autoCompile || isCompiling || !code.trim() || code === lastCodeRef.current) return;
+        const delay = lastCodeRef.current ? AUTO_COMPILE_DEBOUNCE_MS : 0;
+        const timer = setTimeout(() => void compile(false), delay);
+        return () => clearTimeout(timer);
+    }, [autoCompile, code, compile, isCompiling]);
 
     const previewSrc = pdfDataUrl ? `${pdfDataUrl}#view=FitH&zoom=page-width` : null;
 
@@ -75,8 +105,16 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                     {!isCompiling && isStale && (
                         <span className="text-xs text-warning">Preview out of date</span>
                     )}
-                    {!isCompiling && pdfDataUrl && (
-                        <span className="text-xs text-success">✓ Preview ready</span>
+                    {!isCompiling && pdfDataUrl && !isStale && (pages === null || pages <= maxPages) && (
+                        <span className="text-xs text-success">
+                            ✓ Preview ready{pages !== null ? ` · ${pages} page${pages === 1 ? '' : 's'}` : ''}
+                        </span>
+                    )}
+                    {!isCompiling && pdfDataUrl && pages !== null && pages > maxPages && (
+                        // The real count, not an estimate. Never let a long PDF look finished.
+                        <span className="text-xs font-medium text-warning">
+                            {pages} pages: over {maxPages === 1 ? 'one page' : `${maxPages} pages`}. Cut a line or two.
+                        </span>
                     )}
                 </div>
                 <Button
@@ -124,8 +162,10 @@ export function LatexPreview({ code }: LatexPreviewProps) {
                             </div>
                         ) : (
                             <div className="flex flex-col items-center gap-2">
-                                <p className="text-sm">Refresh preview to compile this resume</p>
-                                <p className="text-xs text-muted-foreground">Preview updates only when you click Refresh Preview</p>
+                                <p className="text-sm">{autoCompile ? 'Preparing the PDF…' : 'Refresh preview to compile this resume'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    {autoCompile ? 'It rebuilds a moment after you stop editing.' : 'Preview updates only when you click Refresh Preview'}
+                                </p>
                             </div>
                         )}
                     </div>

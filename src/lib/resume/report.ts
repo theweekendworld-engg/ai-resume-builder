@@ -27,6 +27,7 @@ import { z } from 'zod';
 import { reconcileSkillGaps } from './coverage';
 import type { PostingBrief } from './posting';
 import type { TailorResult } from './tailor.types';
+import type { PageFit } from './pageFit';
 
 /** One thing the employer asked for, and whether the resume answers it. */
 export const CoverageItemSchema = z.object({
@@ -51,7 +52,8 @@ export const CoverageItemSchema = z.object({
 
 export const DroppedLineSchema = z.object({
     text: z.string(),
-    reason: z.enum(['cap', 'weak']),
+    /** `page`: cut to fit the page budget after compiling (see `pageFit.ts`). */
+    reason: z.enum(['cap', 'weak', 'page']),
     /** The experience or project row it came from, so it can be put back. */
     targetId: z.string(),
     targetKind: z.enum(['experience', 'project']),
@@ -76,6 +78,24 @@ export const ResumeCoverageSchema = z.object({
     skillGaps: z.array(z.string()),
     dropped: z.array(DroppedLineSchema),
     advice: z.array(z.string()),
+    /**
+     * How the compiled PDF measured against the page budget, and what was
+     * trimmed to meet it. Optional: reports written before this have none.
+     * `over` means it still runs long and the editor must say so.
+     */
+    pageFit: z
+        .object({
+            status: z.enum(['fits', 'trimmed', 'over', 'unchecked']),
+            pages: z.number().nullable(),
+            maxPages: z.number(),
+            trimmed: z.array(
+                z.object({
+                    kind: z.enum(['project_bullet', 'project', 'summary', 'skills_row', 'experience_bullet']),
+                    text: z.string(),
+                }),
+            ),
+        })
+        .optional(),
     generatedAt: z.string(),
 });
 
@@ -86,6 +106,8 @@ export type DroppedLine = z.infer<typeof DroppedLineSchema>;
 export function buildReport(
     result: Pick<TailorResult, 'coverage' | 'skillGaps' | 'advice' | 'dropped'> & {
         brief: Pick<PostingBrief, 'role' | 'company'>;
+        /** From `fitToPages`. Its line-level cuts also land in `dropped`, so they can be put back. */
+        pageFit?: PageFit;
     },
     now: Date = new Date(),
 ): ResumeCoverage {
@@ -122,14 +144,35 @@ export function buildReport(
             ...answeredByCut,
             ...unanswered,
         ]),
-        dropped: result.dropped.map((line) => ({
-            text: line.text,
-            reason: line.reason,
-            targetId: line.targetId,
-            targetKind: line.targetKind,
-            targetLabel: line.targetLabel,
-        })),
+        dropped: [
+            ...result.dropped.map((line) => ({
+                text: line.text,
+                reason: line.reason,
+                targetId: line.targetId,
+                targetKind: line.targetKind,
+                targetLabel: line.targetLabel,
+            })),
+            ...(result.pageFit?.trimmed ?? [])
+                .filter((item) => (item.kind === 'project_bullet' || item.kind === 'experience_bullet') && item.targetId && item.targetKind)
+                .map((item) => ({
+                    text: item.text,
+                    reason: 'page' as const,
+                    targetId: item.targetId!,
+                    targetKind: item.targetKind!,
+                    targetLabel: item.targetLabel ?? '',
+                })),
+        ],
         advice: [...result.advice],
+        ...(result.pageFit
+            ? {
+                pageFit: {
+                    status: result.pageFit.status,
+                    pages: result.pageFit.pages,
+                    maxPages: result.pageFit.maxPages,
+                    trimmed: result.pageFit.trimmed.map((item) => ({ kind: item.kind, text: item.text })),
+                },
+            }
+            : {}),
         generatedAt: now.toISOString(),
     };
 }

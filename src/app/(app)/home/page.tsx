@@ -4,8 +4,9 @@ import { getHome } from '@/actions/missions';
 import { HomeScreen } from '@/components/missions/HomeScreen';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
+// The sidebar calls this page Goals (Home is /overview), so the tab does too.
 export const metadata = {
-    title: 'Home · Patronus',
+    title: 'Goals · Patronus',
 };
 
 /**
@@ -30,7 +31,7 @@ export default async function HomePage() {
         if (result.code === 'not_found') {
             return <FeatureUnavailable {...FEATURE_COPY.missions} reason="not_enabled" />;
         }
-        return <FeatureUnavailable feature="Home" reason="error" />;
+        return <FeatureUnavailable feature="Goals" reason="error" />;
     }
 
     return <HomeScreen initial={result.data} />;

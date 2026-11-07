@@ -179,6 +179,8 @@ export type JdData = {
 export type FitVerdict = 'strong' | 'possible' | 'stretch' | 'not_a_fit' | 'unknown';
 
 export type PreferenceKey =
+    /** Citizenship, clearance, Public Trust, work authorization (`fit/eligibility.ts`). */
+    | 'eligibility'
     | 'role'
     | 'seniority'
     | 'work_mode'
@@ -212,6 +214,12 @@ export type FitData = {
      * working engineer look unqualified.
      */
     softRequirements: string[];
+    /**
+     * A question that refines the fit without holding it back (the pay
+     * floor, `NON_BLOCKING_QUESTIONS`). Shown after the fit; answering it
+     * re-runs the fit. Absent on runs stored before it existed.
+     */
+    followUp?: PendingQuestion | null;
 };
 
 // ─── company

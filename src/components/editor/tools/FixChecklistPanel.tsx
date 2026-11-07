@@ -12,7 +12,7 @@ import { DiffPreview } from '@/components/editor/DiffPreview';
 import { CheckCircle2, ListChecks, Loader2, Sparkles, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import type { FixChecklistItem } from '@/store/resumeStore';
+import { fixChecklistFor, type FixChecklistItem } from '@/store/resumeStore';
 
 const PRIORITY_STYLES: Record<FixChecklistItem['priority'], { label: string; className: string }> = {
     high: { label: 'High', className: 'bg-destructive/15 text-destructive border-destructive/30' },
@@ -22,8 +22,11 @@ const PRIORITY_STYLES: Record<FixChecklistItem['priority'], { label: string; cla
 
 const PRIORITY_ORDER: Record<FixChecklistItem['priority'], number> = { high: 0, medium: 1, low: 2 };
 
-export function FixChecklistPanel() {
-    const { resumeData, jobDescription, fixChecklist, toggleFixResolved, updatePersonalInfo } = useResumeStore();
+export function FixChecklistPanel({ resumeId }: { resumeId: string }) {
+    const { resumeData, jobDescription, toggleFixResolved, updatePersonalInfo } = useResumeStore();
+    // Only the resume the free check was carried to has these fixes. A copy
+    // tailored from it is a different document with its own report.
+    const fixChecklist = useResumeStore((state) => fixChecklistFor(state, resumeId));
 
     const [applyingId, setApplyingId] = useState<string | null>(null);
     const [pendingSummary, setPendingSummary] = useState<{ id: string; before: string; after: string } | null>(null);

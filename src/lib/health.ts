@@ -81,6 +81,22 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
             impact: 'The Telegram bot cannot link accounts or reply.',
             fix: 'TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_BOT_USERNAME',
         },
+        // Settings → Email & calendar tells customers these are "coming soon";
+        // the variable names live here, on /admin/ops and in the boot log.
+        {
+            id: 'inbound_email',
+            ok: has(env, 'INBOUND_EMAIL_DOMAIN', 'INBOUND_EMAIL_SECRET'),
+            severity: 'warn',
+            impact: 'Job-email forwarding is off: Settings shows "Email forwarding is coming soon" and no application tracks itself from email.',
+            fix: 'INBOUND_EMAIL_DOMAIN and INBOUND_EMAIL_SECRET (and point the inbound provider at /api/inbound/email)',
+        },
+        {
+            id: 'google_calendar',
+            ok: has(env, 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'TOKEN_ENCRYPTION_KEY'),
+            severity: 'warn',
+            impact: 'Google Calendar cannot be connected: Settings shows "Google Calendar is coming soon".',
+            fix: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY',
+        },
         {
             id: 'app_url',
             ok: /^https:\/\//.test(env.NEXT_PUBLIC_APP_URL ?? '') && !/vercel\.app/.test(env.NEXT_PUBLIC_APP_URL ?? ''),

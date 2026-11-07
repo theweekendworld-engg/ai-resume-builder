@@ -8,6 +8,7 @@
  * the exact substring, never reformatted — or null.
  */
 
+import { REGION_ADJECTIVE, REGION_NAME, regionFromToken, regionOf, type RegionCode } from '@/lib/scout/fit/region';
 import type { WorkMode } from '@/lib/scout/types';
 
 function clean(value: string): string {
@@ -160,6 +161,191 @@ export function detectSponsorship(text: string): SponsorshipStance {
     if (/\bmust (?:be|have) (?:legally )?(?:authori[sz]ed|eligible) to work\b/i.test(text)) return 'not_offered';
     if (/\b(?:visa )?sponsorship (?:is )?(?:available|provided|offered)\b|\bwe (?:will|can) sponsor\b/i.test(text)) return 'offered';
     return 'unstated';
+}
+
+// ──────────────────────────────────────────────────────────── eligibility
+
+/**
+ * Who is allowed to take the job at all, which no amount of matching skill
+ * changes. Read by code because the failure is a person told "strong fit" for
+ * a role they cannot legally hold: on 2026-11-07 "Must obtain HHS Public
+ * Trust before onboarding" was scored as an ordinary must-have for an
+ * engineer in Bengaluru, and the remote US role was told location should not
+ * decide it.
+ *
+ *   citizenship          "Must be a U.S. citizen", "US citizenship required"
+ *   citizen_or_resident  "US citizens and green card holders", ITAR / "U.S. person"
+ *   clearance            "active Secret clearance", "TS/SCI", "ability to obtain a clearance"
+ *   public_trust         "HHS Public Trust", "Public Trust clearance"
+ *   work_authorization   "authorized to work in the US", "without sponsorship"
+ *   region_only          "US only", "must reside in Canada", "Remote - US", "DMV preferred"
+ *
+ * Every restriction quotes the phrase it came from. Negated phrases ("no
+ * clearance required", "citizenship is not required") are not restrictions.
+ */
+export type EligibilityKind = 'citizenship' | 'citizen_or_resident' | 'clearance' | 'public_trust' | 'work_authorization' | 'region_only';
+
+export type EligibilityRestriction = {
+    kind: EligibilityKind;
+    /** Where it applies; null when the posting does not say and nothing implies it. */
+    region: RegionCode | null;
+    /** The phrase, exactly as the posting has it. */
+    quote: string;
+    /** How it reads in a sentence: "HHS Public Trust", "a Secret clearance", "US citizenship". */
+    label: string;
+    /** "DMV preferred": a scope the posting prefers rather than requires. */
+    preferred?: boolean;
+};
+
+const NEGATION_BEFORE = /\b(?:no|not|without|never|n't|nor|neither)\b[^.;:\n]{0,30}$/i;
+const NEGATION_AFTER = /^[^.;\n]{0,25}\b(?:not|isn't|is not)\s+(?:required|needed|necessary|a requirement)\b|^[^.;\n]{0,12}\bnot required\b/i;
+
+function negated(text: string, start: number, end: number): boolean {
+    return NEGATION_BEFORE.test(text.slice(Math.max(0, start - 40), start)) || NEGATION_AFTER.test(text.slice(end, end + 40));
+}
+
+/** A region alternation, matched case-insensitively and validated by `regionFromToken`. */
+const REGION_WORDS = String.raw`u\.?\s?s\.?a?|united states(?: of america)?|american|america|u\.?k\.?|united kingdom|britain|canada|india|europe|e\.?u\.?|european union|emea|apac|latam|germany|ireland|australia|singapore`;
+
+type Finder = { kind: EligibilityKind; pattern: RegExp; build: (match: RegExpMatchArray, text: string) => Omit<EligibilityRestriction, 'kind' | 'quote'> | null };
+
+const FINDERS: Finder[] = [
+    {
+        kind: 'clearance',
+        pattern: /\b(?:(?:active|current|interim)\s+)?(?:top[\s-]secret(?:\s*\/\s*sci)?|ts\s*\/\s*sci|secret|dod|doe\s+[ql])\s+(?:security\s+)?clearance\b|\b(?:obtain|hold|have|possess|maintain|eligible for|eligibility for)\s+(?:an?\s+)?(?:active\s+)?(?:u\.?s\.?\s+)?(?:government\s+|federal\s+)?security\s+clearance\b|\bts\s*\/\s*sci\b/gi,
+        build: (match) => {
+            const quote = match[0];
+            const label = /top[\s-]secret|ts\s*\/\s*sci/i.test(quote) ? 'a Top Secret clearance' : /\bsecret\b/i.test(quote) ? 'a Secret clearance' : 'a US security clearance';
+            return { region: 'us', label };
+        },
+    },
+    {
+        kind: 'public_trust',
+        pattern: /\b(?:([A-Z]{2,6})\s+)?public\s+trust\b/gi,
+        build: (match, text) => {
+            const at = match.index ?? 0;
+            const around = text.slice(Math.max(0, at - 60), at + match[0].length + 60);
+            const agency = match[1] && match[1] === match[1].toUpperCase() ? match[1] : null;
+            // "building public trust in AI" is prose. A clearance has words around it.
+            if (!agency && !/\b(?:clearance|obtain|position|investigation|eligib\w*|background|suitability|must|requir\w*|able to|moderate|high|tier|level|adjudicat\w*|onboarding)\b/i.test(around)) return null;
+            return { region: 'us', label: agency ? `${agency} Public Trust` : 'a Public Trust clearance' };
+        },
+    },
+    {
+        kind: 'citizen_or_resident',
+        pattern: new RegExp(String.raw`\b(${REGION_WORDS})\s+citizens?\s+(?:and|or|\/)\s+(?:green\s+card\s+holders|permanent\s+residents|lawful\s+permanent\s+residents)\b|\bitar\b|\b(${REGION_WORDS})\s+persons?\b(?=[^.]{0,80}\b(?:itar|ear|export)\b)`, 'gi'),
+        build: (match) => {
+            const token = match[1] ?? match[2] ?? 'US';
+            const region = /^itar$/i.test(match[0].trim()) ? 'us' : regionFromToken(token);
+            return region ? { region, label: `${REGION_ADJECTIVE[region]} citizenship or permanent residency` } : null;
+        },
+    },
+    {
+        kind: 'citizenship',
+        pattern: new RegExp(String.raw`\b(${REGION_WORDS})\s+citizen(?:ship|s)?\b(?!\s+(?:and|or|\/)\s+(?:green|permanent|lawful))|\bcitizen(?:ship)?\s+of\s+(?:the\s+)?(${REGION_WORDS})\b`, 'gi'),
+        build: (match, text) => {
+            const at = match.index ?? 0;
+            const around = text.slice(Math.max(0, at - 50), at + match[0].length + 40);
+            // "US citizenship" in a benefits paragraph is not a condition; a requirement has a verb.
+            if (!/\b(?:must|required?|requires|requirement|only|need(?:ed|s)?|eligib\w*|be a|are a|mandatory|preferred)\b/i.test(around)) return null;
+            const region = regionFromToken(match[1] ?? match[2] ?? '');
+            return region ? { region, label: `${REGION_ADJECTIVE[region]} citizenship` } : null;
+        },
+    },
+    {
+        kind: 'work_authorization',
+        pattern: new RegExp(String.raw`\b(?:legally\s+)?(?:authori[sz]ed|eligible|permitted|able)\s+to\s+(?:legally\s+)?work\s+in\s+(?:the\s+)?(${REGION_WORDS})\b|\b(?:valid\s+)?(${REGION_WORDS})\s+work\s+(?:authori[sz]ation|permit)\b|\bwithout\s+(?:the\s+need\s+for\s+)?(?:current\s+or\s+future\s+|future\s+)?(?:visa\s+|employer\s+|immigration\s+)?sponsorship\b`, 'gi'),
+        build: (match) => {
+            const token = match[1] ?? match[2];
+            const region = token ? regionFromToken(token) : null;
+            return {
+                region,
+                label: region ? `authorization to work in ${REGION_NAME[region]}` : 'work authorization without sponsorship',
+            };
+        },
+    },
+    {
+        kind: 'region_only',
+        pattern: new RegExp(
+            [
+                // "US only", "US-based only", "US residents only"
+                String.raw`\b(${REGION_WORDS})[\s-]+(?:based\s+)?(?:only|residents\s+only|candidates\s+only|applicants\s+only)\b`,
+                // "must reside in the US", "must be based in Canada"
+                String.raw`\bmust\s+(?:be\s+)?(?:reside|live|located|based|residing|living)\s+in\s+(?:the\s+)?(${REGION_WORDS})\b`,
+                // "only open to candidates in the US"
+                String.raw`\bonly\s+(?:open\s+to|considering|accepting|hiring)\s+(?:candidates|applicants|people|residents)?\s*(?:who\s+(?:are|live)\s+)?(?:based\s+|located\s+|residing\s+|living\s+)?in\s+(?:the\s+)?(${REGION_WORDS})\b`,
+                // "Remote - US", "Remote (US)", "Remote within the US", "remote, United States"
+                String.raw`\bremote(?:\s+(?:role|position|job|opportunity|work|team))?\s*(?:[-–—,:(/|]\s*|\s+(?:in|within|from|across|based in|anywhere in)\s+)(?:the\s+)?(${REGION_WORDS})\b`,
+                // "US Remote", "US-remote"
+                String.raw`\b(${REGION_WORDS})[\s-]+remote\b`,
+            ].join('|'),
+            'gi',
+        ),
+        build: (match) => {
+            const token = match.slice(1).find((group) => typeof group === 'string' && group.trim());
+            const region = token ? regionFromToken(token) : null;
+            return region ? { region, label: `${REGION_NAME[region]} only` } : null;
+        },
+    },
+    {
+        kind: 'region_only',
+        pattern: /\b(?:dmv|d\.c\.\s+(?:metro\s+)?area|washington,?\s*d\.?\s?c\.?(?:\s+metro(?:politan)?)?(?:\s+area)?)\b(?:\s+(?:area|region|metro))?(?:\s+(?:preferred|only|required|based|candidates))?(?!\s+(?:record|check|report|printout|history))/gi,
+        build: (match) => ({ region: 'us', label: 'the DC area (US)', preferred: /\bpreferred\b/i.test(match[0]) || undefined }),
+    },
+];
+
+/**
+ * Every eligibility restriction the posting states, in the order the finders
+ * run (strictest kind first), at most one per kind and region.
+ */
+export function detectEligibility(text: string | null | undefined): EligibilityRestriction[] {
+    if (!text) return [];
+    const out: EligibilityRestriction[] = [];
+    for (const finder of FINDERS) {
+        const matches: RegExpMatchArray[] = [...text.matchAll(finder.pattern)];
+        for (const match of matches) {
+            const start: number = match.index ?? 0;
+            const end = start + match[0].length;
+            if (negated(text, start, end)) continue;
+            const built = finder.build(match, text);
+            if (!built) continue;
+            if (out.some((existing) => existing.kind === finder.kind && existing.region === built.region)) continue;
+            // "Remote (India)" stops before its own bracket; the quote keeps it.
+            let quote = match[0];
+            if ((quote.match(/\(/g)?.length ?? 0) > (quote.match(/\)/g)?.length ?? 0) && text[end] === ')') quote += ')';
+            out.push({ kind: finder.kind, quote: clean(quote), ...built });
+        }
+    }
+    // "authorized to work in the US … without sponsorship": the placed one says it all.
+    return out.filter((restriction) => restriction.region !== null
+        || !out.some((other) => other !== restriction && other.kind === restriction.kind && other.region !== null));
+}
+
+export type RegionScope = {
+    region: RegionCode;
+    /** What to show beside it: the location field, or the phrase from the posting. */
+    quote: string;
+    /** "DMV preferred": still a scope, but the posting's word for it is "preferred". */
+    preferred: boolean;
+};
+
+/**
+ * Where a remote role may be done from, when the posting says. The location
+ * field first ("Remote - US" is set by the employer), then the body's own
+ * restriction phrases. Null when the posting states no region, or says
+ * anywhere.
+ */
+export function detectRegionScope(params: { location: string | null; text: string }): RegionScope | null {
+    const location = params.location?.trim() || null;
+    if (location) {
+        const region = regionOf(location);
+        // A remote-or-region-only location field; a city is a location, not a scope.
+        if (region && (/\bremote\b/i.test(location) || regionFromToken(location) !== null)) {
+            return { region, quote: location, preferred: false };
+        }
+    }
+    const scoped = detectEligibility(`${location ?? ''}\n${params.text}`).find((restriction) => restriction.kind === 'region_only' && restriction.region);
+    return scoped && scoped.region ? { region: scoped.region, quote: scoped.quote, preferred: Boolean(scoped.preferred) } : null;
 }
 
 // ─────────────────────────────────────────────────────────────── apply url

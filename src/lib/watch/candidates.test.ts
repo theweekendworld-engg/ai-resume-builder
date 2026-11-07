@@ -31,6 +31,19 @@ describe('roleMatch', () => {
     });
 });
 
+describe('locationAcceptable: remote with a region', () => {
+    test('"Remote - US" is not a remote role for someone who only wants Bengaluru', () => {
+        expect(locationAcceptable('Remote - US', profile)).toBe(false);
+        expect(locationAcceptable('US Remote', profile)).toBe(false);
+        expect(locationAcceptable('Remote - India', profile)).toBe(true);
+        expect(locationAcceptable('Remote', profile)).toBe(true);
+    });
+    test('a target in the region, or places that cannot be placed, still pass', () => {
+        expect(locationAcceptable('Remote - US', { ...profile, targetLocations: ['Bengaluru', 'San Francisco'] })).toBe(true);
+        expect(locationAcceptable('Remote - US', { ...profile, targetLocations: ['Remote'] })).toBe(true);
+    });
+});
+
 describe('locationAcceptable', () => {
     test('unknown or unstated passes; the fit check asks', () => {
         expect(locationAcceptable(null, profile)).toBe(true);

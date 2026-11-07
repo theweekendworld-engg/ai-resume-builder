@@ -296,6 +296,11 @@ export type PlanFeature =
   | 'negotiation_mission'
   | 'ats_auto_fix';
 
+/**
+ * The paid packaging, kept as the record of what each plan includes once paid
+ * plans return. While {@link launchOpenAccess} is on, read it through
+ * {@link planHasFeature}, which gives every tier every capability.
+ */
 export const PLAN_FEATURES: Record<Tier, Record<PlanFeature, boolean>> = {
   free: {
     log_history_unlimited: false,
@@ -362,9 +367,19 @@ const TIERS_BY_ORDER: readonly Tier[] = (Object.keys(PLAN_CATALOG) as Tier[]).so
   (a, b) => planOrder(a) - planOrder(b)
 );
 
+/**
+ * Does this tier include this capability right now?
+ *
+ * The one sanctioned reader of {@link PLAN_FEATURES}. During the launch every
+ * tier has everything, so no gate, badge or paywall can lock a feature.
+ */
+export function planHasFeature(tier: Tier, feature: PlanFeature): boolean {
+  return launchOpenAccess() || PLAN_FEATURES[tier][feature];
+}
+
 /** The lowest tier that includes a capability — what a paywall should offer. */
 export function tierRequiredFor(feature: PlanFeature): Tier {
-  return TIERS_BY_ORDER.find((tier) => PLAN_FEATURES[tier][feature]) ?? 'pro';
+  return TIERS_BY_ORDER.find((tier) => planHasFeature(tier, feature)) ?? 'pro';
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +399,96 @@ function envNumber(name: string, fallback: number): number {
   if (raw === 'unlimited') return UNLIMITED;
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+// ---------------------------------------------------------------------------
+// Launch: every feature, for every user (owner decision, 2026-11-07)
+// ---------------------------------------------------------------------------
+
+/**
+ * Is the launch on?
+ *
+ * Nothing can be bought yet (payments wait for a Merchant of Record), so every
+ * account gets every capability and the generous monthly allowance below.
+ * The paid packaging in this file is untouched underneath:
+ * `ENTITLEMENT_LAUNCH_OPEN=false` restores it exactly, which is the whole
+ * "paid plans return" change on the entitlement side (the pricing copy in
+ * `src/components/marketing/Pricing.tsx` says "free while we launch" and moves
+ * with it).
+ *
+ * Read on the server. A client bundle has no such env var and so reads the
+ * default, which is on; turning the launch off is a deploy, not a toggle.
+ *
+ * The per-user monthly cost ceiling still applies during the launch, as
+ * abuse protection ({@link costBudgetUsd}).
+ */
+export function launchOpenAccess(): boolean {
+  return process.env.ENTITLEMENT_LAUNCH_OPEN !== 'false';
+}
+
+/**
+ * The launch allowance: every number a free account gets, in one place. All
+ * metered values are per calendar month, and none of them is a trial, so an
+ * exhausted one says "resets on the 1st" rather than offering a plan nobody
+ * can buy.
+ *
+ * Sized so an active job search never meets a limit, and so the $5 monthly
+ * cost ceiling still binds first if someone scripts the product:
+ *   100 tailored resumes  ~30k tokens each  ≈ $1.10
+ *   300 outreach drafts   ~3k tokens each   ≈ $0.35
+ *   150 analysed links    model + search    ≈ $1.50
+ *   25 scored postings a night for 30 nights ≈ $0.75
+ *
+ * Every value is still env-overridable through the free tier's own variable
+ * (`ENTITLEMENT_LIMIT_FREE_TAILORED_GENERATION`, `ENTITLEMENT_SOURCE_LIMIT_FREE`,
+ * …), so tuning one needs no deploy.
+ */
+export const LAUNCH_ALLOWANCE = {
+  /** Per month. */
+  metered: {
+    tailored_generation: 100,
+    // "Cover letters and outreach": application emails, referral asks,
+    // recruiter notes. A revision in chat ("make it shorter") is not a second
+    // charge (`src/services/drafts.ts`); the chat rate limiter bounds it.
+    cover_letter: 300,
+    link_analysis: 150,
+    win_draft: 300,
+    context_interview: 10,
+    month_in_review: 5,
+    review_packet: 10,
+    rubric_upload: 10,
+    // Not built: there is nothing to open. See `NO_FEATURE_YET` in
+    // `src/lib/entitlementWiring.test.ts`.
+    auto_apply: 0,
+    tier2_grounding: 0,
+    radar_refresh: 0,
+  },
+  sources: 3,
+  masterResumes: 10,
+  logHistoryDays: UNLIMITED,
+  jobWatchCompanies: 30,
+  jobWatchNightlyScores: 25,
+} as const satisfies {
+  metered: Record<MeteredAction, number>;
+  sources: number;
+  masterResumes: number;
+  logHistoryDays: number;
+  jobWatchCompanies: number;
+  jobWatchNightlyScores: number;
+};
+
+/**
+ * A per-tier number, with the launch applied.
+ *
+ * During the launch Free gets the launch value (env-overridable through the
+ * free tier's variable) and a paid tier gets whichever is more generous, its
+ * own or Free's, so a comped account is never worse off than a free one.
+ */
+function tieredNumber(envPrefix: string, tier: Tier, packaged: Record<Tier, number>, launch: number): number {
+  const own = envNumber(`${envPrefix}_${tier.toUpperCase()}`, packaged[tier]);
+  if (!launchOpenAccess()) return own;
+  const free = envNumber(`${envPrefix}_FREE`, launch);
+  return tier === 'free' ? free : Math.max(own, free);
 }
 
 const SOURCE_LIMITS: Record<Tier, number> = {
@@ -428,16 +533,16 @@ const JOB_WATCH_NIGHTLY_SCORES: Record<Tier, number> = {
 };
 
 export function jobWatchCompanyLimit(tier: Tier): number {
-  return envNumber(`ENTITLEMENT_JOB_WATCH_COMPANIES_${tier.toUpperCase()}`, JOB_WATCH_COMPANY_LIMITS[tier]);
+  return tieredNumber('ENTITLEMENT_JOB_WATCH_COMPANIES', tier, JOB_WATCH_COMPANY_LIMITS, LAUNCH_ALLOWANCE.jobWatchCompanies);
 }
 
 export function jobWatchNightlyScoreLimit(tier: Tier): number {
-  return envNumber(`ENTITLEMENT_JOB_WATCH_SCORES_${tier.toUpperCase()}`, JOB_WATCH_NIGHTLY_SCORES[tier]);
+  return tieredNumber('ENTITLEMENT_JOB_WATCH_SCORES', tier, JOB_WATCH_NIGHTLY_SCORES, LAUNCH_ALLOWANCE.jobWatchNightlyScores);
 }
 
 /** Connected capture sources allowed on a tier (PRD 06 §2.1, PW7). */
 export function sourceLimit(tier: Tier): number {
-  return envNumber(`ENTITLEMENT_SOURCE_LIMIT_${tier.toUpperCase()}`, SOURCE_LIMITS[tier]);
+  return tieredNumber('ENTITLEMENT_SOURCE_LIMIT', tier, SOURCE_LIMITS, LAUNCH_ALLOWANCE.sources);
 }
 
 /**
@@ -445,14 +550,11 @@ export function sourceLimit(tier: Tier): number {
  * deleted (CLAUDE.md invariant, PRD 06 §5.4).
  */
 export function logHistoryDays(tier: Tier): number {
-  return envNumber(`ENTITLEMENT_LOG_HISTORY_DAYS_${tier.toUpperCase()}`, LOG_HISTORY_DAYS[tier]);
+  return tieredNumber('ENTITLEMENT_LOG_HISTORY_DAYS', tier, LOG_HISTORY_DAYS, LAUNCH_ALLOWANCE.logHistoryDays);
 }
 
 export function masterResumeLimit(tier: Tier): number {
-  return envNumber(
-    `ENTITLEMENT_MASTER_RESUME_LIMIT_${tier.toUpperCase()}`,
-    MASTER_RESUME_LIMITS[tier]
-  );
+  return tieredNumber('ENTITLEMENT_MASTER_RESUME_LIMIT', tier, MASTER_RESUME_LIMITS, LAUNCH_ALLOWANCE.masterResumes);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +610,10 @@ export interface MeteredLimit {
   trial?: boolean;
 }
 
-/* ── What a free account gets ───────────────────────────────────────────────
+/* ── What a free account gets once paid plans return ───────────────────────
+ *
+ * (During the launch Free gets {@link LAUNCH_ALLOWANCE} instead; this is the
+ * packaging that `ENTITLEMENT_LAUNCH_OPEN=false` brings back.)
  *
  * Everything, a few times, and then it stops.
  *
@@ -557,30 +662,19 @@ export function freeTrialDays(): number {
 }
 
 /**
- * Monthly token ceiling per tier. An abuse and cost backstop, not a product
- * limit — a user should hit their feature quota long before this.
+ * Monthly spend ceiling per tier, USD: the abuse and cost backstop, not a
+ * product limit. A user should meet a feature allowance long before this, and
+ * if they do not, the budget is set wrong.
  *
- * Free is sized off the resume cap: a tailored generation costs roughly
- * 25-30k tokens end to end, so ten of them plus scoring and parsing fits
- * inside 400k with room to spare.
+ * Free is $5 (2026-11-07, launch). It covers the whole launch allowance with
+ * room to spare (see {@link LAUNCH_ALLOWANCE}); someone who reaches it is
+ * almost certainly scripting the product. Web research counts against it too
+ * (`src/lib/research/search.ts` logs each search as a usage row).
  *
- * `ENTITLEMENT_TOKENS_<TIER>`, e.g. `ENTITLEMENT_TOKENS_FREE=500000`.
- * `unlimited` is accepted as a value.
+ * `ENTITLEMENT_COST_USD_<TIER>`, e.g. `ENTITLEMENT_COST_USD_FREE=8`.
  */
-const TOKEN_BUDGET_DEFAULTS: Record<Tier, number> = {
-  free: 400_000,
-  always_on: 2_000_000,
-  pro: 6_000_000,
-  team: UNLIMITED,
-};
-
-export function tokenBudget(tier: Tier): number {
-  return envNumber(`ENTITLEMENT_TOKENS_${tier.toUpperCase()}`, TOKEN_BUDGET_DEFAULTS[tier]);
-}
-
-/** Monthly spend ceiling per tier, USD. `ENTITLEMENT_COST_USD_<TIER>` */
 const COST_BUDGET_DEFAULTS: Record<Tier, number> = {
-  free: 2,
+  free: 5,
   always_on: 10,
   pro: 30,
   team: UNLIMITED,
@@ -588,6 +682,41 @@ const COST_BUDGET_DEFAULTS: Record<Tier, number> = {
 
 export function costBudgetUsd(tier: Tier): number {
   return envNumber(`ENTITLEMENT_COST_USD_${tier.toUpperCase()}`, COST_BUDGET_DEFAULTS[tier]);
+}
+
+/**
+ * Tokens per dollar of model spend, for matching a token ceiling to a cost one.
+ *
+ * Every default task runs on a luna model (`src/lib/config.ts`). Measured
+ * across real usage the blend is about $0.35 per 1M tokens (most tokens are
+ * input; resume steps run nearer $0.75, Scout nearer $0.15), so a dollar buys
+ * about three million. The old ratio, 200k per dollar, dated from gpt-5
+ * pricing and would have capped a free account at about 1.5M tokens: under a
+ * dollar of real spend, and fewer than fifty tailored resumes.
+ */
+const TOKENS_PER_USD = 3_000_000;
+
+/**
+ * Monthly token ceiling per tier, matched to the cost ceiling: roughly the
+ * tokens that tier's dollars buy at the measured blend. The cost ceiling is
+ * the one that binds in practice; this one catches spend the cost table
+ * cannot see, such as a model id with no price that logs $0.
+ *
+ * Free: $5 → 15M tokens. A tailored resume is ~30k end to end, so the launch
+ * allowance of 100 is about 3M.
+ *
+ * `ENTITLEMENT_TOKENS_<TIER>`, e.g. `ENTITLEMENT_TOKENS_FREE=20000000`.
+ * `unlimited` is accepted as a value.
+ */
+const TOKEN_BUDGET_DEFAULTS: Record<Tier, number> = {
+  free: COST_BUDGET_DEFAULTS.free * TOKENS_PER_USD,
+  always_on: COST_BUDGET_DEFAULTS.always_on * TOKENS_PER_USD,
+  pro: COST_BUDGET_DEFAULTS.pro * TOKENS_PER_USD,
+  team: UNLIMITED,
+};
+
+export function tokenBudget(tier: Tier): number {
+  return envNumber(`ENTITLEMENT_TOKENS_${tier.toUpperCase()}`, TOKEN_BUDGET_DEFAULTS[tier]);
 }
 
 /** Noun phrase for the meter: "4 of 15 tailored resumes this period". */
@@ -734,14 +863,8 @@ const LEGACY_LIMIT_ENV: Partial<Record<Tier, Partial<Record<MeteredAction, strin
   },
 };
 
-/**
- * The limit for a tier/action pair, after env overrides.
- *
- * Every limit is tunable without a deploy — that is the whole point of routing
- * them through one function.
- */
-export function meteredLimit(tier: Tier, action: MeteredAction): MeteredLimit {
-  const base = PLAN_METERED_LIMITS[tier][action];
+/** A base limit with the tier's env overrides applied (legacy first, generic wins). */
+function withOverrides(tier: Tier, action: MeteredAction, base: MeteredLimit): MeteredLimit {
   const legacyVar = LEGACY_LIMIT_ENV[tier]?.[action];
   const legacy = legacyVar ? envNumber(legacyVar, base.limit) : base.limit;
   const limit = envNumber(`ENTITLEMENT_LIMIT_${tier.toUpperCase()}_${action.toUpperCase()}`, legacy);
@@ -749,6 +872,24 @@ export function meteredLimit(tier: Tier, action: MeteredAction): MeteredLimit {
   // allowance is changing how MUCH of a taste it is, not turning it into the
   // plan's permanent entitlement.
   return limit === base.limit ? base : { ...base, limit };
+}
+
+/**
+ * The limit for a tier/action pair, after env overrides.
+ *
+ * Every limit is tunable without a deploy — that is the whole point of routing
+ * them through one function.
+ *
+ * During the launch ({@link launchOpenAccess}) Free gets the monthly launch
+ * allowance instead of its trials, and a paid tier gets whichever of its own
+ * limit and Free's is more generous.
+ */
+export function meteredLimit(tier: Tier, action: MeteredAction): MeteredLimit {
+  const own = withOverrides(tier, action, PLAN_METERED_LIMITS[tier][action]);
+  if (!launchOpenAccess()) return own;
+  const free = withOverrides('free', action, period(LAUNCH_ALLOWANCE.metered[action]));
+  if (tier === 'free') return free;
+  return own.limit >= free.limit ? own : free;
 }
 
 /**
@@ -802,6 +943,9 @@ export function builtComparisonRows(
 /**
  * PRD 06 §2.1, rendered. Strings rather than booleans because half the cells
  * are quantities and a tick would lose the number that matters.
+ *
+ * This is the PAID packaging (the launch's allowance is {@link LAUNCH_ALLOWANCE}),
+ * so the plan page hides it while nothing can be bought.
  */
 export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
   { label: 'Work log capture', values: ['Included', 'Included', 'Included'] },

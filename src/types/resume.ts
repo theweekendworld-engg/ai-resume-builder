@@ -6,7 +6,19 @@ export interface ResumeData {
     projects: ProjectItem[];
     education: EducationItem[];
     skills: string[];
+    /**
+     * The resume's own skills rows, labels as the candidate wrote them
+     * ("Speech / AI", "Voice infra"). Optional: without it the renderer groups
+     * `skills` by vocabulary. `skills` stays the source of truth for WHICH
+     * skills show; a row only prints the items still in `skills`.
+     */
+    skillGroups?: SkillGroupData[];
     sectionOrder: SectionType[]; // Order of sections in the resume
+}
+
+export interface SkillGroupData {
+    label: string;
+    items: string[];
 }
 
 export interface PersonalInfo {
@@ -30,6 +42,10 @@ export interface ExperienceItem {
     current: boolean;
     location: string;
     description: string; // HTML or rich text content
+    /** Printed beside the company: "established CPaaS, AI voice agents". */
+    companyNote?: string;
+    /** Printed beside the title: "Go, C, Python". */
+    stack?: string;
 }
 
 export interface ProjectItem {

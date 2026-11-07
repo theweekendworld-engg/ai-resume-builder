@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState, useTransition } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useResumeStore } from '@/store/resumeStore';
 import { calculateATSScore } from '@/actions/ai';
@@ -58,6 +57,12 @@ interface JobTargetEditorProps {
   resumeId: string;
 }
 
+/** A usage ceiling (or a legacy plan refusal): a notice, never a red error. */
+function isLimitNotice(message: string, code: string | null): boolean {
+  if (code === 'usage_limit' || code === 'entitlement_required') return true;
+  return /\bthis month's limit\b|\blimit for AI features\b/i.test(message);
+}
+
 export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
   const currentResumeId = resumeId;
   const {
@@ -76,7 +81,7 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  /** Set when the failure is the plan limit, so the box can link to plans. */
+  /** Set when the failure is a usage limit, so the box reads as a notice, not an error. */
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [clarificationSessionId, setClarificationSessionId] = useState<string | null>(null);
@@ -518,18 +523,20 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
           )}
 
           {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              <span>
-                {error}
-                {errorCode === 'entitlement_required' ? (
-                  <>
-                    {' '}
-                    <Link href="/settings/plan" className="font-medium underline">See plans</Link>
-                  </>
-                ) : null}
-              </span>
-            </div>
+            // A usage ceiling is not an error the user made, and during launch
+            // every feature is free, so there is no plan to send them to: a
+            // neutral notice that says when it resets, nothing else.
+            isLimitNotice(error, errorCode) ? (
+              <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
+                <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                <span>{error}</span>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )
           )}
           {success && (
             <div className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 p-3 text-sm text-success">

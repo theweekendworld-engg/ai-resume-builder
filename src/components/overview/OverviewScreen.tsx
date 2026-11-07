@@ -101,18 +101,23 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                 {chat ? <AskBar /> : null}
 
                 {/* ── Pipeline ─────────────────────────────────────────── */}
+                {/* A list of links, not a <dl>: links cannot be children of a
+                    definition list, and the count came before its label. The
+                    inset focus ring stays inside the rounded, clipped grid. */}
                 {data.pipeline ? (
-                    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+                    <ul aria-label="Your pipeline" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
                         {data.pipeline.map((stage) => (
-                            <Link key={stage.column} href={stage.href} className="group bg-card px-4 py-4 transition-colors hover:bg-secondary/50">
-                                <dd className="font-heading text-2xl font-semibold tabular-nums text-foreground">{stage.count}</dd>
-                                <dt className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                                    {stage.label}
-                                    <ArrowRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
-                                </dt>
-                            </Link>
+                            <li key={stage.column} className="bg-card">
+                                <Link href={stage.href} className="group block h-full px-4 py-4 transition-colors hover:bg-secondary/50 focus-visible:bg-secondary/50 focus-visible:outline-offset-[-2px]">
+                                    <span className="block font-heading text-2xl font-semibold tabular-nums text-foreground">{stage.count}</span>
+                                    <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                                        {stage.label}
+                                        <ArrowRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
+                                    </span>
+                                </Link>
+                            </li>
                         ))}
-                    </dl>
+                    </ul>
                 ) : null}
 
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -217,7 +222,14 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                             <Section icon={Target} title="Goal" href="/home">
                                 <div className="space-y-2 px-4 py-3">
                                     <p className="text-sm font-medium">{data.goal.title}</p>
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-secondary" aria-label={`${data.goal.percent}% done`}>
+                                    <div
+                                        className="h-1.5 overflow-hidden rounded-full bg-secondary"
+                                        role="progressbar"
+                                        aria-valuenow={data.goal.percent}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                        aria-label={`${data.goal.title}: ${data.goal.percent}% done`}
+                                    >
                                         <div className="h-full rounded-full bg-primary" style={{ width: `${data.goal.percent}%` }} />
                                     </div>
                                     {data.goal.nextStep ? <p className="text-xs text-muted-foreground">Next: <span className="text-foreground">{data.goal.nextStep}</span></p> : null}

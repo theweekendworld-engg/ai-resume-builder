@@ -55,6 +55,7 @@ import type {
     WinPatch,
     WinView,
 } from '@/actions/wins.types';
+import { aiFailureMessage } from '@/lib/usageTracker';
 
 // ───────────────────────────────────────────────────────────── metering
 //
@@ -383,7 +384,7 @@ export async function structureDraft(text: string): Promise<Result<StructuredDra
         console.error('[actions/wins] structureDraft failed', {
             error: error instanceof Error ? error.message : String(error),
         });
-        return err('Could not structure that just now — try again', 'ai_unavailable');
+        return err(aiFailureMessage(error, 'Could not structure that just now — try again'), 'ai_unavailable');
     }
 }
 
@@ -420,7 +421,7 @@ export async function addImpact(winId: string, answer: string): Promise<Result<W
         console.error('[actions/wins] parseImpactAnswer failed', {
             error: error instanceof Error ? error.message : String(error),
         });
-        return err('Could not read that answer just now — try again', 'ai_unavailable');
+        return err(aiFailureMessage(error, 'Could not read that answer just now — try again'), 'ai_unavailable');
     }
 
     if (parsedImpact.kind === 'no_quantity') {

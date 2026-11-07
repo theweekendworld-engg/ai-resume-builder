@@ -1,19 +1,34 @@
 'use client';
 
 import Link from 'next/link';
-import { Lock, TriangleAlert } from 'lucide-react';
+import { Info, Lock, TriangleAlert } from 'lucide-react';
 
 import { typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
+import { launchOpenAccess } from '@/lib/plans';
 import { cn } from '@/lib/utils';
 
 /**
  * An action came back refused. When the reason is the plan, the message names
  * the fix — the plans page — rather than leaving a dead end. Inline and
  * dismissible by doing anything else, never a modal (PRD 06 §4).
+ *
+ * During the launch every feature is open to everyone, so there is no plan
+ * to point at: a refusal is the monthly cost ceiling, and its message already
+ * says when it resets. No lock, no "See plans" (`launchOpenAccess`). A client
+ * bundle reads the launch default; a server caller can pass the real value.
  */
-export function EntitlementNotice({ message, entitlement }: { message: string; entitlement: boolean }) {
-    const Icon = entitlement ? Lock : TriangleAlert;
+export function EntitlementNotice({
+    message,
+    entitlement,
+    launchOpen = launchOpenAccess(),
+}: {
+    message: string;
+    entitlement: boolean;
+    launchOpen?: boolean;
+}) {
+    const planGated = entitlement && !launchOpen;
+    const Icon = planGated ? Lock : entitlement ? Info : TriangleAlert;
     return (
         <section
             role="status"
@@ -23,7 +38,7 @@ export function EntitlementNotice({ message, entitlement }: { message: string; e
                 <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                 {message}
             </p>
-            {entitlement ? (
+            {planGated ? (
                 <Button asChild size="sm" className="shrink-0 self-start sm:self-auto">
                     <Link href="/settings/plan">See plans</Link>
                 </Button>
