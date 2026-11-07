@@ -185,6 +185,8 @@ export const config = {
             scoutResearchExtract: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             scoutDigest: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             outreachDraft: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            // Editing a stored draft to an instruction (src/lib/drafts/revise.ts).
+            draftRevise: process.env.OPENAI_MODEL_DRAFT_REVISE || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             scoutFitMatch: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             scoutPostingRead: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             // Chat routing: high volume, latency-felt, classification-shaped.
@@ -278,6 +280,5 @@ export const config = {
         inlineRewriteV2: process.env.FEATURE_INLINE_REWRITE_V2 !== "false",
         jdKeywordMatchHints: process.env.FEATURE_JD_KEYWORD_MATCH_HINTS !== "false",
         telegramSendPdfDocument: process.env.FEATURE_TELEGRAM_SEND_PDF_DOCUMENT !== "false",
-        telegramAsyncProcessing: process.env.FEATURE_TELEGRAM_ASYNC_PROCESSING !== "false",
     },
 };

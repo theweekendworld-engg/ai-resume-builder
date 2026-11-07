@@ -48,15 +48,15 @@ describe('final: job', () => {
         expect(message.lines.length - 2).toBeLessThanOrEqual(MAX_KEY_LINES);
     });
 
-    test('a stretch offers the tracker, then draft, why-not-fit and open', () => {
-        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'why', 'open']);
+    test('a stretch offers the tracker, then draft, why-not-fit, email and open', () => {
+        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'why', 'draft', 'open']);
         expect(message.actions.slice(0, 3).map((action) => action.label)).toEqual(['💾 Save', '📨 Applied', '❌ Not interested']);
     });
 
     test('a strong fit does not offer "why not a fit"', () => {
         const base = JOB_SECTIONS.fit as { data: FitData };
         const strong = view({ sections: { ...JOB_SECTIONS, fit: ok<FitData>({ ...base.data, verdict: 'strong', notFitReasons: [] }) } });
-        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'open']);
+        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'draft', 'open']);
     });
 
     test('an unavailable section simply has no line', () => {

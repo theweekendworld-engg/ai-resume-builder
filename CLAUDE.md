@@ -206,6 +206,19 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   row with an `admin_grant:` customer id. It never overwrites a live paid row.
 - **Job watch respects its deadline.** `runWatchForUser({ deadline })` stops
   10s early, sends what it scored, and reports `deferred`.
+- **Every feature is on for every user** (launch, 2026-11-07). A
+  `FeatureFlag` row is a kill switch: `enabled=false` turns a feature off;
+  no row means on. Tests that assert a gate must create the row themselves.
+- **Telegram remembers** (`docs/impl/07-telegram-apply.md`). Channel turns
+  are stored in `ChatConversation(channel)`; `ChatConversation.focus` holds
+  the task in progress (2h TTL). A short follow-up while a draft is in focus
+  goes through `decideInTask` (revise / done / other) before the router.
+  The webhook acks first and works in `after()`; failures tell the user
+  and alert operators. PDFs and text files are read as pasted text.
+- **Drafts are versioned rows** (`MessageDraft`, `src/services/drafts.ts`).
+  Apply addresses come from the posting by regex, never a model. Patronus
+  never sends mail: Open in Gmail / Mail app (`/api/compose/[id]`, HMAC
+  token) prefill the user's own client.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).

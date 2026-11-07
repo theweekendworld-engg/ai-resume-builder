@@ -39,7 +39,9 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/extension(.*)',
     '/api/v1(.*)',
     '/api/telegram/webhook',
-    '/api/telegram/process',
+    // Opened from a Telegram button on a phone with no session: the HMAC token
+    // in the query is the authorization (docs/impl/07-telegram-apply.md).
+    '/api/compose(.*)',
     // Stripe webhook is authenticated by signature, not a Clerk session.
     '/api/stripe/webhook',
     // ── Found 2026-09-27 (docs/audit/2026-09-27-user-flow-audit.html §C) ────
@@ -104,7 +106,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/telegram/process') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/inbound/email');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/inbound/email');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

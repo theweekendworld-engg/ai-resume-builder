@@ -16,6 +16,7 @@ import { processChannelGenerate } from '@/services/channelGenerate';
 import { config } from '@/lib/config';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
+import { focusIsLive, parseFocus } from '@/lib/chat/focus';
 import {
   answerTelegramCallbackQuery,
   sendTelegramMessage,
@@ -29,12 +30,25 @@ import {
 } from '@/lib/channels/telegramInbound';
 import { parseInboxCommand, renderHelp } from '@/lib/channels/inboxCommands';
 import { sendTelegramRich } from '@/lib/channels/telegramScout';
+import {
+  TELEGRAM_MEDIA_FIELDS,
+  UNREADABLE_FILE_TEXT,
+  classifyTelegramAttachment,
+  composeFileText,
+  readTelegramDocument,
+  truncatedFileNotice,
+} from '@/lib/channels/telegramFiles';
+import { alertOperators } from '@/lib/opsAlert';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 export const TelegramUpdateSchema = z.object({
   update_id: z.number().optional(),
   message: z.object({
     message_id: z.number().optional(),
     text: z.string().optional(),
+    // A PDF or text file is read as if pasted; other media gets one sentence
+    // (src/lib/channels/telegramFiles.ts).
+    ...TELEGRAM_MEDIA_FIELDS,
     chat: z.object({
       id: z.union([z.string(), z.number()]),
       /** private | group | supergroup | channel. Only private chats are served. */
@@ -58,6 +72,16 @@ export const TelegramUpdateSchema = z.object({
     }).optional(),
   }).optional(),
 });
+
+/** True when a draft is in focus on Telegram and was focused after `since`. */
+async function draftFocusIsNewerThan(userId: string, since: Date): Promise<boolean> {
+  const row = await prisma.chatConversation.findUnique({
+    where: { userId_channel: { userId, channel: Channel.telegram } },
+    select: { focus: true, focusAt: true },
+  });
+  if (!row?.focusAt || !focusIsLive(row.focusAt)) return false;
+  return parseFocus(row.focus)?.kind === 'draft' && row.focusAt.getTime() > since.getTime();
+}
 
 /** A verified Telegram → user link, or null. */
 async function findLinkedUserId(chatId: string): Promise<string | null> {
@@ -83,6 +107,150 @@ function failureNextStep(code: string | undefined): string {
   if (code === 'entitlement_required') return `\n\nSee plans: ${app}/settings/plan`;
   if (code === 'empty_profile' || code === 'no_base_resume') return `\n\nAdd your resume first: ${app}/dashboard?section=profile`;
   return '';
+}
+
+/** Refusals whose `error` the generation service wrote for the user to read. */
+const USER_FACING_GENERATION_CODES = new Set(['entitlement_required', 'empty_profile', 'no_base_resume', 'enqueue_failed']);
+
+const GENERATION_FAILED_TEXT =
+  'Something went wrong on our side with that resume. Send /status to see where it stands, or /generate with the job description to start again.';
+
+/**
+ * Say why a generation request failed. A coded refusal (a plan limit, an
+ * empty profile) keeps its own sentence and next step. Anything else is an
+ * internal message ("Clarification state is invalid for this session") that
+ * the user cannot act on: they get plain copy, and the operators get the text.
+ */
+async function sayGenerationFailure(chatId: string, result: { error?: string; code?: string }): Promise<void> {
+  if (result.code && USER_FACING_GENERATION_CODES.has(result.code) && result.error) {
+    await sayPlain(chatId, `${result.error}${failureNextStep(result.code)}`);
+    return;
+  }
+  await sayPlain(chatId, `${GENERATION_FAILED_TEXT}${failureNextStep(result.code)}`);
+  await alertOperators({
+    key: `telegram_generation:${result.code ?? 'uncoded'}`,
+    title: 'Telegram resume request failed',
+    lines: [`code ${result.code ?? 'none'}`, result.error ?? 'no error recorded'],
+  });
+}
+
+// ───────────────────────────────────────────── receipt and failure handling
+
+/** Said when anything fails after Telegram was told the update arrived. */
+export const TELEGRAM_FAILURE_TEXT =
+  'Something went wrong on our side and I could not finish that. Please try again in a minute.';
+
+/**
+ * Claim an update id. Telegram redelivers whenever it is unsure the webhook
+ * got an update, and the unique `updateId` makes the second delivery a no-op.
+ * A database error is not a duplicate: it throws, so the user hears about it.
+ */
+async function claimTelegramUpdate(updateId: number | undefined): Promise<boolean> {
+  if (typeof updateId !== 'number') return true;
+  const claimed = await prisma.telegramUpdateReceipt.createMany({
+    data: [{ updateId: String(updateId) }],
+    skipDuplicates: true,
+  });
+  return claimed.count > 0;
+}
+
+/** The private chat an update came from, or null. Failures are never announced in a group. */
+function replyChatOf(update: TelegramUpdatePayload): string | null {
+  const chat = update.message?.chat ?? update.callback_query?.message?.chat;
+  if (!chat || (chat.type && chat.type !== 'private')) return null;
+  return String(chat.id);
+}
+
+/** What kind of update failed, for the operators. Never the user's text. */
+function describeUpdate(update: TelegramUpdatePayload): string {
+  const data = update.callback_query?.data;
+  if (update.callback_query) return `button ${data ? `${data.split(':')[0]}:` : '(no data)'}`;
+  const message = update.message;
+  if (!message) return 'other update';
+  if (message.document) return `file ${message.document.mime_type ?? 'unknown type'}`;
+  if (message.text) {
+    const command = /^\/[a-z_]+/i.exec(message.text.trim())?.[0];
+    return command ? `command ${command}` : 'text message';
+  }
+  return 'media message';
+}
+
+/** A short, stable name for an error, so one kind of failure alerts once per window. */
+function errorKind(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' && /^P\d{4}$/.test(error.code)) {
+    return `prisma_${error.code}`;
+  }
+  return error instanceof Error ? error.name : typeof error;
+}
+
+async function reportTelegramFailure(update: TelegramUpdatePayload, error: unknown): Promise<void> {
+  const kind = errorKind(error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('[telegram] update failed', { updateId: update.update_id, kind, update: describeUpdate(update), error: message });
+  try {
+    const chatId = replyChatOf(update);
+    // Never throws: a failed send is logged by the transport.
+    if (chatId) await sendTelegramMessageDetailed({ chatId, text: escapeTelegramHtml(TELEGRAM_FAILURE_TEXT) });
+  } finally {
+    await alertOperators({
+      key: `telegram_update:${kind}`,
+      title: 'Telegram update failed',
+      lines: [`update ${update.update_id ?? 'without id'}: ${describeUpdate(update)}`, `${kind}: ${message}`],
+    });
+  }
+}
+
+export type TelegramUpdateOutcome = 'handled' | 'duplicate' | 'failed';
+
+/**
+ * Handle one update, at most once per `update_id`. Never throws.
+ *
+ * The webhook acknowledges Telegram before this runs, so nothing here can be
+ * retried by Telegram: a failure anywhere (the receipt write included) tells
+ * the user in plain words and alerts the operators. Before, a throw returned
+ * 500, Telegram redelivered, the receipt written before the throw turned the
+ * retry into a silent 200, and the user never heard back.
+ */
+export async function processTelegramUpdate(update: TelegramUpdatePayload): Promise<TelegramUpdateOutcome> {
+  try {
+    if (!(await claimTelegramUpdate(update.update_id))) return 'duplicate';
+    await handleTelegramUpdate(update);
+    return 'handled';
+  } catch (error: unknown) {
+    await reportTelegramFailure(update, error).catch(() => undefined);
+    return 'failed';
+  }
+}
+
+/**
+ * A document or media message: the text to continue with, or null when it
+ * was answered here. Files are read only for a linked account, under the
+ * upload rate limit, so nobody can make the bot parse files for free.
+ */
+async function readFileMessage(chatId: string, message: NonNullable<TelegramUpdatePayload['message']>): Promise<string | null> {
+  const attachment = classifyTelegramAttachment(message);
+  if (attachment.kind === 'none') return null;
+  if (attachment.kind === 'unreadable') {
+    await sayPlain(chatId, UNREADABLE_FILE_TEXT);
+    return null;
+  }
+  const userId = await findLinkedUserId(chatId);
+  if (!userId) {
+    await sayPlain(chatId, notLinkedText(telegramDashboardUrl(), 'Telegram'));
+    return null;
+  }
+  const limited = await checkRateLimit('upload', `telegram_file:${userId}`);
+  if (!limited.allowed) {
+    await sayPlain(chatId, limited.error ?? 'Too many files at once. Try again in a few minutes.');
+    return null;
+  }
+  const read = await readTelegramDocument(attachment);
+  if (!read.ok) {
+    await sayPlain(chatId, read.reply);
+    return null;
+  }
+  if (read.truncated) await sayPlain(chatId, truncatedFileNotice());
+  return composeFileText(message.caption, read.text);
 }
 
 function telegramDashboardUrl(): string {
@@ -150,25 +318,7 @@ async function sendTelegramStatus(chatId: string, sessionId?: string) {
   await sayPlain(chatId, `Session ${latest.id}\nStatus: ${latest.status}\nStep: ${getGenerationStageLabel(latest.currentStep)}${progress}${atsText}${linkText}${errorText}`);
 }
 
-export async function processTelegramUpdate(update: TelegramUpdatePayload): Promise<void> {
-  if (typeof update.update_id === 'number') {
-    const receipt = await prisma.telegramUpdateReceipt.findUnique({
-      where: { updateId: String(update.update_id) },
-      select: { id: true },
-    });
-    if (receipt) {
-      return;
-    }
-    const created = await prisma.telegramUpdateReceipt.create({
-      data: {
-        updateId: String(update.update_id),
-      },
-    }).then(() => true).catch(() => false);
-    if (!created) {
-      return;
-    }
-  }
-
+async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void> {
   // Private chats only. A linked chat id is the identity, so a group the bot
   // was added to would let every member act as the account that linked it
   // (launch audit, 2026-10-02). Telegram always sends `type`.
@@ -246,7 +396,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
             regenerateOfSessionId: sessionId,
           });
           if (!regenerated.success) {
-            await sayPlain(chatId, `Regeneration failed: ${regenerated.error ?? 'Unknown error'}${failureNextStep(regenerated.code)}`);
+            await sayGenerationFailure(chatId, regenerated);
           } else {
             await sayPlain(chatId, 'Regeneration started. Use /status to track progress.');
           }
@@ -258,12 +408,17 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   }
 
   const message = update.message;
-  if (!message?.text) {
+  if (!message) {
     return;
   }
 
   const chatId = String(message.chat.id);
-  const text = message.text.trim();
+  // A PDF or text file continues as if its text had been pasted.
+  const incoming = message.text ?? await readFileMessage(chatId, message);
+  if (!incoming) {
+    return;
+  }
+  const text = incoming.trim();
   const isGenerateCommand = text.startsWith('/generate');
   const generatePayload = isGenerateCommand ? text.replace(/^\/generate\b/, '').trim() : null;
 
@@ -426,8 +581,14 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   // always skip. Anything else goes on to Scout below, and the question is
   // mentioned so it is not forgotten. Users without Scout keep the old
   // behaviour (every message answers), since there is nowhere else for it.
+  // A draft the user started revising AFTER the resume question was asked
+  // owns their next short message: "add IIT Delhi" is an edit to the email,
+  // not an answer to the resume question (docs/impl/07-telegram-apply.md).
+  const draftFocusNewer = pendingSession && !isGenerateCommand
+    ? await draftFocusIsNewerThan(identity.userId, pendingSession.updatedAt)
+    : false;
   const clarificationRoute = pendingSession && !isGenerateCommand
-    ? routeClarificationReply({ text, askedAt: pendingSession.updatedAt })
+    ? (draftFocusNewer ? 'pass' : routeClarificationReply({ text, askedAt: pendingSession.updatedAt }))
     : null;
   if (pendingSession && clarificationRoute === 'cancel') {
     // Conditional, so a session that moved on meanwhile is left alone; the
@@ -467,7 +628,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
     });
 
     if (!result.success) {
-      await sayPlain(chatId, `Request failed: ${result.error ?? 'Unknown error'}${failureNextStep(result.code)}`);
+      await sayGenerationFailure(chatId, result);
       return;
     }
 
@@ -510,7 +671,7 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
   });
 
   if (!result.success) {
-    await sayPlain(chatId, `Request failed: ${result.error ?? 'Unknown error'}${failureNextStep(result.code)}`);
+    await sayGenerationFailure(chatId, result);
     return;
   }
 

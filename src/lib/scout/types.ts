@@ -165,6 +165,13 @@ export type JdData = {
     skills: string[];
     responsibilities: string[];
     applyUrl: string | null;
+    /**
+     * Addresses the posting says to apply to ("send resumes to jobs@x.com"),
+     * best first. Read from the posting text by code
+     * (`src/lib/drafts/applyEmail.ts`), never from a model. Absent on runs
+     * stored before it existed; read it through `applyEmailsOf`.
+     */
+    applyEmails?: string[];
 };
 
 // ─── fit

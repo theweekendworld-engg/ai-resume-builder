@@ -112,7 +112,9 @@ export function rolloutBucket(userId: string, key: string): number {
 
 /** Pure decision, exported for testing without a database. */
 export function decideFlag(row: FlagRow | undefined, userId: string, key: string): boolean {
-    if (!row) return false;
+    // Since launch (2026-11-07) every feature is on for everyone. A row is a
+    // kill switch, so no row means nobody turned it off.
+    if (!row) return true;
     // The allow-list wins over `enabled` — that is what makes it useful for
     // giving the team access to a feature that is off for everyone else.
     if (row.allowUserIds.includes(userId)) return true;
@@ -147,7 +149,8 @@ export async function ensureFlagsSeeded(): Promise<void> {
         FEATURE_FLAGS.map((key) =>
             prisma.featureFlag.upsert({
                 where: { key },
-                create: { key, enabled: false, description: `Career OS: ${key}` },
+                // On for everyone since launch; the row is a kill switch.
+                create: { key, enabled: true, rolloutPercent: 100, description: `Career OS: ${key}` },
                 update: {},
             }),
         ),

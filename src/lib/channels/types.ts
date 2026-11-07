@@ -34,12 +34,20 @@ export type ScoutAction =
     | { kind: 'dismiss_win'; winId: string; label: string }
     /** Tailor a resume for the run's job, from the JD Scout already stored. */
     | { kind: 'tailor'; label: string }
+    /**
+     * Revise a stored MessageDraft (Shorter / Stronger). Keyed by the DRAFT
+     * version, not the run: a draft may have no run, and each version is its
+     * own row (docs/impl/07-telegram-apply.md §3).
+     */
+    | { kind: 'revise_draft'; draftId: string; revision: DraftRevisionCode; label: string }
     /** A plain link. Telegram renders a URL button; WhatsApp puts it in the text. */
     | { kind: 'open'; label: string; url: string };
 
 /** Single-letter codes: Telegram's callback_data is capped at 64 bytes. */
 export type DraftTargetCode = 'p' | 'r' | 'h' | 'f' | 'a';
 export type DraftFormatCode = 'n' | 'm' | 'e';
+/** shorter · stronger (gutsier) */
+export type DraftRevisionCode = 's' | 'g';
 /** saved · applied · interviewing · offer · rejected · not_interested */
 export type JobStatusCode = 's' | 'a' | 'i' | 'o' | 'r' | 'n';
 

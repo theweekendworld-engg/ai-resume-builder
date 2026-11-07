@@ -112,12 +112,21 @@ export async function handleTelegramScoutText(chatId: string, userId: string, te
                 await say(chatId, routed.text);
                 return true;
             }
+            if (routed?.kind === 'rich') {
+                await sendTelegramRich(chatId, routed.message, routed.runId ?? 'none');
+                return true;
+            }
             await startTelegramScout(chatId, userId, text, routed?.kind === 'scout' && routed.company ? { company: routed.company } : undefined);
             return true;
         }
         // "hi", "thanks": the assistant answers when chat is on; a short
         // message is never recorded as a note, so a Scout route falls back to help.
         const routed = await deps.routeChannelText?.(userId, text, 'telegram');
+        if (routed?.kind === 'rich') {
+            // "shorter" while a draft is in focus: a tiny message that is an edit.
+            await sendTelegramRich(chatId, routed.message, routed.runId ?? 'none');
+            return true;
+        }
         await say(chatId, routed?.kind === 'reply' ? routed.text : TINY_HELP);
         return true;
     }

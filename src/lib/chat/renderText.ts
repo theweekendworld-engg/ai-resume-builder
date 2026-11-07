@@ -5,6 +5,13 @@
 
 import type { ChatCard } from './types';
 
+/**
+ * How to answer a resume question in a chat: the same words as the Telegram
+ * /generate flow (src/services/telegramAgent.ts), whose clarification branch
+ * reads the reply.
+ */
+export const CLARIFICATION_ANSWER_HINT = 'Answer it, or say "skip", "skip all" or "cancel".';
+
 const VERDICT: Record<string, string> = {
     strong: 'Strong fit',
     possible: 'Possible fit',
@@ -25,8 +32,13 @@ function cardLines(card: ChatCard, appUrl: string): string[] {
             return [`${card.headline || 'Working on it'}: ${base}/scout/${card.runId}`];
         case 'win_draft':
             return [`📝 ${card.title}`, card.narrative].filter(Boolean);
-        case 'generation':
-            return card.resumeId ? [`📄 Resume for ${card.title}: ${base}/editor/${card.resumeId}`] : [`📄 Resume for ${card.title}`];
+        case 'generation': {
+            const lines = [card.resumeId ? `📄 Resume for ${card.title}: ${base}/editor/${card.resumeId}` : `📄 Resume for ${card.title}`];
+            // The reply says "One question first"; without the question itself
+            // the user had nothing to answer.
+            if (card.status === 'awaiting_clarification' && card.question) lines.push(`${card.question}\n\n${CLARIFICATION_ANSWER_HINT}`);
+            return lines;
+        }
         case 'outreach':
             return [card.draft.subject ? `Subject: ${card.draft.subject}` : null, card.draft.body].filter((l): l is string => Boolean(l));
         case 'jobs':

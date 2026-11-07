@@ -77,6 +77,16 @@ async function signIn(label: string, { allow = true } = {}): Promise<string> {
     users.push(id);
     clerk.signIn(id);
     if (allow) await allowUser(id);
+    else {
+        // Flags are on for everyone since launch, and a missing row means on,
+        // so "flagged off" has to be the kill switch: a row with enabled=false.
+        await prisma.featureFlag.upsert({
+            where: { key: 'backfill' },
+            create: { key: 'backfill', enabled: false, rolloutPercent: 0, description: 'Career OS: backfill', allowUserIds: allowed },
+            update: { enabled: false },
+        });
+        invalidateFlagCache();
+    }
     return id;
 }
 
