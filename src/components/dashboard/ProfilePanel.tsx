@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { upsertUserProfile, type UserProfileDTO } from '@/actions/profile';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import { RESUME_TEMPLATE_OPTIONS, type ResumeTemplateId } from '@/types/resume';
 import { toast } from 'sonner';
 
 interface ProfilePanelProps {
@@ -102,7 +103,7 @@ export function ProfilePanel({ profile }: ProfilePanelProps) {
                 ...p,
                 preferences: {
                   ...p.preferences,
-                  defaultTemplate: value as 'ats-simple' | 'modern' | 'classic',
+                  defaultTemplate: value as ResumeTemplateId,
                 },
               }))}
             >
@@ -110,9 +111,9 @@ export function ProfilePanel({ profile }: ProfilePanelProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ats-simple">ATS Simple</SelectItem>
-                <SelectItem value="modern">Modern</SelectItem>
-                <SelectItem value="classic">Classic</SelectItem>
+                {RESUME_TEMPLATE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

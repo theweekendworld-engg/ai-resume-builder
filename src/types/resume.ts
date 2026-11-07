@@ -79,7 +79,33 @@ export interface ResumeGenerationPreferences {
  * `sectionOrder` intentionally stays on `ResumeData` (not duplicated here) — the
  * theme references it conceptually but the array of record remains on the resume.
  */
-export type ResumeTemplateId = 'ats-simple' | 'modern' | 'classic' | 'minimal';
+export const RESUME_TEMPLATE_IDS = ['compact', 'ats-simple', 'modern', 'classic', 'minimal'] as const;
+
+export type ResumeTemplateId = (typeof RESUME_TEMPLATE_IDS)[number];
+
+/**
+ * The template a resume gets when nobody chose one: a new resume, and a
+ * tailored one whose owner set no default. `compact` keeps a full resume on
+ * one page, so the page-fit loop does not have to cut bullets to get there.
+ */
+export const DEFAULT_TEMPLATE_ID: ResumeTemplateId = 'compact';
+
+/** The picker's labels, in the order the gallery and the settings list them. */
+export const RESUME_TEMPLATE_OPTIONS: ReadonlyArray<{ value: ResumeTemplateId; label: string; description: string }> = [
+    {
+        value: 'compact',
+        label: 'Compact (one page)',
+        description: 'Dense single page: tight spacing, one-line internships, stack beside each title',
+    },
+    { value: 'ats-simple', label: 'ATS Simple', description: 'Clean, ATS-friendly format with traditional layout' },
+    { value: 'modern', label: 'Modern Professional', description: 'Contemporary design with icons and accent colors' },
+    { value: 'classic', label: 'Classic', description: 'Traditional single-column resume style focused on readability' },
+    { value: 'minimal', label: 'Minimal', description: 'Whitespace-forward, no rules, generous margins' },
+];
+
+export function isResumeTemplateId(value: unknown): value is ResumeTemplateId {
+    return typeof value === 'string' && (RESUME_TEMPLATE_IDS as readonly string[]).includes(value);
+}
 
 export type ResumeFontFamily = 'sans' | 'serif' | 'mono';
 
@@ -92,12 +118,36 @@ export interface ResumeTheme {
     density: ResumeDensity; // affects margins / line spacing
 }
 
-export const DEFAULT_RESUME_THEME: ResumeTheme = {
+/**
+ * The theme every template had before `compact` existed. Anything that only
+ * knows a template id (the generation pipeline, an editor state persisted
+ * before themes) resolves the older templates against this, so their output
+ * does not change.
+ */
+export const LEGACY_RESUME_THEME: ResumeTheme = {
     templateId: 'ats-simple',
     accentColor: '#1F4E79',
     fontFamily: 'sans',
     density: 'normal',
 };
+
+/**
+ * A new resume's theme. Serif because `compact` is set in Latin Modern, like
+ * the LaTeX resume it is modelled on.
+ */
+export const DEFAULT_RESUME_THEME: ResumeTheme = {
+    templateId: DEFAULT_TEMPLATE_ID,
+    accentColor: '#1F4E79',
+    fontFamily: 'serif',
+    density: 'normal',
+};
+
+/** The theme a bare template id means, e.g. `generateLatexFromResume(data, 'modern')`. */
+export function defaultThemeFor(templateId: ResumeTemplateId): ResumeTheme {
+    return templateId === 'compact'
+        ? { ...DEFAULT_RESUME_THEME, templateId }
+        : { ...LEGACY_RESUME_THEME, templateId };
+}
 
 export const initialResumeData: ResumeData = {
     personalInfo: {

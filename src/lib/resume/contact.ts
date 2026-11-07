@@ -77,6 +77,59 @@ export function contactParts(personalInfo: {
     return parts;
 }
 
+/** "https://www.github.com/jai0651/" → "github.com/jai0651". */
+export function displayUrl(href: string): string {
+    return href
+        .trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/^www\./i, '')
+        .replace(/\/+$/, '');
+}
+
+/** A printed address longer than this reads as noise; the site's name is printed instead. */
+const MAX_PRINTED_URL = 48;
+
+/**
+ * The contact block as two lines, for the compact template and its preview:
+ * place, phone and email, then the web links printed as addresses
+ * ("github.com/jai0651"), which is what the reader of a printed page can use.
+ * An address too long to read falls back to the site's name.
+ */
+export function contactLines(personalInfo: {
+    location?: string;
+    email?: string;
+    phone?: string;
+    linkedin?: string;
+    github?: string;
+    website?: string;
+}): { details: ContactPart[]; links: ContactPart[] } {
+    const details: ContactPart[] = [];
+    if (personalInfo.location?.trim()) details.push({ label: personalInfo.location.trim() });
+    if (personalInfo.phone?.trim()) details.push({ label: personalInfo.phone.trim() });
+    if (personalInfo.email?.trim()) {
+        const email = personalInfo.email.trim();
+        details.push({ label: email, href: `mailto:${email}` });
+    }
+
+    const links: ContactPart[] = [];
+    for (const [name, raw] of [
+        ['LinkedIn', personalInfo.linkedin],
+        ['GitHub', personalInfo.github],
+        ['Portfolio', personalInfo.website],
+    ] as const) {
+        const value = raw?.trim();
+        if (!value) continue;
+        const href = normalizeUrl(value);
+        if (!href) {
+            links.push({ label: value });
+            continue;
+        }
+        const printed = displayUrl(href);
+        links.push({ label: printed && printed.length <= MAX_PRINTED_URL ? printed : name, href });
+    }
+    return { details, links };
+}
+
 export type ProjectLink = { label: string; href: string };
 
 /**

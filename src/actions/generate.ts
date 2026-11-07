@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { initialResumeData, ResumeData } from '@/types/resume';
+import { DEFAULT_TEMPLATE_ID, initialResumeData, RESUME_TEMPLATE_IDS, ResumeData, type ResumeTemplateId } from '@/types/resume';
 import { generateTailoredResume } from '@/lib/resumeAi';
 import { createResume } from '@/actions/resume';
 import { saveJobTargetToCloud } from '@/actions/jobTargets';
@@ -19,7 +19,7 @@ const GenerateInputSchema = z.object({
   linkedin: z.string().max(500).optional(),
   yearsExperience: z.string().max(50).optional(),
   parsedResume: ParsedResumeSchema.optional(),
-  template: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).default('ats-simple'),
+  template: z.enum(RESUME_TEMPLATE_IDS).default(DEFAULT_TEMPLATE_ID),
 });
 
 function createDraftResume(
@@ -103,7 +103,7 @@ function createDraftResume(
 export async function generateInitialResume(input: unknown): Promise<{
   success: boolean;
   resumeId?: string;
-  template?: 'ats-simple' | 'modern' | 'classic' | 'minimal';
+  template?: ResumeTemplateId;
   error?: string;
 }> {
   const parsed = GenerateInputSchema.safeParse(input);

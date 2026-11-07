@@ -27,7 +27,8 @@ import { fitToPages, type PageFit } from '@/lib/resume/pageFit';
 import { pageBudget } from '@/lib/resume/length';
 import { measurePdf } from '@/lib/pdfParser';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
-import type { ResumeData } from '@/types/resume';
+import type { ResumeData, ResumeTheme } from '@/types/resume';
+import { defaultThemeFor } from '@/types/resume';
 
 type RunGenerationOptions = {
   sessionId: string;
@@ -61,14 +62,21 @@ export type GenerationRunResult = {
 };
 
 /** The page budget from the user's length preference (see `pageBudget`). */
-async function pageBudgetFor(userId: string): Promise<1 | 2> {
+/**
+ * The page budget, and the template to render in, from one read of the
+ * user's preferences. The template is their Default template setting; with
+ * none stored, the setting's default, `compact`, which holds a full resume
+ * to one page instead of leaving the fit loop to cut bullets. This used to
+ * be a hardcoded 'ats-simple' that ignored the setting altogether.
+ */
+async function generationDefaultsFor(userId: string): Promise<{ maxPages: 1 | 2; template: LatexTemplateType }> {
   const profile = await prisma.userProfile.findUnique({
     where: { userId },
     select: { preferences: true, yearsExperience: true },
   });
   const preferences = parseUserGenerationPreferences(profile?.preferences);
   const years = Number((profile?.yearsExperience ?? '').match(/\d+/)?.[0] ?? 0);
-  return pageBudget(preferences.targetLength, years);
+  return { maxPages: pageBudget(preferences.targetLength, years), template: preferences.defaultTemplate };
 }
 
 function toPipelineStep(step: SmartPipelineStep): PipelineStep {
@@ -563,7 +571,6 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
   }
 
   let activeStep = session.currentStep ?? PipelineStep.reuse_check;
-  const template = options.templatePreference ?? 'ats-simple';
   const effectiveFallbackResume = options.fallbackResumeData
     ?? (session.fallbackResume as ResumeData | null)
     ?? undefined;
@@ -745,10 +752,20 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       where: { id: session.id },
       data: { currentStep: PipelineStep.pdf_generation, stepStartedAt: new Date() },
     });
-    const maxPages = await pageBudgetFor(options.userId);
+    const defaults = await generationDefaultsFor(options.userId);
+    const maxPages = defaults.maxPages;
+    const template = options.templatePreference ?? defaults.template;
+    // The template's own look, as a theme, so the fit loop can tighten its
+    // spacing once before it trims any line.
+    let theme: ResumeTheme = defaultThemeFor(template);
     const fitted = await fitToPages({
       resume: draftedResume,
-      render: (resume) => generateLatexFromResume(resume, template),
+      render: (resume) => generateLatexFromResume(resume, theme),
+      tighten: () => {
+        if (theme.density === 'compact') return false;
+        theme = { ...theme, density: 'compact' };
+        return true;
+      },
       compile: (latex) => compileLatex(latex, { userId: options.userId, sessionId: session.id }),
       measure: (pdfBase64) => measurePdf(Buffer.from(pdfBase64, 'base64'), maxPages),
       maxPages,

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME } from '@/types/resume';
+import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME, LEGACY_RESUME_THEME, defaultThemeFor } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
 import { LatexTemplateType, generateLatexFromResume, DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
 import { latexToResume } from '@/actions/ai';
@@ -191,7 +191,9 @@ export const useResumeStore = create<ResumeState>()(
             latexCode: DEFAULT_LATEX_TEMPLATE,
             atsScore: null,
             editorMode: 'visual',
-            selectedTemplate: 'ats-simple' as LatexTemplateType,
+            // A new editor state starts on the default (compact). A persisted
+            // one keeps its own template: see `merge` below.
+            selectedTemplate: DEFAULT_RESUME_THEME.templateId as LatexTemplateType,
             theme: DEFAULT_RESUME_THEME,
             isGenerating: false,
 
@@ -590,16 +592,20 @@ export const useResumeStore = create<ResumeState>()(
                 });
             },
 
-            resetResume: () => set({
-                resumeData: initialResumeData,
-                jobDescription: '',
-                githubUsername: '',
-                atsScore: null,
-                latexCode: DEFAULT_LATEX_TEMPLATE,
-                lastSyncedLatex: DEFAULT_LATEX_TEMPLATE,
-                visualDataVersion: 0,
-                latexVersion: 0,
-            }),
+            resetResume: () => {
+                // In the template the user has, not the default's.
+                const latex = generateLatexFromResume(initialResumeData, get().theme);
+                set({
+                    resumeData: initialResumeData,
+                    jobDescription: '',
+                    githubUsername: '',
+                    atsScore: null,
+                    latexCode: latex,
+                    lastSyncedLatex: latex,
+                    visualDataVersion: 0,
+                    latexVersion: 0,
+                });
+            },
 
             isUsingSampleData: () => {
                 return false;
@@ -636,17 +642,23 @@ export const useResumeStore = create<ResumeState>()(
                     if (!hydratedState.resumeData.sectionOrder) {
                         hydratedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
                     }
+                    // A state persisted before `compact` existed was made in
+                    // ats-simple (the default then) and stays there: changing
+                    // the default never changes a resume someone already has.
                     if (!hydratedState.selectedTemplate) {
                         hydratedState.selectedTemplate = 'ats-simple';
                     }
                     // Backfill the theme for users persisted before themes existed.
                     if (!hydratedState.theme) {
                         hydratedState.theme = {
-                            ...DEFAULT_RESUME_THEME,
+                            ...LEGACY_RESUME_THEME,
                             templateId: hydratedState.selectedTemplate || 'ats-simple',
                         };
                     } else {
-                        hydratedState.theme = { ...DEFAULT_RESUME_THEME, ...hydratedState.theme };
+                        hydratedState.theme = {
+                            ...defaultThemeFor(hydratedState.theme.templateId ?? 'ats-simple'),
+                            ...hydratedState.theme,
+                        };
                         // Keep the legacy mirror consistent with the persisted theme.
                         hydratedState.selectedTemplate = hydratedState.theme.templateId;
                     }

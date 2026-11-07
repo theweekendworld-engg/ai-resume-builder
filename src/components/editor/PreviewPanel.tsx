@@ -29,7 +29,7 @@ type PreviewMode = 'live' | 'pdf';
  */
 export function PreviewPanel({ latexCode, resumeData, theme }: PreviewPanelProps) {
   const [mode, setMode] = useState<PreviewMode>('live');
-  const length = useMemo(() => estimateResumeLength(resumeData), [resumeData]);
+  const length = useMemo(() => estimateResumeLength(resumeData, theme.templateId), [resumeData, theme.templateId]);
 
   return (
     <aside className="flex min-h-0 min-w-0 w-full flex-1 flex-col border-l border-border bg-card/30">

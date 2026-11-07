@@ -51,6 +51,8 @@ export type PageFit = {
     /** Compiles spent, including the first. */
     attempts: number;
     trimmed: TrimmedItem[];
+    /** Spacing was tightened (compact density) before any line was trimmed. */
+    tightened?: boolean;
 };
 
 export type CompileResult = { success: boolean; pdfBase64?: string; error?: string; pages?: number | null };
@@ -162,12 +164,19 @@ export async function fitToPages(params: {
     measure?: Measure;
     maxPages?: number;
     maxAttempts?: number;
+    /**
+     * Tried once, before any line is trimmed: tighten the layout (e.g.
+     * compact density) and return true if anything changed. A resume that
+     * runs a few lines over should lose whitespace, not a strong bullet.
+     */
+    tighten?: () => boolean;
 }): Promise<FitResult> {
     const maxPages = Math.max(1, params.maxPages ?? 1);
     const maxAttempts = Math.max(1, params.maxAttempts ?? MAX_FIT_ATTEMPTS);
     const current: ResumeData = structuredClone(params.resume);
     const trimmed: TrimmedItem[] = [];
     let attempts = 0;
+    let tightened = false;
 
     for (;;) {
         const latex = params.render(current);
@@ -184,12 +193,17 @@ export async function fitToPages(params: {
             resume: current,
             latex,
             pdfBase64: compiled.pdfBase64!,
-            fit: { status, pages, maxPages, attempts, trimmed },
+            fit: { status, pages, maxPages, attempts, trimmed, ...(tightened ? { tightened: true } : {}) },
         });
 
         if (pages === null) return done('unchecked');
         if (pages <= maxPages) return done(trimmed.length > 0 ? 'trimmed' : 'fits');
         if (attempts >= maxAttempts) return done('over');
+
+        if (!tightened && params.tighten?.()) {
+            tightened = true;
+            continue;
+        }
 
         // Trim until the estimate covers the overflow (one step when unknown),
         // so a page that runs four lines over costs one recompile, not four.

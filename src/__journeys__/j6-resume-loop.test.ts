@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { Channel, GenerationStatus, PipelineStep } from '@prisma/client';
+import { Channel, GenerationStatus, PipelineStep, Prisma } from '@prisma/client';
 
 import { mocks } from '@/__mocks__';
 import { prisma } from '@/lib/prisma';
@@ -220,6 +220,8 @@ describe('J6 — the resume loop', () => {
         expect(pdf).not.toBeNull();
         expect(pdf!.fileSizeBytes).toBeGreaterThan(0);
         expect(result.pdfUrl).toContain(pdf!.id);
+        // No Default template stored: the one-page template, not ats-simple.
+        expect(pdf!.template).toBe('compact');
 
         // ── HOP 6. The funnel can see it happened.
         //
@@ -360,15 +362,17 @@ async function tailorSession(label: string) {
 describe('J6 — one page, measured (QA 2026-11-07, finding 2)', () => {
     test('a PDF over one page is trimmed in order, recompiled, and the stored resume is the one that fits', async () => {
         scriptAtsReply();
-        // Two pages while the About line is in it, one page without.
-        const sent = installPagedLatexDouble((latex) => (latex.includes('ABOUT ME') ? 2 : 1));
+        // Two pages while the About line is in it, one page without. The
+        // heading is the template's: "Summary" in compact, "ABOUT ME" in ats-simple.
+        const sent = installPagedLatexDouble((latex) => (/\\section\*\{Summary\}|ABOUT ME/.test(latex) ? 2 : 1));
         const session = await tailorSession('fit');
 
         const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
         expect(result.status).toBe('completed');
-        expect(result.pageFit).toMatchObject({ status: 'trimmed', pages: 1, maxPages: 1, attempts: 2 });
+        // Tighter spacing is tried first (still two pages here), then the About line goes.
+        expect(result.pageFit).toMatchObject({ status: 'trimmed', pages: 1, maxPages: 1, attempts: 3, tightened: true });
         expect(result.pageFit?.trimmed.map((item) => item.kind)).toEqual(['summary']);
-        expect(sent).toHaveLength(2);
+        expect(sent).toHaveLength(3);
 
         const stored = await prisma.resume.findUniqueOrThrow({ where: { id: result.resumeId! } });
         const content = stored.content as unknown as ResumeData;
@@ -384,6 +388,26 @@ describe('J6 — one page, measured (QA 2026-11-07, finding 2)', () => {
         // The stored PDF is the second, one-page build.
         const pdf = await prisma.generatedPdf.findFirst({ where: { sessionId: session.id } });
         expect(pdf!.fileSizeBytes).toBe(pdfWithPages(1).length);
+    });
+
+    test("a stored Default template is the one the PDF is built in", async () => {
+        scriptAtsReply();
+        const sent = installPagedLatexDouble(() => 1);
+        const before = await prisma.userProfile.findUniqueOrThrow({ where: { userId: journey.userId }, select: { preferences: true } });
+        await prisma.userProfile.update({ where: { userId: journey.userId }, data: { preferences: { defaultTemplate: 'modern' } } });
+        try {
+            const session = await tailorSession('template');
+            const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
+            expect(result.status).toBe('completed');
+            expect(sent[0]).toContain('\\usepackage{fontawesome5}');
+            const pdf = await prisma.generatedPdf.findFirst({ where: { sessionId: session.id } });
+            expect(pdf!.template).toBe('modern');
+        } finally {
+            await prisma.userProfile.update({
+                where: { userId: journey.userId },
+                data: { preferences: before.preferences ?? Prisma.DbNull },
+            });
+        }
     });
 
     test('a PDF that cannot be brought to one page is stored with a status that says so, after a bounded number of builds', async () => {

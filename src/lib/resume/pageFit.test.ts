@@ -172,3 +172,45 @@ describe('fitToPages', () => {
         expect(result.fit).toMatchObject({ status: 'fits', pages: 2, maxPages: 2 });
     });
 });
+
+describe('tighten before trim', () => {
+    test('a resume a few lines over loses whitespace, not a bullet', async () => {
+        const { fitToPages } = await import('./pageFit');
+        let density: 'normal' | 'compact' = 'normal';
+        const resume = { personalInfo: {}, experience: [], projects: [], education: [], skills: [], sectionOrder: [] } as never;
+        const result = await fitToPages({
+            resume,
+            render: () => density,
+            compile: async (latex) => ({ success: true, pdfBase64: 'x', pages: latex === 'compact' ? 1 : 2 }),
+            maxPages: 1,
+            tighten: () => {
+                if (density === 'compact') return false;
+                density = 'compact';
+                return true;
+            },
+        });
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.fit.status).toBe('fits');
+        expect(result.fit.tightened).toBe(true);
+        expect(result.fit.trimmed).toHaveLength(0);
+        expect(result.fit.attempts).toBe(2);
+    });
+
+    test('tightening is tried once; trimming follows if it was not enough', async () => {
+        const { fitToPages } = await import('./pageFit');
+        let calls = 0;
+        const result = await fitToPages({
+            resume: { personalInfo: {}, experience: [], projects: [], education: [], skills: [], sectionOrder: [] } as never,
+            render: () => 'x',
+            compile: async () => ({ success: true, pdfBase64: 'x', pages: 2 }),
+            maxPages: 1,
+            tighten: () => {
+                calls += 1;
+                return true;
+            },
+        });
+        expect(calls).toBe(1);
+        expect(result.ok && result.fit.status).toBe('over');
+    });
+});

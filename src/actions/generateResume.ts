@@ -17,7 +17,7 @@ import type { CoverageReport } from '@/lib/resume/coverage';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { trackedChatCompletion } from '@/lib/usageTracker';
-import { initialResumeData, type ResumeData, type ExperienceItem, type ProjectItem } from '@/types/resume';
+import { initialResumeData, RESUME_TEMPLATE_IDS, type ResumeData, type ResumeTemplateId, type ExperienceItem, type ProjectItem } from '@/types/resume';
 import { uniqueStrings, getProjectText, getKnowledgeText } from '@/lib/textUtils';
 import { experienceRecencyScore } from '@/lib/dateUtils';
 import { preprocessJobDescription as preprocessJobDescriptionService } from '@/services/jdParser';
@@ -159,7 +159,7 @@ const SemanticClaimValidationSchema = z.object({
 });
 
 const SmartGenerateOptionsSchema = z.object({
-  templatePreference: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).optional(),
+  templatePreference: z.enum(RESUME_TEMPLATE_IDS).optional(),
   maxProjects: z.number().int().min(1).max(6).optional(),
   focusAreas: z.array(z.string().max(100)).max(20).optional(),
   fallbackResumeData: ResumeDataSchema.optional(),
@@ -527,7 +527,7 @@ function identifyThinSections(resume: ResumeData): Array<'summary' | 'experience
 export async function generateSmartResumePipeline(
   jobDescription: string,
   options?: {
-    templatePreference?: 'ats-simple' | 'modern' | 'classic';
+    templatePreference?: ResumeTemplateId;
     maxProjects?: number;
     focusAreas?: string[];
     fallbackResumeData?: ResumeData;
@@ -1209,7 +1209,7 @@ export async function generateSmartResumePipeline(
 export async function generateSmartResume(
   jobDescription: string,
   options?: {
-    templatePreference?: 'ats-simple' | 'modern' | 'classic';
+    templatePreference?: ResumeTemplateId;
     maxProjects?: number;
     focusAreas?: string[];
     fallbackResumeData?: ResumeData;

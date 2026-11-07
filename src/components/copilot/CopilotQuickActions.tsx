@@ -69,6 +69,7 @@ export function CopilotQuickActions() {
         updatePersonalInfo,
         updateSkills,
         updateExperience,
+        theme,
     } = useResumeStore();
 
     const [busy, setBusy] = useState(false);
@@ -76,7 +77,7 @@ export function CopilotQuickActions() {
     const [target, setTarget] = useState<string>('summary');
     const [ask, setAsk] = useState('');
 
-    const length = useMemo(() => estimateResumeLength(resumeData), [resumeData]);
+    const length = useMemo(() => estimateResumeLength(resumeData, theme.templateId), [resumeData, theme.templateId]);
 
     /** Where an ask can point, and what it edits. */
     const targets = [

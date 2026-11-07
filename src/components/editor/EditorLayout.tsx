@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, PanelRight, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { generateLatexFromResume, LatexTemplateType } from '@/templates/latex';
+import { generateLatexFromResume } from '@/templates/latex';
 import { compileLatex } from '@/actions/ai';
 import { loadJobTargetForResume, saveJobTargetToCloud } from '@/actions/jobTargets';
 import { loadResumeFromCloud, saveResumeToCloud } from '@/actions/resume';
@@ -31,7 +31,7 @@ import { JobMatchPanel } from '@/components/editor/tools/JobMatchPanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { DesignPanel } from '@/components/editor/tools/DesignPanel';
-import { initialResumeData, type ResumeData } from '@/types/resume';
+import { initialResumeData, isResumeTemplateId, type ResumeData } from '@/types/resume';
 import { readPendingScore, clearPendingScore } from '@/lib/pendingScore';
 import { parseResumeText } from '@/actions/parseResumeText';
 import { getScoreStashFixes } from '@/actions/onboarding';
@@ -94,8 +94,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
   useEffect(() => {
     const template = searchParams.get('template');
-    if (template && ['ats-simple', 'modern', 'classic', 'minimal'].includes(template)) {
-      setTemplateId(template as LatexTemplateType);
+    if (isResumeTemplateId(template)) {
+      setTemplateId(template);
     }
   }, [searchParams, setTemplateId]);
 
