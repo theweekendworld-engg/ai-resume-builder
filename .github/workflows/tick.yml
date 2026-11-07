@@ -29,7 +29,7 @@ jobs:
       - name: Call /api/cron/tick
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          TICK_URL: https://patronus.cv/api/cron/tick
+          TICK_URL: https://www.patronus.cv/api/cron/tick
         run: |
           if [ -z "$CRON_SECRET" ]; then
             # Not configured yet: skip instead of failing every 10 minutes
@@ -37,8 +37,13 @@ jobs:
             echo "::warning::CRON_SECRET repository secret is not set; tick skipped"
             exit 0
           fi
-          curl --silent --show-error --fail-with-body --max-time 75 \
+          # www is canonical: the apex 308-redirects, and curl would neither
+          # follow it nor count it as a failure. -w prints the status so a
+          # non-200 2xx/3xx is visible; anything but 200 fails the run.
+          code=$(curl --silent --show-error --output /tmp/tick.json --write-out '%{http_code}' --max-time 75 \
             --retry 2 --retry-delay 10 --retry-all-errors \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$TICK_URL"
-          echo
+            "$TICK_URL")
+          cat /tmp/tick.json; echo
+          echo "HTTP $code"
+          [ "$code" = "200" ]
