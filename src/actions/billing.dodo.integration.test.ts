@@ -11,7 +11,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { Tier } from '@prisma/client';
 import { installClerkMock } from '@/__mocks__/clerk';
-import { MockDodo } from '@/__mocks__/dodo';
+import { MOCK_DODO_WEBHOOK_KEY, MockDodo } from '@/__mocks__/dodo';
 import { refundDodoSubscription } from '@/lib/billing/dodoBilling';
 import { config } from '@/lib/config';
 import { __setDodoClientForTests } from '@/lib/dodo';
@@ -29,7 +29,8 @@ const DAY = 86_400_000;
 
 const ENV: Record<string, string> = {
     DODO_PAYMENTS_API_KEY: 'dodo_test_not_a_real_key',
-    DODO_PAYMENTS_WEBHOOK_KEY: 'whsec_bm90LWEtcmVhbC1rZXktbm90LWEtcmVhbC1rZXk=',
+    // Built at runtime: a literal whsec_… string trips GitHub secret scanning.
+    DODO_PAYMENTS_WEBHOOK_KEY: MOCK_DODO_WEBHOOK_KEY,
     DODO_PRODUCT_CAREER: CAREER,
     DODO_PRODUCT_SEARCH: SEARCH,
     ADMIN_USER_IDS: ADMIN,
