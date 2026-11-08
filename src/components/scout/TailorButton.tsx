@@ -69,8 +69,10 @@ export function TailorButton({ runId }: { runId: string }) {
                 const payload = JSON.parse((event as MessageEvent).data) as { resumeId?: string };
                 const done = payload.resumeId ?? resumeId;
                 setState(done ? { kind: 'done', resumeId: done } : { kind: 'error', message: 'The resume finished but could not be found.', code: null });
+                if (done) announceTailored(runId);
             } catch {
                 setState(resumeId ? { kind: 'done', resumeId } : { kind: 'error', message: 'The resume finished but could not be found.', code: null });
+                if (resumeId) announceTailored(runId);
             }
         });
         source.addEventListener('error', (event) => {
@@ -86,7 +88,7 @@ export function TailorButton({ runId }: { runId: string }) {
                 setState({ kind: 'error', message: 'Tailoring failed.', code: null });
             }
         });
-    }, []);
+    }, [runId]);
 
     const start = async () => {
         setState({ kind: 'starting' });

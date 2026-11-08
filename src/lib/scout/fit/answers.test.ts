@@ -44,7 +44,7 @@ describe('answer parsing', () => {
         expect(applyAnswer(base, 'pref.workAuth', 'maybe')).toBeNull();
     });
 
-    test('only the pay floor is a follow-up; the rest still hold the fit', () => {
-        expect([...NON_BLOCKING_QUESTIONS]).toEqual(['pref.minComp']);
+    test('pay floor and work modes are follow-ups; questions that can flip eligibility still hold the fit', () => {
+        expect([...NON_BLOCKING_QUESTIONS].sort()).toEqual(['pref.minComp', 'pref.workMode']);
     });
 });

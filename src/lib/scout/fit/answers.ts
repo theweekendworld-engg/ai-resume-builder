@@ -31,7 +31,14 @@ export function isPreferenceQuestionId(value: string): value is PreferenceQuesti
  * seeing any result was QA finding 5 (2026-11-07): the fit is shown, and the
  * question follows it. Its answer still re-runs the fit.
  */
-export const NON_BLOCKING_QUESTIONS: ReadonlySet<PreferenceQuestionId> = new Set<PreferenceQuestionId>(['pref.minComp']);
+export const NON_BLOCKING_QUESTIONS: ReadonlySet<PreferenceQuestionId> = new Set<PreferenceQuestionId>([
+    'pref.minComp',
+    // Which work modes you'd take refines one check too; a strong remote fit
+    // sat under "Needs your answer" for it (e2e QA 2026-11-08). Location,
+    // relocation, work authorization and target roles can flip eligibility or
+    // the role match, so they still hold the fit.
+    'pref.workMode',
+]);
 
 type Relocate = UserGenerationPreferences['willingToRelocate'];
 type WorkModes = UserGenerationPreferences['preferredWorkModes'];
