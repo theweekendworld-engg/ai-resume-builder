@@ -86,9 +86,34 @@ export interface ResumeGenerationPreferences {
  * `sectionOrder` intentionally stays on `ResumeData` (not duplicated here) — the
  * theme references it conceptually but the array of record remains on the resume.
  */
-export const RESUME_TEMPLATE_IDS = ['compact', 'ats-simple', 'modern', 'classic', 'minimal'] as const;
+export const RESUME_TEMPLATE_IDS = ['compact', 'executive', 'tech', 'minimal', 'ats-simple', 'modern', 'classic'] as const;
 
 export type ResumeTemplateId = (typeof RESUME_TEMPLATE_IDS)[number];
+
+/**
+ * Ids that resumes and settings saved before 2026-11-08 may hold, and the
+ * template each now renders as. `modern` printed its contact line in icon
+ * glyphs that text extraction reads as "§ GitHub ï LinkedIn"; `classic` was
+ * byte for byte the `ats-simple` output. They stay valid ids, so nothing a
+ * user saved stops rendering, and each opens in the template closest to what
+ * its name promised: Tech for Modern, Executive for Classic.
+ */
+export const LEGACY_TEMPLATE_ALIASES = { modern: 'tech', classic: 'executive' } as const satisfies Record<string, ResumeTemplateId>;
+
+/** A template the gallery lists: every id that is not a legacy alias. */
+export type CanonicalTemplateId = Exclude<ResumeTemplateId, keyof typeof LEGACY_TEMPLATE_ALIASES>;
+
+/**
+ * The template an id renders as. A legacy alias resolves to its successor;
+ * anything unrecognised (a hand-edited or corrupt state) to `ats-simple`,
+ * which is what the renderer has always fallen back to.
+ */
+export function canonicalTemplateId(id: string | null | undefined): CanonicalTemplateId {
+    if (id && Object.prototype.hasOwnProperty.call(LEGACY_TEMPLATE_ALIASES, id)) {
+        return LEGACY_TEMPLATE_ALIASES[id as keyof typeof LEGACY_TEMPLATE_ALIASES];
+    }
+    return isResumeTemplateId(id) ? (id as CanonicalTemplateId) : 'ats-simple';
+}
 
 /**
  * The template a resume gets when nobody chose one: a new resume, and a
@@ -97,17 +122,37 @@ export type ResumeTemplateId = (typeof RESUME_TEMPLATE_IDS)[number];
  */
 export const DEFAULT_TEMPLATE_ID: ResumeTemplateId = 'compact';
 
-/** The picker's labels, in the order the gallery and the settings list them. */
-export const RESUME_TEMPLATE_OPTIONS: ReadonlyArray<{ value: ResumeTemplateId; label: string; description: string }> = [
+/**
+ * The picker's labels, in the order the gallery and the settings list them.
+ * Each description says who the template suits, so the choice is about the
+ * reader rather than the look alone.
+ */
+export const RESUME_TEMPLATE_OPTIONS: ReadonlyArray<{ value: CanonicalTemplateId; label: string; description: string }> = [
     {
         value: 'compact',
-        label: 'Compact (one page)',
-        description: 'Dense single page: tight spacing, one-line internships, stack beside each title',
+        label: 'Compact',
+        description: 'The most on one page: dense serif, one-line internships. For engineers with a full page of work.',
     },
-    { value: 'ats-simple', label: 'ATS Simple', description: 'Clean, ATS-friendly format with traditional layout' },
-    { value: 'modern', label: 'Modern Professional', description: 'Contemporary design with icons and accent colors' },
-    { value: 'classic', label: 'Classic', description: 'Traditional single-column resume style focused on readability' },
-    { value: 'minimal', label: 'Minimal', description: 'Whitespace-forward, no rules, generous margins' },
+    {
+        value: 'executive',
+        label: 'Executive',
+        description: 'Refined serif, small-caps headings over hairline rules. For senior, leadership and client-facing roles.',
+    },
+    {
+        value: 'tech',
+        label: 'Tech',
+        description: 'Clean sans, one accent colour, skills in a table. For software, data and product roles.',
+    },
+    {
+        value: 'minimal',
+        label: 'Minimal',
+        description: 'Large name, quiet type, no rules or colour. For design-minded roles and focused resumes.',
+    },
+    {
+        value: 'ats-simple',
+        label: 'Simple',
+        description: 'Plain black sans with ruled headings. For strict application portals and conservative fields.',
+    },
 ];
 
 export function isResumeTemplateId(value: unknown): value is ResumeTemplateId {
@@ -126,10 +171,9 @@ export interface ResumeTheme {
 }
 
 /**
- * The theme every template had before `compact` existed. Anything that only
- * knows a template id (the generation pipeline, an editor state persisted
- * before themes) resolves the older templates against this, so their output
- * does not change.
+ * The theme every template had before `compact` existed. A state persisted
+ * before themes existed was made in ats-simple with this theme, and is
+ * backfilled with it (see the resume store's `merge`).
  */
 export const LEGACY_RESUME_THEME: ResumeTheme = {
     templateId: 'ats-simple',
@@ -149,11 +193,41 @@ export const DEFAULT_RESUME_THEME: ResumeTheme = {
     density: 'normal',
 };
 
-/** The theme a bare template id means, e.g. `generateLatexFromResume(data, 'modern')`. */
+/**
+ * Each template's own look: the face it was designed in and its accent.
+ * Every accent clears 4.5:1 on white (WCAG AA for small text), so the
+ * coloured headings and links stay readable printed in greyscale too.
+ */
+const TEMPLATE_THEMES: Record<CanonicalTemplateId, Omit<ResumeTheme, 'templateId'>> = {
+    compact: { accentColor: '#1F4E79', fontFamily: 'serif', density: 'normal' },
+    executive: { accentColor: '#1F4E79', fontFamily: 'serif', density: 'normal' },
+    tech: { accentColor: '#0F766E', fontFamily: 'sans', density: 'normal' },
+    minimal: { accentColor: '#111827', fontFamily: 'sans', density: 'normal' },
+    'ats-simple': { accentColor: LEGACY_RESUME_THEME.accentColor, fontFamily: 'sans', density: 'normal' },
+};
+
+/** The theme a bare template id means, e.g. `generateLatexFromResume(data, 'tech')`. */
 export function defaultThemeFor(templateId: ResumeTemplateId): ResumeTheme {
-    return templateId === 'compact'
-        ? { ...DEFAULT_RESUME_THEME, templateId }
-        : { ...LEGACY_RESUME_THEME, templateId };
+    return { ...TEMPLATE_THEMES[canonicalTemplateId(templateId)], templateId };
+}
+
+/**
+ * The theme after picking another template. Whatever the user set by hand
+ * (an accent or a face that differs from the old template's own) is kept;
+ * whatever was still the old template's default becomes the new one's, so
+ * picking Tech from Compact gives Tech in its sans and teal, not in
+ * Compact's serif. Density is always the user's.
+ */
+export function switchTemplate(theme: ResumeTheme, templateId: ResumeTemplateId): ResumeTheme {
+    const from = defaultThemeFor(theme.templateId);
+    const to = defaultThemeFor(templateId);
+    const accentIsDefault = theme.accentColor.trim().toLowerCase() === from.accentColor.toLowerCase();
+    return {
+        templateId,
+        accentColor: accentIsDefault ? to.accentColor : theme.accentColor,
+        fontFamily: theme.fontFamily === from.fontFamily ? to.fontFamily : theme.fontFamily,
+        density: theme.density,
+    };
 }
 
 export const initialResumeData: ResumeData = {

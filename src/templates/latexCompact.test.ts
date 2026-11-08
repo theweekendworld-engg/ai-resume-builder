@@ -167,6 +167,10 @@ describe('compact is one self-contained, well formed file', () => {
         expect(generateLatexFromResume(owner, theme({ density: 'relaxed' }))).toContain('left=0.75in');
         expect(generateLatexFromResume(owner, theme({ fontFamily: 'sans' }))).toContain('\\renewcommand{\\familydefault}{\\sfdefault}');
         expect(generateLatexFromResume(owner, theme({ fontFamily: 'mono' }))).toContain('{beramono}');
+        // Fake interword spaces garble Bera Mono after a symbol (`×←`); Latin Modern keeps them.
+        expect(generateLatexFromResume(owner, theme({ fontFamily: 'mono' }))).not.toContain('pdfinterwordspace');
+        expect(generateLatexFromResume(owner, theme({ fontFamily: 'sans' }))).toContain('\\pdfinterwordspaceon');
+        expect(latex).toContain('\\pdfinterwordspaceon');
         expect(generateLatexFromResume(owner, theme({ accentColor: '#ff0000' }))).toContain('\\definecolor{mainblue}{RGB}{255, 0, 0}');
         for (const variant of [tight, generateLatexFromResume(owner, theme({ fontFamily: 'mono', density: 'relaxed' }))]) {
             expect(latexProblems(variant)).toEqual([]);
@@ -228,23 +232,24 @@ describe('compact is the default where nobody chose', () => {
     });
 
     test('the picker lists it first, with all the others', () => {
-        expect(TEMPLATE_OPTIONS[0]).toMatchObject({ value: 'compact', label: 'Compact (one page)' });
-        expect(TEMPLATE_OPTIONS.map((option) => option.value).sort()).toEqual(['ats-simple', 'classic', 'compact', 'minimal', 'modern']);
+        expect(TEMPLATE_OPTIONS[0]).toMatchObject({ value: 'compact', label: 'Compact' });
+        expect(TEMPLATE_OPTIONS.map((option) => option.value)).toEqual(['compact', 'executive', 'tech', 'minimal', 'ats-simple']);
     });
 
     test('the Default template setting: compact when unset, a stored choice kept', () => {
         expect(parseUserGenerationPreferences({}).defaultTemplate).toBe('compact');
         expect(parseUserGenerationPreferences(null).defaultTemplate).toBe('compact');
         expect(parseUserGenerationPreferences({ defaultTemplate: 'ats-simple' }).defaultTemplate).toBe('ats-simple');
+        expect(parseUserGenerationPreferences({ defaultTemplate: 'tech', targetLength: '1-page' }).defaultTemplate).toBe('tech');
+        // A retired id someone saved is still a valid setting; it renders as its successor.
         expect(parseUserGenerationPreferences({ defaultTemplate: 'modern', targetLength: '1-page' }).defaultTemplate).toBe('modern');
     });
 
-    test('an older template asked for by id renders exactly as before: same font, same theme', () => {
+    test('ats-simple asked for by id keeps its theme and its face', () => {
         expect(defaultThemeFor('ats-simple')).toEqual({ templateId: 'ats-simple', accentColor: '#1F4E79', fontFamily: 'sans', density: 'normal' });
         const ats = generateLatexFromResume(owner, 'ats-simple');
         expect(ats).toContain('\\usepackage[default]{lato}');
-        expect(ats).toContain('\\section*{WORK EXPERIENCE}');
-        expect(generateLatexFromResume(owner, 'modern')).toContain('{lato}');
+        expect(ats).toContain('\\section*{Experience}');
     });
 });
 
@@ -258,5 +263,15 @@ describe('the structure checker catches what it is there to catch', () => {
         expect(latexProblems(wrap('\\begin{itemize} x'))).not.toEqual([]);
         expect(latexProblems(wrap('\\input{/etc/passwd}'))).not.toEqual([]);
         expect(latexProblems(wrap('$x'))).not.toEqual([]);
+    });
+
+    test('a template macro with an argument too many or too few', () => {
+        expect(latexProblems(wrap('\\resumeEntry{a}{b}\n  {c}{d}'))).toEqual([]);
+        // A field holding "}{" shifts every argument after it.
+        expect(latexProblems(wrap('\\resumeEntry{a}{b}{c}{d}{e}'))).not.toEqual([]);
+        expect(latexProblems(wrap('\\resumeLine{a}'))).not.toEqual([]);
+        expect(latexProblems(wrap('\\resumeSkillLine{a \\{ b}'))).toEqual([]);
+        // Similar names are other macros.
+        expect(latexProblems(wrap('\\resumeShortRolesStart \\resumeShortRole{a}{b} \\resumeShortRolesEnd'))).toEqual([]);
     });
 });

@@ -17,7 +17,7 @@ import {
 } from '@/actions/education';
 import { upsertUserProfile, updateUserPreferences, type UserProfileDTO } from '@/actions/profile';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
-import { RESUME_TEMPLATE_OPTIONS, type ResumeTemplateId } from '@/types/resume';
+import { RESUME_TEMPLATE_OPTIONS, canonicalTemplateId, type ResumeTemplateId } from '@/types/resume';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -323,7 +323,8 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Default template</Label>
-                  <Select value={preferences.defaultTemplate} onValueChange={(v) => setPreferences((p) => ({ ...p, defaultTemplate: v as ResumeTemplateId }))}>
+                  {/* A retired id (`modern`, `classic`) shows as the template it renders as. */}
+                  <Select value={canonicalTemplateId(preferences.defaultTemplate)} onValueChange={(v) => setPreferences((p) => ({ ...p, defaultTemplate: v as ResumeTemplateId }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {RESUME_TEMPLATE_OPTIONS.map((option) => (
