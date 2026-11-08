@@ -51,6 +51,9 @@ describe('isBaselineRequirement', () => {
         'Familiarity with Agile/Scrum methodologies',
         'Working knowledge of Linux and the command line',
         'Git',
+        'Understanding of object-oriented programming',
+        'Understanding of programming fundamentals',
+        'Strong knowledge of data structures and algorithms',
     ])('"%s" is baseline tooling, not a gap', (text) => expect(isBaselineRequirement(text)).toBe(true));
 
     test.each([
@@ -58,5 +61,6 @@ describe('isBaselineRequirement', () => {
         'Strong background in PHP',
         'Experience with Git and Kafka',
         '5+ years of backend development',
+        'Object-oriented programming in C++ for embedded systems',
     ])('"%s" stays a real requirement', (text) => expect(isBaselineRequirement(text)).toBe(false));
 });

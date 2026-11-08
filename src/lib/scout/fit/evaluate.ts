@@ -897,6 +897,17 @@ function coverageSentence(coverage: Coverage): string {
     return `Your record shows evidence for ${coverage.mustCovered} of ${coverage.mustTotal} must-have requirements.`;
 }
 
+/**
+ * The preference conflict that pulled the verdict down, said in the summary.
+ * "Evidence for 12 of 13 must-haves" next to "Stretch" read as a
+ * contradiction when the real reason was a move to Kuala Lumpur (e2e QA
+ * 2026-11-08).
+ */
+function conflictSentence(fit: Omit<FitData, 'summary'>): string {
+    const conflict = fit.preferenceChecks.find((check) => check.status === 'conflict');
+    return conflict ? ` What holds it back: ${conflict.detail.replace(/\.$/, '')}.` : '';
+}
+
 /** The summary when the model is unavailable, or disagreed with the numbers. */
 export function deterministicSummary(fit: Omit<FitData, 'summary'>, jd: JdData, coverage: Coverage): string {
     const role = jd.company ? `${jd.role} at ${jd.company}` : jd.role;
@@ -905,9 +916,9 @@ export function deterministicSummary(fit: Omit<FitData, 'summary'>, jd: JdData, 
         case 'strong':
             return `${role} looks like a strong fit. ${cover}`.trim();
         case 'possible':
-            return `${role} is a possible fit. ${cover}`.trim();
+            return `${role} is a possible fit. ${cover}${conflictSentence(fit)}`.trim();
         case 'stretch':
-            return `${role} is a stretch. ${cover}`.trim();
+            return `${role} is a stretch. ${cover}${conflictSentence(fit)}`.trim();
         case 'not_a_fit': {
             const reason = fit.notFitReasons[0]?.replace(/\.$/, '') ?? 'see the reasons below';
             return `${role} does not look like a fit: ${reason}.`;

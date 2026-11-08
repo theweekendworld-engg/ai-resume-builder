@@ -470,7 +470,44 @@ async function ownedRun(userId: string, runId: string): Promise<AgentRunRow | nu
 
 export async function getScoutRun(userId: string, runId: string): Promise<Result<ScoutRunView>> {
     const run = await ownedRun(userId, runId);
-    return run ? ok(toRunView(run)) : err('Not found', 'not_found');
+    return run ? ok(await withFreshConnections(userId, toRunView(run))) : err('Not found', 'not_found');
+}
+
+/**
+ * The people a job names are worked out when Scout runs, so connections
+ * imported afterwards never showed up on jobs already analysed (e2e QA
+ * 2026-11-08: "No one to name yet" until a manual Refresh). First-degree
+ * matches are a database read, no web calls, so they are redone on every
+ * read and merged ahead of everything else the run found.
+ */
+async function withFreshConnections(userId: string, view: ScoutRunView): Promise<ScoutRunView> {
+    const network = view.sections.network;
+    const jd = view.sections.jd;
+    if (!network || network.status !== 'ok' || !jd || jd.status !== 'ok') return view;
+    const { company, role } = jd.data as { company?: string | null; role?: string | null };
+    if (!company) return view;
+    try {
+        if ((await prisma.contact.count({ where: { userId } })) === 0) return view;
+        const { findPeople } = await import('@/lib/scout/sections/network');
+        const fresh = await findPeople({ userId, company, role: role ?? '', web: null });
+        const firstDegree = fresh.targets.filter((target) => target.tier === 'first_degree');
+        const stored = network.data as { targets: typeof fresh.targets };
+        const known = new Set(stored.targets.map((target) => target.contactId).filter(Boolean));
+        if (firstDegree.every((target) => known.has(target.contactId))) return view;
+        const poster = stored.targets.filter((target) => target.tier === 'poster');
+        const rest = stored.targets.filter((target) => target.tier !== 'poster' && target.tier !== 'first_degree');
+        return {
+            ...view,
+            sections: {
+                ...view.sections,
+                network: { ...network, data: { ...stored, targets: [...poster, ...firstDegree, ...rest] } },
+            },
+        } as ScoutRunView;
+    } catch (error) {
+        // The stored people still show; a fresh look is a bonus.
+        console.warn('[scout] fresh connections lookup failed', { error: error instanceof Error ? error.message : String(error) });
+        return view;
+    }
 }
 
 export async function listScoutRuns(userId: string, limit = 30): Promise<ScoutRunSummary[]> {

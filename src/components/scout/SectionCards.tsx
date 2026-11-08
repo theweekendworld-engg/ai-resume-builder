@@ -488,6 +488,19 @@ const TIER_LABEL: Record<NetworkTier, string> = {
     found: 'Found by search',
 };
 
+/**
+ * `why` is written to stand alone (alerts, emails), so it repeats what this
+ * card already shows above it: "1st-degree connection · 1st-degree ·
+ * Engineering Manager at Sarvam Labs · …" (e2e QA 2026-11-08). Drop the
+ * tier word and the role line here; keep the rest.
+ */
+function cardWhy(target: { why: string | null; position: string | null; company: string | null }): string {
+    let why = (target.why ?? '').replace(/^1st-degree\s*·\s*/i, '');
+    const role = target.position ? `${target.position} at ${target.company ?? ''}`.trim() : target.company ? `At ${target.company}` : '';
+    if (role && why.startsWith(role)) why = why.slice(role.length).replace(/^\s*·\s*/, '');
+    return why.trim();
+}
+
 /** Which draft a person gets. The poster is asked directly; a connection is asked for a referral. */
 const TIER_TARGET: Record<NetworkTier, DraftTarget> = {
     poster: 'poster',
@@ -585,7 +598,7 @@ function TargetRow({
                 </p>
                 <p className={cn(typeStyles.caption, 'mt-1 text-muted-foreground')}>
                     {TIER_LABEL[target.tier]}
-                    {target.why ? ` · ${target.why}` : ''}
+                    {cardWhy(target) ? ` · ${cardWhy(target)}` : ''}
                 </p>
                 {target.citation ? (
                     <p className={cn(typeStyles.caption, 'mt-0.5 text-muted-foreground')}>
