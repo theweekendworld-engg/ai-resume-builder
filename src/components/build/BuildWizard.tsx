@@ -30,6 +30,7 @@ function isLimitNotice(message: string): boolean {
   return /\b(this month's limit|limit for AI features|on free|career continues|search continues|upgrade|your plan|plan limit|continues them)\b/i.test(message);
 }
 import { toast } from 'sonner';
+import { rememberedNote } from '@/lib/memory/format';
 
 type StreamDetails = {
   requiredSkills?: number;
@@ -373,6 +374,10 @@ export function BuildWizard() {
         channel: 'web' as const,
         message: trimmed,
       });
+
+      // Questions answered from long-term memory: say what was used.
+      const recalled = result.success ? rememberedNote(result.remembered) : null;
+      if (recalled) toast.info(recalled, { duration: 12_000 });
 
       if (!result.success) {
         setStatus('failed');

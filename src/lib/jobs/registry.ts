@@ -26,6 +26,7 @@ import { weeklyDigestHandler } from './handlers/weeklyDigest';
 import { reconcileGraphHandler } from './handlers/reconcileGraph';
 import { journeyDailyHandler } from './handlers/journeyDaily';
 import { jobWatchHandler } from './handlers/jobWatch';
+import { memoryConsolidateHandler } from './handlers/memoryConsolidate';
 
 let registered = false;
 
@@ -50,6 +51,7 @@ export function registerAllHandlers(): JobKind[] {
     registerHandler('reconcile_qdrant', reconcileGraphHandler);
     registerHandler('journey_daily', journeyDailyHandler);
     registerHandler('job_watch', jobWatchHandler);
+    registerHandler('memory_consolidate', memoryConsolidateHandler);
     // `email_send` stays deliberately unregistered — mail is sent inline by
     // the handler that composes it, and registry.test.ts asserts the absence.
 

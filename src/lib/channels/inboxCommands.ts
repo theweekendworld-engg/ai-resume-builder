@@ -1,5 +1,5 @@
 /**
- * The career inbox from chat: /jobs /applied /insights /notes /help.
+ * The career inbox from chat: /jobs /applied /insights /notes /memory /help.
  *
  * Channel-neutral: each command renders a `RichMessage`, and Telegram or
  * WhatsApp formats it. WhatsApp has no slash commands, so the same words work
@@ -14,8 +14,9 @@ import type { Line, RichMessage, ScoutAction } from '@/lib/channels/types';
 import type { ScoutChannelDeps } from '@/lib/channels/scoutDeps';
 import type { InsightItem, JobBoardItem, NoteItem } from '@/lib/inbox/types';
 import type { FitVerdict } from '@/lib/scout/types';
+import { shortDate } from '@/lib/memory/format';
 
-export const INBOX_COMMANDS = ['jobs', 'applied', 'insights', 'notes', 'help'] as const;
+export const INBOX_COMMANDS = ['jobs', 'applied', 'insights', 'notes', 'memory', 'help'] as const;
 export type InboxCommand = (typeof INBOX_COMMANDS)[number];
 
 /** How many rows a list shows. A chat is not a spreadsheet. */
@@ -169,6 +170,55 @@ export function renderNotes(items: NoteItem[], appUrl: string): RichMessage {
     return { lines, footer: inboxFooter(appUrl, '/log'), actions };
 }
 
+/** What `/memory` needs of a memory. `MemoryView` satisfies it. */
+export type MemoryListItem = {
+    label: string;
+    key: string;
+    text: string;
+    sensitivity: 'shareable' | 'private';
+    createdAt: string;
+};
+
+/** Lines a chat shows of long-term memory. The rest is on the settings page. */
+export const MEMORY_LIST_LIMIT = 15;
+
+/**
+ * `/memory`: what Patronus remembers the user told it, most used first, so
+ * they can see why a question was not asked, and where to change it.
+ */
+export function renderMemory(items: MemoryListItem[], appUrl: string): RichMessage {
+    const settings = `${base(appUrl)}/settings/memory`;
+    const footer: Line = [{ text: 'Edit or delete any of these: ' }, { text: settings, href: settings }];
+    if (items.length === 0) {
+        return {
+            lines: [
+                heading('Nothing remembered yet'),
+                [{ text: 'When you answer a question about your experience or what you are looking for, I keep your answer here, so I never ask it twice.' }],
+            ],
+            footer,
+            actions: [],
+        };
+    }
+    const lines: Line[] = [heading('What I remember you told me'), []];
+    for (const item of items.slice(0, MEMORY_LIST_LIMIT)) {
+        const topic = item.label?.trim() || item.key;
+        const date = shortDate(item.createdAt);
+        lines.push([
+            { text: item.sensitivity === 'private' ? '🔒 ' : '• ' },
+            { text: topic, bold: true },
+            { text: `: ${item.text}` },
+            ...(date ? [{ text: ` · ${date}`, italic: true }] : []),
+        ]);
+    }
+    if (items.length > MEMORY_LIST_LIMIT) {
+        lines.push([], [{ text: `And ${items.length - MEMORY_LIST_LIMIT} more on the settings page.`, italic: true }]);
+    }
+    if (items.some((item) => item.sensitivity === 'private')) {
+        lines.push([], [{ text: '🔒 private: used to answer you, never put in a resume or message.', italic: true }]);
+    }
+    return { lines, footer, actions: [] };
+}
+
 export function renderHelp(appUrl: string, opts: { bare: boolean }): RichMessage {
     const cmd = (name: string) => (opts.bare ? name : `/${name}`);
     return {
@@ -183,6 +233,7 @@ export function renderHelp(appUrl: string, opts: { bare: boolean }): RichMessage
             [{ text: `${cmd('applied')}: what you have applied to and where it stands` }],
             [{ text: `${cmd('insights')}: your saved insights` }],
             [{ text: `${cmd('notes')}: your notes and drafts` }],
+            [{ text: `${cmd('memory')}: what I remember you told me` }],
             [],
             heading('Resumes and your account'),
             // WhatsApp is Scout-only: no resume bot there, so no /generate.
@@ -198,7 +249,7 @@ export function renderHelp(appUrl: string, opts: { bare: boolean }): RichMessage
 export async function renderInboxCommand(
     command: InboxCommand,
     userId: string,
-    deps: Pick<ScoutChannelDeps, 'topFits' | 'listJobBoard' | 'listInsights' | 'listChatNotes'>,
+    deps: Pick<ScoutChannelDeps, 'topFits' | 'listJobBoard' | 'listInsights' | 'listChatNotes' | 'listMemories'>,
     appUrl: string,
     opts: { bare: boolean },
 ): Promise<RichMessage> {
@@ -211,6 +262,10 @@ export async function renderInboxCommand(
             return renderInsights(await deps.listInsights(userId, { limit: 5 }), appUrl);
         case 'notes':
             return renderNotes(await deps.listChatNotes(userId, { limit: LIST_LIMIT }), appUrl);
+        case 'memory': {
+            const list = deps.listMemories ?? (await import('@/services/memory')).listMemories;
+            return renderMemory(await list(userId), appUrl);
+        }
         case 'help':
             return renderHelp(appUrl, opts);
     }

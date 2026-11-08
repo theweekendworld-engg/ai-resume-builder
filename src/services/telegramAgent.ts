@@ -13,6 +13,7 @@ import {
   welcomeBackText,
 } from '@/lib/channels/linkCopy';
 import { processChannelGenerate } from '@/services/channelGenerate';
+import { rememberedNote } from '@/lib/memory/format';
 import { config } from '@/lib/config';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
@@ -476,8 +477,8 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
     return;
   }
 
-  if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|help|unlink)\b/.test(text)) {
-    await sayPlain(chatId, 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat');
+  if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|memory|help|unlink)\b/.test(text)) {
+    await sayPlain(chatId, 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/memory - What I remember you told me\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat');
     return;
   }
 
@@ -677,14 +678,17 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
     return;
   }
 
+  // Long-term memory answered some questions: say what was used (docs/impl/08-memory.md).
+  const recalled = rememberedNote(result.remembered);
+  const recalledPrefix = recalled ? `${recalled}\n\n` : '';
   if (result.status === 'awaiting_clarification') {
     const question = result.nextQuestion?.question ?? result.questions?.[0]?.question;
     const total = result.questions?.length ?? 0;
     await sayPlain(chatId, question
-        ? `Before I write it, ${questionsIntro(total)}\n\n${total > 1 ? `Question 1 of ${total}: ` : ''}${question}\n\n${CLARIFICATION_REPLY_HINT}`
+        ? `${recalledPrefix}Before I write it, ${questionsIntro(total)}\n\n${total > 1 ? `Question 1 of ${total}: ` : ''}${question}\n\n${CLARIFICATION_REPLY_HINT}`
         : 'I need clarification. Please answer the next question to continue.');
     return;
   }
 
-  await sayPlain(chatId, 'Generation started. Use /status for live progress.');
+  await sayPlain(chatId, `${recalledPrefix}Generation started. Use /status for live progress.`);
 }

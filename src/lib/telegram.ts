@@ -333,6 +333,7 @@ const BOT_COMMANDS = [
   { command: 'applied', description: 'Jobs you applied to, and where each stands' },
   { command: 'insights', description: 'Your saved insights from posts' },
   { command: 'notes', description: 'Your Work Log notes and drafts' },
+  { command: 'memory', description: 'What I remember you told me (edit it in Settings → Memory)' },
   { command: 'help', description: 'Everything you can send me' },
   { command: 'generate', description: 'Start with: /generate <job description>' },
   { command: 'status', description: 'Show your latest resume generation status (linked account required)' },

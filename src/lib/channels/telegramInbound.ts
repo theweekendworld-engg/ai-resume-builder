@@ -210,7 +210,7 @@ export async function handleTelegramScoutCommand(chatId: string, userId: string,
 /** `/jobs`, `/applied`, `/insights`, `/notes`, `/help` for a linked user. */
 export async function handleTelegramInboxCommand(chatId: string, userId: string, command: InboxCommand): Promise<void> {
     const deps = await scoutChannelDeps();
-    if (command !== 'help' && !(await deps.isScoutEnabled(userId))) {
+    if (command !== 'help' && command !== 'memory' && !(await deps.isScoutEnabled(userId))) {
         await say(chatId, 'Your career inbox is not available on your account yet.');
         return;
     }

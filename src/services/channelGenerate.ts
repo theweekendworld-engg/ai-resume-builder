@@ -16,9 +16,15 @@ import { z } from 'zod';
 import { parseJobDescription } from '@/actions/generateResume';
 import { gateMeteredAction, isEntitlementError, refundMeteredAction } from '@/lib/entitlements';
 import { enqueueGenerationSession } from '@/lib/generationQueue';
+import { externalRetrievalFilter } from '@/lib/graph/visibility';
+import { isDeclineAnswer } from '@/lib/channels/clarification';
+import { memoryTextFromAnswer, type RememberedAnswer } from '@/lib/memory/format';
+import { normalizeForMatch, recordEvidences, skillKey } from '@/lib/memory/topics';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
+import { track } from '@/lib/track';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import { markMemoriesUsed, recallForSkills, remember } from '@/services/memory';
 import type { ResumeData } from '@/types/resume';
 
 type ClarificationQuestion = {
@@ -31,6 +37,12 @@ type ClarificationPayload = {
   questions: ClarificationQuestion[];
   answers: Record<string, string>;
   gaps: string[];
+  /**
+   * Gaps the user already answered on an earlier day: their long-term memory
+   * (docs/impl/08-memory.md) is used as the answer instead of asking again.
+   * Joins the model's context exactly like an answer typed now.
+   */
+  remembered?: RememberedAnswer[];
   /**
    * The unit is waived for this session (a regeneration of a recent one).
    * Carried here because the charge happens when generation STARTS, which for
@@ -118,6 +130,11 @@ export type ChannelGenerateResponse = {
   status?: 'awaiting_clarification' | 'generating' | 'completed';
   questions?: ClarificationQuestion[];
   nextQuestion?: ClarificationQuestion;
+  /**
+   * Questions NOT asked because the user answered them before. Every surface
+   * says so ("Used what you told me on Nov 8: …", `rememberedNote`).
+   */
+  remembered?: RememberedAnswer[];
   resume?: ResumeData;
   resumeId?: string;
   atsEstimate?: number;
@@ -132,30 +149,106 @@ export type ChannelGenerateResponse = {
   code?: string;
 };
 
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
-}
+/** Gaps kept per session; questions are capped separately by `maxQuestions`. */
+export const MAX_GAPS = 5;
 
-function detectGaps(params: {
+/**
+ * Required skills the record does not already evidence, one per topic.
+ *
+ * "Evidence" is the user's own record: experiences, projects, knowledge,
+ * confirmed shareable Wins (the lines the resume itself may use), and the
+ * resume being tailored. Aliases count ("Anthropic models" answers "Claude",
+ * src/lib/memory/topics.ts), and two spellings of one skill are one gap.
+ */
+export function detectGaps(params: {
   requiredSkills: string[];
   contextText: string;
 }): string[] {
-  const contextText = normalizeText(params.contextText);
-
-  const missingSkills = params.requiredSkills
-    .map((skill) => skill.trim())
-    .filter(Boolean)
-    .filter((skill) => !contextText.includes(normalizeText(skill)));
-
-  return [...new Set(missingSkills)].slice(0, 5);
+  const record = normalizeForMatch(params.contextText);
+  const seen = new Set<string>();
+  const gaps: string[] = [];
+  for (const raw of params.requiredSkills) {
+    const skill = raw.trim();
+    if (!skill) continue;
+    const topic = skillKey(skill) ?? normalizeForMatch(skill);
+    if (seen.has(topic)) continue;
+    seen.add(topic);
+    if (recordEvidences(skill, record)) continue;
+    gaps.push(skill);
+  }
+  return gaps.slice(0, MAX_GAPS);
 }
 
 function buildQuestions(gaps: string[], maxQuestions: number): ClarificationQuestion[] {
   return gaps.slice(0, maxQuestions).map((gap, index) => ({
     id: `q${index + 1}`,
     gap,
-    question: `Do you have hands-on experience with ${gap}? Share one concrete project, impact, or metric we can safely include.`,
+    question: `Do you have hands-on experience with ${gap}? Share one concrete project, impact, or metric we can safely include. I will remember your answer, so I won't ask again.`,
   }));
+}
+
+function readRemembered(value: unknown): RememberedAnswer[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const r = entry as Record<string, unknown>;
+    if (typeof r.gap !== 'string' || typeof r.text !== 'string' || typeof r.memoryId !== 'string') return [];
+    return [{
+      gap: r.gap,
+      key: typeof r.key === 'string' ? r.key : '',
+      memoryId: r.memoryId,
+      text: r.text,
+      savedAt: typeof r.savedAt === 'string' ? r.savedAt : '',
+    }];
+  });
+}
+
+/**
+ * Gaps the user already answered on an earlier day. Memory is a convenience:
+ * if it cannot be read, the question is simply asked, as before.
+ */
+async function rememberedAnswersFor(userId: string, gaps: string[]): Promise<RememberedAnswer[]> {
+  try {
+    const recalled = await recallForSkills(userId, gaps);
+    return gaps.flatMap((gap) => {
+      const memory = recalled.get(gap);
+      return memory
+        ? [{ gap, key: memory.key, memoryId: memory.id, text: memory.text, savedAt: memory.createdAt }]
+        : [];
+    });
+  } catch (error: unknown) {
+    console.warn('[channelGenerate] memory recall failed; asking instead', { userId, error: String(error) });
+    return [];
+  }
+}
+
+/**
+ * An answer to "Do you have hands-on experience with X?" becomes the memory
+ * for X, so the next posting that asks about X does not. A decline ("no",
+ * "not yet") is not remembered: that is a skip. Never throws: the answer is
+ * already saved on the session, and memory is a convenience on top.
+ */
+async function rememberClarificationAnswer(params: {
+  userId: string;
+  sessionId: string;
+  question: ClarificationQuestion;
+  answer: string;
+}): Promise<void> {
+  const key = skillKey(params.question.gap);
+  const text = memoryTextFromAnswer(params.answer);
+  if (!key || !text || isDeclineAnswer(params.answer)) return;
+  try {
+    const saved = await remember(params.userId, {
+      key,
+      label: params.question.gap.slice(0, 80),
+      text,
+      source: 'clarification_answer',
+      sourceRef: `generation:${params.sessionId}:${params.question.id}`,
+    });
+    if (saved) await track(params.userId, 'memory_saved', { key, source: 'clarification_answer' });
+  } catch (error: unknown) {
+    console.warn('[channelGenerate] could not remember the answer', { userId: params.userId, error: String(error) });
+  }
 }
 
 function readClarificationPayload(value: Prisma.JsonValue | null): ClarificationPayload {
@@ -190,19 +283,40 @@ function readClarificationPayload(value: Prisma.JsonValue | null): Clarification
   const gaps = Array.isArray(obj.gaps)
     ? obj.gaps.filter((value): value is string => typeof value === 'string')
     : [];
+  const remembered = readRemembered(obj.remembered);
 
   const chain = chainLinkOf(value);
-  return { questions, answers, gaps, ...(obj.free === true ? { free: true } : {}), ...(chain ? { chain } : {}) };
+  return {
+    questions,
+    answers,
+    gaps,
+    ...(remembered.length > 0 ? { remembered } : {}),
+    ...(obj.free === true ? { free: true } : {}),
+    ...(chain ? { chain } : {}),
+  };
 }
 
+/**
+ * The answers as the model reads them. A remembered answer is listed exactly
+ * like one typed today: user-stated input under the same numeric guard, never
+ * evidence and never a confirmed Win.
+ */
 function buildClarificationContext(payload: ClarificationPayload): string {
-  const lines = payload.questions
+  const byMemory = new Map<string, { gaps: string[]; text: string }>();
+  for (const entry of payload.remembered ?? []) {
+    const seen = byMemory.get(entry.memoryId);
+    if (seen) seen.gaps.push(entry.gap);
+    else byMemory.set(entry.memoryId, { gaps: [entry.gap], text: entry.text });
+  }
+  const recalled = [...byMemory.values()].map((entry) => `- Gap: ${entry.gaps.join('; ')}\n  Answer: ${entry.text}`);
+  const typed = payload.questions
     .map((question) => {
       const answer = payload.answers[question.id]?.trim();
       if (!answer) return '';
       return `- Gap: ${question.gap}\n  Answer: ${answer}`;
     })
     .filter(Boolean);
+  const lines = [...recalled, ...typed];
 
   if (lines.length === 0) return '';
 
@@ -229,7 +343,7 @@ async function buildGenerationContextText(params: {
   userId: string;
   fallbackResumeData?: ResumeData;
 }): Promise<{ contextText: string; autoGenerate: boolean }> {
-  const [profile, experiences, projects, knowledge] = await Promise.all([
+  const [profile, experiences, projects, knowledge, wins] = await Promise.all([
     prisma.userProfile.findUnique({
       where: { userId: params.userId },
       select: {
@@ -271,6 +385,14 @@ async function buildGenerationContextText(params: {
       take: 8,
       orderBy: { updatedAt: 'desc' },
     }),
+    // Confirmed, shareable Wins: the Work Log lines a resume may use (rule 3,
+    // filtered in the query). A skill evidenced there is not a gap.
+    prisma.win.findMany({
+      where: externalRetrievalFilter(params.userId),
+      select: { title: true, narrative: true, skills: true },
+      take: 40,
+      orderBy: { occurredAt: 'desc' },
+    }),
   ]);
 
   const preferences = parseUserGenerationPreferences(profile?.preferences);
@@ -284,6 +406,9 @@ async function buildGenerationContextText(params: {
   const knowledgeText = knowledge
     .map((item) => `${item.title}\n${item.content}`)
     .join('\n');
+  const winText = wins
+    .map((win) => `${win.title}\n${win.narrative}\n${Array.isArray(win.skills) ? (win.skills as unknown[]).filter((skill) => typeof skill === 'string').join(', ') : ''}`)
+    .join('\n');
   const profileText = JSON.stringify({
     fullName: profile?.fullName ?? '',
     email: profile?.email ?? '',
@@ -292,7 +417,7 @@ async function buildGenerationContextText(params: {
   });
 
   return {
-    contextText: [fallbackText, profileText, experienceText, projectText, knowledgeText].join('\n'),
+    contextText: [fallbackText, profileText, experienceText, projectText, knowledgeText, winText].join('\n'),
     autoGenerate: preferences.autoGenerate,
   };
 }
@@ -469,14 +594,28 @@ async function startNewSession(params: {
     }),
   ]);
 
+  // Ask only what is unknown: the record answers some gaps (`detectGaps`),
+  // long-term memory answers others, and only the rest become questions.
+  // The question cap applies to what is actually asked.
   const gaps = detectGaps({
     requiredSkills: parsedJD.requiredSkills,
     contextText: context.contextText,
   });
+  const remembered = await rememberedAnswersFor(params.userId, gaps);
+  const answeredByMemory = new Set(remembered.map((entry) => entry.gap));
+  const unknown = gaps.filter((gap) => !answeredByMemory.has(gap));
 
   const questions = context.autoGenerate
     ? []
-    : buildQuestions(gaps, params.maxQuestions);
+    : buildQuestions(unknown, params.maxQuestions);
+
+  const payload: ClarificationPayload = {
+    questions,
+    answers: {},
+    gaps,
+    ...(remembered.length > 0 ? { remembered } : {}),
+    ...(params.free ? { free: true } : {}),
+  };
 
   const session = await prisma.generationSession.create({
     data: {
@@ -484,24 +623,31 @@ async function startNewSession(params: {
       sourceResumeId: params.sourceResumeId,
       workspaceId,
       channel: params.channel,
-      jobDescription: params.message,
+      // With nothing left to ask, the remembered answers join the posting
+      // now, exactly where `continueSession` puts answers typed today.
+      jobDescription: questions.length === 0
+        ? `${params.message}${buildClarificationContext(payload)}`
+        : params.message,
       parsedJD: parsedJD as Prisma.InputJsonValue,
       fallbackResume: params.fallbackResumeData
         ? params.fallbackResumeData as unknown as Prisma.InputJsonValue
         : undefined,
       clarifications: {
-        questions,
-        answers: {},
-        gaps,
-        ...(params.free ? { free: true } : {}),
+        ...payload,
         ...(params.chain ? { chain: params.chain } : {}),
-      } as Prisma.InputJsonValue,
+      } as unknown as Prisma.InputJsonValue,
       currentStep: PipelineStep.reuse_check,
       stepStartedAt: new Date(),
       status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.generating,
     },
     select: { id: true },
   });
+
+  if (remembered.length > 0) {
+    await markMemoriesUsed(params.userId, remembered.map((entry) => entry.memoryId)).catch(() => undefined);
+    await track(params.userId, 'memory_used', { sessionId: session.id, count: remembered.length });
+  }
+  const recalled = remembered.length > 0 ? { remembered } : {};
 
   if (questions.length > 0) {
     return {
@@ -510,6 +656,7 @@ async function startNewSession(params: {
       status: 'awaiting_clarification',
       questions,
       nextQuestion: questions[0],
+      ...recalled,
     };
   }
 
@@ -523,7 +670,8 @@ async function startNewSession(params: {
       return { success: false, sessionId: session.id, error: charge.error, code: charge.code };
     }
   }
-  return enqueueCharged({ userId: params.userId, sessionId: session.id, charged: !params.free });
+  const started = await enqueueCharged({ userId: params.userId, sessionId: session.id, charged: !params.free });
+  return started.success ? { ...started, ...recalled } : started;
 }
 
 async function continueSession(params: {
@@ -608,6 +756,17 @@ async function continueSession(params: {
         : { [nextQuestion.id]: skipped ? '' : (params.message ?? '').trim() }),
     },
   };
+
+  // The answer is the user's, whatever happens next: remember it now, so a
+  // later posting asking about the same skill uses it instead of asking.
+  if (!skipped) {
+    await rememberClarificationAnswer({
+      userId: params.userId,
+      sessionId: session.id,
+      question: nextQuestion,
+      answer: params.message ?? '',
+    });
+  }
 
   const followingQuestion = getNextUnansweredQuestion(mergedPayload);
 

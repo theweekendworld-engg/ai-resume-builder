@@ -199,6 +199,9 @@ export const config = {
             // short reply draft on request. Scout's cheap default.
             jobEmailClassify: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             jobEmailReply: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            // Weekly memory consolidation: shorten the user's own lines.
+            // Background, tiny, guarded; Scout's cheap default.
+            memoryConsolidate: process.env.OPENAI_MODEL_MEMORY || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
         },
         /**
          * Embeddings keep their own credentials, and that is load-bearing.

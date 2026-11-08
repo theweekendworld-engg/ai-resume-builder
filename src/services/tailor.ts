@@ -21,6 +21,7 @@ import { loadRun, readSections } from '@/lib/agent/run';
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { SCOUT_AGENT, type IngestData, type JdData } from '@/lib/scout/types';
+import type { RememberedAnswer } from '@/lib/memory/format';
 import { linkSessionToChain, skipAllGenerationQuestions, startGenerationForUser, type ChannelGenerateResponse } from '@/services/channelGenerate';
 import type { ResumeData } from '@/types/resume';
 
@@ -40,6 +41,8 @@ export type TailorStart = {
      * about them is claimed; the apply chain says so in its final message.
      */
     skipped?: string[];
+    /** Questions not asked because the user answered them on an earlier day (`rememberedNote`). */
+    remembered?: RememberedAnswer[];
 };
 
 export type TailorOptions = {
@@ -243,6 +246,7 @@ export async function tailorResumeForRun(
         status: started.status,
         ...(started.nextQuestion ? { nextQuestion: started.nextQuestion } : {}),
         ...(started.status === 'awaiting_clarification' && total > 0 ? { progress: { current: 1, total } } : {}),
+        ...(started.remembered?.length ? { remembered: started.remembered } : {}),
     });
 }
 
