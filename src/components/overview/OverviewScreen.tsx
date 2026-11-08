@@ -90,14 +90,29 @@ function dayAndTime(iso: string): { day: string; time: string } {
 
 export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }) {
     const setupLeft = data.setup.filter((step) => !step.done);
+    // A brand-new account: no resume or work history yet. It was greeted
+    // "Welcome back" with the one step that matters in the bottom corner.
+    const resumeStep = data.setup.find((step) => step.key === 'resume' && !step.done) ?? null;
+    const name = data.firstName ? `, ${data.firstName}` : '';
 
     return (
         <div>
             <PageHeader
-                title={data.firstName ? `Welcome back, ${data.firstName}` : 'Welcome back'}
+                title={resumeStep ? `Welcome to Patronus${name}` : `Welcome back${name}`}
                 description="Everything in your search and your record, in one place."
             />
             <PageBody className="space-y-6">
+                {resumeStep ? (
+                    <section aria-labelledby="first-step" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
+                        <h2 id="first-step" className="font-heading text-base font-semibold text-foreground">Start with your resume</h2>
+                        <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+                            Upload the PDF you already have. Patronus keeps every line as you wrote it, then checks any job against it and tailors a one-page resume.
+                        </p>
+                        <Button asChild className="mt-4">
+                            <Link href={resumeStep.href}>Import your resume</Link>
+                        </Button>
+                    </section>
+                ) : null}
                 {chat ? <AskBar /> : null}
 
                 {/* ── Pipeline ─────────────────────────────────────────── */}

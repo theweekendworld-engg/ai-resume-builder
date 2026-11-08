@@ -119,6 +119,13 @@ export const ResumeDataSchema = z.object({
     /** Optional: the resume's own skills rows. Without it the renderer groups `skills`. */
     skillGroups: z.array(z.object({ label: z.string(), items: z.array(z.string()) })).optional(),
     sectionOrder: z.array(z.enum(['experience', 'projects', 'education', 'skills', 'summary'])).default(['summary', 'experience', 'projects', 'education', 'skills']),
+    /** The look this resume renders in; see ResumeData.theme. */
+    theme: z.object({
+        templateId: z.enum(['compact', 'ats-simple', 'modern', 'classic', 'minimal']),
+        accentColor: z.string().max(32),
+        fontFamily: z.enum(['sans', 'serif', 'mono']),
+        density: z.enum(['compact', 'normal', 'relaxed']),
+    }).optional(),
 });
 
 /**

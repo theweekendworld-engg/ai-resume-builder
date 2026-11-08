@@ -14,6 +14,13 @@ export interface ResumeData {
      */
     skillGroups?: SkillGroupData[];
     sectionOrder: SectionType[]; // Order of sections in the resume
+    /**
+     * The look this resume renders in. Travels with the resume, so a tailored
+     * copy opens in the template its PDF was made in, not whatever this
+     * browser last used (e2e QA 2026-11-08: a 1-page compact PDF showed as
+     * "2 pages" in an editor still set to ats-simple).
+     */
+    theme?: ResumeTheme;
 }
 
 export interface SkillGroupData {

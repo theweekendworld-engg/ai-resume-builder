@@ -2,7 +2,8 @@
 
 import { auth } from '@clerk/nextjs/server';
 import { fitHighlights } from '@/lib/resume/fitHighlights';
-import { KnowledgeType } from '@prisma/client';
+import { KnowledgeType, Prisma } from '@prisma/client';
+import { resumeDataFromParsed } from '@/lib/resume/fromParsed';
 import { prisma } from '@/lib/prisma';
 import type { ParsedResumeData } from '@/lib/aiSchemas';
 import { upsertUserProfile } from '@/actions/profile';
@@ -19,6 +20,11 @@ export type ImportOptions = {
     projects: boolean;
     achievements: boolean;
   };
+  /**
+   * Make the user's base resume from this import when they have none.
+   * Default true. Onboarding passes false: it builds its own resume document.
+   */
+  createBaseResume?: boolean;
 };
 
 export type SectionSummary = {
@@ -34,6 +40,8 @@ export type ImportSummary = {
   projects: SectionSummary;
   achievements: SectionSummary;
   warnings: string[];
+  /** Set when this import also created the user's first resume (see below). */
+  baseResumeId?: string;
 };
 
 const KNOWLEDGE_TYPE_MAP: Record<string, KnowledgeType> = {
@@ -293,6 +301,32 @@ export async function importParsedResumeData(
         if (result.error) summary.warnings.push(`Achievement "${ach.title}": ${result.error}`);
       }
     }
+  }
+
+  // The first import also becomes the user's base resume. Tailoring starts
+  // from a base resume, and a new user who imported through Profile had a
+  // full record but no resume, so "Tailor my resume" said "Upload your resume
+  // first" a minute after they did (e2e QA 2026-11-08). The content is the
+  // same faithful parse the free check's "Fix all" uses.
+  try {
+    const hasBase = await prisma.resume.count({ where: { userId, baseResumeId: null } });
+    if (options.createBaseResume !== false && hasBase === 0 && (data.experiences.length > 0 || data.projects.length > 0)) {
+      const content = resumeDataFromParsed(data);
+      const title = data.personalInfo.title?.trim();
+      const created = await prisma.resume.create({
+        data: {
+          userId,
+          title: title ? `${title} resume` : 'My resume',
+          content: content as unknown as Prisma.InputJsonValue,
+        },
+        select: { id: true },
+      });
+      summary.baseResumeId = created.id;
+    }
+  } catch (error) {
+    // The record import already succeeded; a missing base resume is
+    // recoverable (tailoring says so), so never fail the import for it.
+    console.warn('[resumeImport] could not create the base resume', { error: error instanceof Error ? error.message : String(error) });
   }
 
   return { success: true, summary };

@@ -100,6 +100,8 @@ export async function importResumeText(resumeText: string): Promise<Result<Impor
         // something typed a moment earlier.
         mergeProfile: true,
         sections: { experience: true, education: true, projects: true, achievements: true },
+        // The first run makes its own resume document (startOnboardingFromStash).
+        createBaseResume: false,
     });
     if (!result.success) return err(result.error ?? 'Import failed', 'import_failed');
 

@@ -44,8 +44,16 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
                 if (next.success) setState((current) => ({ ...current, attachment: next.data.attachment }));
             }).catch(() => undefined);
         };
+        // ...and the moment the tailor above finishes, on this same page.
+        const onTailored = (event: Event) => {
+            if ((event as CustomEvent<{ runId: string }>).detail?.runId === runId) refresh();
+        };
         document.addEventListener('visibilitychange', refresh);
-        return () => document.removeEventListener('visibilitychange', refresh);
+        window.addEventListener('patronus:tailored', onTailored);
+        return () => {
+            document.removeEventListener('visibilitychange', refresh);
+            window.removeEventListener('patronus:tailored', onTailored);
+        };
     }, [runId]);
 
     const latest = state.versions.at(-1) ?? null;

@@ -63,6 +63,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     latexCode,
     setLatexCode,
     theme,
+    setTheme,
     setTemplateId,
     atsScore,
     syncStatus,
@@ -112,12 +113,17 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
         if (resumeResult.data) {
           setResumeData(resumeResult.data);
-          const generated = generateLatexFromResume(resumeResult.data, theme);
+          // A resume that carries its look opens in it; others use this browser's.
+          // Read from the store, not the hook value: this effect must not
+          // depend on `theme`, or applying the resume's theme would reload it.
+          const resumeTheme = resumeResult.data.theme ?? useResumeStore.getState().theme;
+          if (resumeResult.data.theme) setTheme(resumeResult.data.theme);
+          const generated = generateLatexFromResume(resumeResult.data, resumeTheme);
           setLatexCode(generated);
         } else {
           const emptyDraft = structuredClone(initialResumeData);
           setResumeData(emptyDraft);
-          const generated = generateLatexFromResume(emptyDraft, theme);
+          const generated = generateLatexFromResume(emptyDraft, useResumeStore.getState().theme);
           setLatexCode(generated);
         }
 
@@ -140,7 +146,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       .finally(() => {
         setInitialLoading(false);
       });
-  }, [resumeId, theme, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData]);
+  }, [resumeId, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData, setTheme]);
 
   useEffect(() => {
     if (initialLoading || activePanel === 'latex') return;
@@ -169,7 +175,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       setSyncStatus('syncing');
       try {
         const saveResult = await saveResumeToCloud(
-          resumeData,
+          // Save the look with the content, so it reopens the same anywhere.
+          { ...resumeData, theme },
           title,
           'manual',
           resumeId,
@@ -193,7 +200,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     }, 1400);
 
     return () => clearTimeout(timeout);
-  }, [atsScore?.overall, initialLoading, jobDescription, resumeData, resumeId, setLastSyncedAt, setSyncStatus, title]);
+  }, [atsScore?.overall, initialLoading, jobDescription, resumeData, resumeId, setLastSyncedAt, setSyncStatus, theme, title]);
 
   // Phase 1 -> editor handoff: consume the anonymous score stashed in
   // sessionStorage exactly once. Seed the fix checklist always; preload the

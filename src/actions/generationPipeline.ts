@@ -773,7 +773,8 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
     if (!fitted.ok) {
       throw new Error(fitted.error || 'Failed to compile PDF');
     }
-    const finalResume = fitted.resume;
+    // The theme rides with the resume, so the editor opens it in the look its PDF has.
+    const finalResume: ResumeData = { ...fitted.resume, theme };
     if (fitted.fit.status === 'over') {
       console.warn('[generation] PDF still over its page budget after trimming', {
         sessionId: session.id,

@@ -89,6 +89,30 @@ export function dedupeContained(items: readonly string[]): string[] {
     });
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+function monthIndex(text: string): number {
+    return MONTHS.indexOf(text.trim().slice(0, 3).toLowerCase());
+}
+
+/**
+ * "Mar – May 2024" is written with the year once, so the start came through
+ * as a bare "Mar": unsortable, and tenure could not count it (e2e QA
+ * 2026-11-08). A start with a month and no year takes the end's year, or the
+ * year before when the start month is later than the end month
+ * ("Nov – Feb 2024" began in Nov 2023). Anything else is left as written.
+ */
+export function completeStartYear(start: string | null | undefined, end: string | null | undefined): string {
+    const startText = (start ?? '').trim();
+    if (!startText || /\d{4}/.test(startText)) return startText;
+    const startMonth = monthIndex(startText);
+    const endYear = (end ?? '').match(/\b(\d{4})\b/)?.[1];
+    if (startMonth < 0 || !endYear) return startText;
+    const endMonth = monthIndex((end ?? '').replace(/\d{4}/, ''));
+    const year = endMonth >= 0 && startMonth > endMonth ? Number(endYear) - 1 : Number(endYear);
+    return `${startText} ${year}`;
+}
+
 export function reconcileWithSource(
     parsed: ParsedResumeData,
     rawSource: string,
@@ -227,6 +251,7 @@ export function reconcileWithSource(
         );
         experiences.push({
             ...experience,
+            startDate: completeStartYear(experience.startDate, experience.endDate),
             role,
             description: '',
             highlights,

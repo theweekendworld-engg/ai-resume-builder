@@ -144,3 +144,21 @@ describe('withoutHeader', () => {
         expect(withoutHeader('Led Acme payments. Shipped it.', ['Acme', 'Engineer'])).toBe('Led Acme payments. Shipped it.');
     });
 });
+
+describe('completeStartYear', () => {
+    test('a bare start month takes the end year', async () => {
+        const { completeStartYear } = await import('./faithfulImport');
+        expect(completeStartYear('Mar', 'May 2024')).toBe('Mar 2024');
+        expect(completeStartYear('May', 'Jul 2023')).toBe('May 2023');
+    });
+    test('a range across new year starts the year before', async () => {
+        const { completeStartYear } = await import('./faithfulImport');
+        expect(completeStartYear('Nov', 'Feb 2024')).toBe('Nov 2023');
+    });
+    test('anything already dated, or not a month, is left alone', async () => {
+        const { completeStartYear } = await import('./faithfulImport');
+        expect(completeStartYear('Sep 2025', 'Present')).toBe('Sep 2025');
+        expect(completeStartYear('Mar', 'Present')).toBe('Mar');
+        expect(completeStartYear('', 'May 2024')).toBe('');
+    });
+});
