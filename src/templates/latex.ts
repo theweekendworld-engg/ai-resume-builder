@@ -333,6 +333,14 @@ function compactSpacing(density: ResumeDensity): CompactSpacing {
     }
 }
 
+/**
+ * Real spaces between words in the PDF text, so ATS parsers read it cleanly.
+ * Latin Modern only: with Bera Mono a fake space after a symbol (×, ∼) draws a
+ * box or eats the space, and the text extracts as `×←`. Without it, plain word
+ * gaps still extract as spaces.
+ */
+const INTERWORD_SPACES = '% Real spaces between words in the PDF text, so ATS parsers read it cleanly.\n\\ifdefined\\pdfinterwordspaceon\\pdfinterwordspaceon\\fi\n';
+
 /** Latin Modern throughout; it sets narrower than Lato or Charter, which is most of the point. */
 function compactFont(family: ResumeFontFamily): string {
     switch (family) {
@@ -437,8 +445,7 @@ ${compactFont(theme.fontFamily)}
 \\titleformat{\\section}{\\color{mainblue}\\bfseries\\normalsize}{}{0em}{\\MakeUppercase}
 \\titlespacing*{\\section}{0pt}{${s.sectionBefore}}{${s.sectionAfter}}
 
-% Real spaces between words in the PDF text, so ATS parsers read it cleanly.
-\\ifdefined\\pdfinterwordspaceon\\pdfinterwordspaceon\\fi
+${theme.fontFamily === 'mono' ? '' : INTERWORD_SPACES}
 
 % Left column wraps; the right one (place, dates, links) keeps its natural
 % width up to 40% of the line, and wraps past that, so a long value can never

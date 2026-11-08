@@ -167,6 +167,10 @@ describe('compact is one self-contained, well formed file', () => {
         expect(generateLatexFromResume(owner, theme({ density: 'relaxed' }))).toContain('left=0.75in');
         expect(generateLatexFromResume(owner, theme({ fontFamily: 'sans' }))).toContain('\\renewcommand{\\familydefault}{\\sfdefault}');
         expect(generateLatexFromResume(owner, theme({ fontFamily: 'mono' }))).toContain('{beramono}');
+        // Fake interword spaces garble Bera Mono after a symbol (`×←`); Latin Modern keeps them.
+        expect(generateLatexFromResume(owner, theme({ fontFamily: 'mono' }))).not.toContain('pdfinterwordspace');
+        expect(generateLatexFromResume(owner, theme({ fontFamily: 'sans' }))).toContain('\\pdfinterwordspaceon');
+        expect(latex).toContain('\\pdfinterwordspaceon');
         expect(generateLatexFromResume(owner, theme({ accentColor: '#ff0000' }))).toContain('\\definecolor{mainblue}{RGB}{255, 0, 0}');
         for (const variant of [tight, generateLatexFromResume(owner, theme({ fontFamily: 'mono', density: 'relaxed' }))]) {
             expect(latexProblems(variant)).toEqual([]);
