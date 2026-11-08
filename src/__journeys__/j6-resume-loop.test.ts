@@ -362,9 +362,9 @@ async function tailorSession(label: string) {
 describe('J6 — one page, measured (QA 2026-11-07, finding 2)', () => {
     test('a PDF over one page is trimmed in order, recompiled, and the stored resume is the one that fits', async () => {
         scriptAtsReply();
-        // Two pages while the About line is in it, one page without. The
-        // heading is the template's: "Summary" in compact, "ABOUT ME" in ats-simple.
-        const sent = installPagedLatexDouble((latex) => (/\\section\*\{Summary\}|ABOUT ME/.test(latex) ? 2 : 1));
+        // Two pages while the summary is in it, one page without. Every
+        // template heads it "Summary".
+        const sent = installPagedLatexDouble((latex) => (/\\section\*\{Summary\}/.test(latex) ? 2 : 1));
         const session = await tailorSession('fit');
 
         const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
@@ -399,7 +399,8 @@ describe('J6 — one page, measured (QA 2026-11-07, finding 2)', () => {
             const session = await tailorSession('template');
             const result = await runGenerationSession({ sessionId: session.id, userId: journey.userId });
             expect(result.status).toBe('completed');
-            expect(sent[0]).toContain('\\usepackage{fontawesome5}');
+            // `modern` is a retired id: it renders as Tech, and the PDF row keeps the id that was asked for.
+            expect(sent[0]).toContain('\\usepackage[sfdefault]{plex-sans}');
             const pdf = await prisma.generatedPdf.findFirst({ where: { sessionId: session.id } });
             expect(pdf!.template).toBe('modern');
         } finally {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RESUME_TEMPLATE_IDS } from '@/types/resume';
 
 function coerceStringArray(value: unknown): string[] {
     if (Array.isArray(value)) {
@@ -121,7 +122,7 @@ export const ResumeDataSchema = z.object({
     sectionOrder: z.array(z.enum(['experience', 'projects', 'education', 'skills', 'summary'])).default(['summary', 'experience', 'projects', 'education', 'skills']),
     /** The look this resume renders in; see ResumeData.theme. */
     theme: z.object({
-        templateId: z.enum(['compact', 'ats-simple', 'modern', 'classic', 'minimal']),
+        templateId: z.enum(RESUME_TEMPLATE_IDS),
         accentColor: z.string().max(32),
         fontFamily: z.enum(['sans', 'serif', 'mono']),
         density: z.enum(['compact', 'normal', 'relaxed']),

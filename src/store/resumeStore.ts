@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME, LEGACY_RESUME_THEME, defaultThemeFor } from '@/types/resume';
+import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME, LEGACY_RESUME_THEME, defaultThemeFor, switchTemplate } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
 import { LatexTemplateType, generateLatexFromResume, DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
 import { latexToResume } from '@/actions/ai';
@@ -248,9 +248,11 @@ export const useResumeStore = create<ResumeState>()(
                 const next = { ...theme, ...patch };
                 set({ theme: next, selectedTemplate: next.templateId });
             },
+            // Picking a template brings its own face and accent unless the
+            // user set their own (see `switchTemplate`).
             setTemplateId: (templateId) => {
                 const { theme } = get();
-                set({ theme: { ...theme, templateId }, selectedTemplate: templateId });
+                set({ theme: switchTemplate(theme, templateId), selectedTemplate: templateId });
             },
             setIsGenerating: (generating) => set({ isGenerating: generating }),
 

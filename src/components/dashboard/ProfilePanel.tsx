@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { upsertUserProfile, type UserProfileDTO } from '@/actions/profile';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
-import { RESUME_TEMPLATE_OPTIONS, type ResumeTemplateId } from '@/types/resume';
+import { RESUME_TEMPLATE_OPTIONS, canonicalTemplateId, type ResumeTemplateId } from '@/types/resume';
 import { toast } from 'sonner';
 
 interface ProfilePanelProps {
@@ -98,7 +98,8 @@ export function ProfilePanel({ profile }: ProfilePanelProps) {
           <div className="space-y-1">
             <Label className="text-xs">Default template</Label>
             <Select
-              value={form.preferences.defaultTemplate}
+              // A retired id (`modern`, `classic`) shows as the template it renders as.
+              value={canonicalTemplateId(form.preferences.defaultTemplate)}
               onValueChange={(value) => setForm((p) => ({
                 ...p,
                 preferences: {

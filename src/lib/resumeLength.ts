@@ -1,4 +1,4 @@
-import type { ResumeData, ResumeTemplateId } from '@/types/resume';
+import { DEFAULT_TEMPLATE_ID, canonicalTemplateId, type CanonicalTemplateId, type ResumeData, type ResumeTemplateId } from '@/types/resume';
 import { isShortRole } from '@/templates/latex';
 
 /**
@@ -14,23 +14,26 @@ import { isShortRole } from '@/templates/latex';
 interface LayoutProfile {
     linesPerPage: number;
     charsPerLine: number;
-    /** Compact prints the stack on the project's title line, not a line of its own. */
-    techLine: boolean;
-    /** Compact prints an internship on one line, its sentence after the title. */
-    shortRolesInline: boolean;
 }
 
-// The older templates: tuned against ats-simple at normal density.
-const DEFAULT_LAYOUT: LayoutProfile = { linesPerPage: 48, charsPerLine: 95, techLine: true, shortRolesInline: false };
-
-// Compact: calibrated on the owner's resume compiled for real (2026-11-07):
-// as imported it is one page with about five lines spare (55 here), and with
-// a three-line summary added it runs five lines onto a second page (59).
-const COMPACT_LAYOUT: LayoutProfile = { linesPerPage: 56, charsPerLine: 112, techLine: false, shortRolesInline: true };
-
-function layoutFor(templateId: ResumeTemplateId | undefined): LayoutProfile {
-    return templateId === 'compact' ? COMPACT_LAYOUT : DEFAULT_LAYOUT;
-}
+/**
+ * Every template at normal density, calibrated on the owner's resume compiled
+ * for real (src/__fixtures__/resume/resumeAiVoice.ts, 2026-11-08): as
+ * imported, with one-line bullets added one at a time, and with a three-line
+ * summary. Each template holds the resume plus two more lines on one page and
+ * breaks at the third; `linesPerPage` is the estimate just before that break. `charsPerLine` is the median full bullet line in
+ * the PDF's own extracted text.
+ *
+ * All five print a project's stack on its title line and an internship on
+ * one line (its sentence after the title), which the count below assumes.
+ */
+const LAYOUTS: Record<CanonicalTemplateId, LayoutProfile> = {
+    compact: { linesPerPage: 57, charsPerLine: 112 },
+    executive: { linesPerPage: 56, charsPerLine: 116 },
+    tech: { linesPerPage: 57, charsPerLine: 106 },
+    minimal: { linesPerPage: 57, charsPerLine: 110 },
+    'ats-simple': { linesPerPage: 57, charsPerLine: 112 },
+};
 
 function wrappedLines(text: string, charsPerLine: number): number {
     if (!text) return 0;
@@ -51,9 +54,9 @@ export interface ResumeLengthEstimate {
     fitsOnePage: boolean;
 }
 
-/** `templateId` picks the layout the estimate is for; without it, the older templates'. */
-export function estimateResumeLength(data: ResumeData, templateId?: ResumeTemplateId): ResumeLengthEstimate {
-    const layout = layoutFor(templateId);
+/** `templateId` picks the layout the estimate is for; without it, the default template's. */
+export function estimateResumeLength(data: ResumeData, templateId: ResumeTemplateId = DEFAULT_TEMPLATE_ID): ResumeLengthEstimate {
+    const layout = LAYOUTS[canonicalTemplateId(templateId)];
     const LINES_PER_PAGE = layout.linesPerPage;
     const wrapped = (text: string) => wrappedLines(text, layout.charsPerLine);
     let lines = 0;
@@ -71,7 +74,7 @@ export function estimateResumeLength(data: ResumeData, templateId?: ResumeTempla
     if (data.experience.length > 0) {
         lines += 1;
         for (const exp of data.experience) {
-            if (layout.shortRolesInline && isShortRole(exp)) {
+            if (isShortRole(exp)) {
                 // "Company, Role. What was done" as one wrapped line.
                 const line = exp.description.replace(/^[\s•\-*]+/, '').trim();
                 lines += wrapped(`${exp.company}, ${exp.role}. ${line}`);
@@ -89,7 +92,6 @@ export function estimateResumeLength(data: ResumeData, templateId?: ResumeTempla
         for (const project of data.projects) {
             lines += 1; // name + links
             lines += wrapped(project.description);
-            if (layout.techLine && project.technologies.length > 0) lines += 1;
             lines += 0.5;
         }
     }
