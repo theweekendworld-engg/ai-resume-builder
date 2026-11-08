@@ -142,9 +142,9 @@ describe('the posting itself', () => {
     });
 
     test('pure-tenure and qualified-tenure requirements are told apart', () => {
-        expect(tenureRequirement(REQUIREMENTS[0].text)).toEqual({ minYears: 3, qualified: false });
-        expect(tenureRequirement(REQUIREMENTS[1].text)).toEqual({ minYears: 2, qualified: true });
-        expect(tenureRequirement(REQUIREMENTS[10].text)).toEqual({ minYears: 3, qualified: true });
+        expect(tenureRequirement(REQUIREMENTS[0].text)).toEqual({ minYears: 3, qualified: false, discipline: null });
+        expect(tenureRequirement(REQUIREMENTS[1].text)).toEqual({ minYears: 2, qualified: true, discipline: null });
+        expect(tenureRequirement(REQUIREMENTS[10].text)).toEqual({ minYears: 3, qualified: true, discipline: null });
     });
 });
 

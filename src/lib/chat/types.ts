@@ -10,6 +10,7 @@
 
 import type { BoardColumn, JobAction } from '@/lib/inbox/types';
 import type {
+    ApplyStage,
     DraftFormat,
     DraftTarget,
     FitVerdict,
@@ -115,6 +116,48 @@ export type ChatCard =
         status: 'awaiting_clarification' | 'generating' | 'completed';
         title: string;
         question: string | null;
+        /** The finished PDF (`/api/pdfs/<id>`), when the session made one. */
+        pdfUrl?: string | null;
+    }
+    | {
+        /**
+         * "Apply for me" from the chat: where the chain stands
+         * (docs/impl/07-telegram-apply.md §5). Re-read while it works; a held
+         * chain offers Apply anyway / Skip it.
+         */
+        type: 'apply_chain';
+        runId: string;
+        stage: ApplyStage;
+        /** "Forward Deployed AI Engineer at Acme", once the job is read. */
+        title: string | null;
+        /** What holds or stopped it, in the user's words. */
+        reason: string | null;
+        code: string | null;
+    }
+    | {
+        /**
+         * The application draft the chain wrote (`MessageDraft`): an email to
+         * the posting's address, or a LinkedIn message when it gives none.
+         * Patronus never sends it; the card opens it in the user's own mail
+         * app or copies it. Read back at its latest version.
+         */
+        type: 'message_draft';
+        draftId: string;
+        runId: string | null;
+        format: DraftFormat;
+        target: DraftTarget;
+        version: number;
+        toEmail: string | null;
+        subject: string | null;
+        body: string;
+        /** "Forward Deployed AI Engineer at Acme". */
+        title: string;
+        /** The posting's application link: where a LinkedIn-message applicant applies. */
+        applyUrl: string | null;
+        /** Skills the skipped resume questions asked about: not claimed. */
+        skipped?: string[];
+        /** The job is at Applied or further, when the thread was read. */
+        applied?: boolean;
     }
     | { type: 'outreach'; runId: string; draft: OutreachDraft }
     | { type: 'jobs'; title: string; items: ChatJob[] }

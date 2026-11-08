@@ -195,6 +195,15 @@ export type ScoutRequirement = {
     id: string;
     text: string;
     kind: 'must' | 'nice' | 'responsibility';
+    /**
+     * The examples and alternatives the posting gives for it ("RTP, SIP,
+     * FreeSWITCH" in "experience with real-time audio or telephony (RTP, SIP,
+     * FreeSWITCH)"; "Go", "Python" in "Go or Python"). Evidence for the parent
+     * or for ANY one of these meets the requirement; none is a requirement
+     * of its own. Set by code (`fit/requirementGroups.ts`), never a model.
+     * Absent when there are none, and on runs stored before it existed.
+     */
+    anyOf?: string[];
 };
 
 export type JdData = {

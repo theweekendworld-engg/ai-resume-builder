@@ -20,6 +20,7 @@ import { externalRetrievalFilter } from '@/lib/graph/visibility';
 import { isDeclineAnswer } from '@/lib/channels/clarification';
 import { memoryTextFromAnswer, type RememberedAnswer } from '@/lib/memory/format';
 import { normalizeForMatch, recordEvidences, skillKey } from '@/lib/memory/topics';
+import { rolesAnswerDiscipline } from '@/lib/scout/fit/discipline';
 import { buildPdfDownloadUrl, findLatestGeneratedPdf } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 import { track } from '@/lib/track';
@@ -163,6 +164,12 @@ export const MAX_GAPS = 5;
 export function detectGaps(params: {
   requiredSkills: string[];
   contextText: string;
+  /**
+   * The user's roles, title and lines apart. A discipline ("Backend
+   * engineering") is answered by what the roles were, not by the words
+   * appearing somewhere (`rolesAnswerDiscipline`).
+   */
+  roles?: { title: string; lines: string[] }[];
 }): string[] {
   const record = normalizeForMatch(params.contextText);
   const seen = new Set<string>();
@@ -174,6 +181,7 @@ export function detectGaps(params: {
     if (seen.has(topic)) continue;
     seen.add(topic);
     if (recordEvidences(skill, record)) continue;
+    if (params.roles && rolesAnswerDiscipline(skill, params.roles)) continue;
     gaps.push(skill);
   }
   return gaps.slice(0, MAX_GAPS);
@@ -342,7 +350,7 @@ function getNextUnansweredQuestion(payload: ClarificationPayload): Clarification
 async function buildGenerationContextText(params: {
   userId: string;
   fallbackResumeData?: ResumeData;
-}): Promise<{ contextText: string; autoGenerate: boolean }> {
+}): Promise<{ contextText: string; autoGenerate: boolean; roles: { title: string; lines: string[] }[] }> {
   const [profile, experiences, projects, knowledge, wins] = await Promise.all([
     prisma.userProfile.findUnique({
       where: { userId: params.userId },
@@ -416,9 +424,18 @@ async function buildGenerationContextText(params: {
     defaultSummary: profile?.defaultSummary ?? '',
   });
 
+  const roles = experiences.map((experience) => ({
+    title: experience.role,
+    lines: [
+      ...(Array.isArray(experience.highlights) ? experience.highlights.filter((line): line is string => typeof line === 'string') : []),
+      experience.description,
+    ].filter((line) => line.trim()),
+  }));
+
   return {
     contextText: [fallbackText, profileText, experienceText, projectText, knowledgeText, winText].join('\n'),
     autoGenerate: preferences.autoGenerate,
+    roles,
   };
 }
 
@@ -600,6 +617,7 @@ async function startNewSession(params: {
   const gaps = detectGaps({
     requiredSkills: parsedJD.requiredSkills,
     contextText: context.contextText,
+    roles: context.roles,
   });
   const remembered = await rememberedAnswersFor(params.userId, gaps);
   const answeredByMemory = new Set(remembered.map((entry) => entry.gap));

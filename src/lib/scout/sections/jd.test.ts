@@ -110,4 +110,39 @@ describe('jdSection', () => {
         if (first.status !== 'ok' || second.status !== 'ok') throw new Error('expected ok');
         expect(second.data.requirements).toEqual(first.data.requirements);
     });
+
+    // Live test 2026-11-08: "experience with real-time audio or telephony (RTP,
+    // SIP, FreeSWITCH)" came back as four must-haves, so missing SIP was a gap.
+    test('examples and alternatives the reader split off arrive folded into their parent', async () => {
+        const posting = `About the job
+Sarvam builds voice AI. ${'You will own the real-time voice stack end to end. '.repeat(3)}
+Requirements:
+- Experience with real-time audio or telephony (RTP, SIP, FreeSWITCH)
+- Comfortable with Kubernetes and AWS
+- Go or Python`;
+        const requirement = (id: string, text: string) => ({ id, text, kind: 'must' as const, category: 'skill' as const, satisfiedByTenure: false });
+        __testing.setReader(async () => ({
+            brief: {
+                role: 'Voice AI Engineer', company: 'Sarvam', seniority: 'mid', domain: 'voice',
+                requirements: [
+                    requirement('r1', 'Experience with real-time audio or telephony (RTP, SIP, FreeSWITCH)'),
+                    requirement('r2', 'RTP'), requirement('r3', 'SIP'), requirement('r4', 'FreeSWITCH'),
+                    requirement('r5', 'Kubernetes'), requirement('r6', 'AWS'),
+                    requirement('r7', 'Go'), requirement('r8', 'Python'),
+                ],
+                skills: ['RTP', 'SIP', 'FreeSWITCH', 'Kubernetes', 'AWS', 'Go', 'Python'],
+                responsibilities: [],
+            },
+            rejectedSkills: [],
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 0.001, calls: 1, latencyMs: 1 },
+        }));
+        const outcome = await jdSection(fakeContext({ sections: { ingest: okSection<'ingest'>(ingest({ text: posting })) } }));
+        if (outcome.status !== 'ok') throw new Error('expected ok');
+        expect(outcome.data.requirements.map((r) => [r.id, r.text, r.anyOf ?? null])).toEqual([
+            ['r1', 'Experience with real-time audio or telephony (RTP, SIP, FreeSWITCH)', ['RTP', 'SIP', 'FreeSWITCH', 'real-time audio', 'telephony']],
+            ['r5', 'Kubernetes', null],
+            ['r6', 'AWS', null],
+            ['r7', 'Go or Python', ['Go', 'Python']],
+        ]);
+    });
 });

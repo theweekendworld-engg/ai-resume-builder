@@ -325,6 +325,13 @@ async function deliver(run: AgentRunRow, chain: ApplyChainState, session: Settle
         console.warn('[apply] draft failed', { runId: run.id, error: error instanceof Error ? error.message : String(error) });
         draftError = 'Could not write that draft. Try again.';
     }
+    // The web thread gets its message BEFORE the chain reads `drafted`: the
+    // chat's progress card re-reads the thread the moment it sees that stage.
+    if (session.channel === Channel.web) {
+        await appendApplyResultWeb({ run, view, chain, session, draft, draftError }).catch((error: unknown) => {
+            console.warn('[apply] could not add the result to the web chat', { runId: run.id, error: error instanceof Error ? error.message : String(error) });
+        });
+    }
     await transition(run.id, ['drafting'], { stage: 'drafted', draftId: draft?.id ?? null, reason: draftError });
 
     if (session.channel === Channel.telegram) {
@@ -339,6 +346,47 @@ async function deliver(run: AgentRunRow, chain: ApplyChainState, session: Settle
     const { generationStateKey } = await import('@/services/telegramGenerationNotifications');
     await prisma.generationSession.update({ where: { id: session.id }, data: { lastNotifiedState: generationStateKey(session) } });
     await track(run.userId, 'apply_chain_drafted', { runId: run.id, channel: session.channel, format: draft?.format ?? null, drafted: Boolean(draft) });
+}
+
+/**
+ * The web's result: one assistant message in the user's web chat, with the
+ * tailored resume (Open, PDF) and the draft (To, Subject, Body, Open in
+ * Gmail / Mail app or Open the application, Copy, Mark as applied). The job
+ * page has the same draft, with Shorter / Stronger.
+ */
+async function appendApplyResultWeb(params: {
+    run: AgentRunRow;
+    view: ScoutRunView;
+    chain: ApplyChainState;
+    session: SettledSession;
+    draft: DraftView | null;
+    draftError: string | null;
+}): Promise<void> {
+    const pdf = await prisma.generatedPdf.findFirst({
+        where: {
+            userId: params.run.userId,
+            sessionId: params.session.id,
+            ...(params.session.resultResumeId ? { resumeId: params.session.resultResumeId } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+    });
+    const [{ applyResultReply }, { appendAssistantMessage }] = await Promise.all([
+        import('@/lib/chat/applyResult'),
+        import('@/services/chat'),
+    ]);
+    const reply = applyResultReply({
+        runId: params.run.id,
+        label: roleAtCompany(params.view.sections).label,
+        sessionId: params.session.id,
+        resumeId: params.session.resultResumeId,
+        pdfUrl: pdf ? `/api/pdfs/${encodeURIComponent(pdf.id)}` : null,
+        draft: params.draft,
+        draftError: params.draftError,
+        skipped: params.chain.skipped ?? [],
+        applyUrl: applyUrlOf(params.view.sections, params.view.input.url),
+    });
+    await appendAssistantMessage(params.run.userId, reply, { channel: Channel.web, action: 'draft_outreach' });
 }
 
 /** The PDF (named, captioned, Open resume · Regenerate), then the draft with its compose buttons. */

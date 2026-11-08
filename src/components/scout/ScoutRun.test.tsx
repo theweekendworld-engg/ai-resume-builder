@@ -13,7 +13,7 @@ import type { FitData, ScoutRunView } from '@/lib/scout/types';
 import type { StoredSection } from '@/lib/agent/run';
 
 installClerkMock();
-const { ApplyEmailPanel, ATTACH_NOTE } = await import('./ApplyEmailPanel');
+const { ApplyEmailPanel, ATTACH_NOTE, MESSAGE_NOTE } = await import('./ApplyEmailPanel');
 const { EntitlementNotice } = await import('./EntitlementNotice');
 const { FitBody, SectionCard } = await import('./SectionCards');
 const { QuestionCard } = await import('./QuestionCard');
@@ -120,7 +120,7 @@ describe('layout', () => {
 });
 
 describe('apply by email', () => {
-    const empty: ApplyEmailState = { applyEmails: ['jobs@iserveworld.com', 'chris.d@iserveworld.com'], versions: [], attachment: null };
+    const empty: ApplyEmailState = { applyEmails: ['jobs@iserveworld.com', 'chris.d@iserveworld.com'], versions: [], messageVersions: [], applyUrl: null, applied: false, attachment: null };
 
     test('before a draft: one primary action naming the posting\'s address', () => {
         const html = renderToStaticMarkup(<ApplyEmailPanel runId="run_1" initial={empty} />);
@@ -154,7 +154,35 @@ describe('apply by email', () => {
     });
 
     test('no address and no draft: nothing to show', () => {
-        expect(renderToStaticMarkup(<ApplyEmailPanel runId="run_1" initial={{ applyEmails: [], versions: [], attachment: null }} />)).toBe('');
+        expect(renderToStaticMarkup(<ApplyEmailPanel runId="run_1" initial={{ ...empty, applyEmails: [] }} />)).toBe('');
+    });
+
+    test('no address: the chain\'s LinkedIn message, with Copy and Open the application instead of Gmail', () => {
+        const message = {
+            id: 'm1', version: 1, runId: 'run_1', workspaceId: 'ws', format: 'linkedin_message' as const, target: 'recruiter' as const,
+            toEmail: null, subject: null, body: 'Hi, I applied for the Forward Deployed AI Engineer role.', createdAt: AT,
+            parentId: null, instruction: null, links: { gmail: null, mailto: null },
+        };
+        const html = renderToStaticMarkup(<ApplyEmailPanel runId="run_1" initial={{
+            ...empty, applyEmails: [], messageVersions: [message], applyUrl: 'https://jobs.globex.example/apply/42',
+        }} />);
+        expect(html).toContain('Apply with a LinkedIn message');
+        expect(html).toContain('Hi, I applied for the Forward Deployed AI Engineer role.');
+        expect(html).toContain('href="https://jobs.globex.example/apply/42"');
+        for (const label of ['Open the application', 'Copy', 'Mark as applied', 'Shorter', 'Stronger', MESSAGE_NOTE]) expect(html).toContain(label);
+        expect(html).not.toContain('Open in Gmail');
+        expect(html).not.toContain('Mail app');
+    });
+
+    test('an applied job says so instead of offering Mark as applied', () => {
+        const version = {
+            id: 'd1', version: 1, runId: 'run_1', workspaceId: 'ws', format: 'email' as const, target: 'recruiter' as const,
+            toEmail: 'jobs@iserveworld.com', subject: 'Application', body: 'Body', createdAt: AT, parentId: null, instruction: null,
+            links: { gmail: 'https://mail.google.com/mail/?view=cm', mailto: 'mailto:jobs@iserveworld.com' },
+        };
+        const html = renderToStaticMarkup(<ApplyEmailPanel runId="run_1" initial={{ ...empty, versions: [version], applied: true }} />);
+        expect(html).toContain('Applied');
+        expect(html).not.toContain('Mark as applied');
     });
 });
 

@@ -81,7 +81,7 @@ export function ScoutRunScreen({
         if (!isJob || live || applyChecked.current) return;
         applyChecked.current = true;
         void getApplyEmailState(run.id).then((result) => {
-            if (result.success && (result.data.applyEmails.length > 0 || result.data.versions.length > 0)) setApply(result.data);
+            if (result.success && (result.data.applyEmails.length > 0 || result.data.versions.length > 0 || result.data.messageVersions.length > 0)) setApply(result.data);
         }).catch(() => undefined);
     }, [isJob, live, run.id]);
 
@@ -158,9 +158,10 @@ export function ScoutRunScreen({
 
     const blocking = run.pendingQuestion && run.status === 'awaiting_input' ? run.pendingQuestion : null;
     const followUp = blocking ? null : followUpOf(run);
-    // The email chain lives in the apply panel; the outreach list keeps the rest.
-    const applyBodies = new Set((apply?.versions ?? []).map((version) => version.body));
-    const otherDrafts = run.drafts.filter((draft) => !(draft.format === 'email' && applyBodies.has(draft.body)));
+    // The application chain (email, or the LinkedIn message when there is no
+    // address) lives in the apply panel; the outreach list keeps the rest.
+    const applyBodies = new Set([...(apply?.versions ?? []), ...(apply?.messageVersions ?? [])].map((version) => `${version.format}:${version.body}`));
+    const otherDrafts = run.drafts.filter((draft) => !applyBodies.has(`${draft.format}:${draft.body}`));
 
     const card = (name: ScoutSectionName) => (
         <SectionCard

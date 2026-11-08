@@ -5,12 +5,13 @@ import { ArrowUp, Loader2, RotateCcw } from 'lucide-react';
 
 import { typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
-import { sendChatMessage, type ChatThread } from '@/actions/chat';
+import { getChatMessages, sendChatMessage, type ChatThread } from '@/actions/chat';
 import type { ChatSuggestion } from '@/lib/chat/suggestions';
+import { mergeMessages } from '@/lib/chat/thread';
 import type { ChatMessageView } from '@/lib/chat/types';
 import { cn } from '@/lib/utils';
 
-import { ChatCardView, ChatLinksContext, type ChatLinks } from './ChatCards';
+import { ChatCardView, ChatLinksContext, ChatThreadContext, type ChatLinks } from './ChatCards';
 
 const MAX_CHARS = 4_000;
 
@@ -135,6 +136,13 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true }, na
 
     const busy = Boolean(pending && !pending.error);
 
+    const refreshThread = React.useCallback(() => {
+        void getChatMessages().then((result) => {
+            if (result.success) setMessages((current) => mergeMessages(current, result.data));
+        }).catch(() => undefined);
+    }, []);
+    const thread = React.useMemo(() => ({ refresh: refreshThread }), [refreshThread]);
+
     const send = React.useCallback(async (text: string, clientId: string = newClientId()) => {
         const trimmed = text.trim();
         if (!trimmed) return;
@@ -169,6 +177,7 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true }, na
 
     return (
         <ChatLinksContext.Provider value={links}>
+        <ChatThreadContext.Provider value={thread}>
         {/* The page scrolls and the composer sticks: a fixed-height pane under
             an in-flow banner pushed the composer below the screen on phones. */}
         <div data-center className="mx-auto flex min-h-[calc(100dvh-var(--shell-top,0px)-4rem)] w-full max-w-3xl flex-col px-4 sm:px-6 md:min-h-dvh">
@@ -227,6 +236,7 @@ export function ChatScreen({ initial, links = { scout: true, workLog: true }, na
                 </form>
             </div>
         </div>
+        </ChatThreadContext.Provider>
         </ChatLinksContext.Provider>
     );
 }

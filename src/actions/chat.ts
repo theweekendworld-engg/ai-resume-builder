@@ -21,7 +21,7 @@ import { CHAT_MESSAGE_MAX } from '@/lib/chat/router';
 import { buildChatContext } from '@/lib/chat/context';
 import { suggestionsFor, type ChatSuggestion } from '@/lib/chat/suggestions';
 import type { ChatCard, ChatMessageView } from '@/lib/chat/types';
-import { listThread, sendChatMessage as sendChatMessageCore, type SendResult } from '@/services/chat';
+import { currentApplyCard, listThread, sendChatMessage as sendChatMessageCore, type SendResult } from '@/services/chat';
 import { getScoutRun } from '@/services/scout';
 import { confirmWinForUser, dismissWinForUser } from '@/services/wins';
 
@@ -43,6 +43,17 @@ export async function getChatThread(): Promise<Result<ChatThread>> {
     if ('error' in g) return g.error;
     const [messages, context] = await Promise.all([listThread(g.userId), buildChatContext(g.userId)]);
     return ok({ messages, suggestions: suggestionsFor(context) });
+}
+
+/**
+ * The thread's messages, re-read: work that finished after its turn (the
+ * apply chain's resume and draft) appends to the thread, and the page merges
+ * what it does not have yet.
+ */
+export async function getChatMessages(): Promise<Result<ChatMessageView[]>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    return ok(await listThread(g.userId));
 }
 
 const SendSchema = z.object({
@@ -88,7 +99,79 @@ export async function refreshChatCard(card: ChatCard): Promise<Result<ChatCard>>
         return ok({ ...card, status, resumeId: session.resultResumeId ?? session.sourceResumeId ?? card.resumeId });
     }
 
+    if (card.type === 'apply_chain') {
+        if (!IdSchema.safeParse(card.runId).success) return err('Invalid card', 'invalid_input');
+        const fresh = await currentApplyCard(g.userId, card);
+        return fresh ? ok(fresh) : err('Not found', 'not_found');
+    }
+
     return ok(card);
+}
+
+// ───────────────────────────────────────────────────────────── the apply chain
+
+/**
+ * "Yes, apply anyway" on a chain held by an eligibility conflict, or "Apply
+ * for me" again on one that stopped. The same `requestApply` as Telegram's
+ * buttons.
+ */
+export async function applyFromChat(input: { runId: string; override?: boolean }): Promise<Result<ChatCard>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    const parsed = z.object({ runId: IdSchema, override: z.boolean().optional() }).safeParse(input);
+    if (!parsed.success) return err('Invalid input', 'invalid_input');
+    const { requestApply } = await import('@/services/applyChain');
+    const requested = await requestApply(g.userId, parsed.data.runId, { channel: 'web', override: parsed.data.override });
+    if (!requested.success) return requested;
+    const fresh = await currentApplyCard(g.userId, { type: 'apply_chain', runId: parsed.data.runId, stage: 'pending', title: null, reason: null, code: null });
+    return fresh ? ok(fresh) : err('Not found', 'not_found');
+}
+
+/** "No, skip it" at the eligibility question. */
+export async function skipApplyFromChat(runId: string): Promise<Result<ChatCard>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    if (!IdSchema.safeParse(runId).success) return err('Invalid id', 'invalid_input');
+    const { declineApply } = await import('@/services/applyChain');
+    const declined = await declineApply(g.userId, runId);
+    if (!declined.success) return declined;
+    const fresh = await currentApplyCard(g.userId, { type: 'apply_chain', runId, stage: 'declined', title: null, reason: null, code: null });
+    return fresh ? ok(fresh) : err('Not found', 'not_found');
+}
+
+/**
+ * "Mark as applied" on a draft card: the web's "sent it". The same
+ * `markApplicationSent` as Telegram, so the job moves to Applied (never
+ * backwards) and the weekly follow-up reminder finds it.
+ */
+export async function markChatDraftApplied(draftId: string): Promise<Result<{ applied: boolean; message: string }>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    if (!IdSchema.safeParse(draftId).success) return err('Invalid id', 'invalid_input');
+    const [{ getDraft }, { APPLIED_REPLY, markApplicationSent }] = await Promise.all([import('@/services/drafts'), import('@/services/applyChain')]);
+    const draft = await getDraft(g.userId, draftId);
+    if (!draft) return err('I could not find that draft.', 'not_found');
+    const applied = await markApplicationSent(g.userId, draft);
+    return applied
+        ? ok({ applied: true, message: APPLIED_REPLY })
+        : err('That draft is not an application, so the job was not marked. Use the status on the job page.', 'not_applicable');
+}
+
+/** The user opened a draft in their mail app from the chat. A second tap is a no-op. */
+export async function markChatDraftOpened(input: { draftId: string; via: 'gmail' | 'mail' }): Promise<Result<{ flipped: boolean }>> {
+    const g = await gate();
+    if ('error' in g) return g.error;
+    const parsed = z.object({ draftId: IdSchema, via: z.enum(['gmail', 'mail']) }).safeParse(input);
+    if (!parsed.success) return err('Invalid input', 'invalid_input');
+    const { getDraft, markDraftOpened } = await import('@/services/drafts');
+    const draft = await getDraft(g.userId, parsed.data.draftId);
+    if (!draft) return err('I could not find that draft.', 'not_found');
+    const flipped = await markDraftOpened(g.userId, draft.id);
+    if (flipped) {
+        const { track } = await import('@/lib/track');
+        await track(g.userId, 'message_draft_opened', { version: draft.version, via: parsed.data.via === 'gmail' ? 'gmail' : 'mail_app', channel: 'web' });
+    }
+    return ok({ flipped });
 }
 
 // ───────────────────────────────────────────────────────────── Win drafts

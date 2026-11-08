@@ -30,13 +30,14 @@ import {
     extractLocation,
 } from '@/lib/scout/fit/jdSignals';
 import { planMatching } from '@/lib/scout/fit/match';
+import { groupRequirements } from '@/lib/scout/fit/requirementGroups';
 import { matchRequirements, type MatchAi } from '@/lib/scout/sections/fit';
 import type { JdData } from '@/lib/scout/types';
 import type { UserGenerationPreferences } from '@/lib/userPreferences';
 import type { MatchedVia } from '@/lib/watch/gate';
 
 /** Bump when the posting prompt or its schema changes; every stored read is redone. */
-export const WATCH_PARSE_VERSION = 'v1';
+export const WATCH_PARSE_VERSION = 'v2';
 
 /** Below this there is nothing to read requirements out of (Scout's floor). */
 const MIN_DESCRIPTION_CHARS = 200;
@@ -129,7 +130,11 @@ export function jdFromPosting(posting: ScorablePosting, brief: Brief, descriptio
         employmentType: detectEmploymentType(description),
         compensationText: extractCompensationText(description),
         experienceText: extractExperienceText(description),
-        requirements: brief.requirements.map((requirement) => ({ id: requirement.id, text: requirement.text, kind: requirement.kind })),
+        // Same grouping as Scout's JD section: an example is never a must-have of its own.
+        requirements: groupRequirements(
+            brief.requirements.map((requirement) => ({ id: requirement.id, text: requirement.text, kind: requirement.kind })),
+            description,
+        ),
         skills: brief.skills,
         responsibilities: brief.responsibilities,
         applyUrl: posting.absoluteUrl || null,
