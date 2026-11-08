@@ -131,7 +131,7 @@ export const SCOUT_SECTION_LABELS: Record<ScoutSectionName, string> = {
     talent: 'Who works there',
     openings: 'Open roles at the companies mentioned',
     digest: 'Key takeaways',
-    capture: 'Adding it to your Work Log',
+    capture: 'Adding it to My work',
     track: 'Adding it to your job tracker',
 };
 

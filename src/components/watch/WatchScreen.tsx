@@ -60,8 +60,8 @@ export function WatchScreen({
     return (
         <>
             <PageHeader
-                eyebrow="Search"
-                title="Job watch"
+                eyebrow="Job search"
+                title="Job alerts"
                 description="New openings at the companies you name, scored against your record each night. Only 85+ matches are sent."
                 actions={
                     <Button variant="outline" onClick={runNow} disabled={running || (companies.length === 0 && prefs.targetRoles.length === 0)}>
@@ -71,7 +71,7 @@ export function WatchScreen({
                 }
             >
                 <PageTabs
-                    label="Job watch views"
+                    label="Job alerts views"
                     active={tab}
                     tabs={[
                         { key: 'matches', label: 'Matches', href: '/watch', count: matches.length },

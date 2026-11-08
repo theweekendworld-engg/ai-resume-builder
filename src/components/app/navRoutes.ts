@@ -19,13 +19,13 @@ export const NAV_ROUTES: Record<NavDestination, { href: string; label: string }>
     chat: { href: '/chat', label: 'Chat' },
     // Missions: the goal you are working toward and its next step.
     home: { href: '/home', label: 'Goals' },
-    log: { href: '/log', label: 'Work Log' },
+    log: { href: '/log', label: 'My work' },
     // The route stays /scout (links in chat messages point there).
     scout: { href: '/scout', label: 'Jobs' },
-    watch: { href: '/watch', label: 'Job watch' },
+    watch: { href: '/watch', label: 'Job alerts' },
     resumes: { href: '/dashboard', label: 'Resumes' },
-    packets: { href: '/packets', label: 'Packets' },
-    radar: { href: '/radar', label: 'Radar' },
+    packets: { href: '/packets', label: 'Review prep' },
+    radar: { href: '/radar', label: 'Market fit' },
 };
 
 export const SETTINGS_ROUTE = { href: '/settings', label: 'Settings' } as const;
@@ -37,8 +37,8 @@ export const SETTINGS_ROUTE = { href: '/settings', label: 'Settings' } as const;
  * with no label is set off by a hairline rule instead.
  */
 export const NAV_GROUPS: ReadonlyArray<{ key: string; label: string | null; items: readonly NavDestination[] }> = [
-    { key: 'search', label: 'Search', items: ['overview', 'scout', 'watch', 'chat'] },
-    { key: 'record', label: 'Record', items: ['log', 'resumes', 'packets', 'radar'] },
+    { key: 'search', label: 'Job search', items: ['overview', 'scout', 'watch', 'chat'] },
+    { key: 'record', label: 'Your career', items: ['log', 'resumes', 'packets', 'radar'] },
     { key: 'goals', label: null, items: ['home'] },
 ];
 

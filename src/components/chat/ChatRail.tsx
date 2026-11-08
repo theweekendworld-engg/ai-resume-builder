@@ -16,7 +16,7 @@ export function ChatRail({ rail, links }: { rail: RailData; links: { scout: bool
             <div className="sticky top-0 flex h-dvh flex-col gap-6 overflow-y-auto px-5 py-6">
                 <section>
                     <h2 className={cn(typeStyles.caption, 'flex items-center gap-1.5 uppercase text-muted-foreground')}>
-                        <NotebookPen className="size-3.5" aria-hidden /> Work Log
+                        <NotebookPen className="size-3.5" aria-hidden /> My work
                     </h2>
                     <p className="mt-2 font-heading text-2xl font-semibold tabular-nums">{rail.winsThisMonth}</p>
                     <p className={cn(typeStyles.small, 'text-muted-foreground')}>confirmed this month</p>

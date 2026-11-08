@@ -9,10 +9,10 @@ describe('sidebar groups', () => {
         expect(new Set(listed).size).toBe(listed.length);
     });
 
-    test('Search leads with Home, Record leads with the Work Log', () => {
-        expect(NAV_GROUPS[0]).toMatchObject({ label: 'Search' });
+    test('Search leads with Home, Record leads with My work', () => {
+        expect(NAV_GROUPS[0]).toMatchObject({ label: 'Job search' });
         expect(NAV_GROUPS[0].items[0]).toBe('overview');
-        expect(NAV_GROUPS[1]).toMatchObject({ label: 'Record' });
+        expect(NAV_GROUPS[1]).toMatchObject({ label: 'Your career' });
         expect(NAV_GROUPS[1].items[0]).toBe('log');
     });
 });

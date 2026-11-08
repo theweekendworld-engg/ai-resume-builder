@@ -111,7 +111,7 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
     name: 'Free',
     blurb: 'Keep a record',
     order: 0,
-    audience: 'Anyone starting a work log',
+    audience: 'Anyone starting to record their work',
     prices: [],
     purchasable: false,
     slot: null,
@@ -354,7 +354,7 @@ export const PLAN_FEATURE_LABELS: Record<PlanFeature, string> = {
   log_history_unlimited: 'Unlimited log history',
   month_in_review: 'Month in Review',
   rubric_mapping: 'Rubric mapping and readiness',
-  radar_full: 'Career Radar',
+  radar_full: 'Market fit',
   one_on_one_prep: '1:1 prep',
   apply_orchestration: 'Multi-step apply orchestration',
   interview_prep: 'Interview prep',
@@ -727,9 +727,9 @@ export const METERED_ACTION_LABELS: Record<MeteredAction, string> = {
   tier2_grounding: 'Deep truthfulness checks',
   win_draft: 'AI-structured wins',
   month_in_review: 'Month in Review',
-  review_packet: 'Review packets',
+  review_packet: 'Review prep',
   rubric_upload: 'Rubric uploads',
-  radar_refresh: 'On-demand Radar refreshes',
+  radar_refresh: 'On-demand Market fit refreshes',
   cover_letter: 'Cover letters and outreach',
   link_analysis: 'Analysed job links and posts',
 };
@@ -948,17 +948,17 @@ export function builtComparisonRows(
  * so the plan page hides it while nothing can be bought.
  */
 export const PLAN_COMPARISON: readonly PlanComparisonRow[] = [
-  { label: 'Work log capture', values: ['Included', 'Included', 'Included'] },
+  { label: 'Work capture', values: ['Included', 'Included', 'Included'] },
   { label: 'Log history', values: ['90 days visible', 'Unlimited', 'Unlimited'] },
   { label: 'Connected sources', values: ['1', '3', '3'] },
   { label: 'Weekly digest', values: ['Included', 'Included', 'Included'] },
   { label: 'Month in Review', values: ['3 free', 'Included', 'Included'] },
-  { label: 'Review packets', values: ['3 free', '4 per period', '4 per period'] },
+  { label: 'Review prep', values: ['3 free', '4 per period', '4 per period'] },
   { label: 'Rubric mapping and readiness', values: ['14-day trial', 'Included', 'Included'] },
   // `one_on_one_prep` exists in PLAN_FEATURES and nowhere else — no action,
   // no route, no service.
   { label: '1:1 prep', values: ['—', 'Included', 'Included'], built: false },
-  { label: 'Career Radar', values: ['14-day trial', 'Included', 'Included, on demand'] },
+  { label: 'Market fit', values: ['14-day trial', 'Included', 'Included, on demand'] },
   { label: 'Master resumes', values: ['1', '3', 'Unlimited'] },
   { label: 'Tailored generations', values: ['10 total', '15 per month', 'Unlimited'] },
   // Auto-fix does not exist. `ats_auto_fix` is a flag in the feature table

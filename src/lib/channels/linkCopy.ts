@@ -13,7 +13,7 @@ export function whatTheBotDoes(opts: { bare: boolean }): string {
     return [
         'Send me:',
         '• a LinkedIn job or post link: fit, pay, company, interview write-ups, who to ask',
-        '• a line about your work: drafted into your Work Log',
+        '• a line about your work: drafted into My work',
         '• a post worth keeping: saved to your Insights shelf',
         '',
         `${c('jobs')} best fits · ${c('applied')} where things stand · ${c('notes')} your drafts${opts.bare ? '' : ' · /generate a tailored resume'} · ${c('help')} everything`,

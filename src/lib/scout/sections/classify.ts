@@ -193,7 +193,7 @@ export const classifySection: ScoutSection<'classify'> = async (ctx) => {
             companies: verifiedCompanies(data.companies, haystack),
             roleTitle,
             reason: kind === 'other' && data.kind === 'work_note'
-                ? 'This is someone else’s post about their work, so it was not added to your Work Log.'
+                ? 'This is someone else’s post about their work, so it was not added to My work.'
                 : data.reason.trim(),
         },
     };

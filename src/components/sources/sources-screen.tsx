@@ -133,7 +133,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                 return;
             }
             setMode({ view: 'list' });
-            setNotice('Your first sync has started. Drafts appear in your Work Log for you to review, usually within a few minutes.');
+            setNotice('Your first sync has started. Drafts appear in My work for you to review, usually within a few minutes.');
             await refresh();
         },
         [actions, refresh, setError],
@@ -194,7 +194,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                 <p className="text-sm text-muted-foreground">
                     {notice}{' '}
                     <a href="/log" className="font-medium text-foreground underline underline-offset-4">
-                        Open Work Log
+                        Open My work
                     </a>
                 </p>
             ) : null}
@@ -222,7 +222,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                                     setError(result.error ?? 'Could not start a sync', result.code);
                                     return;
                                 }
-                                setNotice('Syncing now. New drafts land in your Work Log for review.');
+                                setNotice('Syncing now. New drafts land in My work for review.');
                                 await refresh();
                             }}
                             onTogglePause={async () => {

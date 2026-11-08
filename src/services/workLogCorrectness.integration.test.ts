@@ -195,7 +195,7 @@ describe('undoing a dismissal persists', () => {
     });
 });
 
-describe('the Work Log surface is read from real rows', () => {
+describe('My work surface is read from real rows', () => {
     async function makeSource(userId: string, overrides: Partial<{ status: CaptureSourceStatus; lastSuccessAt: Date; lastError: string }> = {}) {
         return prisma.captureSource.create({
             data: {

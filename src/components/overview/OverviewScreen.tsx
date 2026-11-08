@@ -258,7 +258,7 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                         ) : null}
 
                         {data.record ? (
-                            <Section eyebrow="Your record" action={<SectionLink href="/log">Work Log</SectionLink>}>
+                            <Section eyebrow="Your record" action={<SectionLink href="/log">My work</SectionLink>}>
                                 <StatStrip
                                     label="Your record"
                                     layout="fixed"

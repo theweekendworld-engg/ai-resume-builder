@@ -580,8 +580,8 @@ export function LogScreen({
     // A div, not <main>: the app shell already owns the page's <main>.
     <div>
       <PageHeader
-        eyebrow="Record"
-        title="Work Log"
+        eyebrow="Your career"
+        title="My work"
         description="What you actually did, confirmed and kept. Every resume and packet is built from it."
         actions={
         <QuickCapture
@@ -597,7 +597,7 @@ export function LogScreen({
         />
         }
       >
-        {subpages.length > 0 ? <PageTabs label="More in your Work Log" active="log" tabs={logTabsFor(subpages)} /> : null}
+        {subpages.length > 0 ? <PageTabs label="More in My work" active="log" tabs={logTabsFor(subpages)} /> : null}
       </PageHeader>
 
       <div className={cn(pageContainer, 'py-6')}>
@@ -608,7 +608,7 @@ export function LogScreen({
 
           {/* Connected and syncing: the work shows itself, never a spinner. */}
           {snapshot.surface.sync.state === 'syncing' ? (
-            <ProgressStages title="Building your work log" stages={snapshot.surface.sync.stages} />
+            <ProgressStages title="Building My work" stages={snapshot.surface.sync.stages} />
           ) : null}
 
           {syncError ? (

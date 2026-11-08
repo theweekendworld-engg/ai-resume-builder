@@ -25,7 +25,7 @@ export const jobAlertTemplate: TemplateDefinition<JobAlertEmailData> = {
 
     render(data: JobAlertEmailData, ctx: TemplateContext): RenderedEmail {
         const subject = alertSubject(data.items);
-        const blocks: EmailBlock[] = [eyebrow('Job watch'), heading(subject)];
+        const blocks: EmailBlock[] = [eyebrow('Job alerts'), heading(subject)];
 
         for (const item of data.items.slice(0, ALERT_MAX_ITEMS)) {
             blocks.push(
@@ -63,7 +63,7 @@ export const jobAlertTemplate: TemplateDefinition<JobAlertEmailData> = {
             title: subject,
             preheader: data.items.map((item) => `${item.title} at ${item.company} (${item.score})`).join(' · '),
             blocks,
-            headerRight: 'Job watch',
+            headerRight: 'Job alerts',
             footer: footer({
                 unsubscribeUrl: ctx.unsubscribeUrl,
                 preferencesUrl: ctx.preferencesUrl,

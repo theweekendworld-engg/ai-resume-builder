@@ -6,7 +6,7 @@ import { isEnabled } from '@/lib/flags';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
-    title: 'Review packets · Patronus',
+    title: 'Review prep · Patronus',
 };
 
 export default async function PacketsPage() {

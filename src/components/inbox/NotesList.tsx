@@ -83,9 +83,9 @@ export function NotesList({ items }: { items: NoteItem[] }) {
             <EmptyState
                 icon={NotebookPen}
                 title="No notes yet"
-                description="Tell the bot what you did, e.g. “shipped the retry queue today, p99 down 40%”, and it drafts a Win for your Work Log. Confirm it here or in the chat."
+                description="Tell the bot what you did, e.g. “shipped the retry queue today, p99 down 40%”, and it drafts a Win for My work. Confirm it here or in the chat."
                 action={{ label: 'Link Telegram', href: '/settings/channels' }}
-                secondary={{ label: 'Open the Work Log', href: '/log' }}
+                secondary={{ label: 'Open My work', href: '/log' }}
             />
         );
     }
@@ -106,7 +106,7 @@ export function NotesList({ items }: { items: NoteItem[] }) {
                 </section>
             ) : null}
             <p className={cn(typeStyles.caption, 'text-muted-foreground')}>
-                Everything here also lives in your <Link href="/log" className="underline hover:text-foreground">Work Log</Link>.
+                Everything here also lives in <Link href="/log" className="underline hover:text-foreground">My work</Link>.
             </p>
         </div>
     );

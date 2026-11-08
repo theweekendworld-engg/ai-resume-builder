@@ -332,7 +332,7 @@ const BOT_COMMANDS = [
   { command: 'jobs', description: 'Your best-fit jobs to review' },
   { command: 'applied', description: 'Jobs you applied to, and where each stands' },
   { command: 'insights', description: 'Your saved insights from posts' },
-  { command: 'notes', description: 'Your Work Log notes and drafts' },
+  { command: 'notes', description: 'Notes and drafts in My work' },
   { command: 'memory', description: 'What I remember you told me (edit it in Settings → Memory)' },
   { command: 'help', description: 'Everything you can send me' },
   { command: 'generate', description: 'Start with: /generate <job description>' },

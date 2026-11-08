@@ -144,7 +144,7 @@ export function DashboardShell({
         sections are tabs, scrollable on a phone.
       */}
       <PageHeader
-        eyebrow="Record"
+        eyebrow="Your career"
         title="Resumes"
         description="Every resume is built from your record. Nothing in it is made up."
         actions={

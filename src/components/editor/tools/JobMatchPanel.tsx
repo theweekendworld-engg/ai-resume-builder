@@ -328,7 +328,7 @@ export function JobMatchPanel({ resumeId }: { resumeId: string }) {
                         </CardTitle>
                         <CardDescription>
                             In the employer&apos;s own words. If you have done one of these, say
-                            so — it goes to your Work Log and the next resume can use it.
+                            so — it goes to My work and the next resume can use it.
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-0">

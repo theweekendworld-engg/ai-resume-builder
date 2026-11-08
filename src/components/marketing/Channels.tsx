@@ -17,7 +17,7 @@ const CHANNELS = [
     {
         icon: Globe,
         title: 'On the web',
-        body: 'The chat is the front door. Paste a job, log a win, ask what you shipped last quarter. Your Work Log, jobs and resumes are one click away.',
+        body: 'The chat is the front door. Paste a job, log a win, ask what you shipped last quarter. My work, jobs and resumes are one click away.',
         status: 'Live',
     },
     {

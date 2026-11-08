@@ -42,7 +42,7 @@ describe('renderContext', () => {
         const text = renderContext(context());
         expect(text).toContain('1. Senior Backend Engineer, at Eltropy, status analyzed, fit possible 71');
         expect(text).toContain('2. SDE II, at Razorpay');
-        expect(text).toContain('Unconfirmed Work Log drafts: 2.');
+        expect(text).toContain('Unconfirmed drafts in My work: 2.');
     });
 
     test('long-term memory joins the context, in the user\'s words; absent, nothing is said', () => {

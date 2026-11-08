@@ -30,7 +30,7 @@ export function DeleteAccountSection() {
         <section className="rounded-lg border border-destructive/30 bg-card p-5">
             <h2 className="text-sm font-medium text-foreground">Delete account</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-                Deletes your Work Log, evidence, resumes and PDFs, jobs, chat history, linked Telegram and WhatsApp,
+                Deletes your work entries, evidence, resumes and PDFs, jobs, chat history, linked Telegram and WhatsApp,
                 and your sign-in. This cannot be undone. Export first from Plan &amp; usage if you want a copy.
             </p>
             {!open ? (

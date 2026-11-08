@@ -4,7 +4,7 @@ import { RadarScreen } from '@/components/radar/RadarScreen';
 import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavailable';
 
 export const metadata = {
-    title: 'Career Radar · Patronus',
+    title: 'Market fit · Patronus',
 };
 
 /**
@@ -25,7 +25,7 @@ export default async function RadarPage() {
         if (view.code === 'not_found') {
             return <FeatureUnavailable {...FEATURE_COPY.career_radar} reason="not_enabled" />;
         }
-        return <FeatureUnavailable feature="Career Radar" reason="error" />;
+        return <FeatureUnavailable feature="Market fit" reason="error" />;
     }
 
     return <RadarScreen view={view.data} />;

@@ -15,7 +15,7 @@ export const metadata = {
 
 const SCOUT_COPY = {
     feature: 'Jobs',
-    blurb: 'Share any LinkedIn job, post or note and find it here: jobs scored against your record, posts worth keeping, and notes on their way into your Work Log. It is being switched on in stages.',
+    blurb: 'Share any LinkedIn job, post or note and find it here: jobs scored against your record, posts worth keeping, and notes on their way into My work. It is being switched on in stages.',
 };
 
 /** Only the active tab's data is fetched; the other tabs cost nothing until opened. */

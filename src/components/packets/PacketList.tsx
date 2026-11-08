@@ -38,8 +38,8 @@ export interface PacketListProps {
 export function PacketList({ packets }: PacketListProps) {
     const header = (
         <PageHeader width="narrow"
-            eyebrow="Record"
-            title="Review packets"
+            eyebrow="Your career"
+            title="Review prep"
             description="Your confirmed wins, arranged for a performance review or a promotion case."
             actions={
                 packets.length > 0 ? (

@@ -89,7 +89,7 @@ describe('createWinDraftForUser', () => {
 });
 
 describe('RULE 5 from chat — confirm writes the evidence pair; un-confirm reverses it', () => {
-    test('confirmWinForUser writes Evidence(confirmedByUser) + ClaimLink(grounded), exactly like the Work Log', async () => {
+    test('confirmWinForUser writes Evidence(confirmedByUser) + ClaimLink(grounded), exactly like My work', async () => {
         const userId = user('confirm');
         const draft = await createWinDraftForUser({ userId, text: NOTE, source: WinSource.chat, sourceRef: 'scout:run_b' });
         if (!draft.success) throw new Error(draft.error);

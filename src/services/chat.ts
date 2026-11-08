@@ -194,7 +194,7 @@ export async function runAction(
             const row = await prisma.win.findUnique({ where: { id: draft.winId }, select: { sensitivity: true } });
             return {
                 text: draft.status === 'merge_proposed'
-                    ? 'This looks like something already in your Work Log, so I did not add it twice.'
+                    ? 'This looks like something already in My work, so I did not add it twice.'
                     : 'Here is the draft. It goes into your record when you confirm it.',
                 cards: [{
                     type: 'win_draft',
@@ -472,7 +472,7 @@ async function recordChannelTurn(conversationId: string, userId: string, userTex
 const SCOUT_TURN_TEXT: Partial<Record<ChatAction, string>> = {
     analyze_job: 'Reading the job and scoring it against your record.',
     research_company: 'Researching the company.',
-    log_work: 'Drafting that as a Work Log entry for you to confirm.',
+    log_work: 'Drafting that into My work for you to confirm.',
 };
 
 export async function routeChannelText(userId: string, text: string, channel: 'telegram' | 'whatsapp'): Promise<ChannelRoute | null> {

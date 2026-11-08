@@ -33,7 +33,7 @@ type Gate = { userId: string } | { error: Result<never> };
 async function gateSurface(): Promise<Gate> {
     const { userId } = await auth();
     if (!userId) return { error: err('Not signed in', 'unauthenticated') };
-    if (!(await isEnabled(userId, 'job_watch'))) return { error: err('Job watch is not available yet', 'not_available') };
+    if (!(await isEnabled(userId, 'job_watch'))) return { error: err('Job alerts are not available yet', 'not_available') };
     return { userId };
 }
 

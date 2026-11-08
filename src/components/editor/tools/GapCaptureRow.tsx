@@ -87,7 +87,7 @@ export function GapCaptureRow({ item, resumeId }: { item: Item; resumeId?: strin
                 <div className="min-w-0 flex-1">
                     <p className="text-sm text-foreground">{state.title}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                        Saved to your Work Log as a draft. Confirm it there and the next resume can
+                        Saved to My work as a draft. Confirm it there and the next resume can
                         use it — this one is unchanged.
                     </p>
                 </div>

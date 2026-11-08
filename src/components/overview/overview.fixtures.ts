@@ -52,7 +52,7 @@ export function overviewFixture(now = new Date(), state: 'active' | 'new' = 'act
             { key: 'i1', kind: 'interview', title: 'Plivo · technical interview', detail: 'Senior Backend Engineer at Plivo', href: '/scout', action: 'Prepare', at: at(2, 14) },
             { key: 'e1', kind: 'email', title: 'Reply to Priya Raman', detail: 'Asked for three slots next week for the onsite loop', href: '/scout?tab=email', action: 'Draft reply', at: at(-1) },
             { key: 'f1', kind: 'follow_up', title: 'Follow up on Staff Engineer, Media at Daily', detail: 'Applied 8 days ago, no reply yet', href: '/scout', action: 'Draft follow-up', at: at(-8) },
-            { key: 'drafts', kind: 'drafts', title: '3 Work Log drafts to confirm', detail: 'Confirmed wins are what your resumes are built from.', href: '/log', action: 'Review', at: null },
+            { key: 'drafts', kind: 'drafts', title: '3 drafts in My work to confirm', detail: 'Confirmed wins are what your resumes are built from.', href: '/log', action: 'Review', at: null },
         ],
         pipeline: [
             { column: 'to_review', label: 'To review', count: 3, href: '/scout' },

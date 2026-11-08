@@ -92,7 +92,7 @@ describe('account labels and conflict copy', () => {
     test('linked copy describes what the bot does now, not only /generate', () => {
         const text = linkedText('Jai · j•••@gmail.com', { bare: false });
         expect(text).toContain('job or post link');
-        expect(text).toContain('Work Log');
+        expect(text).toContain('My work');
         expect(text).toContain('/jobs');
     });
 });

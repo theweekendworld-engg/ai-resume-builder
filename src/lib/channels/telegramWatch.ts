@@ -32,7 +32,7 @@ export async function handleTelegramWatchCallback(
     if (!action) return false;
 
     if (!(await isEnabled(userId, 'job_watch'))) {
-        await say(chatId, 'Job watch is not available on your account right now.');
+        await say(chatId, 'Job alerts are not available on your account right now.');
         return true;
     }
     const match = await prisma.jobMatch.findFirst({

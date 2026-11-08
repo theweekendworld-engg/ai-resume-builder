@@ -303,8 +303,8 @@ export function RadarScreen({ view }: { view: RadarView }) {
     return (
         <div>
             <PageHeader width="medium"
-                eyebrow="Record"
-                title="Career Radar"
+                eyebrow="Your career"
+                title="Market fit"
                 description={
                     <>
                         Where you stand in the market, from public job postings.

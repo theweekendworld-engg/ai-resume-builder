@@ -98,7 +98,7 @@ function describe(outcome: Extract<UnsubscribeOutcome, { ok: true }>, resubscrib
               })
             : page({
                   title: 'Unsubscribed',
-                  body: 'You will not get any more email from Patronus. Your work log is untouched and still yours.',
+                  body: 'You will not get any more email from Patronus. My work is untouched and still yours.',
                   action: { label: 'Changed your mind? Resubscribe', href: resubscribeHref },
               });
     }

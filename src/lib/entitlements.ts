@@ -682,7 +682,7 @@ const OFFER_COOLDOWN_DAYS = 30;
 const INACTIVITY_DAYS = 30;
 
 const DOWNGRADE_KEEPS =
-  'Your Career plan keeps everything: your log, your record, your packets, and Radar.';
+  'Your Career plan keeps everything: your log, your record, your review prep, and Market fit.';
 
 /**
  * Should we offer to turn Search off?

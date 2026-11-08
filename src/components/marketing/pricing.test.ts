@@ -97,7 +97,7 @@ describe('prices come from the catalog, not from retyped strings', () => {
 
 describe('marketing claims only what is built', () => {
     test.each([
-        ['Career Radar', /career radar/i],
+        ['Market fit', /career radar/i],
         ['Missions', /\bmissions?\b/i],
         // Capture sources declared in the schema enum but with no adapter.
         ['Linear capture', /\blinear\b/i],

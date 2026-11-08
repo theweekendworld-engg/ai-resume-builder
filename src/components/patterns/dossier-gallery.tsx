@@ -72,7 +72,7 @@ export function DossierSection() {
                 <div className="space-y-3 rounded-lg border border-border bg-card p-5">
                     <p className={typeStyles.eyebrow}>Eyebrow · 11/16 Inter 600 +0.08em</p>
                     <p className={typeStyles.display}>Welcome back, Jai.</p>
-                    <p className={typeStyles.h1}>Work Log — page title 28/36</p>
+                    <p className={typeStyles.h1}>My work — page title 28/36</p>
                     <p className={typeStyles.h2}>Section heading 19/26</p>
                     <p className={typeStyles.h3}>Card title · Inter 15/22 600</p>
                     <p className={cn(typeStyles.body, 'max-w-prose text-muted-foreground')}>
@@ -91,8 +91,8 @@ export function DossierSection() {
                     <Label>PageHeader + PageTabs</Label>
                 </div>
                 <PageHeader
-                    eyebrow="Record"
-                    title="Work Log"
+                    eyebrow="Your career"
+                    title="My work"
                     description="What you actually did, confirmed and kept."
                     actions={
                         <>
@@ -102,7 +102,7 @@ export function DossierSection() {
                     }
                 >
                     <PageTabs
-                        label="Work Log views"
+                        label="My work views"
                         active="log"
                         tabs={[
                             { key: 'log', label: 'Log', onSelect: () => {}, count: 42 },
@@ -287,7 +287,7 @@ export function DossierSection() {
                         title="No jobs yet"
                         description="Share a job link and it lands here, scored against your record, with its stages tracked."
                         action={{ label: 'Paste a job link', onClick: () => {} }}
-                        secondary={{ label: 'or connect Job watch', onClick: () => {} }}
+                        secondary={{ label: 'or connect Job alerts', onClick: () => {} }}
                     />
                 </div>
                 <div>

@@ -144,7 +144,7 @@ const LAND_NEW_ROLE: MissionTemplate = {
         {
             key: 'define_target',
             title: 'Define the target',
-            hint: 'Role, level, and a comp floor from Radar.',
+            hint: 'Role, level, and a comp floor from Market fit.',
             condition: automatic('radar_viewed'),
         },
         {

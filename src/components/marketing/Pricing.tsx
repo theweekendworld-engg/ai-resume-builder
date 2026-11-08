@@ -48,7 +48,7 @@ export function launchHighlights(): string[] {
             ? 'Nightly Telegram alerts for every company you name'
             : `Nightly Telegram alerts for up to ${companies} companies you name`,
         'Forwarded job email, filed under the right application',
-        'The Work Log, review and promotion packets, level readiness and Month in Review',
+        'My work, review prep, level readiness and Month in Review',
         'Your whole history, kept, with nothing hidden',
     ];
 }

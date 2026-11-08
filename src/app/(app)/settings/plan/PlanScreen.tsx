@@ -437,7 +437,7 @@ function TurnOffSearchButton({ endsOn }: { endsOn: string | null }) {
         trigger: 'user_initiated',
         headline: `Turn ${SEARCH_PLAN.name} off?`,
         detail: `You keep ${CAREER_PLAN.name} and everything in it.`,
-        keeps: 'Your log, your record, your packets, and Radar all stay.',
+        keeps: 'Your log, your record, your review prep, and Market fit all stay.',
         searchEndsOn: endsOn,
       }}
       className="w-full"

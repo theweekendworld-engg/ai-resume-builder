@@ -44,15 +44,15 @@ export function waitlistHref(feature: string): string {
  */
 export const FEATURE_COPY = {
     work_log: {
-        feature: 'The Work Log',
+        feature: 'My work',
         blurb: 'The running record of what you have actually done — the thing every resume, packet and review here is built from. It is being switched on in stages.',
     },
     github_capture: {
         feature: 'GitHub capture',
-        blurb: 'Turns your commits and pull requests into draft entries in your Work Log, so the record keeps itself. It is being switched on in stages.',
+        blurb: 'Turns your commits and pull requests into draft entries in My work, so the record keeps itself. It is being switched on in stages.',
     },
     review_packet: {
-        feature: 'Review packets',
+        feature: 'Review prep',
         blurb: 'Your evidence, arranged for a performance review or a promotion case. It is being switched on in stages.',
     },
     month_in_review: {
@@ -64,7 +64,7 @@ export const FEATURE_COPY = {
         blurb: 'Reconstructs the years before you started keeping a log, one conversation at a time. It is being switched on in stages.',
     },
     career_radar: {
-        feature: 'Career Radar',
+        feature: 'Market fit',
         blurb: 'What the market is asking for in your field, priced and dated, from postings employers actually published. It is being switched on in stages.',
     },
     missions: {

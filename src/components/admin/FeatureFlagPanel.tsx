@@ -23,13 +23,13 @@ import { setFeatureFlag, setFeatureFlagAllowList, type FeatureFlagRow } from '@/
  */
 
 const LABELS: Record<string, string> = {
-    work_log: 'Work Log',
+    work_log: 'My work',
     github_capture: 'GitHub capture',
     weekly_digest: 'Weekly digest',
-    review_packet: 'Review packets',
+    review_packet: 'Review prep',
     month_in_review: 'Month in Review',
     backfill: 'Backfill',
-    career_radar: 'Career Radar',
+    career_radar: 'Market fit',
     missions: 'Missions',
     scout: 'Scout / Inbox',
     chat: 'Chat',

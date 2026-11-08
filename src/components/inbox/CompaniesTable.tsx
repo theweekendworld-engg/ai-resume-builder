@@ -28,7 +28,7 @@ export function CompaniesTable({ items }: { items: CompanyItem[] }) {
                         <th className="pb-2 text-right font-medium">Jobs</th>
                         <th className="pb-2 font-medium">Best fit</th>
                         <th className="pb-2 text-right font-medium">Mentions</th>
-                        <th className="pb-2 font-medium">Radar</th>
+                        <th className="pb-2 font-medium">Job alerts</th>
                         <th className="pb-2 text-right font-medium">Last seen</th>
                     </tr>
                 </thead>

@@ -226,7 +226,7 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     }
     if (flags.workLog && drafts > 0) {
         needsYou.push({
-            key: 'drafts', kind: 'drafts', title: `${drafts} Work Log draft${drafts === 1 ? '' : 's'} to confirm`,
+            key: 'drafts', kind: 'drafts', title: `${drafts} draft${drafts === 1 ? '' : 's'} in My work to confirm`,
             detail: 'Confirmed wins are what your resumes are built from.', href: '/log', action: 'Review', at: null,
         });
     }

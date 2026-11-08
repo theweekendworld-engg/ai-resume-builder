@@ -27,7 +27,7 @@ export default async function SettingsIndexPage() {
         { href: '/settings/memory', icon: Brain, title: 'Memory', body: 'What you have told me, so I never ask twice. Edit, make private or delete any of it.' },
         ...(journey ? [{ href: '/settings/email', icon: CalendarDays, title: 'Email & calendar', body: 'Forward job email to Patronus and connect Google Calendar, so every application tracks itself.' }] : []),
         { href: '/settings/channels', icon: MessageCircle, title: 'Channels', body: 'Web chat, Telegram, WhatsApp, the browser extension and the CLI.' },
-        ...(capture ? [{ href: '/settings/sources', icon: GitBranch, title: 'Sources', body: 'Connect GitHub so your merged work becomes Work Log drafts.' }] : []),
+        ...(capture ? [{ href: '/settings/sources', icon: GitBranch, title: 'Sources', body: 'Connect GitHub so your merged work becomes drafts in My work.' }] : []),
         { href: '/settings/notifications', icon: Bell, title: 'Notifications', body: 'The weekly digest, monthly review and what reaches your inbox.' },
         { href: '/settings/plan', icon: CreditCard, title: 'Plan & usage', body: 'What you have used this month. Every feature is included while we launch.' },
         { href: '/account', icon: UserRound, title: 'Account', body: 'Email, sign-in methods and linked accounts like GitHub.' },
