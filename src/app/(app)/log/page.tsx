@@ -19,7 +19,7 @@ import { FeatureUnavailable, FEATURE_COPY } from '@/components/app/FeatureUnavai
  * table reachable without a database, and it disappears with the fixtures.
  */
 export const metadata = {
-  title: 'Work log · Patronus',
+  title: 'My work · Patronus',
 };
 
 export default async function LogPage({

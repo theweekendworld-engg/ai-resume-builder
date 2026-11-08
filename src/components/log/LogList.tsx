@@ -164,7 +164,7 @@ export function LogListSkeleton({ groups = 2, rows = 4 }: { groups?: number; row
           </section>
         ))}
       </div>
-      <span className="sr-only">Loading your work log</span>
+      <span className="sr-only">Loading My work</span>
     </DensityProvider>
   );
 }

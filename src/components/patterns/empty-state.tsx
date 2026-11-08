@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { Inbox, type LucideIcon } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -32,11 +33,21 @@ export interface EmptyStateProps {
    * first-run user sees what they are building toward.
    */
   samples?: WinRecord[];
+  /**
+   * `inline` sits inside a list container in place of its rows (smaller
+   * padding, no box of its own). `page` (default) is the whole view.
+   */
+  size?: 'page' | 'inline';
   className?: string;
 }
 
 /**
- * `EmptyState` — signature surface. One of the few places glow is welcome.
+ * `EmptyState` — what this place is, and the one thing to do next.
+ *
+ * Dossier (docs/design/03-dossier.md §5): a ruled box on the page, not a
+ * glowing card floating in space. The icon sits in a small square like a
+ * file tab, the title is the serif, the description says what will appear
+ * here once there is something, and there is exactly one primary button.
  *
  * Copy rules from foundations §10: never apologize, never an exclamation mark,
  * never "Oops". Labels are nouns, the button is a verb.
@@ -48,29 +59,35 @@ export function EmptyState({
   action,
   secondary,
   samples,
+  size = 'page',
   className,
 }: EmptyStateProps) {
+  const inline = size === 'inline';
   return (
     <div
       className={cn(
-        // signature surface: glow + a subtle gradient, per §6.
-        'relative overflow-hidden rounded-xl border border-border bg-card px-6 py-16',
-        'bg-gradient-to-b from-primary/5 to-transparent patronus-glow-sm',
+        'relative',
+        inline ? 'px-6 py-10' : 'rounded-lg border border-border bg-card px-6 py-14',
         className
       )}
     >
-      <div className="mx-auto flex max-w-[42ch] flex-col items-center text-center">
-        <Icon aria-hidden="true" className="size-8 text-muted-foreground" strokeWidth={1.5} />
+      <div className="mx-auto flex max-w-[44ch] flex-col items-center text-center">
+        <span
+          aria-hidden="true"
+          className="grid size-10 place-items-center rounded-md border border-border bg-background text-muted-foreground"
+        >
+          <Icon className="size-5" strokeWidth={1.75} />
+        </span>
 
         <h2 className={cn(typeStyles.h2, 'mt-4 text-foreground')}>{title}</h2>
 
-        <p className={cn(typeStyles.body, 'mt-2 text-muted-foreground')}>{description}</p>
+        <p className={cn(typeStyles.body, 'mt-1.5 text-muted-foreground')}>{description}</p>
 
         {action ? (
-          <div className="mt-6">
+          <div className="mt-5">
             {action.href ? (
               <Button asChild>
-                <a href={action.href}>{action.label}</a>
+                <Link href={action.href}>{action.label}</Link>
               </Button>
             ) : (
               <Button type="button" onClick={action.onClick}>
@@ -83,17 +100,17 @@ export function EmptyState({
         {secondary ? (
           <div className="mt-3">
             {secondary.href ? (
-              <a
+              <Link
                 href={secondary.href}
-                className={cn(typeStyles.small, focusRing, 'rounded-sm text-muted-foreground hover:text-foreground hover:underline')}
+                className={cn(typeStyles.small, focusRing, 'rounded-sm text-muted-foreground underline decoration-border-strong/60 underline-offset-4 hover:text-foreground hover:decoration-foreground')}
               >
                 {secondary.label}
-              </a>
+              </Link>
             ) : (
               <button
                 type="button"
                 onClick={secondary.onClick}
-                className={cn(typeStyles.small, focusRing, 'rounded-sm text-muted-foreground hover:text-foreground hover:underline')}
+                className={cn(typeStyles.small, focusRing, 'rounded-sm text-muted-foreground underline decoration-border-strong/60 underline-offset-4 hover:text-foreground hover:decoration-foreground')}
               >
                 {secondary.label}
               </button>
@@ -104,7 +121,7 @@ export function EmptyState({
 
       {samples && samples.length > 0 ? (
         <div className="mx-auto mt-10 max-w-2xl">
-          <p className={cn(typeStyles.caption, 'mb-2 text-center uppercase text-muted-foreground')}>Sample</p>
+          <p className={cn(typeStyles.eyebrow, 'mb-2 text-center')}>Sample</p>
           <div aria-hidden="true" className="space-y-1 opacity-45">
             {samples.slice(0, 3).map((sample) => (
               <WinCard key={sample.id} win={sample} variant="preview" />

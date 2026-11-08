@@ -50,7 +50,7 @@ function okData<T>(section: StoredSection | undefined): T | null {
 function footerFor(view: ScoutRunView, appUrl: string): Line {
     if (view.kind === 'work_note') {
         const url = `${appUrl.replace(/\/$/, '')}/log`;
-        return [{ text: 'Work Log: ' }, { text: url, href: url }];
+        return [{ text: 'My work: ' }, { text: url, href: url }];
     }
     const url = scoutRunUrl(appUrl, view.id);
     return [{ text: 'Full analysis: ' }, { text: url, href: url }];
@@ -236,7 +236,7 @@ function noteLines(view: ScoutRunView): Line[] {
     ];
     if (narrative) lines.push([{ text: narrative.length > 200 ? `${narrative.slice(0, 199)}…` : narrative }]);
     if (capture.degraded) lines.push([{ text: 'I left out a number your note did not state.', italic: true }]);
-    lines.push([], [{ text: 'Draft in your Work Log. Confirm to keep it as evidence.', italic: true }]);
+    lines.push([], [{ text: 'Draft in My work. Confirm to keep it as evidence.', italic: true }]);
     return lines;
 }
 
@@ -249,7 +249,7 @@ function noteActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     const capture = okData<CaptureData>(view.sections.capture);
     if (!capture) return [];
     if (capture.status === 'merge_proposed') {
-        return [{ kind: 'open', label: 'Open in Work Log', url: logUrl(appUrl, capture.duplicateOfWinId ?? capture.winId) }];
+        return [{ kind: 'open', label: 'Open in My work', url: logUrl(appUrl, capture.duplicateOfWinId ?? capture.winId) }];
     }
     return [
         { kind: 'confirm_win', winId: capture.winId, label: '✅ Confirm' },

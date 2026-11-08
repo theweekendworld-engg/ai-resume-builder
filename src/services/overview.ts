@@ -10,8 +10,10 @@
 import { ApplicationEventKind, ApplicationStatus, Channel, GenerationStatus, JobEmailStatus, WinStatus } from '@prisma/client';
 
 import { COLUMN_OF_STATUS, type BoardColumn } from '@/lib/inbox/types';
+import { jobStageFacts, jobStages, type JobStage } from '@/lib/jobStages';
 import type { TrackedStatus } from '@/lib/scout/types';
 import { prisma } from '@/lib/prisma';
+import { titleCaseName } from '@/lib/resumeFileName';
 
 export type OverviewFlags = {
     chat: boolean;
@@ -44,7 +46,23 @@ export type Overview = {
     goal: { title: string; percent: number; nextStep: string | null } | null;
     resumes: Array<{ id: string; title: string; target: string | null; updatedAt: string }>;
     setup: Array<{ key: string; label: string; done: boolean; href: string }>;
+    /**
+     * The jobs in motion (not closed), newest first, each with its four
+     * stages for the ProgressRail. Null when Scout is off.
+     */
+    jobs: Array<{
+        id: string;
+        role: string;
+        company: string | null;
+        href: string;
+        fitScore: number | null;
+        stages: JobStage[];
+        updatedAt: string;
+    }> | null;
 };
+
+/** Statuses that take a job off Home's "in motion" list. */
+const CLOSED_STATUSES = [ApplicationStatus.rejected, ApplicationStatus.ghosted, ApplicationStatus.archived];
 
 const COLUMN_LABEL: Record<BoardColumn, string> = {
     to_review: 'To review',
@@ -83,6 +101,7 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
         inbox,
         calendar,
         experienceCount,
+        jobRows,
     ] = await Promise.all([
         prisma.userProfile.findUnique({ where: { userId }, select: { fullName: true } }),
         flags.scout ? prisma.applicationWorkspace.groupBy({ by: ['applicationStatus'], where: { userId }, _count: { _all: true } }) : Promise.resolve([]),
@@ -143,7 +162,35 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
         flags.journey ? prisma.emailInbox.findUnique({ where: { userId }, select: { lastReceivedAt: true } }) : Promise.resolve(null),
         flags.journey ? prisma.googleConnection.count({ where: { userId } }) : Promise.resolve(0),
         prisma.userExperience.count({ where: { userId } }),
+        flags.scout
+            ? prisma.applicationWorkspace.findMany({
+                where: { userId, applicationStatus: { notIn: CLOSED_STATUSES } },
+                orderBy: { updatedAt: 'desc' },
+                take: 4,
+                select: {
+                    id: true, roleTitle: true, companyName: true, applicationStatus: true, fitScore: true, scoutRunId: true,
+                    selectedResumeId: true, selectedGeneratedPdfId: true, latestGenerationSessionId: true, updatedAt: true,
+                },
+            })
+            : Promise.resolve([]),
     ]);
+
+    // "Email ready" needs the drafts table: one follow-up query, only when
+    // there are jobs to ask about.
+    const runIds = jobRows.map((row) => row.scoutRunId).filter((id): id is string => !!id);
+    const emailDrafts = jobRows.length
+        ? await prisma.messageDraft.findMany({
+            where: {
+                userId,
+                format: 'email',
+                status: { not: 'discarded' },
+                OR: [{ workspaceId: { in: jobRows.map((row) => row.id) } }, ...(runIds.length ? [{ runId: { in: runIds } }] : [])],
+            },
+            select: { workspaceId: true, runId: true },
+        })
+        : [];
+    const hasEmail = (row: { id: string; scoutRunId: string | null }) =>
+        emailDrafts.some((draft) => draft.workspaceId === row.id || (!!row.scoutRunId && draft.runId === row.scoutRunId));
 
     const count = (column: BoardColumn) => byStatus
         .filter((row) => COLUMN_OF_STATUS[row.applicationStatus as TrackedStatus] === column)
@@ -179,7 +226,7 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     }
     if (flags.workLog && drafts > 0) {
         needsYou.push({
-            key: 'drafts', kind: 'drafts', title: `${drafts} Work Log draft${drafts === 1 ? '' : 's'} to confirm`,
+            key: 'drafts', kind: 'drafts', title: `${drafts} draft${drafts === 1 ? '' : 's'} in My work to confirm`,
             detail: 'Confirmed wins are what your resumes are built from.', href: '/log', action: 'Review', at: null,
         });
     }
@@ -214,7 +261,8 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     ];
 
     return {
-        firstName: profile?.fullName?.trim().split(/\s+/)[0] || null,
+        // "JAI SHANKAR" from a resume header greets as "Jai".
+        firstName: firstNameOf(profile?.fullName),
         needsYou: needsYou.slice(0, 8),
         pipeline: flags.scout
             ? (['to_review', 'applied', 'interviewing', 'offer'] as BoardColumn[]).map((column) => ({ column, label: COLUMN_LABEL[column], count: count(column), href: '/scout' }))
@@ -234,5 +282,22 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
             updatedAt: r.updatedAt.toISOString(),
         })),
         setup,
+        jobs: flags.scout
+            ? jobRows.map((row) => ({
+                id: row.id,
+                role: row.roleTitle ?? 'Untitled role',
+                company: row.companyName,
+                href: row.scoutRunId ? `/scout/${row.scoutRunId}` : '/scout',
+                fitScore: row.fitScore,
+                stages: jobStages(jobStageFacts({ ...row, emailReady: hasEmail(row) })),
+                updatedAt: row.updatedAt.toISOString(),
+            }))
+            : null,
     };
+}
+
+/** The greeting's first name, cased the way the person would write it. */
+export function firstNameOf(fullName: string | null | undefined): string | null {
+    const first = fullName?.trim().split(/\s+/)[0];
+    return first ? titleCaseName(first) : null;
 }

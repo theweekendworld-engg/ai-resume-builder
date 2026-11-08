@@ -478,7 +478,7 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
   }
 
   if (text.startsWith('/') && !/^\/(start|generate|status|profile|scout|jobs|applied|insights|notes|memory|help|unlink)\b/.test(text)) {
-    await sayPlain(chatId, 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - Your Work Log notes\n/memory - What I remember you told me\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat');
+    await sayPlain(chatId, 'Unknown command. Available commands:\n/start - Link account or see welcome info\n/scout - Analyse a LinkedIn job or post link\n/jobs - Your best fits to review\n/applied - Jobs you applied to\n/insights - Your saved insights\n/notes - My work notes\n/memory - What I remember you told me\n/help - Everything the bot can do\n/generate - Start a new resume\n/status - Check generation progress\n/profile - View your profile details\n/unlink - Disconnect this chat');
     return;
   }
 

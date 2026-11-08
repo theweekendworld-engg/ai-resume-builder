@@ -122,7 +122,7 @@ export function ResumeCard({ resume }: ResumeCardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this resume?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{resume.title || 'Untitled resume'}&rdquo; is removed. Your Work Log and history are not touched.
+              &ldquo;{resume.title || 'Untitled resume'}&rdquo; is removed. My work and history are not touched.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

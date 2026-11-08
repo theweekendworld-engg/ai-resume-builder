@@ -14,6 +14,7 @@ import * as React from 'react';
 import { Github } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/patterns';
 import { TWO_ACCOUNTS_LIMIT_COPY } from '@/lib/capture/consent';
@@ -132,7 +133,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                 return;
             }
             setMode({ view: 'list' });
-            setNotice('Your first sync has started. Drafts appear in your Work Log for you to review, usually within a few minutes.');
+            setNotice('Your first sync has started. Drafts appear in My work for you to review, usually within a few minutes.');
             await refresh();
         },
         [actions, refresh, setError],
@@ -167,14 +168,13 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
     }
 
     return (
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-10">
-            <header className="flex flex-col gap-1">
-                <h1 className="text-2xl font-medium">Connected sources</h1>
-                <p className="text-sm text-muted-foreground">
-                    What we watch, and what it has found. Everything we pull is shown to you before it becomes
-                    part of your record.
-                </p>
-            </header>
+        <div>
+            <PageHeader width="narrow"
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Connected sources"
+                description="What we watch, and what it has found. Everything we pull is shown to you before it becomes part of your record."
+            />
+            <PageBody width="narrow" className="flex flex-col gap-6">
 
             {error ? (
                 <p className="text-sm text-destructive">
@@ -194,7 +194,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                 <p className="text-sm text-muted-foreground">
                     {notice}{' '}
                     <a href="/log" className="font-medium text-foreground underline underline-offset-4">
-                        Open Work Log
+                        Open My work
                     </a>
                 </p>
             ) : null}
@@ -222,7 +222,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                                     setError(result.error ?? 'Could not start a sync', result.code);
                                     return;
                                 }
-                                setNotice('Syncing now. New drafts land in your Work Log for review.');
+                                setNotice('Syncing now. New drafts land in My work for review.');
                                 await refresh();
                             }}
                             onTogglePause={async () => {
@@ -285,6 +285,7 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
                     else await refresh();
                 }}
             />
+            </PageBody>
         </div>
     );
 }

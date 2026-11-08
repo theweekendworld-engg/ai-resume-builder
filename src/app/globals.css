@@ -12,21 +12,59 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
-  Patronus theme — "Your best self, in the light"
-  Deep navy = the space; silvery blue = the patronus glow; soft silver-white = clarity.
+  ═══════════════════════════════════════════════════════════════════════════
+  Patronus theme — "Dossier" (2026-11-08, docs/design/03-dossier.md)
+  ═══════════════════════════════════════════════════════════════════════════
 
-  Two themes, per design/00 §3.1. Light is the default (`:root`), dark is opt-in
-  via `.dark`. `.dark` is a plain class, not tied to <html>, so any subtree can
-  be forced dark by putting the class on its wrapper element.
+  The product is a private record of someone's working life, so the interface
+  is set like a well-kept file: hairline rules between sections, serif titles,
+  and ONE confident accent, in the original Patronus blue (owner decision
+  2026-11-08: Dossier's layout and patterns, Patronus's colours).
 
-  All colour tokens are bare HSL triplets consumed as `hsl(var(--token))`.
+    ground    #FCFCFD  page ground          ink      #141A29  text
+    card      #FFFFFF  records on the page  muted    #5C697A  secondary text
+    blue      #1879BF  primary actions, links, progress, focus
+    warning   #9A6304  "needs you" — attention only, never decoration
+    success / danger kept as semantic status.
+
+  Rules that keep it from turning into an AI-template app (enforced in review,
+  listed in 03-dossier.md §8): no glass/backdrop blur, no purple-blue
+  gradients, no gradient text, no glow, no sparkles as decoration, borders
+  over shadows, motion only where it shows a change of state.
+
+  Light is the default (`:root`). Dark is opt-in via `.dark`, a plain class, so
+  any subtree can be forced dark by putting the class on its wrapper. All colour
+  tokens are bare HSL triplets consumed as `hsl(var(--token))`.
+
+  ── Measured contrast (WCAG 2.x, from the HSL values as the browser rounds
+     them). Text needs 4.5:1, control edges 3:1. ─────────────────────────────
+
+    LIGHT                       on ground  on card
+    foreground                   16.9       17.4
+    muted-foreground              5.5        5.6
+    primary (blue) as text        4.5        4.6     white on primary 4.64
+    warning                       4.9        5.0
+    success                       5.1        5.2
+    danger                        5.6        5.7
+    border-strong (control edge)  3.1        3.2
+    border (hairline, decorative only) 1.3 — never bounds a control
+
+    DARK                        on ground  on card
+    foreground                   17.8       16.8
+    muted-foreground              5.0        4.7
+    primary (blue) as text       10.1        9.5
+    warning                      10.7       10.1
+    success                       9.1        8.6
+    danger                        4.8        4.6
+    border-strong                 3.7        3.5
 */
 
 /* Theme-independent. Kept out of the colour blocks so both themes share it. */
 :root {
-  --radius: 0.625rem;
+  /* 8px. Cards and inputs use it as is; chips and small controls step down. */
+  --radius: 0.5rem;
 
-  /* Motion — design/00 §7.1 */
+  /* Motion — design/00 §7.1. Only for changes of state. */
   --duration-micro: 120ms;
   --duration-state: 180ms;
   --duration-enter: 220ms;
@@ -35,6 +73,11 @@
   --ease-state: cubic-bezier(0.2, 0, 0, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
+
+/* ── Palette: Patronus blue (owner decision 2026-11-08) ─────────────────
+   The Dossier pass kept its layout, type and patterns, but the colours are
+   the original Patronus blue: "that's how Patronus looks". Values below are
+   the pre-Dossier tokens, unchanged and already AA-measured. */
 
 /* ── Light (default) — design/00 §3.1 ────────────────────────────────────── */
 :root,
@@ -127,7 +170,6 @@ html:has(.marketing) {
   --border: 215 22% 16%;
   --input: 215 25% 14%;
   --ring: 205 85% 72%;
-  --radius: 0.625rem;
   --glow: 205 85% 72%;
 
   --border-strong: 215 16% 44%;     /* 3.51:1 on --card */
@@ -174,32 +216,46 @@ html:has(.marketing) {
   --color-info: hsl(var(--info));
   --color-info-foreground: hsl(var(--info-foreground));
 
+  /*
+    One small radius family. `rounded-xl` was 12px across 200-odd cards; it is
+    now the same 8px as everything else, so the whole app changes shape in one
+    place. `rounded-2xl` stays a step larger for sheets.
+  */
+  --radius-2xl: calc(var(--radius) + 4px);
+  --radius-xl: var(--radius);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-heading: var(--font-sora), system-ui, sans-serif;
+  /* `font-display` and the older `font-heading` are the same serif. */
+  --font-display: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-heading: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* ── Signature surfaces (glow) — reward moments only, design/00 §1 ───────── */
+/*
+  ── Elevation ─────────────────────────────────────────────────────────────
+  Borders over shadows. The old signature glow is retired: on a paper surface
+  a halo reads as a template, not as a reward. The classes stay (the confirm
+  moment and a few cards still name them) and now draw a quiet teal ring, which
+  marks the moment without lighting it up.
+*/
 .patronus-glow {
-  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.14);
 }
 .patronus-glow-sm {
-  box-shadow: 0 0 16px -4px hsl(var(--glow) / 0.25);
+  box-shadow: none;
 }
 .hover\:patronus-glow:hover {
-  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+  box-shadow: none;
 }
 
 /*
   ── Work surfaces — design/00 §1 Problem 2, §6 ────────────────────────────
   Opt-in flattener for dense surfaces (log list, review queue, tables, packet
-  editor, settings). Strips the marketing chrome that `Card` and `Button`
-  carry by default — backdrop-blur (one compositing layer per element, which
-  is what drops frames on a 500-row list), shadow, and glow — and replaces
-  them with a flat fill and a 1px hairline.
+  editor, settings). Strips any shadow and backdrop-blur a component carries
+  and replaces it with a flat fill and a 1px hairline.
 
   Usage: `<Card className="surface-work">`, `<Button className="surface-work">`.
 
@@ -213,13 +269,9 @@ html:has(.marketing) {
     `bg-success/8`) land on the *same element* as `surface-work` in
     `win-card.tsx`. A plain unlayered `border:` / `background-color:`
     shorthand here would silently erase all of them.
-  - The chrome-stripping — shadow, backdrop-blur, glow — is unlayered, so it
-    beats both the utilities layer and `.patronus-glow*`. That is the part
-    that actually has to override, and it is why the class exists.
-
-  Elevation above flat is plain Tailwind: `shadow-sm` for a raised row or
-  sticky header, `shadow-lg` for genuinely floating chrome (drawer, popover,
-  toast). Glow is reserved for the confirm animation and packet-ready moment.
+  - The chrome-stripping — shadow, backdrop-blur — is unlayered, so it beats
+    both the utilities layer and `.patronus-glow*`. That is the part that
+    actually has to override, and it is why the class exists.
 */
 @layer components {
   .surface-work {
@@ -263,18 +315,60 @@ html:has(.marketing) {
 
 /* ── Numerals — design/00 §4.2 ────────────────────────────────────────────
    Every count, date, metric and quota. Non-tabular figures make columns
-   wobble as values change. */
+   wobble as values change. Lining as well as tabular, because the serif's
+   default figures are proportional. */
 .num {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
+}
+
+/*
+  ── Dossier details ───────────────────────────────────────────────────────
+  `.eyebrow` — the letterspaced uppercase kicker above a section or a number.
+  11px/16, 600, +0.08em. Muted ink at 6.06:1 on paper, so it is small but
+  never faint.
+
+  `.ledger` — the voice of provenance: dates, sources, counts in a meta row.
+  System monospace (no font download), tabular.
+
+  `.rule` — a hairline between sections, the Dossier's main separator.
+*/
+@layer components {
+.eyebrow {
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.ledger {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
+  letter-spacing: 0;
+}
+.rule {
+  border-top: 1px solid hsl(var(--border));
+}
 }
 
-.font-heading {
-  font-family: var(--font-sora), system-ui, sans-serif;
-}
-
-* {
-  @apply border-border;
+/*
+ * The default border colour, in `@layer base` — NOT unlayered.
+ *
+ * It used to be a bare `* { @apply border-border; }`. Unlayered CSS beats every
+ * cascade layer regardless of specificity, so that one line silently overrode
+ * every border-colour utility in the app: `border-primary/30`, `border-warning`
+ * on a confidential Win, `border-transparent` on a badge — all rendered as the
+ * grey hairline (measured with getComputedStyle, 2026-11-08). In the base layer
+ * it is a default again and any utility wins.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: hsl(var(--border));
+  }
 }
 
 /*
@@ -284,8 +378,8 @@ html:has(.marketing) {
  * settings list, the landing page's buttons and the FAQ's <summary>. Only the
  * `<Button>` primitive drew a ring. In `@layer base` with zero specificity, so
  * any component that styles its own focus (`focus-visible:ring-2 …`, which
- * every ui/ primitive does) still wins. The ring token measures 4.64:1 on the
- * app's white card and 10.9:1 on the landing page's ground.
+ * every ui/ primitive does) still wins. The ring is teal: 5.52:1 on a card,
+ * 5.20:1 on paper, 7.77:1 on the dark card.
  */
 @layer base {
   :where(a, button, summary, [role='button'], [tabindex]:not([tabindex='-1'])):focus-visible {
@@ -315,14 +409,34 @@ body {
   min-height: 100vh;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sora), system-ui, sans-serif;
+/*
+ * Serif for the page and its sections, sans for everything inside them.
+ * h1 and h2 are titles and section heads; h3 and below are card and row
+ * titles, which read better in Inter at 14-15px in a dense list.
+ *
+ * In `@layer base` so a utility on the element (`font-sans` on an eyebrow
+ * h2, `font-display` on an h3) still wins. Unlayered, these beat every
+ * utility — the same trap as the border rule above.
+ */
+@layer base {
+  h1,
+  h2 {
+    font-family: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+  h3, h4, h5, h6 {
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
 }
 
+/*
+ * Entrance motion. Kept short (220ms, 8px) because it now only marks content
+ * arriving after a load; the old 600ms, 16px rise read as decoration.
+ */
 @keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -331,20 +445,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fade-in-up 220ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .animation-delay-100 {
-  animation-delay: 0.1s;
+  animation-delay: 0.05s;
 }
 .animation-delay-200 {
-  animation-delay: 0.2s;
+  animation-delay: 0.1s;
 }
 .animation-delay-300 {
-  animation-delay: 0.3s;
+  animation-delay: 0.15s;
 }
 .animation-delay-400 {
-  animation-delay: 0.4s;
+  animation-delay: 0.2s;
 }
 
 /* ── Reduced motion — design/00 §7.3 ──────────────────────────────────────
@@ -368,7 +482,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+  background: hsl(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
@@ -489,6 +603,9 @@ h1, h2, h3, h4, h5, h6 {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .marketing {
+  /* The landing page keeps its original, rounder corners. */
+  --radius: 0.625rem;
+
   /* Warm, not white. A pure #fff artifact on navy reads as a dialog; ivory
      reads as paper, which is what a record is. */
   --paper: 40 28% 96%;
@@ -929,18 +1046,15 @@ h1, h2, h3, h4, h5, h6 {
   to { opacity: 1; transform: none; }
 }
 
-/*
- * App shell (AppNav.tsx): from lg, a page's own centred container sits against
- * the sidebar instead of floating in the middle of the remaining width, which
- * left a wide empty band between the nav and the content (2026-10-03).
- * Only the page-level containers (two levels under <main>), so centred blocks
- * inside a page keep their centring. `data-center` opts out (the chat thread
- * is centred between the sidebar and its rail on purpose).
- */
-@media (min-width: 1024px) {
-  [data-app-main] > .mx-auto:not([data-center]),
-  [data-app-main] > :not([data-center]) > .mx-auto:not([data-center]) {
-    margin-left: 0;
-    padding-left: 2rem;
-  }
+/* The app's headings are Source Serif; the landing page and sign-in/up keep their Sora. */
+.marketing h1, .marketing h2, .marketing h3, .marketing h4, .marketing h5, .marketing h6,
+.marketing .font-heading,
+.auth-page h1, .auth-page h2, .auth-page .font-heading {
+  font-family: var(--font-sora), system-ui, sans-serif;
 }
+
+/*
+ * App shell (AppNav.tsx): page containers are centred in the space beside the
+ * sidebar (owner, 2026-11-08). The rule that pinned them to the sidebar from
+ * lg (2026-10-03) is gone; pages pick a width with PageHeader/PageBody `width`.
+ */

@@ -138,12 +138,12 @@ const welcome: TemplateDefinition<TransactionalTemplateData['welcome']> = {
     key: 'welcome',
     category: 'transactional',
     render(data, ctx) {
-        const subject = 'Your work log is open';
+        const subject = 'Your Patronus record is open';
         const { html, text } = renderEmail({
             title: subject,
             preheader: 'One habit: log the thing you just finished. Everything else follows.',
             blocks: [
-                heading('Your work log is open'),
+                heading('Your Patronus record is open'),
                 paragraph(greeting(data.firstName)),
                 paragraph(
                     'Patronus keeps a running record of what you actually did — with the evidence attached, so nothing you claim later needs defending.'

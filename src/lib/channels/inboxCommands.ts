@@ -139,7 +139,7 @@ export function renderInsights(items: InsightItem[], appUrl: string): RichMessag
 
 const NOTE_STATUS: Record<NoteItem['status'], string> = {
     draft: 'draft',
-    confirmed: '✓ in Work Log',
+    confirmed: '✓ in My work',
     dismissed: 'dismissed',
     archived: 'archived',
 };
@@ -149,7 +149,7 @@ export function renderNotes(items: NoteItem[], appUrl: string): RichMessage {
         return {
             lines: [
                 heading('No notes yet'),
-                [{ text: 'Tell me what you worked on, e.g. "shipped the retry queue today, p99 down 40%". I will draft it into your Work Log.' }],
+                [{ text: 'Tell me what you worked on, e.g. "shipped the retry queue today, p99 down 40%". I will draft it into My work.' }],
             ],
             footer: inboxFooter(appUrl, '/log'),
             actions: [],
@@ -225,7 +225,7 @@ export function renderHelp(appUrl: string, opts: { bare: boolean }): RichMessage
         lines: [
             heading('Send me anything from your career'),
             [{ text: '• A LinkedIn job or post link: fit, pay, company, interview write-ups, who to ask' }],
-            [{ text: '• A note on what you did: drafted into your Work Log' }],
+            [{ text: '• A note on what you did: drafted into My work' }],
             [{ text: '• A post worth keeping: saved to your Insights shelf' }],
             [],
             heading('Look things up'),

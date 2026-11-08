@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 
 import { getContactStats } from '@/actions/scout';
 import { JobSearchPreferencesPanel } from '@/components/settings/JobSearchPreferencesPanel';
@@ -33,13 +34,13 @@ export default async function JobSearchSettingsPage() {
     const stats = scoutOn ? await getContactStats() : null;
 
     return (
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">
-            <header>
-                <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Job search</h1>
-                <p className="mt-1.5 text-muted-foreground">
-                    What you are looking for, and who you already know. Scout uses both on every job you share.
-                </p>
-            </header>
+        <div>
+            <PageHeader width="narrow"
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Job search"
+                description="What you are looking for, and who you already know. Scout uses both on every job you share."
+            />
+            <PageBody width="narrow" className="space-y-6">
 
             <JobSearchPreferencesPanel
                 initial={{
@@ -57,6 +58,7 @@ export default async function JobSearchSettingsPage() {
             />
 
             {scoutOn ? <LinkedInConnectionsCard initialStats={stats && stats.success ? stats.data : null} /> : null}
+            </PageBody>
         </div>
     );
 }

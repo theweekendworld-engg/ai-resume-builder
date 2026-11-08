@@ -222,7 +222,7 @@ export function TelegramSection() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p><b>A job link</b>: fit against your record, pay, company, interview write-ups, who to ask. Saved to your job tracker.</p>
-          <p><b>A line about your work</b>: drafted into your Work Log for you to confirm.</p>
+          <p><b>A line about your work</b>: drafted into My work for you to confirm.</p>
           <p><b>A post worth keeping</b>: saved to your Insights shelf.</p>
           <p><b>/jobs</b> best fits · <b>/applied</b> where things stand · <b>/notes</b> your drafts · <b>/generate</b> a tailored resume · <b>/help</b> everything.</p>
         </CardContent>

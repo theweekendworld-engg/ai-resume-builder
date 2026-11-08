@@ -756,7 +756,7 @@ function OpeningsBody({ data }: { data: OpeningsData }) {
                     <p className={cn(typeStyles.h3, 'flex items-center gap-2 text-foreground')}>
                         {company.name}
                         {company.tracked ? (
-                            <span className={cn(typeStyles.caption, 'text-muted-foreground')}>· watched by Radar</span>
+                            <span className={cn(typeStyles.caption, 'text-muted-foreground')}>· on your job alerts</span>
                         ) : null}
                     </p>
                     {company.openings.length ? (
@@ -792,7 +792,7 @@ function DigestBody({ data }: { data: DigestData }) {
             ) : null}
             {data.savedInsightId ? (
                 <p className={cn(typeStyles.caption, 'mt-3 text-muted-foreground')}>
-                    Saved to your reading shelf. Kept apart from your Work Log: someone else&rsquo;s post is not your evidence.
+                    Saved to your reading shelf. Kept apart from My work: someone else&rsquo;s post is not your evidence.
                 </p>
             ) : null}
         </div>
@@ -832,12 +832,12 @@ function CaptureBody({ data }: { data: CaptureData }) {
             </p>
             {data.degraded ? (
                 <p className={cn(typeStyles.caption, 'mt-2 text-muted-foreground')}>
-                    A number your note did not state was left out. Add it in the Work Log if it is real.
+                    A number your note did not state was left out. Add it in My work if it is real.
                 </p>
             ) : null}
             {data.status === 'merge_proposed' ? (
                 <p className={cn(typeStyles.small, 'mt-3 text-muted-foreground')}>
-                    This looks like a Win you already logged. Review it in the Work Log to merge or keep both.
+                    This looks like a Win you already logged. Review it in My work to merge or keep both.
                 </p>
             ) : null}
 
@@ -865,7 +865,7 @@ function CaptureBody({ data }: { data: CaptureData }) {
                 <Button asChild type="button" size="sm" variant="outline" className="gap-1.5">
                     <Link href={`/log?win=${encodeURIComponent(data.winId)}`}>
                         <PenLine aria-hidden className="size-3.5" />
-                        Edit in Work Log
+                        Edit in My work
                     </Link>
                 </Button>
             </div>
@@ -902,7 +902,7 @@ const CARD_TITLE: Partial<Record<ScoutSectionName, string>> = {
     talent: 'Who works there',
     openings: 'Open roles',
     digest: 'Key takeaways',
-    capture: 'Work Log draft',
+    capture: 'Draft in My work',
     track: 'Job tracker',
 };
 

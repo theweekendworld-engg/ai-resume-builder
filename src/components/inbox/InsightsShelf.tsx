@@ -38,7 +38,7 @@ export function InsightsShelf({ state, items }: { state: InboxState; items: Insi
             <EmptyState
                 icon={BookOpen}
                 title="Your reading shelf is empty"
-                description="Send a LinkedIn post worth keeping to the bot, or paste it above. Patronus keeps the takeaways here, away from your Work Log."
+                description="Send a LinkedIn post worth keeping to the bot, or paste it above. Patronus keeps the takeaways here, away from My work."
                 action={{ label: 'Link Telegram', href: '/settings/channels' }}
             />
         );

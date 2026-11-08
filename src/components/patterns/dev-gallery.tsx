@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 
 import { CategoryChip } from './category-chip';
 import { DensityProvider, type Density } from './density';
+import { DossierSection } from './dossier-gallery';
 import { EmptyState } from './empty-state';
 import {
   LONG_QUEUE_ITEMS,
@@ -92,13 +93,14 @@ export function PatternsGallery() {
   const [density, setDensity] = React.useState<Density>('default');
 
   return (
-    <div className="dark min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-[1400px] px-6 py-8">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className={cn(typeStyles.h1, 'text-foreground')}>Pattern library</h1>
             <p className={cn(typeStyles.small, 'text-muted-foreground')}>
-              docs/design/01-components.md &middot; fixtures only, no data layer
+              docs/design/01-components.md &middot; 03-dossier.md &middot; fixtures only, no data layer &middot;{' '}
+              <a href="/dev/patterns/home" className="text-primary underline underline-offset-4">mocked Home</a>
             </p>
           </div>
 
@@ -143,6 +145,7 @@ function ThemePane({ theme, density }: { theme: 'light' | 'dark'; density: Densi
         </p>
       </div>
       <DensityProvider density={density} className="space-y-6 px-6 py-6">
+        <DossierSection />
         <AtomsSection />
         <WinCardSection />
         <SupportingSection />

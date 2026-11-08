@@ -1,9 +1,10 @@
 import * as React from 'react';
 import Link from 'next/link';
+import { ChevronLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-import { focusRing } from './tokens';
+import { focusRing, typeStyles } from './tokens';
 
 /**
  * Page chrome inside the app shell (design/00 §5.2, revised 2026-10-03).
@@ -19,16 +20,41 @@ import { focusRing } from './tokens';
  * Reference: Linear, Vercel, Attio. A page says what it is in one line; the
  * description is never a paragraph, filters live behind one button, and the
  * empty state appears once per view, not once per column.
+ *
+ * Dossier (2026-11-08, docs/design/03-dossier.md): the title is the serif at
+ * 28/36, an optional letterspaced eyebrow sits above it (the section of the
+ * product, or the date on Home), and the header ends on a hairline rule.
+ * Tabs underline in blue, the one accent.
  */
 
-/** Width and gutters for every page. Left-aligned to the sidebar from lg. */
-export const pageContainer = 'w-full max-w-6xl px-4 sm:px-6 lg:px-8';
+/**
+ * Width and gutters for every page, centred in the space beside the sidebar
+ * (owner, 2026-11-08: "why are the contents so left aligned and not in the
+ * centre?").
+ */
+export const pageContainer = 'mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8';
+
+/**
+ * A page's column. Header and body take the same one, so a narrow page (a
+ * settings form, the goal checklist) is one centred column, title included.
+ */
+export type PageWidth = 'wide' | 'medium' | 'narrow';
+const PAGE_WIDTH: Record<PageWidth, string | null> = { wide: null, medium: 'max-w-5xl', narrow: 'max-w-3xl' };
+
+/** The container classes for a page column of the given width. */
+export function pageColumn(width: PageWidth = 'wide'): string {
+    return cn(pageContainer, PAGE_WIDTH[width]);
+}
 
 export function PageHeader({
     title,
     description,
     actions,
     children,
+    eyebrow,
+    meta,
+    size = 'default',
+    width = 'wide',
     className,
 }: {
     title: React.ReactNode;
@@ -38,19 +64,42 @@ export function PageHeader({
     actions?: React.ReactNode;
     /** Usually <PageTabs>. Sits flush on the header's bottom border. */
     children?: React.ReactNode;
+    /** The kicker above the title: "Record", "Settings", a date. */
+    eyebrow?: React.ReactNode;
+    /** A row under the description: evidence chips, a progress rail, counts. */
+    meta?: React.ReactNode;
+    /** `display` sets the title at 34/42 — Home's greeting only. */
+    size?: 'default' | 'display';
+    /** The page's column; pass the same value to its PageBody. */
+    width?: PageWidth;
     className?: string;
 }) {
     return (
-        <header className={cn('border-b border-border', !children && 'pb-5', className)}>
-            <div className={cn(pageContainer, 'flex flex-wrap items-start justify-between gap-x-6 gap-y-3 pt-6 md:pt-8')}>
-                <div className="min-w-0">
-                    <h1 className="font-heading text-[22px] font-semibold leading-8 tracking-tight text-foreground">{title}</h1>
-                    {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+        <header className={cn('border-b border-border', !children && 'pb-6', className)}>
+            <div className={cn(pageColumn(width), 'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-7 md:pt-10')}>
+                <div className="min-w-0 max-w-3xl">
+                    {eyebrow ? <p className={typeStyles.eyebrow}>{eyebrow}</p> : null}
+                    <h1 className={cn(size === 'display' ? typeStyles.display : typeStyles.h1, 'text-balance text-foreground', eyebrow ? 'mt-1.5' : null)}>{title}</h1>
+                    {description ? <p className="mt-1.5 text-[15px] leading-6 text-muted-foreground">{description}</p> : null}
+                    {meta ? <div className="mt-3 flex flex-wrap items-center gap-2">{meta}</div> : null}
                 </div>
-                {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+                {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
             </div>
-            {children ? <div className={cn(pageContainer, 'mt-4')}>{children}</div> : null}
+            {children ? <div className={cn(pageColumn(width), 'mt-5')}>{children}</div> : null}
         </header>
+    );
+}
+
+/**
+ * The eyebrow of a nested page, as a way back up: "‹ SETTINGS". Inherits the
+ * eyebrow's letterspaced caps from PageHeader.
+ */
+export function EyebrowLink({ href, children }: { href: string; children: React.ReactNode }) {
+    return (
+        <Link href={href} className={cn(focusRing, '-ml-1 inline-flex min-h-6 items-center gap-0.5 rounded-sm pr-1 transition-colors duration-150 hover:text-foreground')}>
+            <ChevronLeft aria-hidden className="size-3.5" />
+            {children}
+        </Link>
     );
 }
 
@@ -64,14 +113,14 @@ export function PageTabs({ tabs, active, label }: { tabs: PageTab[]; active: str
                 const Icon = tab.icon;
                 const className = cn(
                     focusRing,
-                    'inline-flex h-10 shrink-0 items-center gap-1.5 border-b-2 text-sm transition-colors',
-                    isActive ? 'border-foreground font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground',
+                    'inline-flex h-11 shrink-0 items-center gap-1.5 border-b-2 text-sm transition-colors duration-150',
+                    isActive ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:border-border-strong/40 hover:text-foreground',
                 );
                 const body = (
                     <>
                         {Icon ? <Icon className="size-4" aria-hidden /> : null}
                         {tab.label}
-                        {tab.count ? <span className="num rounded-full bg-secondary px-1.5 text-[11px] font-medium text-muted-foreground">{tab.count}</span> : null}
+                        {tab.count ? <span className="num rounded-sm bg-secondary px-1.5 text-[11px] font-medium text-muted-foreground">{tab.count}</span> : null}
                     </>
                 );
                 return tab.href ? (
@@ -89,8 +138,8 @@ export function PageTabs({ tabs, active, label }: { tabs: PageTab[]; active: str
 }
 
 /** The page body under the header. */
-export function PageBody({ children, className }: { children: React.ReactNode; className?: string }) {
-    return <div className={cn(pageContainer, 'py-6', className)}>{children}</div>;
+export function PageBody({ children, width = 'wide', className }: { children: React.ReactNode; width?: PageWidth; className?: string }) {
+    return <div className={cn(pageColumn(width), 'py-6', className)}>{children}</div>;
 }
 
 /**
@@ -109,7 +158,7 @@ export function Segmented<T extends string>({
     label: string;
 }) {
     return (
-        <div role="tablist" aria-label={label} className="inline-flex max-w-full overflow-x-auto rounded-lg bg-secondary p-0.5 [scrollbar-width:none]">
+        <div role="tablist" aria-label={label} className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-secondary p-0.5 [scrollbar-width:none]">
             {options.map((option) => {
                 const selected = option.value === value;
                 return (
@@ -121,8 +170,8 @@ export function Segmented<T extends string>({
                         onClick={() => onChange(option.value)}
                         className={cn(
                             focusRing,
-                            'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors',
-                            selected ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                            'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-[13px] font-medium transition-colors duration-150',
+                            selected ? 'bg-card text-foreground shadow-[0_0_0_1px_hsl(var(--border))]' : 'text-muted-foreground hover:text-foreground',
                         )}
                     >
                         {option.label}
@@ -148,7 +197,7 @@ export function Pill({ children, dot, className }: { children: React.ReactNode; 
         muted: 'bg-muted-foreground/50',
     } as const;
     return (
-        <span className={cn('num inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-2 text-xs font-medium text-foreground', className)}>
+        <span className={cn('num inline-flex h-6 shrink-0 items-center gap-1.5 rounded-sm border border-border bg-card px-2 text-xs font-medium text-foreground', className)}>
             {dot ? <span aria-hidden className={cn('size-1.5 rounded-full', dotClass[dot])} /> : null}
             {children}
         </span>
@@ -159,7 +208,7 @@ export function Pill({ children, dot, className }: { children: React.ReactNode; 
 export function InitialAvatar({ name, className }: { name: string | null; className?: string }) {
     const initial = (name ?? '').trim().charAt(0).toUpperCase() || '?';
     return (
-        <span aria-hidden className={cn('grid size-9 shrink-0 place-items-center rounded-lg border border-border bg-secondary font-heading text-sm font-semibold text-muted-foreground', className)}>
+        <span aria-hidden className={cn('grid size-9 shrink-0 place-items-center rounded-md border border-border bg-background font-display text-[15px] font-semibold text-foreground/80', className)}>
             {initial}
         </span>
     );

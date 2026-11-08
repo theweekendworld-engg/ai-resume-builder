@@ -44,15 +44,15 @@ export function waitlistHref(feature: string): string {
  */
 export const FEATURE_COPY = {
     work_log: {
-        feature: 'The Work Log',
+        feature: 'My work',
         blurb: 'The running record of what you have actually done — the thing every resume, packet and review here is built from. It is being switched on in stages.',
     },
     github_capture: {
         feature: 'GitHub capture',
-        blurb: 'Turns your commits and pull requests into draft entries in your Work Log, so the record keeps itself. It is being switched on in stages.',
+        blurb: 'Turns your commits and pull requests into draft entries in My work, so the record keeps itself. It is being switched on in stages.',
     },
     review_packet: {
-        feature: 'Review packets',
+        feature: 'Review prep',
         blurb: 'Your evidence, arranged for a performance review or a promotion case. It is being switched on in stages.',
     },
     month_in_review: {
@@ -64,7 +64,7 @@ export const FEATURE_COPY = {
         blurb: 'Reconstructs the years before you started keeping a log, one conversation at a time. It is being switched on in stages.',
     },
     career_radar: {
-        feature: 'Career Radar',
+        feature: 'Market fit',
         blurb: 'What the market is asking for in your field, priced and dated, from postings employers actually published. It is being switched on in stages.',
     },
     missions: {
@@ -86,13 +86,13 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
     const Icon = isError ? TriangleAlert : Clock;
 
     return (
-        <main className="mx-auto flex min-h-[60vh] w-full max-w-[520px] flex-col justify-center px-4 py-16">
-            <div className="rounded-xl border border-border bg-card p-6">
-                <Icon
-                    className={isError ? 'size-5 text-destructive' : 'size-5 text-muted-foreground'}
-                    aria-hidden
-                />
-                <h1 className="mt-3 font-heading text-xl font-semibold tracking-tight text-foreground">
+        // A div, not <main>: inside the app the shell already owns <main>.
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-[560px] flex-col justify-center px-4 py-16">
+            <div className="rounded-lg border border-border bg-card p-6 sm:p-7">
+                <span aria-hidden className="grid size-10 place-items-center rounded-md border border-border bg-background">
+                    <Icon className={isError ? 'size-5 text-destructive' : 'size-5 text-muted-foreground'} />
+                </span>
+                <h1 className="mt-4 font-display text-[22px] font-semibold leading-7 tracking-[-0.01em] text-foreground">
                     {isError ? `${feature} could not load` : `${feature} is not switched on yet`}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -125,6 +125,6 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
                     </Button>
                 </div>
             </div>
-        </main>
+        </div>
     );
 }

@@ -132,10 +132,10 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
         return (
             <Shell>
                 <p className={cn(typeStyles.body, 'font-medium')}>{card.title}</p>
-                <p className={cn(typeStyles.small, 'mt-1 text-muted-foreground')}>Already in your Work Log.</p>
+                <p className={cn(typeStyles.small, 'mt-1 text-muted-foreground')}>Already in My work.</p>
                 {links.workLog ? (
                     <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
-                        <Link href="/log">Open the Work Log</Link>
+                        <Link href="/log">Open My work</Link>
                     </Button>
                 ) : null}
             </Shell>
@@ -184,7 +184,7 @@ function WinDraftCard({ card }: { card: Extract<ChatCard, { type: 'win_draft' }>
                             </Button>
                             {links.workLog ? (
                                 <Button asChild size="sm" variant="ghost">
-                                    <Link href="/log">Edit in the Work Log</Link>
+                                    <Link href="/log">Edit in My work</Link>
                                 </Button>
                             ) : null}
                         </div>
@@ -583,7 +583,7 @@ function RecordCard({ card }: { card: Extract<ChatCard, { type: 'record' }> }) {
             </ul>
             {links.workLog ? (
                 <Button asChild size="sm" variant="link" className="mt-1 h-auto px-0">
-                    <Link href="/log">Open the Work Log</Link>
+                    <Link href="/log">Open My work</Link>
                 </Button>
             ) : null}
         </Shell>

@@ -296,7 +296,7 @@ describe('routing', () => {
             await processTelegramUpdate({ update_id: updateId, callback_query: { id: `cb-${updateId}`, data: `sc:c:${WIN}`, message: { message_id: 42, chat: { id: CHAT }, reply_markup: keyboard } } });
         };
         await tap();
-        expect(telegram.sent.at(-1)?.text).toContain('Added to your Work Log ✓');
+        expect(telegram.sent.at(-1)?.text).toContain('Added to My work ✓');
         const edit = telegram.callsTo('editMessageReplyMarkup')[0];
         expect(edit?.body.message_id).toBe(42);
         expect((edit?.body.reply_markup as { inline_keyboard: unknown[][] }).inline_keyboard).toEqual([
@@ -307,7 +307,7 @@ describe('routing', () => {
         // A stale copy of the button (another device, a slow client) taps again.
         depsTesting.setDeps(fakeDeps({ confirmWinForUser: async () => ({ success: false, error: 'Win is already confirmed', code: 'invalid_state' }) }));
         await tap();
-        expect(telegram.sent.at(-1)?.text).toContain('Already in your Work Log ✓');
+        expect(telegram.sent.at(-1)?.text).toContain('Already in My work ✓');
         expect(confirms).toBe(1);
     });
 

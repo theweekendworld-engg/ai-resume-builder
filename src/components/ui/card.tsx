@@ -9,7 +9,10 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "rounded-xl border border-border/50 bg-card/80 text-card-foreground shadow-lg backdrop-blur-sm card-hover transition-all",
+      // Dossier: a record on the page. White on paper, a hairline edge, no
+      // shadow and no blur (blur composited a layer per card and dropped
+      // frames on long lists; the shadow made every card look like a dialog).
+      "rounded-lg border border-border bg-card text-card-foreground",
       className
     )}
     {...props}
@@ -36,7 +39,7 @@ const CardTitle = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
+      "font-display text-lg font-semibold leading-snug tracking-tight",
       className
     )}
     {...props}

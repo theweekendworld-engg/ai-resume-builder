@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 import { Globe, Puzzle, Terminal } from 'lucide-react';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,13 +25,13 @@ export default async function ChannelsPage() {
     const chat = await isEnabled(userId, 'chat');
 
     return (
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">
-            <header>
-                <h1 className="font-heading text-2xl font-semibold tracking-tight">Channels</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    Talk to Patronus wherever you are. Everything you send lands in the same record.
-                </p>
-            </header>
+        <div>
+            <PageHeader width="narrow"
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Channels"
+                description="Talk to Patronus wherever you are. Everything you send lands in the same record."
+            />
+            <PageBody width="narrow" className="space-y-6">
 
             <Card>
                 <CardHeader>
@@ -68,6 +69,7 @@ export default async function ChannelsPage() {
                     {chat ? <CliKeys appUrl={config.app.url} /> : <p className="text-sm text-muted-foreground">The CLI talks to chat, which is not switched on for your account yet.</p>}
                 </CardContent>
             </Card>
+            </PageBody>
         </div>
     );
 }

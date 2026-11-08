@@ -73,7 +73,7 @@
 
 /* Theme-independent — mirrors globals.css. */
 :root {
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
     --duration-micro: 120ms;
     --duration-state: 180ms;

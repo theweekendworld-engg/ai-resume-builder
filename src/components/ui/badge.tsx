@@ -3,18 +3,26 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/*
+ * Dossier badges: a small ruled tag, 4px corners, 12px medium. Colour only
+ * where it means something — `attention` (warning) is "this needs you", and
+ * nothing else uses warning. Tints are measured: blue on its 10% tint (see globals.css),
+ * warning 5.00:1, accent-foreground on accent 7.34:1.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-xs font-medium leading-4 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [&_svg]:size-3 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary/10 text-primary hover:bg-primary/20",
+          "border-transparent bg-accent text-accent-foreground",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "border-transparent bg-secondary text-secondary-foreground",
         destructive:
-          "border-transparent bg-destructive/10 text-destructive hover:bg-destructive/20",
-        outline: "text-foreground border-border",
+          "border-transparent bg-destructive/10 text-destructive",
+        outline: "border-border bg-card text-foreground",
+        attention: "border-warning/25 bg-warning/10 text-warning",
+        success: "border-success/25 bg-success/10 text-success",
       },
     },
     defaultVariants: {

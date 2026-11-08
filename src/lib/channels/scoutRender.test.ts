@@ -133,8 +133,8 @@ describe('final: work note', () => {
         category: 'shipped', skills: ['Go', 'Kafka'], status: 'draft' as const, duplicateOfWinId: null, degraded: false,
     };
 
-    test('shows the draft with Confirm, Edit and Dismiss, and points at the Work Log', () => {
-        const v = view({ kind: 'work_note', headline: 'Work Log draft: Shipped the retry queue', sections: { capture: ok(capture) } });
+    test('shows the draft with Confirm, Edit and Dismiss, and points at My work', () => {
+        const v = view({ kind: 'work_note', headline: 'Draft in My work: Shipped the retry queue', sections: { capture: ok(capture) } });
         const message = renderScoutFinal(v, APP);
         const text = plain(message.lines);
         expect(text).toContain('📝 Shipped the retry queue');
@@ -153,7 +153,7 @@ describe('final: work note', () => {
         const v = view({ kind: 'work_note', sections: { capture: ok({ ...capture, status: 'merge_proposed', duplicateOfWinId: 'cmwinexisting0000000000a' }) } });
         const message = renderScoutFinal(v, APP);
         expect(plain(message.lines)).toContain('already logged');
-        expect(message.actions).toEqual([{ kind: 'open', label: 'Open in Work Log', url: `${APP}/log?win=cmwinexisting0000000000a` }]);
+        expect(message.actions).toEqual([{ kind: 'open', label: 'Open in My work', url: `${APP}/log?win=cmwinexisting0000000000a` }]);
     });
 
     test('Confirm / Dismiss share one Telegram row with Edit', () => {

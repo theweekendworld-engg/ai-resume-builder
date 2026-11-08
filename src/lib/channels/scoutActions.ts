@@ -334,15 +334,15 @@ export async function executeScoutAction(
         case 'confirm_win': {
             const confirmed = await svc.confirmWinForUser(userId, action.winId);
             if (confirmed.success) {
-                return { lines: [text(`Added to your Work Log ✓ ${confirmed.data.title}`)], settled: true };
+                return { lines: [text(`Added to My work ✓ ${confirmed.data.title}`)], settled: true };
             }
-            if (isAlreadyDone(confirmed)) return { lines: [text('Already in your Work Log ✓')], settled: true };
+            if (isAlreadyDone(confirmed)) return { lines: [text('Already in My work ✓')], settled: true };
             return { lines: [text(confirmed.error)] };
         }
         case 'dismiss_win': {
             const dismissed = await svc.dismissWinForUser(userId, action.winId);
             if (!dismissed.success) return { lines: [text(dismissed.error)] };
-            return { lines: [text('Dismissed. It will not appear in your Work Log.')], settled: true };
+            return { lines: [text('Dismissed. It will not appear in My work.')], settled: true };
         }
         case 'tailor':
             return tailorReply(userId, action.runId, svc, context.channel);

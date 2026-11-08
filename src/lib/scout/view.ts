@@ -76,10 +76,10 @@ export function buildHeadline(sections: ScoutSections, status: ScoutRunView['sta
             return ingest?.title ? `Saved: ${ingest.title}` : 'Saved to your reading shelf';
         case 'work_note': {
             const capture = okData<CaptureData>(sections.capture);
-            if (!capture) return 'Adding this to your Work Log…';
+            if (!capture) return 'Adding this to My work…';
             return capture.status === 'merge_proposed'
                 ? `Looks like a Win you already have: ${capture.title}`
-                : `Work Log draft: ${capture.title}`;
+                : `Draft in My work: ${capture.title}`;
         }
         case 'other':
             return 'Not something I can act on';

@@ -9,11 +9,11 @@ import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { listMatches, listWatchedCompanies } from '@/services/jobWatch';
 
 export const metadata = {
-    title: 'Job watch · Patronus',
+    title: 'Job alerts · Patronus',
 };
 
 const COPY = {
-    feature: 'Job watch',
+    feature: 'Job alerts',
     blurb: 'Name the companies you are aiming for. Every night Patronus checks their boards, scores new openings against your record, and messages you only about the ones you match 85% or more. It is being switched on in stages.',
 };
 

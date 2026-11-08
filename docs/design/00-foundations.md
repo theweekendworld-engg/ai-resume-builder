@@ -4,6 +4,8 @@
 > **Companions:** [`01-components.md`](01-components.md) · [`02-screens.md`](02-screens.md)
 > **Grounded in:** the existing theme at `src/app/globals.css` and the 21 primitives in `src/components/ui/`
 
+> **2026-11-08 — Dossier.** Colour, type, radius and elevation are now specified in [`03-dossier.md`](03-dossier.md), which supersedes this file where they disagree.
+
 ---
 
 ## 1. Audit of what exists

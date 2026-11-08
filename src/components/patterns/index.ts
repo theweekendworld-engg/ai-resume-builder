@@ -72,4 +72,15 @@ export {
   type WinCardState,
   type WinCardVariant,
 } from './win-card';
-export { InitialAvatar, PageBody, PageHeader, PageTabs, Pill, Segmented, pageContainer, type PageTab } from './page';
+export { EyebrowLink, InitialAvatar, PageBody, PageHeader, PageTabs, Pill, Segmented, pageColumn, pageContainer, type PageTab, type PageWidth } from './page';
+
+/* Dossier (2026-11-08, docs/design/03-dossier.md) */
+export { Section, SectionLink, type SectionProps } from './section';
+export { StatStrip, type StatStripItem, type StatStripProps } from './stat-strip';
+export { EvidenceChip, EvidenceChipRow, type EvidenceChipProps } from './evidence-chip';
+export {
+  ProgressRail,
+  type ProgressRailProps,
+  type ProgressRailStatus,
+  type ProgressRailStep,
+} from './progress-rail';

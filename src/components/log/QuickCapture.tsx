@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Calendar, Lock, LockOpen, Plus, Sparkles } from 'lucide-react';
+import { Calendar, Lock, LockOpen, PenLine, Plus } from 'lucide-react';
 
 import type { WinView } from '@/actions/wins.types';
 import {
@@ -246,7 +246,7 @@ export function QuickCapture({
         {phase === 'structured' && draft ? (
           <div className="space-y-2">
             <div className="flex items-start gap-2">
-              <Sparkles
+              <PenLine
                 aria-hidden="true"
                 className="mt-1.5 size-3.5 shrink-0 text-primary"
                 strokeWidth={1.5}

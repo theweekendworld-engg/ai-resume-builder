@@ -46,7 +46,7 @@ function toCapture(outcome: WinDraftOutcome): CaptureData {
 export const captureSection: ScoutSection<'capture'> = async (ctx) => {
     const ingest = dataOf(ctx.sections, 'ingest');
     const text = ingest?.text.trim() ?? '';
-    if (!text) return { status: 'unavailable', reason: 'There was no text to add to your Work Log.' };
+    if (!text) return { status: 'unavailable', reason: 'There was no text to add to My work.' };
 
     const sourceRef = captureSourceRef(ctx.runId);
     const existing = await prisma.win.findFirst({

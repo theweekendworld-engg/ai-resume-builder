@@ -150,7 +150,7 @@ describe('execution', () => {
         const already = deps({ confirmWinForUser: async () => ({ success: false, error: 'Win is already confirmed' }) });
         const again = await executeScoutAction('u', { kind: 'confirm_win', winId: 'w' }, already);
         expect(again).toMatchObject({ settled: true });
-        expect(again.lines[0][0].text).toBe('Already in your Work Log ✓');
+        expect(again.lines[0][0].text).toBe('Already in My work ✓');
         const missing = deps({ confirmWinForUser: async () => ({ success: false, error: 'Win not found', code: 'not_found' }) });
         expect((await executeScoutAction('u', { kind: 'confirm_win', winId: 'w' }, missing)).settled).toBeUndefined();
         const dismissed = deps({ dismissWinForUser: async () => ({ success: true, data: undefined }) });
