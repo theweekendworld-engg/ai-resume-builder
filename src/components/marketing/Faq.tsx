@@ -82,27 +82,27 @@ export function Faq() {
                 title={
                     <>
                         The things you’d ask{' '}
-                        <span className="text-primary">before trusting this.</span>
+                        <span className="mk-quiet">before trusting this.</span>
                     </>
                 }
             />
 
-            <div className="mx-auto mt-14 max-w-3xl divide-y divide-border/60 border-y border-border/60">
+            <div className="mx-auto mt-14 max-w-3xl divide-y divide-border border-y border-border">
                 {QUESTIONS.map((item, index) => (
                     <Reveal key={item.q} delay={Math.min(index, 4) * 70}>
                         <details className="group">
-                            <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-6 text-left transition-colors hover:text-primary [&::-webkit-details-marker]:hidden">
-                                <span className="font-heading text-[17px] font-bold leading-snug tracking-tight">
+                            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-6 py-5 text-left transition-colors duration-150 hover:text-primary [&::-webkit-details-marker]:hidden">
+                                <span className="font-display text-[19px] font-semibold leading-snug tracking-[-0.01em]">
                                     {item.q}
                                 </span>
                                 <span
-                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground transition-all duration-300 group-open:rotate-45 group-open:border-primary/40 group-open:bg-primary/10 group-open:text-primary"
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border-strong/60 text-muted-foreground transition-[transform,color,border-color] duration-200 group-open:rotate-45 group-open:border-primary group-open:text-primary"
                                     aria-hidden
                                 >
                                     <Plus className="h-4 w-4" strokeWidth={2} />
                                 </span>
                             </summary>
-                            <p className="max-w-2xl pb-7 pr-14 text-[15px] leading-relaxed text-muted-foreground">
+                            <p className="max-w-2xl pb-6 pr-14 text-[15px] leading-relaxed text-muted-foreground">
                                 {item.a}
                             </p>
                         </details>

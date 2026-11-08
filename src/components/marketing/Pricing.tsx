@@ -63,36 +63,33 @@ export function Pricing({ id = 'pricing' }: { id?: string }) {
                 title={
                     <>
                         Free while we launch.{' '}
-                        <span className="text-primary">Every feature included.</span>
+                        <span className="mk-quiet">Every feature included.</span>
                     </>
                 }
                 lead="There is nothing to buy yet. Every account gets the whole product, with monthly allowances sized so an active job search does not run into them."
             />
 
-            <Reveal delay={200} direction="scale" className="mx-auto mt-12 max-w-4xl">
-                <div className="mk-card mk-glow grid gap-8 p-7 sm:p-9 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-10">
+            <Reveal delay={200} className="mx-auto mt-12 max-w-4xl">
+                <div className="mk-card mk-rail grid gap-8 p-7 sm:p-9 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] md:gap-10">
                     <div className="flex flex-col">
-                        <h3 className="font-heading text-lg font-semibold">{FREE_PLAN.name}</h3>
-                        <p className="mt-4 font-heading text-4xl font-semibold tabular-nums">$0</p>
+                        <h3 className="eyebrow">{FREE_PLAN.name}</h3>
+                        <p className="num mt-3 font-display text-5xl font-semibold leading-none tracking-[-0.02em]">$0</p>
                         <p className="mt-1 text-sm text-muted-foreground">while we launch · no card</p>
-                        <Link href={START_FREE_HREF} className="mk-btn group mt-7 w-full md:mt-auto">
+                        <Link href={START_FREE_HREF} className="mk-btn mt-7 w-full md:mt-auto">
                             Start free
-                            <ArrowRight
-                                className="h-4 w-4 transition-transform group-hover:translate-x-1"
-                                aria-hidden
-                            />
+                            <ArrowRight className="h-4 w-4" aria-hidden />
                         </Link>
                     </div>
 
-                    <ul className="space-y-3" aria-label="Included in every account">
+                    <ul className="divide-y divide-border border-y border-border md:border-t-0" aria-label="Included in every account">
                         {highlights.map((text) => (
-                            <li key={text} className="flex gap-3 text-sm leading-relaxed">
+                            <li key={text} className="flex gap-3 py-2.5 text-sm leading-relaxed">
                                 <Check
                                     className="mt-0.5 h-4 w-4 shrink-0 text-primary"
                                     strokeWidth={2.5}
                                     aria-hidden
                                 />
-                                <span className="text-foreground/90">{text}</span>
+                                <span className="text-foreground">{text}</span>
                             </li>
                         ))}
                     </ul>

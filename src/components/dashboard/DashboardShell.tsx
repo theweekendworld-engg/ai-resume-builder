@@ -8,7 +8,7 @@ import {
   User,
   Send,
   FileDown,
-  Sparkles,
+  PenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -144,6 +144,7 @@ export function DashboardShell({
         sections are tabs, scrollable on a phone.
       */}
       <PageHeader
+        eyebrow="Record"
         title="Resumes"
         description="Every resume is built from your record. Nothing in it is made up."
         actions={
@@ -153,9 +154,9 @@ export function DashboardShell({
                 <Link href="/admin">Admin</Link>
               </Button>
             )}
-            <Button asChild size="sm" className="h-8 gap-1.5">
+            <Button asChild>
               <Link href="/build">
-                <Sparkles className="size-4" aria-hidden />
+                <PenLine className="size-4" aria-hidden />
                 Tailor a resume
               </Link>
             </Button>
@@ -169,7 +170,8 @@ export function DashboardShell({
         />
       </PageHeader>
 
-      <main className="flex-1">
+      {/* A div, not <main>: the app shell already owns the page's <main>. */}
+      <div className="flex-1">
         <div className={cn(pageContainer, 'py-6')}>
           {activeSection === 'overview' && (
             <OverviewSection overview={overview} usageStats={usageStats} />
@@ -192,7 +194,7 @@ export function DashboardShell({
           )}
           {activeSection === 'pdf' && <PdfHistorySection result={pdfHistory} />}
         </div>
-      </main>
+      </div>
 
       <DashboardTour open={tourOpen} onOpenChange={setTourOpen} onNavigate={select} />
     </div>

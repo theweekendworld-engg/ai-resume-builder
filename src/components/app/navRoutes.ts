@@ -30,6 +30,18 @@ export const NAV_ROUTES: Record<NavDestination, { href: string; label: string }>
 
 export const SETTINGS_ROUTE = { href: '/settings', label: 'Settings' } as const;
 
+/**
+ * The sidebar's sections (Dossier, 2026-11-08). The search is what you are
+ * doing now; the record is what you keep; the goal is what it adds up to.
+ * A group whose destinations are all switched off is not drawn, and a group
+ * with no label is set off by a hairline rule instead.
+ */
+export const NAV_GROUPS: ReadonlyArray<{ key: string; label: string | null; items: readonly NavDestination[] }> = [
+    { key: 'search', label: 'Search', items: ['overview', 'scout', 'watch', 'chat'] },
+    { key: 'record', label: 'Record', items: ['log', 'resumes', 'packets', 'radar'] },
+    { key: 'goals', label: null, items: ['home'] },
+];
+
 /** Pages that belong to a destination without living under its URL. */
 const ALSO_ACTIVE: Partial<Record<string, readonly string[]>> = {
     // The screens a resume is made on.

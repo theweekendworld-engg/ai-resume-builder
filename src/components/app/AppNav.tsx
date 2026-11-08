@@ -12,9 +12,9 @@ import {
     MessageSquare,
     MoreHorizontal,
     NotebookPen,
+    PenLine,
     Radar,
     Settings,
-    Sparkles,
     Target,
     Telescope,
 } from 'lucide-react';
@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-import { isActive, NAV_ROUTES, SETTINGS_ROUTE, type NavDestination } from './navRoutes';
+import { isActive, NAV_GROUPS, NAV_ROUTES, SETTINGS_ROUTE, type NavDestination } from './navRoutes';
 
 /**
  * The app shell (redesign 2026-10-02, docs/design/00 §5.2).
@@ -39,6 +39,12 @@ import { isActive, NAV_ROUTES, SETTINGS_ROUTE, type NavDestination } from './nav
  *
  * Surfaces that own their full chrome (the editor, first run, print views,
  * admin) render without the shell.
+ *
+ * Dossier (2026-11-08): ink on paper, grouped into Search / Record / Goals
+ * (`NAV_GROUPS`) under letterspaced eyebrows. The current page is marked by a
+ * 2px teal bar on the inner edge and ink text, not a filled pill, so the nav
+ * stays quiet and the one accent means "you are here". The phone tab bar uses
+ * the same bar along its top edge.
  */
 
 export type { NavDestination } from './navRoutes';
@@ -61,11 +67,12 @@ const DESTINATIONS = Object.fromEntries(
     (Object.keys(NAV_ROUTES) as NavDestination[]).map((key) => [key, { ...NAV_ROUTES[key], icon: ICONS[key] }]),
 ) as Record<NavDestination, Omit<Item, 'key'>>;
 
-/** The order of the user's day: what needs me, talk, what I am working toward, then the records. */
-const ORDER: NavDestination[] = ['overview', 'chat', 'home', 'log', 'scout', 'watch', 'resumes', 'packets', 'radar'];
 
 /** On a phone, four tabs and "More". Chosen by how often each is opened. */
 const MOBILE_TABS: NavDestination[] = ['overview', 'chat', 'scout', 'log'];
+
+/** A phone tab: 64px tall, the full width share, the teal bar on top when current. */
+const TAB_CLASS = 'relative flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-150';
 
 const OWNS_CHROME = [/^\/editor(\/|$)/, /^\/welcome(\/|$)/, /\/print(\/|$)/, /^\/admin(\/|$)/];
 
@@ -81,13 +88,23 @@ function HydratedUserButton() {
     return <UserButton />;
 }
 
+/** The wordmark: an ink monogram tab and the name in the serif. */
+function Monogram({ className }: { className?: string }) {
+    return (
+        <span
+            aria-hidden
+            className={cn('grid size-8 shrink-0 place-items-center rounded-md bg-foreground font-display text-[17px] font-semibold leading-none text-background', className)}
+        >
+            P
+        </span>
+    );
+}
+
 function Logo({ href }: { href: string }) {
     return (
-        <Link href={href} className="flex items-center gap-2.5" aria-label="Patronus home">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary font-heading text-sm font-bold text-primary-foreground">
-                P
-            </span>
-            <span className="hidden font-heading text-[15px] font-semibold tracking-tight text-foreground lg:inline">Patronus</span>
+        <Link href={href} className="flex items-center gap-2.5 rounded-md" aria-label="Patronus home">
+            <Monogram />
+            <span className="hidden font-display text-[19px] font-semibold tracking-[-0.01em] text-foreground lg:inline">Patronus</span>
         </Link>
     );
 }
@@ -100,15 +117,16 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
             aria-current={active ? 'page' : undefined}
             title={item.label}
             className={cn(
-                'flex h-10 items-center justify-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors lg:justify-start',
-                // `text-accent-foreground` on `bg-accent` is 6.7:1. The old
-                // `text-primary` on `bg-primary/10` measured 4.1:1, under AA.
+                'relative flex h-10 items-center justify-center gap-3 rounded-md px-2.5 text-sm transition-colors duration-150 lg:justify-start',
+                // Ink on paper when active (15:1), with the teal bar; muted
+                // ink (6.1:1) otherwise. The old filled pill is gone.
                 active
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                    ? 'bg-card font-medium text-foreground shadow-[0_0_0_1px_hsl(var(--border))]'
+                    : 'text-muted-foreground hover:bg-secondary/70 hover:text-foreground',
             )}
         >
-            <Icon className="size-[18px] shrink-0" aria-hidden />
+            {active ? <span aria-hidden className="absolute inset-y-2 -left-2 w-0.5 rounded-full bg-primary lg:-left-3" /> : null}
+            <Icon className={cn('size-[18px] shrink-0', active && 'text-primary')} aria-hidden />
             {/* Visually hidden, not `hidden`, at the icon-only width: the
                 label is the link's accessible name at every size. */}
             <span className="sr-only lg:not-sr-only">{item.label}</span>
@@ -116,15 +134,29 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
     );
 }
 
-export function AppShell({ destinations, children }: { destinations: NavDestination[]; children: React.ReactNode }) {
-    const pathname = usePathname() ?? '';
+export function AppShell({
+    destinations,
+    children,
+    pathnameOverride,
+}: {
+    destinations: NavDestination[];
+    children: React.ReactNode;
+    /** For the dev gallery's mocked screens only: which page to mark current. */
+    pathnameOverride?: string;
+}) {
+    const routerPathname = usePathname() ?? '';
+    const pathname = pathnameOverride ?? routerPathname;
     const [moreOpen, setMoreOpen] = React.useState(false);
     const [mounted, setMounted] = React.useState(false);
     React.useEffect(() => setMounted(true), []);
 
     if (OWNS_CHROME.some((pattern) => pattern.test(pathname))) return <>{children}</>;
 
-    const items: Item[] = ORDER.filter((key) => destinations.includes(key)).map((key) => ({ key, ...DESTINATIONS[key] }));
+    const groups = NAV_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((key) => destinations.includes(key)).map((key): Item => ({ key, ...DESTINATIONS[key] })),
+    })).filter((group) => group.items.length > 0);
+    const items: Item[] = groups.flatMap((group) => group.items);
     const home = items[0]?.href ?? '/dashboard';
     const hasChat = items.some((item) => item.key === 'chat');
     const tabs = items.filter((item) => MOBILE_TABS.includes(item.key));
@@ -135,30 +167,52 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
 
     return (
         <div className="flex min-h-dvh [--shell-top:3.5rem] md:[--shell-top:0px]">
+            {/* Keyboard users skip the nav in one Tab. */}
+            <a
+                href="#main"
+                className="sr-only z-50 rounded-md bg-card px-3 py-2 text-sm font-medium text-foreground shadow-[0_0_0_1px_hsl(var(--border))] focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
+            >
+                Skip to content
+            </a>
+
             {/* ── Desktop sidebar ─────────────────────────────────────────── */}
-            <aside className="sticky top-0 hidden h-dvh w-16 shrink-0 flex-col border-r border-border bg-card px-2 py-3 md:flex lg:w-60 lg:px-3">
+            <aside className="sticky top-0 hidden h-dvh w-16 shrink-0 flex-col overflow-y-auto border-r border-border bg-background px-2 py-4 [scrollbar-width:none] md:flex lg:w-60 lg:px-3">
                 <div className="flex h-10 items-center justify-center px-1 lg:justify-start">
                     <Logo href={home} />
                 </div>
 
                 {hasChat ? null : (
-                    <Button asChild size="sm" className="mt-4 gap-1.5 lg:justify-start" title="Tailor a resume">
+                    <Button asChild size="sm" className="mt-5 gap-1.5 lg:justify-start" title="Tailor a resume">
                         <Link href="/build">
-                            <Sparkles className="size-4" aria-hidden />
+                            <PenLine className="size-4" aria-hidden />
                             <span className="sr-only lg:not-sr-only">Tailor a resume</span>
                         </Link>
                     </Button>
                 )}
 
-                <nav aria-label="Main" className="mt-4 flex flex-col gap-0.5">
-                    {items.map((item) => <NavLink key={item.key} item={item} active={isActive(pathname, item.href)} />)}
+                <nav aria-label="Main" className="mt-5 flex flex-col">
+                    {groups.map((group, index) => (
+                        <div key={group.key} className={cn(index > 0 && (group.label ? 'mt-5' : 'mt-3 border-t border-border pt-3'))}>
+                            {group.label ? (
+                                <p className="eyebrow mb-1.5 hidden px-2.5 lg:block">{group.label}</p>
+                            ) : null}
+                            {group.label && index > 0 ? <div aria-hidden className="mx-2 mb-2 border-t border-border lg:hidden" /> : null}
+                            <ul className="flex flex-col gap-0.5" aria-label={group.label ?? undefined}>
+                                {group.items.map((item) => (
+                                    <li key={item.key}>
+                                        <NavLink item={item} active={isActive(pathname, item.href)} />
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
                 </nav>
 
                 <div className="mt-auto flex flex-col gap-0.5 border-t border-border pt-3">
                     <NavLink item={settingsItem} active={isActive(pathname, settingsItem.href)} />
-                    <div className="mt-2 flex h-10 items-center justify-center gap-3 px-1 lg:justify-start lg:px-2">
+                    <div className="mt-2 flex h-10 items-center justify-center gap-3 px-1 lg:justify-start lg:px-2.5">
                         <HydratedUserButton />
-                        <span className="hidden text-xs text-muted-foreground lg:inline">Account</span>
+                        <span className="hidden text-[13px] text-muted-foreground lg:inline">Account</span>
                     </div>
                 </div>
             </aside>
@@ -166,14 +220,14 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
             {/* ── Content ─────────────────────────────────────────────────── */}
             <div className="flex min-w-0 flex-1 flex-col">
                 <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-background px-4 md:hidden">
-                    <Link href={home} className="flex items-center gap-2" aria-label="Patronus home">
-                        <span className="grid size-7 place-items-center rounded-lg bg-primary font-heading text-xs font-bold text-primary-foreground">P</span>
-                        <span className="font-heading text-[15px] font-semibold tracking-tight">Patronus</span>
+                    <Link href={home} className="flex items-center gap-2 rounded-md" aria-label="Patronus home">
+                        <Monogram className="size-7 text-[15px]" />
+                        <span className="font-display text-[18px] font-semibold tracking-[-0.01em]">Patronus</span>
                     </Link>
                     <HydratedUserButton />
                 </header>
                 {/* Room for the tab bar on phones. */}
-                <main data-app-main className="flex-1 pb-16 md:pb-0">{children}</main>
+                <main id="main" tabIndex={-1} data-app-main className="flex-1 pb-16 outline-none md:pb-0">{children}</main>
             </div>
 
             {/* ── Mobile tab bar ──────────────────────────────────────────── */}
@@ -189,9 +243,10 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                             key={item.key}
                             href={item.href}
                             aria-current={active ? 'page' : undefined}
-                            className={cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', active ? 'text-primary' : 'text-muted-foreground')}
+                            className={cn(TAB_CLASS, active ? 'text-foreground' : 'text-muted-foreground')}
                         >
-                            <Icon className="size-5" aria-hidden />
+                            {active ? <span aria-hidden className="absolute inset-x-5 top-0 h-0.5 rounded-b-full bg-primary" /> : null}
+                            <Icon className={cn('size-5', active && 'text-primary')} aria-hidden />
                             {item.label}
                         </Link>
                     );
@@ -203,7 +258,7 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                     <button
                         type="button"
                         aria-label="More"
-                        className={cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', moreActive ? 'text-primary' : 'text-muted-foreground')}
+                        className={cn(TAB_CLASS, moreActive ? 'text-foreground' : 'text-muted-foreground')}
                     >
                         <MoreHorizontal className="size-5" aria-hidden />
                         More
@@ -215,14 +270,15 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                             the bar never shows "nowhere" as the current place. */}
                         <button
                             type="button"
-                            className={cn('flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium', moreActive ? 'text-primary' : 'text-muted-foreground')}
+                            className={cn(TAB_CLASS, moreActive ? 'text-foreground' : 'text-muted-foreground')}
                         >
-                            <MoreHorizontal className="size-5" aria-hidden />
+                            {moreActive ? <span aria-hidden className="absolute inset-x-5 top-0 h-0.5 rounded-b-full bg-primary" /> : null}
+                            <MoreHorizontal className={cn('size-5', moreActive && 'text-primary')} aria-hidden />
                             More
                         </button>
                     </SheetTrigger>
                     <SheetContent side="bottom" className="rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-                        <SheetTitle className="mb-3 text-base">More</SheetTitle>
+                        <SheetTitle className="mb-2 font-sans text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-muted-foreground">More</SheetTitle>
                         <nav aria-label="More" className="grid grid-cols-1 gap-1">
                             {sheetItems.map((item) => {
                                 const active = isActive(pathname, item.href);
@@ -233,11 +289,12 @@ export function AppShell({ destinations, children }: { destinations: NavDestinat
                                         onClick={() => setMoreOpen(false)}
                                         aria-current={active ? 'page' : undefined}
                                         className={cn(
-                                            'flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium',
-                                            active ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-secondary',
+                                            'relative flex h-11 items-center gap-3 rounded-md px-3 text-sm',
+                                            active ? 'bg-secondary font-medium text-foreground' : 'text-foreground hover:bg-secondary/70',
                                         )}
                                     >
-                                        <item.icon className={cn('size-[18px]', active ? 'text-accent-foreground' : 'text-muted-foreground')} aria-hidden />
+                                        {active ? <span aria-hidden className="absolute inset-y-2.5 left-0 w-0.5 rounded-full bg-primary" /> : null}
+                                        <item.icon className={cn('size-[18px]', active ? 'text-primary' : 'text-muted-foreground')} aria-hidden />
                                         {item.label}
                                     </Link>
                                 );

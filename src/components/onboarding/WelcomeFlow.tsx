@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, FileText, Loader2, Lock, Sparkles } from 'lucide-react';
+import { ArrowRight, FileCheck2, FileText, Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -204,7 +204,7 @@ export function WelcomeFlow({
                         <Card className="border-primary/30">
                             <CardHeader className="pb-3">
                                 <CardTitle className="flex items-center gap-2 text-base">
-                                    <Sparkles className="size-4 text-primary" aria-hidden />
+                                    <FileCheck2 className="size-4 text-primary" aria-hidden />
                                     The resume you just checked
                                 </CardTitle>
                                 <CardDescription>

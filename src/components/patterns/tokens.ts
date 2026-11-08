@@ -11,16 +11,20 @@
  * doc is quoted in a comment wherever the mapping is not obvious.
  */
 
-/** §4.1 — two families, nine roles. */
+/**
+ * Type roles (Dossier, docs/design/03-dossier.md §3). Two families: Source
+ * Serif 4 (`font-display`) for the page and its sections, Inter for
+ * everything inside them.
+ */
 export const typeStyles = {
-  /** 30 / 38 · Sora 600 */
-  display: 'font-heading text-[30px] leading-[38px] font-semibold',
-  /** 22 / 30 · Sora 600 */
-  h1: 'font-heading text-[22px] leading-[30px] font-semibold',
-  /** 17 / 24 · Sora 600 */
-  h2: 'font-heading text-[17px] leading-6 font-semibold',
-  /** 15 / 22 · Sora 500 */
-  h3: 'font-heading text-[15px] leading-[22px] font-medium',
+  /** 34 / 42 · Serif 600 — Home's greeting, first-run and review headlines */
+  display: 'font-display text-[34px] leading-[42px] font-semibold tracking-[-0.015em]',
+  /** 28 / 36 · Serif 600 — page titles (PageHeader) */
+  h1: 'font-display text-[28px] leading-9 font-semibold tracking-[-0.01em]',
+  /** 19 / 26 · Serif 600 — section headings */
+  h2: 'font-display text-[19px] leading-[26px] font-semibold tracking-[-0.005em]',
+  /** 15 / 22 · Inter 600 — card and row titles */
+  h3: 'text-[15px] leading-[22px] font-semibold',
   /** 14 / 22 · Inter 400 — app default */
   body: 'text-sm leading-[22px]',
   /** 16 / 26 · Inter 400 — long-form reading surfaces only */
@@ -29,6 +33,12 @@ export const typeStyles = {
   small: 'text-[13px] leading-[18px]',
   /** 12 / 16 · Inter 500 · +0.01em */
   caption: 'text-xs leading-4 font-medium tracking-[0.01em]',
+  /** 11 / 16 · Inter 600 · uppercase · +0.08em — section kickers and stat labels */
+  eyebrow: 'font-sans text-[11px] leading-4 font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+  /** 28 / 32 · Serif 600 · lining tabular figures — the numbers in a StatStrip */
+  stat: 'num font-display text-[28px] leading-8 font-semibold',
+  /** 12 / 16 · system mono · tabular — dates, sources, ids in a meta row */
+  ledger: 'ledger text-xs leading-4',
   /** 13 / 20 · ui-monospace */
   mono: 'font-mono text-[13px] leading-5',
 } as const;
@@ -36,6 +46,7 @@ export const typeStyles = {
 /**
  * §9 — the focus ring, identical on every custom interactive element so that
  * keyboard users get one visual language rather than a per-component lottery.
+ * Teal (`--ring`): 5.52:1 on a card, 5.20:1 on paper.
  */
 export const focusRing =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';

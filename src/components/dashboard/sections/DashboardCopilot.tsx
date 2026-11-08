@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Circle, Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle2, Circle, Loader2, PenLine } from 'lucide-react';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -284,7 +284,7 @@ export function DashboardCopilot() {
               {isPending || status === 'generating' ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
+                <PenLine className="mr-2 h-4 w-4" />
               )}
               {status === 'generating' ? 'Generating…' : 'Generate resume'}
             </Button>

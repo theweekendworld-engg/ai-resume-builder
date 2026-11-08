@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dropzone } from '@/components/marketing/score/Dropzone';
@@ -169,9 +169,9 @@ export function AtsCheckerClient() {
 
     if (status === 'loading') {
         return (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card px-6 py-20 text-center">
-                <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
-                <p className="text-base font-medium text-foreground">Scoring your resume…</p>
+            <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-card px-6 py-20 text-center" role="status" aria-live="polite">
+                <Loader2 className="mb-4 h-6 w-6 animate-spin text-primary" aria-hidden />
+                <p className="font-display text-lg font-semibold text-foreground">Scoring your resume…</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                     Reading your resume and checking it against ATS best practices.
                 </p>
@@ -206,12 +206,12 @@ export function AtsCheckerClient() {
             </div>
 
             <Button size="lg" className="w-full gap-2" onClick={handleScore} disabled={!file}>
-                <Sparkles className="h-4 w-4" />
                 Score my resume — free
+                <ArrowRight className="h-4 w-4" aria-hidden />
             </Button>
 
-            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
-                <ShieldCheck className="h-3.5 w-3.5" />
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Your file is processed in memory and not kept, unless you choose Fix all afterwards.
             </p>
         </div>

@@ -12,21 +12,68 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
-  Patronus theme — "Your best self, in the light"
-  Deep navy = the space; silvery blue = the patronus glow; soft silver-white = clarity.
+  ═══════════════════════════════════════════════════════════════════════════
+  Patronus theme — "Dossier" (2026-11-08, docs/design/03-dossier.md)
+  ═══════════════════════════════════════════════════════════════════════════
 
-  Two themes, per design/00 §3.1. Light is the default (`:root`), dark is opt-in
-  via `.dark`. `.dark` is a plain class, not tied to <html>, so any subtree can
-  be forced dark by putting the class on its wrapper element.
+  The product is a private record of someone's working life, so the interface
+  is set like a well-kept file: warm paper, deep ink, hairline rules between
+  sections, and ONE confident accent.
 
-  All colour tokens are bare HSL triplets consumed as `hsl(var(--token))`.
+    paper     #FAF8F5  page ground          ink      #14213E  text
+    card      #FFFFFF  records on the page  muted    #585F6F  secondary text
+    teal      #0F756D  primary actions, links, progress, focus
+    amber     #A54C09  "needs you" — attention only, never decoration
+    success / danger kept as semantic status; info is a quiet ink-blue, not a
+    second accent.
+
+  Rules that keep it from turning into an AI-template app (enforced in review,
+  listed in 03-dossier.md §8): no glass/backdrop blur, no purple-blue
+  gradients, no gradient text, no glow, no sparkles as decoration, borders
+  over shadows, motion only where it shows a change of state.
+
+  Light is the default (`:root`). Dark is opt-in via `.dark`, a plain class, so
+  any subtree can be forced dark by putting the class on its wrapper. All colour
+  tokens are bare HSL triplets consumed as `hsl(var(--token))`.
+
+  ── Measured contrast (WCAG 2.x relative luminance, computed from the HSL
+     values below exactly as the browser rounds them, not from the hex
+     targets). Text needs 4.5:1, control edges and focus rings 3:1. ───────────
+
+    LIGHT                       on paper   on card   on secondary
+    foreground (ink)             15.01      15.93      13.83
+    muted-foreground              6.06       6.43       5.58
+    primary (teal) as text        5.20       5.52       4.79
+    success                       6.07       6.44       5.59
+    warning (amber)               5.44       5.77       5.01
+    danger                        6.22       6.60       5.73
+    info                          8.20       8.70       7.55
+    white on primary 5.52 · on success 6.44 · on warning 5.77 · on danger 6.60
+    accent-foreground on accent 7.34 · teal on its own 10% tint 4.81
+    amber on its own 10% tint 5.00
+    border-strong (control edge) 3.67 on card, 3.46 on paper
+    input (field edge, switch track) 3.19 on card, 3.00 on paper
+    border (hairline, decorative only) 1.32 — never bounds a control
+
+    DARK                        on ground  on card   on secondary
+    foreground (warm off-white)  15.12      13.74      12.58
+    muted-foreground              7.58       6.89       6.31
+    primary (teal) as text        8.55       7.77       7.11
+    success                       8.31       7.55       6.91
+    warning (amber)               8.52       7.74       7.09
+    danger                        6.91       6.28       5.75
+    info                          8.10       7.36       6.74
+    ground-ink on primary 8.55 · on success 8.31 · on warning 8.52 · on danger 6.91
+    accent-foreground on accent 7.99
+    border-strong 3.12 on card, 3.44 on ground · input 3.23 on card
 */
 
 /* Theme-independent. Kept out of the colour blocks so both themes share it. */
 :root {
-  --radius: 0.625rem;
+  /* 8px. Cards and inputs use it as is; chips and small controls step down. */
+  --radius: 0.5rem;
 
-  /* Motion — design/00 §7.1 */
+  /* Motion — design/00 §7.1. Only for changes of state. */
   --duration-micro: 120ms;
   --duration-state: 180ms;
   --duration-enter: 220ms;
@@ -36,111 +83,95 @@
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* ── Light (default) — design/00 §3.1 ────────────────────────────────────── */
+/* ── Light (default) — Dossier paper ─────────────────────────────────────── */
 :root,
 .light {
   color-scheme: light;
 
-  --background: 210 20% 99%;      /* near-white, faint cool cast */
-  --foreground: 222 35% 12%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 35% 12%;
+  --background: 36 33% 97%;         /* #FAF8F5 warm paper */
+  --foreground: 221 51% 16%;        /* #14213E deep ink */
+  --card: 0 0% 100%;                /* records sit a touch lighter than the page */
+  --card-foreground: 221 51% 16%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 35% 12%;
+  --popover-foreground: 221 51% 16%;
 
-  --primary: 205 78% 42%;          /* darkened from the dark-mode 72% L for AA on white */
+  --primary: 175 77% 26%;           /* #0F756D teal — the one accent */
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 210 22% 96%;
-  --secondary-foreground: 222 30% 18%;
-  --muted: 210 22% 96%;
-  --muted-foreground: 215 14% 42%;  /* measured 5.49:1 on --background */
-  --accent: 205 70% 94%;
-  --accent-foreground: 205 78% 30%;
-  --destructive: 0 68% 46%;
+  --secondary: 40 24% 93%;          /* #F1EFE9 a quiet warm fill */
+  --secondary-foreground: 221 51% 16%;
+  --muted: 40 24% 93%;
+  --muted-foreground: 222 12% 39%;  /* #585F6F */
+  --accent: 171 30% 92%;            /* #E4F1EF teal wash: selected rows, active nav */
+  --accent-foreground: 175 78% 19%; /* #0B5650 */
+  --destructive: 4 76% 40%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 18% 89%;
-  --input: 214 18% 89%;
-  --ring: 205 78% 42%;
-  --glow: 205 78% 55%;
+  --border: 37 20% 87%;             /* #E4DFD7 hairline rule */
+  /*
+    Inputs and the switch track get a real edge. `--input` used to equal
+    `--border` (1.3:1), so a text field on a white card was nearly invisible
+    and failed WCAG 1.4.11. #988F81: 3.19:1 on card, 3.00:1 on paper.
+  */
+  --input: 38 10% 55%;
+  --ring: 175 77% 26%;
+  /* Kept for parity and for the confirm moment; no longer a glow. */
+  --glow: 175 77% 26%;
 
   /*
     Interactive boundaries (WCAG 1.4.11 wants 3:1). `--border` is a decorative
-    hairline and measures 1.30:1 on --card, which is fine for a separator and
-    not fine for the edge of a control. Use --border-strong on anything the
-    user is meant to recognise as an interactive boundary.
+    hairline. Use --border-strong on anything the user is meant to recognise as
+    an interactive boundary (checkbox, switch track, outline button).
   */
-  --border-strong: 214 16% 58%;     /* 3.19:1 on --card */
+  --border-strong: 40 7% 51%;       /* #8B8579 3.67:1 on card */
 
-  /* Semantic status — design/00 §3.2. See the contrast note below. */
-  --success: 152 62% 30%;           /* 5.19:1 on --card */
+  /* Semantic status. Colour carries meaning only here. */
+  --success: 149 56% 27%;           /* #1E6B44 */
   --success-foreground: 0 0% 100%;
-  --warning: 38 95% 31%;            /* 5.04:1 on --card */
+  --warning: 26 90% 34%;            /* #A54C09 amber: "needs you" */
   --warning-foreground: 0 0% 100%;
-  --danger: 0 68% 46%;              /* 5.72:1 on --card */
+  --danger: 4 76% 40%;              /* #B42318 */
   --danger-foreground: 0 0% 100%;
-  --info: 205 78% 42%;              /* 4.64:1 on --card */
+  --info: 217 45% 33%;              /* #2E4B7A ink-blue, deliberately quiet */
   --info-foreground: 0 0% 100%;
 }
 
-/* ── Dark — the previous :root block, moved verbatim ─────────────────────── */
-.dark,
-/*
- * `html:has(.marketing)` is not decoration — it fixes two visible bugs.
- *
- * The marketing layout puts `.dark` on a DIV inside body, so it scopes the dark
- * identity to that subtree (which is the point) but leaves the ROOT element on
- * the light tokens from `:root` above. The root is what the browser uses for two
- * things that live outside every div:
- *
- *   - the rubber-band canvas revealed by overscrolling  -> painted near-white,
- *     so dragging the landing page down showed a white band above the content
- *   - `color-scheme`, which picks the scrollbar's colors -> stayed `light`,
- *     so a white strip ran down the right edge of a dark page
- *
- * Matching the root whenever the marketing subtree is on the page hands it the
- * dark tokens and `color-scheme: dark`, fixing both without moving the class or
- * splitting the root layout. The authenticated app has no `.marketing`, so it is
- * untouched and stays light.
- */
-html:has(.marketing) {
+/* ── Dark — Dossier at night: deep ink ground, warm off-white text ───────── */
+.dark {
   color-scheme: dark;
 
-  --background: 222 42% 6%;
-  --foreground: 210 18% 96%;
-  --card: 222 32% 9%;
-  --card-foreground: 210 18% 96%;
-  --popover: 222 32% 9%;
-  --popover-foreground: 210 18% 96%;
+  --background: 222 43% 10%;        /* #0F1524 */
+  --foreground: 38 24% 91%;         /* #EEEAE3 */
+  --card: 221 40% 14%;              /* #151E32 */
+  --card-foreground: 38 24% 91%;
+  --popover: 221 40% 14%;
+  --popover-foreground: 38 24% 91%;
 
-  --primary: 205 85% 72%;
-  --primary-foreground: 222 42% 8%;
+  --primary: 172 46% 56%;           /* #5BC2B5 teal, lifted for a dark ground */
+  --primary-foreground: 222 43% 10%;
 
-  --secondary: 215 25% 14%;
-  --secondary-foreground: 210 18% 96%;
-  --muted: 215 25% 14%;
-  --muted-foreground: 215 12% 52%;
-  --accent: 205 75% 78%;
-  --accent-foreground: 222 42% 8%;
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 215 22% 16%;
-  --input: 215 25% 14%;
-  --ring: 205 85% 72%;
-  --radius: 0.625rem;
-  --glow: 205 85% 72%;
+  --secondary: 221 35% 17%;
+  --secondary-foreground: 38 24% 91%;
+  --muted: 221 35% 17%;
+  --muted-foreground: 221 11% 67%;
+  --accent: 190 45% 16%;
+  --accent-foreground: 172 49% 70%;
+  --destructive: 7 81% 69%;
+  --destructive-foreground: 222 43% 10%;
+  --border: 221 32% 22%;
+  --input: 221 17% 46%;            /* 3.23:1 on card */
+  --ring: 172 46% 56%;
+  --glow: 172 46% 56%;
 
-  --border-strong: 215 16% 44%;     /* 3.51:1 on --card */
+  --border-strong: 221 17% 45%;     /* 3.12:1 on card */
 
-  /* Semantic status — design/00 §3.2, dark column. */
-  --success: 152 50% 55%;           /* 8.60:1 on --card */
-  --success-foreground: 222 42% 8%;
-  --warning: 38 88% 62%;            /* 10.10:1 on --card */
-  --warning-foreground: 222 42% 8%;
-  --danger: 0 72% 58%;              /* 4.55:1 on --card */
-  --danger-foreground: 222 42% 8%;
-  --info: 205 85% 72%;              /* 9.51:1 on --card */
-  --info-foreground: 222 42% 8%;
+  --success: 148 44% 57%;
+  --success-foreground: 222 43% 10%;
+  --warning: 31 76% 63%;
+  --warning-foreground: 222 43% 10%;
+  --danger: 7 81% 69%;
+  --danger-foreground: 222 43% 10%;
+  --info: 218 50% 72%;
+  --info-foreground: 222 43% 10%;
 }
 
 @theme inline {
@@ -174,32 +205,46 @@ html:has(.marketing) {
   --color-info: hsl(var(--info));
   --color-info-foreground: hsl(var(--info-foreground));
 
+  /*
+    One small radius family. `rounded-xl` was 12px across 200-odd cards; it is
+    now the same 8px as everything else, so the whole app changes shape in one
+    place. `rounded-2xl` stays a step larger for sheets.
+  */
+  --radius-2xl: calc(var(--radius) + 4px);
+  --radius-xl: var(--radius);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
 
   --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-heading: var(--font-sora), system-ui, sans-serif;
+  /* `font-display` and the older `font-heading` are the same serif. */
+  --font-display: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-heading: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-/* ── Signature surfaces (glow) — reward moments only, design/00 §1 ───────── */
+/*
+  ── Elevation ─────────────────────────────────────────────────────────────
+  Borders over shadows. The old signature glow is retired: on a paper surface
+  a halo reads as a template, not as a reward. The classes stay (the confirm
+  moment and a few cards still name them) and now draw a quiet teal ring, which
+  marks the moment without lighting it up.
+*/
 .patronus-glow {
-  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.14);
 }
 .patronus-glow-sm {
-  box-shadow: 0 0 16px -4px hsl(var(--glow) / 0.25);
+  box-shadow: none;
 }
 .hover\:patronus-glow:hover {
-  box-shadow: 0 0 24px -4px hsl(var(--glow) / 0.35);
+  box-shadow: none;
 }
 
 /*
   ── Work surfaces — design/00 §1 Problem 2, §6 ────────────────────────────
   Opt-in flattener for dense surfaces (log list, review queue, tables, packet
-  editor, settings). Strips the marketing chrome that `Card` and `Button`
-  carry by default — backdrop-blur (one compositing layer per element, which
-  is what drops frames on a 500-row list), shadow, and glow — and replaces
-  them with a flat fill and a 1px hairline.
+  editor, settings). Strips any shadow and backdrop-blur a component carries
+  and replaces it with a flat fill and a 1px hairline.
 
   Usage: `<Card className="surface-work">`, `<Button className="surface-work">`.
 
@@ -213,13 +258,9 @@ html:has(.marketing) {
     `bg-success/8`) land on the *same element* as `surface-work` in
     `win-card.tsx`. A plain unlayered `border:` / `background-color:`
     shorthand here would silently erase all of them.
-  - The chrome-stripping — shadow, backdrop-blur, glow — is unlayered, so it
-    beats both the utilities layer and `.patronus-glow*`. That is the part
-    that actually has to override, and it is why the class exists.
-
-  Elevation above flat is plain Tailwind: `shadow-sm` for a raised row or
-  sticky header, `shadow-lg` for genuinely floating chrome (drawer, popover,
-  toast). Glow is reserved for the confirm animation and packet-ready moment.
+  - The chrome-stripping — shadow, backdrop-blur — is unlayered, so it beats
+    both the utilities layer and `.patronus-glow*`. That is the part that
+    actually has to override, and it is why the class exists.
 */
 @layer components {
   .surface-work {
@@ -263,18 +304,60 @@ html:has(.marketing) {
 
 /* ── Numerals — design/00 §4.2 ────────────────────────────────────────────
    Every count, date, metric and quota. Non-tabular figures make columns
-   wobble as values change. */
+   wobble as values change. Lining as well as tabular, because the serif's
+   default figures are proportional. */
 .num {
+  font-variant-numeric: lining-nums tabular-nums;
+  font-feature-settings: 'lnum' 1, 'tnum' 1;
+}
+
+/*
+  ── Dossier details ───────────────────────────────────────────────────────
+  `.eyebrow` — the letterspaced uppercase kicker above a section or a number.
+  11px/16, 600, +0.08em. Muted ink at 6.06:1 on paper, so it is small but
+  never faint.
+
+  `.ledger` — the voice of provenance: dates, sources, counts in a meta row.
+  System monospace (no font download), tabular.
+
+  `.rule` — a hairline between sections, the Dossier's main separator.
+*/
+@layer components {
+.eyebrow {
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.ledger {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum' 1;
+  letter-spacing: 0;
+}
+.rule {
+  border-top: 1px solid hsl(var(--border));
+}
 }
 
-.font-heading {
-  font-family: var(--font-sora), system-ui, sans-serif;
-}
-
-* {
-  @apply border-border;
+/*
+ * The default border colour, in `@layer base` — NOT unlayered.
+ *
+ * It used to be a bare `* { @apply border-border; }`. Unlayered CSS beats every
+ * cascade layer regardless of specificity, so that one line silently overrode
+ * every border-colour utility in the app: `border-primary/30`, `border-warning`
+ * on a confidential Win, `border-transparent` on a badge — all rendered as the
+ * grey hairline (measured with getComputedStyle, 2026-11-08). In the base layer
+ * it is a default again and any utility wins.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: hsl(var(--border));
+  }
 }
 
 /*
@@ -284,8 +367,8 @@ html:has(.marketing) {
  * settings list, the landing page's buttons and the FAQ's <summary>. Only the
  * `<Button>` primitive drew a ring. In `@layer base` with zero specificity, so
  * any component that styles its own focus (`focus-visible:ring-2 …`, which
- * every ui/ primitive does) still wins. The ring token measures 4.64:1 on the
- * app's white card and 10.9:1 on the landing page's ground.
+ * every ui/ primitive does) still wins. The ring is teal: 5.52:1 on a card,
+ * 5.20:1 on paper, 7.77:1 on the dark card.
  */
 @layer base {
   :where(a, button, summary, [role='button'], [tabindex]:not([tabindex='-1'])):focus-visible {
@@ -315,14 +398,34 @@ body {
   min-height: 100vh;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-sora), system-ui, sans-serif;
+/*
+ * Serif for the page and its sections, sans for everything inside them.
+ * h1 and h2 are titles and section heads; h3 and below are card and row
+ * titles, which read better in Inter at 14-15px in a dense list.
+ *
+ * In `@layer base` so a utility on the element (`font-sans` on an eyebrow
+ * h2, `font-display` on an h3) still wins. Unlayered, these beat every
+ * utility — the same trap as the border rule above.
+ */
+@layer base {
+  h1,
+  h2 {
+    font-family: var(--font-serif), 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+    letter-spacing: -0.01em;
+  }
+  h3, h4, h5, h6 {
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
 }
 
+/*
+ * Entrance motion. Kept short (220ms, 8px) because it now only marks content
+ * arriving after a load; the old 600ms, 16px rise read as decoration.
+ */
 @keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -331,20 +434,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .animate-fade-in-up {
-  animation: fade-in-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fade-in-up 220ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 .animation-delay-100 {
-  animation-delay: 0.1s;
+  animation-delay: 0.05s;
 }
 .animation-delay-200 {
-  animation-delay: 0.2s;
+  animation-delay: 0.1s;
 }
 .animation-delay-300 {
-  animation-delay: 0.3s;
+  animation-delay: 0.15s;
 }
 .animation-delay-400 {
-  animation-delay: 0.4s;
+  animation-delay: 0.2s;
 }
 
 /* ── Reduced motion — design/00 §7.3 ──────────────────────────────────────
@@ -368,7 +471,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
+  background: hsl(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
@@ -468,465 +571,6 @@ h1, h2, h3, h4, h5, h6 {
     max-width: none;
     padding: 0;
   }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Marketing — "the lit record"
-   ═══════════════════════════════════════════════════════════════════════════
-
-   The design foundations name the theme "Your best self, in the light". The
-   landing page takes that literally: the page is a dark room, and every
-   ARTIFACT the product makes — the work log, a resume line, a packet — renders
-   as warm ivory paper, lit.
-
-   That is the whole idea, and it does three jobs at once. It is the brand line
-   made visual; it gives the page one repeatable move instead of scattered
-   decoration; and it inverts the usual dark-SaaS habit of stacking dark cards
-   on a dark ground, where nothing can be the subject.
-
-   Scoped to `.marketing` so none of it can leak into the authenticated app,
-   which is light-first and has entirely different jobs to do.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-.marketing {
-  /* Warm, not white. A pure #fff artifact on navy reads as a dialog; ivory
-     reads as paper, which is what a record is. */
-  --paper: 40 28% 96%;
-  --paper-edge: 40 16% 88%;
-  --paper-ink: 218 30% 14%;
-  --paper-ink-soft: 218 12% 42%;
-  --paper-rule: 40 12% 89%;
-
-  /*
-    ── The landing page's own palette ──────────────────────────────────────
-
-    The app is a work tool: its blue is held at 205° and 72% L so it can sit
-    behind dense text all day without fatiguing. A landing page has the
-    opposite job — it is seen once, for ninety seconds, and it has to feel
-    like something. So marketing pushes the same hue family to its loudest
-    version: 190°, full saturation, one accent and nothing else.
-
-    These override `.dark` rather than sitting beside it, so every existing
-    `text-primary`, `<Button>`, `border-primary/40` and `--glow` consumer on
-    the page inherits the new accent without being touched. That is the whole
-    reason this is a token override and not a pile of new utility classes.
-
-    Scoped to `.marketing`, so the authenticated app keeps its calmer blue.
-  */
-  --background: 220 20% 6%;
-  --foreground: 0 0% 100%;
-  --card: 220 18% 10%;
-  --card-foreground: 0 0% 100%;
-  --muted: 220 15% 14%;
-  --muted-foreground: 220 10% 70%;
-  --border: 220 15% 18%;
-  --input: 220 15% 16%;
-
-  --primary: 190 100% 50%;
-  --primary-foreground: 220 30% 6%;
-  --ring: 190 100% 50%;
-  --glow: 190 100% 50%;
-
-  /* The two darker grounds the page alternates between, so consecutive
-     sections separate without a border doing all the work. */
-  --mk-sunken: 220 22% 4.5%;
-  --mk-raised: 220 18% 9%;
-}
-
-/* ── Display type ─────────────────────────────────────────────────────────
-   One class, three sizes. `clamp` rather than breakpoint steps because the
-   headline is the one element on the page that should be as large as the
-   viewport can hold — stepping it leaves obvious dead zones at 900px and
-   1100px where the type is visibly too small for its column. */
-.marketing .mk-display {
-  font-family: var(--font-sora), system-ui, sans-serif;
-  font-weight: 800;
-  letter-spacing: -0.035em;
-  line-height: 0.98;
-  text-wrap: balance;
-}
-.marketing .mk-h1 { font-size: clamp(2.5rem, 7.2vw, 4.75rem); }
-.marketing .mk-h2 { font-size: clamp(2rem, 5vw, 3.25rem); }
-.marketing .mk-h3 {
-  font-size: clamp(1.125rem, 1.6vw, 1.375rem);
-  font-weight: 700;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-}
-
-/* ── The label above every headline ───────────────────────────────────── */
-.marketing .mk-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  border-radius: 9999px;
-  border: 1px solid hsl(var(--primary) / 0.3);
-  background: hsl(var(--primary) / 0.12);
-  padding: 0.375rem 0.9rem;
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: hsl(var(--primary));
-}
-
-/* ── Buttons ──────────────────────────────────────────────────────────────
-   Deliberately not the app's `<Button>`. The product's button is quiet by
-   design; this one is a billboard — uppercase, 800, letterspaced out, and
-   carrying its own light. Using one component for both jobs is how a landing
-   page ends up looking like a settings screen. */
-.marketing .mk-btn,
-.marketing .mk-btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  height: 3.25rem;
-  padding: 0 1.75rem;
-  border-radius: var(--radius);
-  font-size: 0.9375rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-  transition:
-    transform 220ms cubic-bezier(0.2, 0, 0, 1),
-    box-shadow 220ms cubic-bezier(0.2, 0, 0, 1),
-    background-color 220ms cubic-bezier(0.2, 0, 0, 1);
-}
-.marketing .mk-btn {
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  box-shadow:
-    0 0 40px -12px hsl(var(--glow) / 0.55),
-    0 0 16px -6px hsl(var(--glow) / 0.4);
-}
-.marketing .mk-btn:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 0 60px -8px hsl(var(--glow) / 0.75),
-    0 0 24px -4px hsl(var(--glow) / 0.5);
-}
-.marketing .mk-btn-ghost {
-  border: 2px solid hsl(var(--primary) / 0.55);
-  background: transparent;
-  color: hsl(var(--primary));
-}
-.marketing .mk-btn-ghost:hover {
-  background: hsl(var(--primary) / 0.1);
-  border-color: hsl(var(--primary));
-  transform: translateY(-2px);
-}
-.marketing .mk-btn:active,
-.marketing .mk-btn-ghost:active { transform: scale(0.98); }
-
-/* The nav-bar size. A separate class rather than utility overrides on the
-   call site: Tailwind v4 moved the important modifier to a trailing `!`, so
-   the v3-style `!h-9` reads as an unknown class and silently generates
-   nothing — leaving a 3.25rem button inside a 4rem bar. Source order beats
-   that whole category of mistake. */
-.marketing .mk-btn-sm {
-  height: 2.25rem;
-  padding: 0 1rem;
-  font-size: 0.6875rem;
-  letter-spacing: 0.08em;
-}
-
-/* ── Surfaces ─────────────────────────────────────────────────────────── */
-.marketing .mk-card {
-  position: relative;
-  border: 1px solid hsl(var(--border));
-  background: hsl(var(--card) / 0.6);
-  border-radius: 1rem;
-  transition:
-    transform 260ms cubic-bezier(0.2, 0, 0, 1),
-    border-color 260ms ease,
-    box-shadow 260ms ease;
-}
-.marketing .mk-card-hover:hover {
-  /* Lift AND scale. translateY alone was too polite to register — the
-     reference scales to 1.05, which at card size is a very large move; 1.025
-     reads as the same gesture without the text visibly resampling. */
-  transform: translateY(-4px) scale(1.025);
-  border-color: hsl(var(--primary) / 0.45);
-  box-shadow:
-    0 24px 48px -24px hsl(0 0% 0% / 0.8),
-    0 0 32px -14px hsl(var(--glow) / 0.4);
-}
-
-/* The rail: a full-height accent bar down the left edge of a card that
-   thickens on hover. Lifted directly from the reference, where it is the
-   detail that makes an otherwise plain card feel like a control. */
-.marketing .mk-rail::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  border-radius: 1rem 0 0 1rem;
-  background: hsl(var(--primary) / 0.5);
-  transition:
-    width 260ms cubic-bezier(0.2, 0, 0, 1),
-    background-color 260ms ease;
-}
-.marketing .mk-rail:hover::before {
-  width: 6px;
-  background: hsl(var(--primary));
-}
-.marketing .mk-glow {
-  box-shadow:
-    0 0 50px -10px hsl(var(--glow) / 0.5),
-    0 0 20px -5px hsl(var(--glow) / 0.35);
-}
-
-/* Section grounds. Written as CSS rather than arbitrary Tailwind values on
-   purpose — see the note in pricing.test.ts about scanning class strings. */
-.marketing .mk-hero-bg {
-  background:
-    radial-gradient(ellipse 90% 60% at 50% 0%, hsl(var(--primary) / 0.16), transparent 60%),
-    radial-gradient(ellipse 60% 50% at 82% 78%, hsl(var(--primary) / 0.07), transparent 70%),
-    hsl(var(--background));
-}
-.marketing .mk-band {
-  background: hsl(var(--mk-sunken));
-}
-.marketing .mk-cta-bg {
-  background:
-    radial-gradient(ellipse 80% 60% at 50% 50%, hsl(var(--primary) / 0.16), transparent 62%),
-    hsl(var(--mk-sunken));
-}
-
-/* ── Ambient motion ───────────────────────────────────────────────────────
-   Three blurred blobs on long, mutually-prime durations plus one very slow
-   conic sweep. The primes matter: equal durations resynchronise every cycle
-   and the eye catches the loop. At 18/22/26s against a 30s rotation the
-   pattern does not visibly repeat for minutes. */
-@keyframes mk-drift-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(80px, -60px) scale(1.1); }
-  50% { transform: translate(-40px, 80px) scale(0.95); }
-  75% { transform: translate(60px, 40px) scale(1.05); }
-}
-@keyframes mk-drift-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25% { transform: translate(-70px, 50px) scale(1.08); }
-  50% { transform: translate(60px, -70px) scale(0.92); }
-  75% { transform: translate(-30px, -40px) scale(1.04); }
-}
-@keyframes mk-drift-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(50px, -80px) scale(1.1); }
-  66% { transform: translate(-60px, 30px) scale(0.95); }
-}
-@keyframes mk-spin {
-  from { transform: translate(-50%, -50%) rotate(0deg); }
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-@keyframes mk-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-/* The CTA's heartbeat. A ring that expands and fades outward, so the primary
-   button is the one element on the page that is never completely still. The
-   reference ships this as `btn-pulse`; the second shadow is the ring, and it
-   grows from 0 to 14px of spread while going fully transparent. */
-@keyframes mk-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 40px -12px hsl(var(--glow) / 0.55),
-      0 0 0 0 hsl(var(--glow) / 0.5);
-  }
-  70% {
-    box-shadow:
-      0 0 56px -8px hsl(var(--glow) / 0.7),
-      0 0 0 14px hsl(var(--glow) / 0);
-  }
-}
-@keyframes mk-bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(7px); }
-}
-@keyframes mk-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
-}
-@keyframes mk-scroll-rev {
-  from { transform: translateX(-50%); }
-  to { transform: translateX(0); }
-}
-
-.marketing .mk-blob {
-  position: absolute;
-  border-radius: 9999px;
-  pointer-events: none;
-}
-.marketing .mk-drift-1 { animation: mk-drift-1 18s ease-in-out infinite; }
-.marketing .mk-drift-2 { animation: mk-drift-2 22s ease-in-out infinite; }
-.marketing .mk-drift-3 { animation: mk-drift-3 26s ease-in-out infinite; }
-.marketing .mk-sweep {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  border-radius: 9999px;
-  pointer-events: none;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0%,
-    hsl(var(--primary) / 0.16) 20%,
-    transparent 40%,
-    hsl(var(--primary) / 0.07) 60%,
-    transparent 100%
-  );
-  filter: blur(80px);
-  animation: mk-spin 30s linear infinite;
-}
-.marketing .mk-float { animation: mk-float 6s ease-in-out infinite; }
-.marketing .mk-bob { animation: mk-bob 2s ease-in-out infinite; }
-/* Applied to the hero CTA only. On every primary button it would be noise —
-   a page where six things pulse has nothing to draw the eye to. */
-.marketing .mk-pulse { animation: mk-pulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-.marketing .mk-pulse:hover { animation-play-state: paused; }
-
-/* ── Marquee ──────────────────────────────────────────────────────────────
-   The track holds the item list twice; translating exactly -50% lands the
-   copy on the original's start position, so the seam is never visible. */
-/* 32s/36s. At the 46s/52s these started on, a 5,400px track moves about 60px
-   a second — slow enough that a glance reads it as a static row of chips, which
-   defeats the point of the band. The two rows are deliberately not the same
-   duration, so they never line up. */
-.marketing .mk-marquee { animation: mk-scroll 32s linear infinite; }
-.marketing .mk-marquee-rev { animation: mk-scroll-rev 36s linear infinite; }
-.marketing .mk-marquee-mask {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
-}
-.marketing .mk-marquee-hover:hover .mk-marquee,
-.marketing .mk-marquee-hover:hover .mk-marquee-rev {
-  animation-play-state: paused;
-}
-
-/* ── Scroll reveal ────────────────────────────────────────────────────────
-   The class is added by `Reveal` (an IntersectionObserver) rather than by a
-   scroll listener, so nothing runs on the main thread between intersections.
-   The initial state lives here and not in inline styles so that a reader who
-   has JS disabled still sees content — `Reveal` promotes to `.is-in` on
-   mount, and the `no-js` fallback below covers the rest. */
-.marketing [data-reveal] {
-  opacity: 0;
-  transform: translateY(26px);
-  transition:
-    opacity 700ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
-  transition-delay: var(--reveal-delay, 0ms);
-  will-change: opacity, transform;
-}
-.marketing [data-reveal='left'] { transform: translateX(-26px); }
-.marketing [data-reveal='right'] { transform: translateX(26px); }
-.marketing [data-reveal='scale'] { transform: scale(0.96); }
-.marketing [data-reveal].is-in {
-  opacity: 1;
-  transform: none;
-  will-change: auto;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* The global reduce block already collapses durations. These two are the
-     ones that would otherwise leave content invisible or mid-drift. */
-  .marketing [data-reveal] {
-    opacity: 1 !important;
-    transform: none !important;
-  }
-  .marketing .mk-blob,
-  .marketing .mk-sweep,
-  .marketing .mk-float,
-  .marketing .mk-bob,
-  .marketing .mk-pulse,
-  .marketing .mk-marquee,
-  .marketing .mk-marquee-rev {
-    animation: none !important;
-  }
-  /* The marquee's resting position is translateX(0), which is the start of the
-     first copy — so killing the animation leaves a correctly-filled row rather
-     than a half-empty one. The duplicate track is simply never reached. */
-  .marketing .mk-card-hover:hover {
-    transform: none;
-  }
-}
-
-/* The lit artifact. The glow is the light source, so it belongs to this
-   surface and nowhere else on the page. */
-.marketing .paper {
-  position: relative;
-  background: hsl(var(--paper));
-  color: hsl(var(--paper-ink));
-  border: 1px solid hsl(var(--paper-edge));
-  /*
-    Three layers, and the middle one is the whole point. The first reads as the
-    paper's own thickness; the second is the light it throws onto the room —
-    without it this is just a white card, and the concept is that the record is
-    the lit thing; the third grounds it so it does not float.
-  */
-  box-shadow:
-    0 1px 0 0 hsl(0 0% 100% / 0.6) inset,
-    0 0 90px -10px hsl(var(--glow) / 0.5),
-    0 30px 60px -24px hsl(0 0% 0% / 0.7);
-}
-
-/* A soft bloom just outside the edge, so the light reads as coming FROM the
-   paper rather than sitting behind it. */
-.marketing .paper::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: 0 0 0 1px hsl(var(--glow) / 0.14);
-}
-
-.marketing .paper-muted { color: hsl(var(--paper-ink-soft)); }
-.marketing .paper-rule { border-color: hsl(var(--paper-rule)); }
-
-/*
-  The ledger voice — dates, sources, counts, section numbers.
-
-  A third type role, deliberately. Sora carries structure and Inter carries
-  prose; neither can say "this is a record with provenance" on its own. Tabular
-  figures because these are meant to line up.
-*/
-.marketing .ledger {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
-
-/* The spine: a hairline that fades at both ends so it reads as a continuing
-   record rather than a bounded list. */
-.marketing .spine::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.35rem;
-  bottom: 0.35rem;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    hsl(var(--border)) 12%,
-    hsl(var(--border)) 88%,
-    transparent
-  );
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .marketing .rise {
-    animation: marketing-rise 620ms cubic-bezier(0.2, 0, 0, 1) both;
-  }
-}
-
-@keyframes marketing-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: none; }
 }
 
 /*

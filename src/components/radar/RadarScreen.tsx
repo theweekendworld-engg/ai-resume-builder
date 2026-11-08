@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { ArrowUpRight, Compass, Info, Lock, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, Info, Lock, TrendingUp } from 'lucide-react';
+import { PageBody, PageHeader } from '@/components/patterns';
 import type { RadarBand, RadarMatch, RadarSkill, RadarView } from '@/actions/radar';
 
 /**
@@ -69,9 +70,9 @@ function prettyLevel(level: string): string {
 
 function BandPanel({ band, cell }: { band: RadarBand; cell: string }) {
     return (
-        <section className="surface-work rounded-xl border p-5">
+        <section className="surface-work rounded-lg border p-5">
             <div className="flex items-baseline justify-between gap-3">
-                <h2 className="font-heading text-sm font-semibold">What this role pays</h2>
+                <h2 className="font-sans text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-muted-foreground">What this role pays</h2>
                 <span className="text-xs text-muted-foreground">{cell}</span>
             </div>
 
@@ -114,9 +115,9 @@ function BandPanel({ band, cell }: { band: RadarBand; cell: string }) {
 
 function MatchesPanel({ matches, locked }: { matches: RadarMatch[]; locked: boolean }) {
     return (
-        <section className="surface-work rounded-xl border p-5">
+        <section className="surface-work rounded-lg border p-5">
             <div className="flex items-baseline justify-between gap-3">
-                <h2 className="font-heading text-sm font-semibold">Roles you&rsquo;d likely win</h2>
+                <h2 className="font-sans text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-muted-foreground">Roles you&rsquo;d likely win</h2>
                 <span className="text-xs text-muted-foreground">
                     {matches.length > 0 ? `${matches.length} of the last 30 days` : 'none right now'}
                 </span>
@@ -182,9 +183,9 @@ function MatchesPanel({ matches, locked }: { matches: RadarMatch[]; locked: bool
 
 function SkillsPanel({ skills, geo }: { skills: RadarSkill[]; geo: string }) {
     return (
-        <section className="surface-work rounded-xl border p-5">
+        <section className="surface-work rounded-lg border p-5">
             <div className="flex items-baseline justify-between gap-3">
-                <h2 className="font-heading text-sm font-semibold">What&rsquo;s being asked for</h2>
+                <h2 className="font-sans text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-muted-foreground">What&rsquo;s being asked for</h2>
                 <span className="text-xs text-muted-foreground">{geo} · last 90 days</span>
             </div>
 
@@ -244,8 +245,8 @@ function PositionPanel({ view }: { view: RadarView }) {
     const thin = view.winCount < 8;
 
     return (
-        <section className="surface-work rounded-xl border p-5">
-            <h2 className="font-heading text-sm font-semibold">Where you stand</h2>
+        <section className="surface-work rounded-lg border p-5">
+            <h2 className="font-sans text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-muted-foreground">Where you stand</h2>
 
             <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
@@ -300,20 +301,22 @@ export function RadarScreen({ view }: { view: RadarView }) {
     const cell = `${prettyLevel(view.profile.seniority)} · ${prettyGeo(view.profile.geoBucket)}`;
 
     return (
-        <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
-            <header className="mb-6">
-                <div className="flex items-center gap-2">
-                    <Compass className="h-4 w-4 text-primary" aria-hidden />
-                    <h1 className="font-heading text-2xl font-semibold tracking-tight">Career Radar</h1>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    Where you stand in the market, from public job postings.
-                    {view.postingsAsOf
-                        ? ` Postings last collected ${view.postingsAsOf.toISOString().slice(0, 10)}.`
-                        : ''}
-                </p>
-            </header>
-
+        <div>
+            <PageHeader
+                eyebrow="Record"
+                title="Career Radar"
+                description={
+                    <>
+                        Where you stand in the market, from public job postings.
+                        {view.postingsAsOf ? (
+                            <>
+                                {' '}Postings last collected <span className="ledger text-[13px]">{view.postingsAsOf.toISOString().slice(0, 10)}</span>.
+                            </>
+                        ) : null}
+                    </>
+                }
+            />
+            <PageBody className="max-w-5xl">
             <div className="grid gap-4 lg:grid-cols-2">
                 <BandPanel band={view.band} cell={cell} />
                 <PositionPanel view={view} />
@@ -326,6 +329,7 @@ export function RadarScreen({ view }: { view: RadarView }) {
                 Every figure here is arithmetic over ranges employers published themselves. Nothing
                 on this screen is estimated by a model.
             </p>
+            </PageBody>
         </div>
     );
 }

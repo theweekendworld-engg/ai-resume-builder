@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
@@ -32,18 +33,16 @@ export default async function ResumeSettingsPage() {
     const preferences = parseUserGenerationPreferences(profile?.preferences);
 
     return (
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">
-            <header>
-                <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">
-                    Resume defaults
-                </h1>
-                <p className="mt-1.5 text-muted-foreground">
-                    These apply to every resume you generate from now on. Resumes you have
-                    already made are unchanged.
-                </p>
-            </header>
+        <div>
+            <PageHeader
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Resume defaults"
+                description="These apply to every resume you generate from now on. Resumes you have already made are unchanged."
+            />
+            <PageBody className="max-w-3xl space-y-6">
 
             <ResumeSectionsPanel initial={preferences.defaultSectionOrder} />
+            </PageBody>
         </div>
     );
 }

@@ -4,6 +4,8 @@
 > Layouts are specifications, not sketches: sizes, copy, states, and behavior are as written.
 > **Copy in these layouts is final copy.** If it needs changing, change it here.
 
+> **2026-11-08 — Dossier.** Colour, type, radius and elevation are now specified in [`03-dossier.md`](03-dossier.md), which supersedes this file where they disagree.
+
 ---
 
 # A. Onboarding

@@ -40,9 +40,9 @@ export const clerkGlobalAppearance = {
     userButtonTrigger:
       'rounded-full outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
     userButtonPopoverCard:
-      'border border-border bg-card text-card-foreground shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/95',
+      'border border-border bg-card text-card-foreground shadow-md',
     userButtonPopoverMain: 'bg-card text-foreground',
-    userButtonPopoverFooter: 'border-t border-border bg-card/90',
+    userButtonPopoverFooter: 'border-t border-border bg-card',
     userButtonPopoverActionButton:
       'rounded-md !text-foreground transition-colors hover:bg-secondary hover:!text-secondary-foreground',
     userButtonPopoverActionButtonText: '!text-foreground text-sm font-medium',
@@ -52,15 +52,15 @@ export const clerkGlobalAppearance = {
 
     userProfileRootBox: 'w-full',
     userProfileCard:
-      'w-full border border-border bg-card text-card-foreground shadow-xl backdrop-blur',
-    userProfileNavbar: 'border-r border-border bg-card/70',
+      'w-full border border-border bg-card text-card-foreground shadow-sm',
+    userProfileNavbar: 'border-r border-border bg-background',
     userProfileContentMain: 'bg-card',
-    profileSection__connectedAccounts: 'border border-border/70 rounded-lg bg-background/70',
+    profileSection__connectedAccounts: 'border border-border rounded-lg bg-background',
     profileSectionTitleText__connectedAccounts: '!text-foreground',
     profileSectionSubtitleText__connectedAccounts: '!text-muted-foreground',
     profileSectionContent__connectedAccounts: 'space-y-2',
     profileSectionItem__connectedAccounts:
-      'rounded-md border border-border/70 bg-card/80 !text-foreground opacity-100',
+      'rounded-md border border-border bg-card !text-foreground opacity-100',
     profileSectionItemList__connectedAccounts: 'space-y-2',
     profileSectionPrimaryButton__connectedAccounts:
       'h-9 !text-primary hover:!text-primary/90 hover:bg-secondary/70',
@@ -68,10 +68,10 @@ export const clerkGlobalAppearance = {
     navbarButton:
       'rounded-md text-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground',
     navbarButtonActive: 'bg-secondary text-secondary-foreground',
-    profileSectionTitleText: 'font-heading text-foreground',
-    profileSectionContent: 'border border-border bg-background/70 rounded-lg',
+    profileSectionTitleText: 'font-display text-foreground',
+    profileSectionContent: 'border border-border bg-background rounded-lg',
     formButtonPrimary:
-      'h-10 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
+      'h-10 bg-primary text-primary-foreground shadow-none after:hidden hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
     formFieldInput:
       'h-10 border border-input bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
     badge: 'border border-border bg-secondary text-secondary-foreground',
@@ -81,21 +81,28 @@ export const clerkGlobalAppearance = {
 export const clerkAuthAppearance = {
   ...clerkSharedVariables,
   elements: {
-    rootBox: '',
-    cardBox: '',
-    card: 'max-w-md border border-border bg-card/95 shadow-xl backdrop-blur flex-col',
-    headerTitle: 'font-heading text-2xl text-foreground',
+    // Full width up to Clerk's own 25rem, so a 390px phone does not scroll
+    // sideways (Clerk fixes the card at 400px otherwise).
+    rootBox: 'w-full flex justify-center',
+    // Dossier card: white on paper, a hairline edge, the faintest contact
+    // shadow. No blur, no translucency, no Clerk drop shadow.
+    cardBox: 'w-full max-w-[25rem] rounded-lg border border-border shadow-[0_1px_2px_hsl(var(--foreground)/0.06)]',
+    card: 'w-full border-0 border-b border-border bg-card shadow-none flex-col',
+    footer: 'bg-background',
+    headerTitle: 'font-display text-2xl font-semibold tracking-[-0.01em] text-foreground',
     headerSubtitle: 'text-muted-foreground',
     socialButtonsBlockButton:
-      'border border-border bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors',
+      'border border-border-strong/60 bg-card text-foreground hover:border-foreground transition-colors',
     socialButtonsBlockButtonText: 'text-sm font-medium',
     dividerLine: 'bg-border',
     dividerText: 'text-muted-foreground',
     formFieldLabel: 'text-foreground',
     formFieldInput:
       'h-10 border border-input bg-background text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
+    // Clerk paints a white-to-clear gradient over its primary button in an
+    // ::after layer, plus an inset shadow; both go, so it is flat teal.
     formButtonPrimary:
-      'h-10 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
+      'h-10 bg-primary text-primary-foreground shadow-none after:hidden hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
     footerActionText: 'text-muted-foreground',
     footerActionLink: 'text-primary hover:text-primary/90',
     formResendCodeLink: 'text-primary hover:text-primary/90',

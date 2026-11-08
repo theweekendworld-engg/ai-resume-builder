@@ -1,32 +1,46 @@
 import Link from 'next/link';
 import {
-    ArrowRight,
     BellRing,
     Briefcase,
     CalendarClock,
     Check,
     CircleHelp,
-    FileText,
-    History,
-    Inbox,
     Mail,
     NotebookPen,
-    Sparkles,
+    PenLine,
     Target,
     type LucideIcon,
 } from 'lucide-react';
 
-import { PageBody, PageHeader } from '@/components/patterns';
+import {
+    InitialAvatar,
+    PageBody,
+    PageHeader,
+    ProgressRail,
+    Section,
+    SectionLink,
+    StatStrip,
+    typeStyles,
+    type ProgressRailStep,
+} from '@/components/patterns';
 import { Button } from '@/components/ui/button';
+import { jobStageSummary } from '@/lib/jobStages';
+import { overviewStatusLine } from '@/lib/overviewStatus';
 import type { NeedsYouKind, Overview } from '@/services/overview';
 import { cn } from '@/lib/utils';
 
 import { AskBar } from './AskBar';
 
 /**
- * Home (2026-10-04): every part of the search and the record on one screen,
- * in sections. "Needs you" leads because it is the only section that asks
- * for something; the rest are state, each linking to where it is changed.
+ * Home (2026-10-04; Dossier 2026-11-08, docs/design/03-dossier.md §6).
+ *
+ * Read top to bottom like the first page of a file: a serif greeting and one
+ * sentence of status, the pipeline as a ruled strip of numbers, then the
+ * parts. "Needs you" leads because it is the only part that asks for
+ * something, and it is the only place amber appears. Jobs in motion each show
+ * their four stages on a ProgressRail. Everything else is state, each part
+ * linking to where it is changed. Parts are separated by hairline rules, not
+ * boxed into floating cards.
  */
 
 const NEED_ICON: Record<NeedsYouKind, LucideIcon> = {
@@ -39,41 +53,8 @@ const NEED_ICON: Record<NeedsYouKind, LucideIcon> = {
     goal: Target,
 };
 
-function Section({
-    icon: Icon,
-    title,
-    href,
-    linkLabel = 'View all',
-    children,
-    className,
-}: {
-    icon: LucideIcon;
-    title: string;
-    href?: string;
-    linkLabel?: string;
-    children: React.ReactNode;
-    className?: string;
-}) {
-    return (
-        <section className={cn('rounded-xl border border-border bg-card', className)}>
-            <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-                <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <Icon className="size-4 text-muted-foreground" aria-hidden />
-                    {title}
-                </h2>
-                {href ? (
-                    <Link href={href} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-                        {linkLabel} <ArrowRight className="size-3" aria-hidden />
-                    </Link>
-                ) : null}
-            </header>
-            {children}
-        </section>
-    );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-    return <p className="px-4 py-6 text-sm text-muted-foreground">{children}</p>;
+function Quiet({ children }: { children: React.ReactNode }) {
+    return <p className="py-2 text-sm text-muted-foreground">{children}</p>;
 }
 
 function shortDate(iso: string): string {
@@ -88,24 +69,52 @@ function dayAndTime(iso: string): { day: string; time: string } {
     };
 }
 
+/** A row's hover: a white sheet slides under it, no movement. */
+const ROW = 'group relative flex items-center gap-4 rounded-md transition-colors duration-150 hover:bg-card focus-visible:bg-card focus-visible:outline-offset-[-2px]';
+
+function railSteps(stages: NonNullable<Overview['jobs']>[number]['stages']): ProgressRailStep[] {
+    // Everything ready and only the sending left: that waits on the user.
+    return stages.map((stage) => (stage.status === 'current' && stage.key === 'applied' ? { ...stage, tone: 'attention' as const } : stage));
+}
+
 export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }) {
     const setupLeft = data.setup.filter((step) => !step.done);
     // A brand-new account: no resume or work history yet. It was greeted
     // "Welcome back" with the one step that matters in the bottom corner.
     const resumeStep = data.setup.find((step) => step.key === 'resume' && !step.done) ?? null;
     const name = data.firstName ? `, ${data.firstName}` : '';
+    const needs = data.needsYou.length;
 
     return (
         <div>
             <PageHeader
-                title={resumeStep ? `Welcome to Patronus${name}` : `Welcome back${name}`}
-                description="Everything in your search and your record, in one place."
+                size="display"
+                eyebrow="Your search and your record"
+                title={resumeStep ? `Welcome to Patronus${name}.` : `Welcome back${name}.`}
+                description={overviewStatusLine(data)}
+                actions={
+                    chat ? null : (
+                        // One teal button per view: on a new account the first
+                        // step owns it, so this one steps back to outline.
+                        <Button asChild variant={resumeStep ? 'outline' : 'default'}>
+                            <Link href="/build">
+                                <PenLine aria-hidden />
+                                Tailor a resume
+                            </Link>
+                        </Button>
+                    )
+                }
             />
-            <PageBody className="space-y-6">
+            <PageBody className="space-y-8 pb-12">
                 {resumeStep ? (
-                    <section aria-labelledby="first-step" className="rounded-xl border border-primary/30 bg-primary/5 p-5">
-                        <h2 id="first-step" className="font-heading text-base font-semibold text-foreground">Start with your resume</h2>
-                        <p className="mt-1 max-w-prose text-sm text-muted-foreground">
+                    <section
+                        aria-labelledby="first-step"
+                        className="relative overflow-hidden rounded-lg border border-border bg-card p-5 pl-6 sm:p-6 sm:pl-7"
+                    >
+                        <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary" />
+                        <p className={typeStyles.eyebrow}>First step</p>
+                        <h2 id="first-step" className={cn(typeStyles.h2, 'mt-1 text-foreground')}>Start with your resume</h2>
+                        <p className="mt-1.5 max-w-prose text-sm leading-[22px] text-muted-foreground">
                             Upload the PDF you already have. Patronus keeps every line as you wrote it, then checks any job against it and tailors a one-page resume.
                         </p>
                         <Button asChild className="mt-4">
@@ -113,53 +122,53 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                         </Button>
                     </section>
                 ) : null}
+
                 {chat ? <AskBar /> : null}
 
-                {/* ── Pipeline ─────────────────────────────────────────── */}
-                {/* A list of links, not a <dl>: links cannot be children of a
-                    definition list, and the count came before its label. The
-                    inset focus ring stays inside the rounded, clipped grid. */}
                 {data.pipeline ? (
-                    <ul aria-label="Your pipeline" className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
-                        {data.pipeline.map((stage) => (
-                            <li key={stage.column} className="bg-card">
-                                <Link href={stage.href} className="group block h-full px-4 py-4 transition-colors hover:bg-secondary/50 focus-visible:bg-secondary/50 focus-visible:outline-offset-[-2px]">
-                                    <span className="block font-heading text-2xl font-semibold tabular-nums text-foreground">{stage.count}</span>
-                                    <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                                        {stage.label}
-                                        <ArrowRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
-                                    </span>
-                                </Link>
-                            </li>
-                        ))}
-                    </ul>
+                    <StatStrip
+                        label="Your pipeline"
+                        items={data.pipeline.map((stage) => ({
+                            key: stage.column,
+                            label: stage.label,
+                            value: stage.count,
+                            href: stage.href,
+                            tone: stage.column === 'to_review' && stage.count > 0 ? 'attention' : 'default',
+                        }))}
+                    />
                 ) : null}
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    {/* ── Left: what to do, and what happened ─────────── */}
-                    <div className="min-w-0 space-y-6 lg:col-span-2">
-                        <Section icon={Sparkles} title="Needs you">
-                            {data.needsYou.length === 0 ? (
-                                <Empty>You are all caught up. New replies, interviews and follow-ups appear here.</Empty>
+                <div className="grid grid-cols-1 gap-x-12 gap-y-8 lg:grid-cols-3">
+                    {/* ── Left: what to do, and what is moving ────────── */}
+                    <div className="min-w-0 space-y-8 lg:col-span-2">
+                        <Section eyebrow="Needs you" count={needs || null} tone={needs ? 'attention' : 'default'}>
+                            {needs === 0 ? (
+                                <p className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                                    <Check className="size-4 text-success" aria-hidden />
+                                    You are all caught up. New replies, interviews and follow-ups appear here.
+                                </p>
                             ) : (
-                                <ul className="divide-y divide-border">
+                                <ul className="-mx-2 divide-y divide-border">
                                     {data.needsYou.map((item) => {
                                         const Icon = NEED_ICON[item.kind];
-                                        const urgent = item.kind === 'interview' || item.kind === 'question';
                                         return (
                                             <li key={item.key}>
-                                                <Link href={item.href} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary/50">
-                                                    <span className={cn('grid size-9 shrink-0 place-items-center rounded-lg border', urgent ? 'border-primary/30 bg-primary/10 text-primary' : 'border-border bg-secondary text-muted-foreground')}>
-                                                        <Icon className="size-4" aria-hidden />
-                                                    </span>
+                                                <Link href={item.href} className={cn(ROW, 'py-3 pl-5 pr-2')}>
+                                                    {/* The amber mark: this row is waiting on you. */}
+                                                    <span aria-hidden className="absolute inset-y-3 left-2 w-0.5 rounded-full bg-warning" />
+                                                    <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                                                     <span className="min-w-0 flex-1">
                                                         <span className="block truncate text-sm font-medium text-foreground">{item.title}</span>
                                                         {item.detail ? <span className="block truncate text-[13px] text-muted-foreground">{item.detail}</span> : null}
                                                     </span>
                                                     {item.kind === 'interview' && item.at ? (
-                                                        <span className="num hidden shrink-0 text-xs text-muted-foreground sm:inline">{dayAndTime(item.at).day} · {dayAndTime(item.at).time}</span>
+                                                        <span className="ledger hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                                                            {dayAndTime(item.at).day} · {dayAndTime(item.at).time}
+                                                        </span>
                                                     ) : null}
-                                                    <span className="hidden shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground group-hover:border-foreground/30 md:inline">{item.action}</span>
+                                                    <span className="hidden h-8 shrink-0 items-center rounded-md border border-border-strong/45 bg-card px-3 text-[13px] font-medium text-foreground transition-colors duration-150 group-hover:border-border-strong/80 md:inline-flex">
+                                                        {item.action}
+                                                    </span>
                                                 </Link>
                                             </li>
                                         );
@@ -168,19 +177,51 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                             )}
                         </Section>
 
-                        <Section icon={History} title="Recent activity" href="/scout">
+                        {data.jobs ? (
+                            <Section eyebrow="Jobs in motion" action={<SectionLink href="/scout">All jobs</SectionLink>}>
+                                {data.jobs.length === 0 ? (
+                                    <Quiet>
+                                        Share a job link from chat, Telegram or the extension. Each one shows its stages here: analyzed, tailored, email ready, applied.
+                                    </Quiet>
+                                ) : (
+                                    <ul className="-mx-2 divide-y divide-border">
+                                        {data.jobs.map((job) => {
+                                            const steps = railSteps(job.stages);
+                                            const railLabel = `${job.role}${job.company ? ` at ${job.company}` : ''}: ${jobStageSummary(job.stages)}`;
+                                            return (
+                                                <li key={job.id}>
+                                                    <Link href={job.href} className={cn(ROW, 'flex-wrap gap-y-3 px-2 py-3.5 md:flex-nowrap')}>
+                                                        <InitialAvatar name={job.company} />
+                                                        <span className="min-w-0 flex-1">
+                                                            <span className="block truncate text-sm font-medium text-foreground">{job.role}</span>
+                                                            <span className="block truncate text-[13px] text-muted-foreground">
+                                                                {job.company ?? 'Company not found'}
+                                                                {job.fitScore != null ? <span className="num"> · {job.fitScore} fit</span> : null}
+                                                            </span>
+                                                        </span>
+                                                        <ProgressRail steps={steps} label={railLabel} className="hidden w-[340px] shrink-0 md:flex" />
+                                                        <ProgressRail steps={steps} label={railLabel} size="compact" className="w-full pl-[52px] md:hidden" />
+                                                    </Link>
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                )}
+                            </Section>
+                        ) : null}
+
+                        <Section eyebrow="Recent activity" action={data.activity.length ? <SectionLink href="/scout">Jobs</SectionLink> : null}>
                             {data.activity.length === 0 ? (
-                                <Empty>Status changes, replies and interviews on your jobs show up here.</Empty>
+                                <Quiet>Status changes, replies and interviews on your jobs show up here.</Quiet>
                             ) : (
-                                <ol className="divide-y divide-border">
+                                <ol className="space-y-0.5">
                                     {data.activity.map((event) => (
-                                        <li key={event.id} className="flex items-start gap-3 px-4 py-3">
-                                            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden />
-                                            <span className="min-w-0 flex-1">
+                                        <li key={event.id} className="grid grid-cols-[56px_1fr] gap-4 py-2">
+                                            <span className="ledger pt-0.5 text-xs text-muted-foreground">{shortDate(event.at)}</span>
+                                            <span className="min-w-0">
                                                 <span className="block truncate text-sm text-foreground">{event.title}</span>
-                                                {event.job ? <span className="block truncate text-xs text-muted-foreground">{event.job}</span> : null}
+                                                {event.job ? <span className="block truncate text-[13px] text-muted-foreground">{event.job}</span> : null}
                                             </span>
-                                            <span className="num shrink-0 text-xs text-muted-foreground">{shortDate(event.at)}</span>
                                         </li>
                                     ))}
                                 </ol>
@@ -189,24 +230,24 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                     </div>
 
                     {/* ── Right: state ────────────────────────────────── */}
-                    <div className="min-w-0 space-y-6">
+                    <div className="min-w-0 space-y-8">
                         {data.upcoming ? (
-                            <Section icon={CalendarClock} title="Upcoming interviews" href="/settings/email" linkLabel="Calendar">
+                            <Section eyebrow="Upcoming interviews" action={<SectionLink href="/settings/email">Calendar</SectionLink>}>
                                 {data.upcoming.length === 0 ? (
-                                    <Empty>None in the next two weeks.</Empty>
+                                    <Quiet>None in the next two weeks.</Quiet>
                                 ) : (
-                                    <ul className="divide-y divide-border">
+                                    <ul className="space-y-3">
                                         {data.upcoming.map((interview) => {
                                             const when = dayAndTime(interview.at);
                                             return (
-                                                <li key={interview.id} className="flex gap-3 px-4 py-3">
-                                                    <span className="grid w-12 shrink-0 place-items-center rounded-lg border border-border py-1 text-center">
-                                                        <span className="text-[10px] uppercase text-muted-foreground">{when.day.split(',')[0]}</span>
-                                                        <span className="font-heading text-sm font-semibold">{new Date(interview.at).getDate()}</span>
+                                                <li key={interview.id} className="flex gap-3">
+                                                    <span className="grid w-12 shrink-0 place-items-center rounded-md border border-border bg-card py-1 text-center">
+                                                        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{when.day.split(',')[0]}</span>
+                                                        <span className="num font-display text-lg font-semibold leading-6">{new Date(interview.at).getDate()}</span>
                                                     </span>
-                                                    <span className="min-w-0">
+                                                    <span className="min-w-0 pt-0.5">
                                                         <span className="block truncate text-sm font-medium">{interview.title}</span>
-                                                        <span className="block truncate text-xs text-muted-foreground">{when.time} · {interview.job}</span>
+                                                        <span className="block truncate text-[13px] text-muted-foreground">{when.time} · {interview.job}</span>
                                                     </span>
                                                 </li>
                                             );
@@ -217,57 +258,62 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                         ) : null}
 
                         {data.record ? (
-                            <Section icon={NotebookPen} title="Your record" href="/log">
-                                <dl className="grid grid-cols-3 divide-x divide-border">
-                                    {[
-                                        ['This month', data.record.winsThisMonth],
-                                        ['Confirmed', data.record.confirmed],
-                                        ['Drafts', data.record.drafts],
-                                    ].map(([label, value]) => (
-                                        <div key={label} className="px-4 py-3">
-                                            <dd className="font-heading text-xl font-semibold tabular-nums">{value}</dd>
-                                            <dt className="text-xs text-muted-foreground">{label}</dt>
-                                        </div>
-                                    ))}
-                                </dl>
+                            <Section eyebrow="Your record" action={<SectionLink href="/log">Work Log</SectionLink>}>
+                                <StatStrip
+                                    label="Your record"
+                                    layout="fixed"
+                                    bare
+                                    items={[
+                                        { key: 'month', label: 'This month', value: data.record.winsThisMonth },
+                                        { key: 'confirmed', label: 'Confirmed', value: data.record.confirmed },
+                                        { key: 'drafts', label: 'Drafts', value: data.record.drafts },
+                                    ]}
+                                />
                             </Section>
                         ) : null}
 
                         {data.goal ? (
-                            <Section icon={Target} title="Goal" href="/home">
-                                <div className="space-y-2 px-4 py-3">
-                                    <p className="text-sm font-medium">{data.goal.title}</p>
+                            <Section eyebrow="Goal" action={<SectionLink href="/home">Open</SectionLink>}>
+                                <p className="text-sm font-medium text-foreground">{data.goal.title}</p>
+                                <div className="mt-3 flex items-center gap-3">
                                     <div
-                                        className="h-1.5 overflow-hidden rounded-full bg-secondary"
+                                        className="h-1 flex-1 overflow-hidden rounded-full bg-secondary"
                                         role="progressbar"
                                         aria-valuenow={data.goal.percent}
                                         aria-valuemin={0}
                                         aria-valuemax={100}
                                         aria-label={`${data.goal.title}: ${data.goal.percent}% done`}
                                     >
-                                        <div className="h-full rounded-full bg-primary" style={{ width: `${data.goal.percent}%` }} />
+                                        <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${data.goal.percent}%` }} />
                                     </div>
-                                    {data.goal.nextStep ? <p className="text-xs text-muted-foreground">Next: <span className="text-foreground">{data.goal.nextStep}</span></p> : null}
+                                    <span className="num shrink-0 text-xs text-muted-foreground">{data.goal.percent}%</span>
                                 </div>
+                                {data.goal.nextStep ? (
+                                    <p className="mt-2 text-[13px] text-muted-foreground">
+                                        Next: <span className="text-foreground">{data.goal.nextStep}</span>
+                                    </p>
+                                ) : null}
                             </Section>
                         ) : null}
 
-                        <Section icon={FileText} title="Resumes" href="/dashboard?section=resumes">
+                        <Section eyebrow="Resumes" action={data.resumes.length ? <SectionLink href="/dashboard?section=resumes">All resumes</SectionLink> : null}>
                             {data.resumes.length === 0 ? (
-                                <div className="space-y-3 px-4 py-4">
-                                    <p className="text-sm text-muted-foreground">No resumes yet. Tailor one to a job in a minute.</p>
-                                    <Button asChild size="sm" className="h-8"><Link href="/build">Tailor a resume</Link></Button>
+                                <div className="space-y-3">
+                                    <Quiet>No resumes yet. Tailor one to a job in a minute.</Quiet>
+                                    <Button asChild size="sm" variant="outline">
+                                        <Link href="/build">Tailor a resume</Link>
+                                    </Button>
                                 </div>
                             ) : (
-                                <ul className="divide-y divide-border">
+                                <ul className="-mx-2">
                                     {data.resumes.map((resume) => (
                                         <li key={resume.id}>
-                                            <Link href={`/editor/${resume.id}`} className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-secondary/50">
+                                            <Link href={`/editor/${resume.id}`} className={cn(ROW, 'gap-3 px-2 py-2')}>
                                                 <span className="min-w-0 flex-1">
-                                                    <span className="block truncate text-sm">{resume.title}</span>
-                                                    <span className="block truncate text-xs text-muted-foreground">{resume.target ?? 'Base resume'}</span>
+                                                    <span className="block truncate text-sm text-foreground">{resume.title}</span>
+                                                    <span className="block truncate text-[13px] text-muted-foreground">{resume.target ?? 'Base resume'}</span>
                                                 </span>
-                                                <span className="num shrink-0 text-xs text-muted-foreground">{shortDate(resume.updatedAt)}</span>
+                                                <span className="ledger shrink-0 text-xs text-muted-foreground">{shortDate(resume.updatedAt)}</span>
                                             </Link>
                                         </li>
                                     ))}
@@ -276,15 +322,23 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                         </Section>
 
                         {setupLeft.length > 0 ? (
-                            <Section icon={Inbox} title="Get set up">
-                                <ul className="divide-y divide-border">
+                            <Section eyebrow="Get set up" description={`${setupLeft.length} of ${data.setup.length} steps left.`}>
+                                <ul className="-mx-2">
                                     {data.setup.map((step) => (
                                         <li key={step.key}>
-                                            <Link href={step.href} className={cn('flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-secondary/50', step.done && 'text-muted-foreground')}>
-                                                <span className={cn('grid size-5 shrink-0 place-items-center rounded-full border', step.done ? 'border-success/40 bg-success/10 text-success' : 'border-border')}>
-                                                    {step.done ? <Check className="size-3" aria-hidden /> : null}
+                                            <Link href={step.href} className={cn(ROW, 'gap-3 px-2 py-2 text-sm', step.done && 'text-muted-foreground')}>
+                                                <span
+                                                    className={cn(
+                                                        'grid size-5 shrink-0 place-items-center rounded-full border',
+                                                        step.done ? 'border-success bg-success text-success-foreground' : 'border-border-strong/70 bg-card',
+                                                    )}
+                                                >
+                                                    {step.done ? <Check className="size-3" strokeWidth={3} aria-hidden /> : null}
                                                 </span>
-                                                <span className={cn('min-w-0 flex-1', step.done && 'line-through decoration-muted-foreground/40')}>{step.label}</span>
+                                                <span className={cn('min-w-0 flex-1', step.done && 'line-through decoration-muted-foreground/40')}>
+                                                    {step.label}
+                                                    {step.done ? <span className="sr-only"> (done)</span> : null}
+                                                </span>
                                             </Link>
                                         </li>
                                     ))}

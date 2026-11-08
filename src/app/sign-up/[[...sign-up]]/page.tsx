@@ -1,5 +1,6 @@
 import { SignUp } from '@clerk/nextjs';
 import { clerkAuthAppearance } from '@/lib/clerkAppearance';
+import { Wordmark } from '@/components/marketing/Wordmark';
 import { parseInternalPath } from '@/lib/safeNext';
 import { welcomeUrl } from '@/lib/redirectTarget';
 import { isStashId } from '@/lib/scoreStash';
@@ -48,13 +49,16 @@ export default async function SignUpPage({
   const signInDestination = stash ? welcome : next ?? '/app';
 
   return (
-    // Dark, like the marketing site every visitor arrives from: the app's
-    // light default made sign-up look like leaving Patronus. The tokens in
-    // clerkAuthAppearance resolve against this subtree.
-    <div className="dark relative min-h-screen bg-background text-foreground">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.18),transparent_55%)]" />
-      <div className="relative flex min-h-screen items-center justify-center px-4 py-10 w-full">
-        <div className="flex w-full justify-center">
+    // Dossier paper, like the landing page every visitor arrives from and the
+    // app they land in (2026-11-08). This used to force `.dark` so the auth pages
+    // matched a dark marketing site; both moved to paper together, so the
+    // three surfaces are one product. The tokens in clerkAuthAppearance
+    // resolve against the page's own (light) theme.
+    <div className="light min-h-screen bg-background text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-4 py-10">
+        <Wordmark size="lg" />
+        <p className="mt-3 text-center text-sm text-muted-foreground">The private, evidence-backed record of your working life.</p>
+        <div className="mt-8 flex w-full justify-center">
           <SignUp
             appearance={clerkAuthAppearance}
             routing="path"

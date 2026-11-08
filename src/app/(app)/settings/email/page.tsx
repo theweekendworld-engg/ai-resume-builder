@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server';
 
 import { FeatureUnavailable } from '@/components/app/FeatureUnavailable';
 import { EmailSetup } from '@/components/journey/EmailSetup';
-import { PageHeader, PageBody } from '@/components/patterns';
+import { EyebrowLink, PageHeader, PageBody } from '@/components/patterns';
 import { isEnabled } from '@/lib/flags';
 import { calendarStatus } from '@/services/calendar';
 import { getOrCreateInbox } from '@/services/journey';
@@ -44,6 +44,7 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
     return (
         <div>
             <PageHeader
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Email & calendar"
                 description="Forward job email and connect your calendar. Every application then tracks itself."
             />

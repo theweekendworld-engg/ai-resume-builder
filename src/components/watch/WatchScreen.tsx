@@ -60,10 +60,11 @@ export function WatchScreen({
     return (
         <>
             <PageHeader
+                eyebrow="Search"
                 title="Job watch"
                 description="New openings at the companies you name, scored against your record each night. Only 85+ matches are sent."
                 actions={
-                    <Button variant="outline" size="sm" onClick={runNow} disabled={running || (companies.length === 0 && prefs.targetRoles.length === 0)}>
+                    <Button variant="outline" onClick={runNow} disabled={running || (companies.length === 0 && prefs.targetRoles.length === 0)}>
                         <Play className="size-4" aria-hidden />
                         Check now
                     </Button>

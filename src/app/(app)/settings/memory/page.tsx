@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 
 import { MemoryPanel } from '@/components/settings/MemoryPanel';
 import { listMemories } from '@/services/memory';
@@ -24,16 +25,13 @@ export default async function MemorySettingsPage() {
     const memories = await listMemories(userId);
 
     return (
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">
-            <header>
-                <h1 className="font-heading text-2xl font-semibold tracking-tight text-foreground">Memory</h1>
-                <p className="mt-1.5 text-muted-foreground">
-                    What you have told me, kept so I never ask the same thing twice. When a job asks
-                    about something here, I use your answer and say so. Each week new lines are
-                    tidied to the fewest words, and nothing is added. Private lines help me answer
-                    you but never go into a resume or a message.
-                </p>
-            </header>
+        <div>
+            <PageHeader
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Memory"
+                description="What you have told me, kept so I never ask the same thing twice. When a job asks about something here, I use your answer and say so. Each week new lines are tidied to the fewest words, and nothing is added. Private lines help me answer you but never go into a resume or a message."
+            />
+            <PageBody className="max-w-3xl space-y-6">
 
             <MemoryPanel
                 initial={memories.map((memory) => ({
@@ -47,6 +45,7 @@ export default async function MemorySettingsPage() {
                     createdAt: memory.createdAt,
                 }))}
             />
+            </PageBody>
         </div>
     );
 }

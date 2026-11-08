@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { Inbox, SearchX } from 'lucide-react';
@@ -9,9 +8,12 @@ import { toast } from 'sonner';
 import type { WinPatch, WinView } from '@/actions/wins.types';
 import {
   EmptyState,
+  PageHeader,
+  PageTabs,
   ProgressStages,
   ReviewQueue,
-  typeStyles,
+  pageContainer,
+  type PageTab,
   type WinRecord,
 } from '@/components/patterns';
 import { cn } from '@/lib/utils';
@@ -51,6 +53,11 @@ export interface LogScreenProps {
   canConnectSources?: boolean;
   /** Work Log pages that are switched on for this user (review, backfill, readiness). */
   subpages?: { href: string; label: string }[];
+}
+
+/** The Work Log's own pages as header tabs: the log first, then its subpages. */
+function logTabsFor(subpages: { href: string; label: string }[]): PageTab[] {
+  return [{ key: 'log', label: 'Log', href: '/log' }, ...subpages.map((page) => ({ key: page.href, label: page.label, href: page.href }))];
 }
 
 function byRecency(a: WinView, b: WinView): number {
@@ -568,10 +575,15 @@ export function LogScreen({
     />
   );
 
+
   return (
-    <main className="mx-auto w-full max-w-[1120px] px-4 py-6 sm:px-6 sm:py-8">
-      <header className="mb-4 flex items-center justify-between gap-3">
-        <h1 className={cn(typeStyles.h1, 'text-foreground')}>Work log</h1>
+    // A div, not <main>: the app shell already owns the page's <main>.
+    <div>
+      <PageHeader
+        eyebrow="Record"
+        title="Work Log"
+        description="What you actually did, confirmed and kept. Every resume and packet is built from it."
+        actions={
         <QuickCapture
           open={captureOpen}
           onOpenChange={setCaptureOpen}
@@ -583,17 +595,12 @@ export function LogScreen({
           onSubmit={handleCapture}
           onDegrade={handleDegrade}
         />
-      </header>
-      {subpages.length > 0 ? (
-        <nav aria-label="More in your Work Log" className="mb-4 flex flex-wrap gap-2">
-          {subpages.map((page) => (
-            <Link key={page.href} href={page.href} className={cn(typeStyles.small, 'rounded-full border border-border px-3 py-1 text-muted-foreground hover:text-foreground')}>
-              {page.label}
-            </Link>
-          ))}
-        </nav>
-      ) : null}
+        }
+      >
+        {subpages.length > 0 ? <PageTabs label="More in your Work Log" active="log" tabs={logTabsFor(subpages)} /> : null}
+      </PageHeader>
 
+      <div className={cn(pageContainer, 'py-6')}>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-8 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">
           {rail('strip', 'sm:hidden')}
@@ -722,6 +729,7 @@ export function LogScreen({
         onArchive={handleArchive}
         onDelete={handleDelete}
       />
-    </main>
+      </div>
+    </div>
   );
 }

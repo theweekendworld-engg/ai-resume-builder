@@ -86,13 +86,13 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
     const Icon = isError ? TriangleAlert : Clock;
 
     return (
-        <main className="mx-auto flex min-h-[60vh] w-full max-w-[520px] flex-col justify-center px-4 py-16">
-            <div className="rounded-xl border border-border bg-card p-6">
-                <Icon
-                    className={isError ? 'size-5 text-destructive' : 'size-5 text-muted-foreground'}
-                    aria-hidden
-                />
-                <h1 className="mt-3 font-heading text-xl font-semibold tracking-tight text-foreground">
+        // A div, not <main>: inside the app the shell already owns <main>.
+        <div className="mx-auto flex min-h-[60vh] w-full max-w-[560px] flex-col justify-center px-4 py-16">
+            <div className="rounded-lg border border-border bg-card p-6 sm:p-7">
+                <span aria-hidden className="grid size-10 place-items-center rounded-md border border-border bg-background">
+                    <Icon className={isError ? 'size-5 text-destructive' : 'size-5 text-muted-foreground'} />
+                </span>
+                <h1 className="mt-4 font-display text-[22px] font-semibold leading-7 tracking-[-0.01em] text-foreground">
                     {isError ? `${feature} could not load` : `${feature} is not switched on yet`}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -125,6 +125,6 @@ export function FeatureUnavailable({ feature, reason, blurb }: Props) {
                     </Button>
                 </div>
             </div>
-        </main>
+        </div>
     );
 }

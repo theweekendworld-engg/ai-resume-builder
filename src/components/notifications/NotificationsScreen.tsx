@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { EyebrowLink, PageBody, PageHeader } from '@/components/patterns';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     updateNotificationSettings,
@@ -99,13 +100,13 @@ export function NotificationsScreen({ initial, emailOn = true }: { initial: Noti
     const digestOff = !settings.weeklyDigest || settings.unsubscribedAll;
 
     return (
-        <div className="mx-auto w-full max-w-2xl space-y-6 px-6 py-10">
-            <header>
-                <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                    When we check in, and how.
-                </p>
-            </header>
+        <div>
+            <PageHeader
+                eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
+                title="Notifications"
+                description="When we check in, and how."
+            />
+            <PageBody className="max-w-3xl space-y-6">
 
             {/* Said plainly rather than letting the next-digest time imply a
                 send that will not happen (audit 2026-10-02). */}
@@ -268,6 +269,7 @@ export function NotificationsScreen({ initial, emailOn = true }: { initial: Noti
                     </Button>
                 </CardContent>
             </Card>
+            </PageBody>
         </div>
     );
 }

@@ -67,7 +67,7 @@ export function Contact() {
                 eyebrow="Contact"
                 title={
                     <>
-                        Questions? <span className="text-primary">Write to a person.</span>
+                        Questions? <span className="mk-quiet">Write to a person.</span>
                     </>
                 }
                 lead={
@@ -78,16 +78,11 @@ export function Contact() {
                 }
             />
 
-            <Reveal delay={220} direction="scale" className="mx-auto mt-14 max-w-2xl">
-                <div className="mk-card mk-glow p-8 text-center sm:p-10">
-                    <span
-                        className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary"
-                        aria-hidden
-                    >
-                        <Mail className="h-5 w-5" strokeWidth={1.75} />
-                    </span>
+            <Reveal delay={220} className="mx-auto mt-14 max-w-2xl">
+                <div className="paper rounded-lg p-8 text-center sm:p-10">
+                    <Mail className="mx-auto h-6 w-6 text-muted-foreground" strokeWidth={1.5} aria-hidden />
 
-                    <p className="mt-6 text-sm text-muted-foreground">Mail us at</p>
+                    <p className="eyebrow mt-5">Mail us at</p>
 
                     {/*
                       The address is the interface, so it is set at display size
@@ -98,17 +93,17 @@ export function Contact() {
                     */}
                     <a
                         href={`mailto:${CONTACT_EMAIL}?subject=${SUBJECT}`}
-                        className="mk-display mt-2 block break-all text-[clamp(1.25rem,3.4vw,2rem)] text-foreground transition-colors hover:text-primary"
+                        className="mk-display mt-2 block break-all text-[clamp(1.25rem,3.4vw,2rem)] transition-colors duration-150 hover:text-primary"
                     >
                         {CONTACT_EMAIL}
                     </a>
 
                     <a
                         href={`mailto:${CONTACT_EMAIL}?subject=${SUBJECT}`}
-                        className="mk-btn group mt-8 w-full sm:w-auto"
+                        className="mk-btn mt-8 w-full sm:w-auto"
                     >
                         Contact us
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
+                        <ArrowRight className="h-4 w-4" aria-hidden />
                     </a>
 
                     <p className="mt-6 text-xs text-muted-foreground">
@@ -120,7 +115,7 @@ export function Contact() {
             <div className="mt-12 grid gap-5 md:grid-cols-3">
                 {NOTES.map((note, index) => (
                     <Reveal key={note.title} delay={index * 100} className="mk-card p-6">
-                        <h3 className="font-heading text-[15px] font-semibold leading-snug">
+                        <h3 className="font-display text-lg font-semibold leading-snug tracking-[-0.01em]">
                             {note.title}
                         </h3>
                         <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">

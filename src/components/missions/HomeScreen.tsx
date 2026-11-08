@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { Check, ChevronRight, Circle, Loader2, Lock, Minus, Pause, Play } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { PageBody, PageHeader } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -173,7 +174,7 @@ function MissionCard({ mission, onChanged }: { mission: MissionView; onChanged: 
     };
 
     return (
-        <section className="rounded-xl border border-border bg-card" aria-busy={busy || undefined}>
+        <section className="rounded-lg border border-border bg-card" aria-busy={busy || undefined}>
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
                 <div className="min-w-0">
                     <h2 className="font-heading text-lg font-semibold text-foreground">{mission.title}</h2>
@@ -337,30 +338,29 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
     };
 
     return (
-        <div className="mx-auto w-full max-w-[760px] px-4 py-8">
+        <div>
             {initial.mission ? (
                 <>
-                    {/* The card's title is an h2; the page still needs its h1. */}
-                    <h1 className="sr-only">Goals</h1>
-                    <MissionCard mission={initial.mission} onChanged={() => router.refresh()} />
+                    <PageHeader eyebrow="Goals" title="What you are working toward" description="One goal at a time, paced week by week from your record." />
+                    <PageBody className="max-w-3xl">
+                        <MissionCard mission={initial.mission} onChanged={() => router.refresh()} />
+                    </PageBody>
                 </>
             ) : (
-                <section>
-                    <h1 className="font-heading text-xl font-semibold text-foreground">
-                        What are you working toward?
-                    </h1>
+                <>
                     {/*
                         §5.3: this single question does more for activation than
                         any tour. "Nothing specific" is a real answer, not a
                         dismissal — it selects the resting state, which every
                         user already has running.
                     */}
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Pick one and we will pace it with you. Nothing specific right now is a fine
-                        answer — the log keeps working either way.
-                    </p>
-
-                    <div className="mt-5 space-y-2">
+                    <PageHeader
+                        eyebrow="Goals"
+                        title="What are you working toward?"
+                        description="Pick one and we will pace it with you. Nothing specific right now is a fine answer — the log keeps working either way."
+                    />
+                    <PageBody className="max-w-3xl">
+                    <div className="space-y-2">
                         {initial.options.map((option) => (
                             <OptionCard
                                 key={option.type}
@@ -371,7 +371,8 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
                             />
                         ))}
                     </div>
-                </section>
+                    </PageBody>
+                </>
             )}
         </div>
     );

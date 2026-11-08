@@ -3,6 +3,8 @@
 > **Scope:** the six patterns from ADR-9, specified to build from. Each entry gives anatomy, variants, every state, exact sizing, behavior, and a11y contract.
 > **Location:** `src/components/patterns/` · **Preview:** `/dev/patterns` (dev-only route, both themes, all densities)
 
+> **2026-11-08 — Dossier.** Colour, type, radius and elevation are now specified in [`03-dossier.md`](03-dossier.md), which supersedes this file where they disagree.
+
 Existing `src/components/ui/` primitives are the substrate. Nothing below replaces them; each composes them.
 
 ---

@@ -1,5 +1,4 @@
-import { Ambience, Reveal } from './Reveal';
-import { CountUp } from './CountUp';
+import { Reveal } from './Reveal';
 import { marketingContainer, marketingType } from './Section';
 import { cn } from '@/lib/utils';
 
@@ -8,7 +7,7 @@ import { cn } from '@/lib/utils';
  *
  * ── The slot, and the trap in it ────────────────────────────────────────────
  *
- * Four enormous figures across a dark strip is the most persuasive block on a
+ * Four large figures across a band is the most persuasive block on a
  * landing page of this shape, which is exactly why it is the one most often
  * filled with fiction — "$1M+ generated", "100+ businesses scaled", "4.8/5
  * average rating". The reference design does all three.
@@ -30,39 +29,32 @@ import { cn } from '@/lib/utils';
  */
 
 /**
- * `to`/`suffix` rather than a formatted string, so the figures can count up.
- *
- * Two of the four have no distance to travel — 0 counts from 0, and 1 is over
- * before it starts. That is not a defect to design around: they are the two
- * strongest claims on the page and inventing a bigger number to make the
- * animation prettier is precisely the failure this section is about. The band
- * reads as alive because 90 and 100 are moving next to them.
+ * Static figures. They used to count up from zero as the band scrolled in, and
+ * two of the four (0 and 1) had nowhere to travel. A number that performs reads
+ * as a slot machine; these are constraints, and they should simply be there
+ * (design/00 §7.2: "it's a number, not a slot machine").
  */
 const CONSTRAINTS = [
     {
-        to: 0,
-        suffix: '',
+        figure: '0',
         label: 'invented numbers',
         detail: 'A generated document cannot contain a figure absent from your log.',
         mechanism: 'numeric guard, src/lib/ai',
     },
     {
-        to: 1,
-        suffix: '',
+        figure: '1',
         label: 'tap to confirm a win',
         detail: 'Confirming writes the evidence and the link in a single transaction.',
         mechanism: 'the only step the habit needs',
     },
     {
-        to: 1,
-        suffix: '',
+        figure: '1',
         label: 'sentence is enough to log a win',
         detail: 'Type a rough note; it comes back structured, with your numbers untouched.',
         mechanism: 'no weekly homework',
     },
     {
-        to: 100,
-        suffix: '%',
+        figure: '100%',
         label: 'of shipped lines carry a source',
         detail: 'A sentence that cannot be grounded is dropped rather than softened.',
         mechanism: 'unsourced claims never ship',
@@ -71,28 +63,16 @@ const CONSTRAINTS = [
 
 export function Guarantees() {
     return (
-        <section className="mk-band relative isolate overflow-hidden border-b border-border/60 py-24 lg:py-32">
-            {/*
-              Mid-page ambience. Without this the drifting light lives only in
-              the hero and the closing CTA, so the entire middle of the scroll —
-              which is most of it — is dead still. No sweep: the rotating conic
-              layer is expensive and belongs to the two bookends.
-            */}
-            <Ambience />
-            <div
-                className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-px bg-primary/25"
-                aria-hidden
-            />
-
+        <section className="mk-band relative border-b border-border py-24 lg:py-32">
             <div className={marketingContainer}>
                 <div className="mx-auto max-w-3xl text-center">
                     <Reveal as="span" className="mk-pill">
                         The constraints
                     </Reveal>
                     <Reveal delay={80}>
-                        <h2 className={cn(marketingType.section, 'mt-6')}>
+                        <h2 className={cn(marketingType.section, 'mt-5')}>
                             Not what we measured.{' '}
-                            <span className="text-primary">What we guarantee.</span>
+                            <span className="mk-quiet">What we guarantee.</span>
                         </h2>
                     </Reveal>
                     <Reveal delay={160}>
@@ -103,33 +83,28 @@ export function Guarantees() {
                     </Reveal>
                 </div>
 
-                <div className="mt-16 grid gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-16 grid gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
                     {CONSTRAINTS.map((item, index) => (
                         <Reveal
                             key={item.label}
                             delay={index * 100}
-                            className="flex flex-col bg-background p-7 text-center"
+                            className="flex flex-col bg-card p-7 text-left"
                         >
                             {/*
-                              Tabular figures. These sit in a row and a
-                              proportional '1' next to a proportional '0' makes
-                              the columns visibly disagree about their centres.
+                              Tabular lining figures in the serif: these sit in
+                              a row, and a proportional '1' next to a
+                              proportional '0' makes the columns disagree.
                             */}
-                            <CountUp
-                                to={item.to}
-                                suffix={item.suffix}
-                                // `block` because CountUp renders a span and
-                                // this replaced a <p> — inline would collapse
-                                // the cell's vertical rhythm.
-                                className="mk-display num block text-primary text-[clamp(2.75rem,5vw,3.75rem)]"
-                            />
-                            <p className="font-heading mt-2 text-sm font-semibold text-foreground">
+                            <p className="mk-display num text-[clamp(2.75rem,5vw,3.5rem)] leading-none">
+                                {item.figure}
+                            </p>
+                            <p className="mt-3 text-sm font-semibold text-foreground">
                                 {item.label}
                             </p>
                             <p className="mt-3 flex-1 text-[13px] leading-relaxed text-muted-foreground">
                                 {item.detail}
                             </p>
-                            <p className="ledger mt-4 border-t border-border/60 pt-3 text-[10.5px] uppercase tracking-[0.08em] text-muted-foreground/50">
+                            <p className="ledger mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
                                 {item.mechanism}
                             </p>
                         </Reveal>

@@ -43,7 +43,7 @@ export function HowItWorks() {
                 eyebrow="How it works"
                 title={
                     <>
-                        You bring the facts. <span className="text-primary">We do the writing.</span>
+                        You bring the facts. <span className="mk-quiet">We do the writing.</span>
                     </>
                 }
                 lead={
@@ -57,12 +57,11 @@ export function HowItWorks() {
             />
 
             {/*
-              The step number is now the loudest thing in each card, set huge
-              and knocked back to a low-opacity accent so it reads as a
-              watermark rather than as content. That is what makes three cards
-              scan as a SEQUENCE at a glance instead of as three features — the
-              eye picks up 01/02/03 before it reads a single word, which is the
-              one thing this section has to communicate.
+              Numbered like clauses in a file: the ledger number and the icon
+              share the top line, the title is set in the serif, and the
+              constraint that makes the step trustworthy sits under a hairline.
+              The teal rail on the left edge is what makes three cards read as
+              a sequence rather than three features.
             */}
             <ol className="mt-16 grid gap-6 lg:grid-cols-3">
                 {STEPS.map((step, index) => {
@@ -72,26 +71,20 @@ export function HowItWorks() {
                             as="li"
                             key={step.n}
                             delay={index * 120}
-                            className="mk-card mk-card-hover mk-rail group relative overflow-hidden p-7 pl-8"
+                            className="mk-card mk-card-hover mk-rail relative flex flex-col p-7"
                         >
-                            <span
-                                className="mk-display pointer-events-none absolute -right-2 -top-4 text-[5rem] text-primary/10 transition-colors group-hover:text-primary/20"
-                                aria-hidden
-                            >
-                                {step.n}
-                            </span>
+                            <div className="flex items-center justify-between">
+                                <span className="ledger text-[12px] text-muted-foreground">{step.n}</span>
+                                <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden />
+                            </div>
 
-                            <span className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
-                                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
-                            </span>
-
-                            <h3 className="font-heading relative mt-5 text-lg font-bold leading-snug tracking-tight">
+                            <h3 className="mt-6 font-display text-xl font-semibold leading-snug tracking-[-0.01em]">
                                 {step.title}
                             </h3>
-                            <p className="relative mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                            <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                                 {step.body}
                             </p>
-                            <p className="ledger relative mt-5 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
+                            <p className="mt-5 border-t border-border pt-4 text-[13px] leading-relaxed text-muted-foreground">
                                 {step.note}
                             </p>
                         </Reveal>
