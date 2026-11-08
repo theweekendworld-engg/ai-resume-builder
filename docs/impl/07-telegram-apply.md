@@ -112,13 +112,15 @@ become the answer to the pay-floor question asked minutes earlier.
 
 A link or paste whose note code reads as `apply` (`applyShareRoute`) is
 analysed with the apply goal without a router call; an unclear note on an
-`analyze_job` share goes through `decideShareGoal`. The chain is the same
-(steps a–c run on the run's channel, `web`); the draft lands in the job
-page's email panel. What is left: the chat thread shows only the run card
-(no generation card or draft card is appended when the chain finishes), the
-web email panel lists email drafts only, so the no-address LinkedIn message
-is not shown there, and "sent it" is a Telegram/WhatsApp focus feature (on
-the web, the job page's Applied button does it).
+`analyze_job` share goes through `decideShareGoal`. The chat thread gets a
+live `apply_chain` card (reading → tailoring → drafting; "Yes, apply anyway"
+/ "No, skip it" on an eligibility hold; the reason and a next step when it
+stops). When the chain settles on the `web` channel, one assistant message is
+appended (`src/lib/chat/applyResult.ts`): a completed `generation` card and a
+`message_draft` card (To / Subject / Body, Open in Gmail and Mail app, or
+Open the application for a LinkedIn message, Copy, Mark as applied). The job
+page panel shows LinkedIn-message drafts too. On the web, "Mark as applied"
+is the button; typing "sent it" is a Telegram/WhatsApp focus feature.
 
 ### Fixes from the same live test
 
