@@ -36,6 +36,16 @@ const NOT_AN_ANSWER = [
     /\b(wtf|what the hell|what the fuck|are you (doing|serious|kidding)|stop (it|this)|confus|i don'?t understand|doesn'?t make sense|makes no sense|you('re| are) (wrong|broken|stupid))\b/i,
 ];
 
+/**
+ * "No", "never", "not yet": a decline, not an answer. Never stored as an
+ * answer, and never remembered (docs/impl/08-memory.md): remembering "no"
+ * as the answer about X is how a later resume ends up claiming X.
+ */
+export function isDeclineAnswer(text: string): boolean {
+    // Punctuation is noise here: "no, never used it" is the same decline.
+    return NEGATIVE.test(String(text ?? '').toLowerCase().replace(/[^\w\s'/]+/g, ' ').replace(/\s+/g, ' ').trim());
+}
+
 export function looksLikeAnswer(text: string): boolean {
     return !NOT_AN_ANSWER.some((pattern) => pattern.test(text.trim()));
 }

@@ -61,6 +61,9 @@ export const TASK_KEYS = [
     // against an application, and draft the reply or follow-up.
     'jobEmailClassify',
     'jobEmailReply',
+    // Long-term memory (docs/impl/08-memory.md): the weekly rewrite of a
+    // user's saved lines to the fewest words. One call per user per week.
+    'memoryConsolidate',
 ] as const;
 
 export type TaskKey = (typeof TASK_KEYS)[number];
@@ -135,6 +138,8 @@ export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 
     // A person is waiting on every message; routing is classification.
     chatRoute: 'low',
     jobEmailClassify: 'low',
+    // Shortening lines the user wrote: copying, not reasoning.
+    memoryConsolidate: 'low',
 };
 
 export function resolveTaskReasoningEffort(

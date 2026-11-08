@@ -152,6 +152,13 @@ export const SERVER_EVENTS = [
     'watch_alert_sent',
     'watch_match_tracked',
     'watch_match_dismissed',
+    // Long-term memory (docs/impl/08-memory.md)
+    'memory_saved',
+    /** A memory answered a question in place of asking it. */
+    'memory_used',
+    'memory_edited',
+    'memory_forgotten',
+    'memory_consolidated',
 ] as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[number];

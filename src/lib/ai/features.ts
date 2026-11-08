@@ -28,6 +28,8 @@ export const FEATURE_TAGS = [
     'job_journey',
     // The nightly job watch (docs/prd/12-job-watch.md).
     'job_watch',
+    // Long-term memory consolidation (docs/impl/08-memory.md).
+    'memory',
 ] as const;
 
 export type FeatureTag = (typeof FEATURE_TAGS)[number];

@@ -104,6 +104,9 @@ export function renderContext(context: ChatContext): string {
             ? `Looking for: ${[context.looking.roles.join(' or '), context.looking.locations.join(' or '), context.looking.remote ? 'remote' : ''].filter(Boolean).join(', ')}. Use these for find_jobs when the user does not say.`
             : null,
         context.openQuestion ? `Scout is waiting on an answer: "${context.openQuestion.question}"` : null,
+        // Long-term memory, in the user's own words. Part of the guard's
+        // source too, since this whole block is (`routeMessage`).
+        context.memoryIndex?.trim() ? `What the user told you on earlier days (their words):\n${context.memoryIndex.trim()}` : null,
     ].filter(Boolean).join('\n');
 }
 

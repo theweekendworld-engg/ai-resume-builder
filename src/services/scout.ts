@@ -406,7 +406,7 @@ export async function answerScoutQuestion(
     await invalidateSections(run.id, question.step === 'fit' ? ['fit', 'track'] : [question.step]);
 
     const { applyAnswerToProfile } = await import('@/lib/scout/preferences');
-    await applyAnswerToProfile(userId, question.id, answer).catch((error: unknown) => {
+    await applyAnswerToProfile(userId, question.id, answer, run.id).catch((error: unknown) => {
         console.warn('[scout] could not save answer to profile', { runId, questionId: question.id, error: String(error) });
     });
 

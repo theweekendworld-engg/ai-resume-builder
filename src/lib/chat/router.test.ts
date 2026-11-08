@@ -44,6 +44,14 @@ describe('renderContext', () => {
         expect(text).toContain('2. SDE II, at Razorpay');
         expect(text).toContain('Unconfirmed Work Log drafts: 2.');
     });
+
+    test('long-term memory joins the context, in the user\'s words; absent, nothing is said', () => {
+        const withMemory = renderContext({ ...context(), memoryIndex: '- Claude: voice agent on Claude Sonnet at Plivo\n- Work mode: remote' });
+        expect(withMemory).toContain('What the user told you on earlier days (their words):');
+        expect(withMemory).toContain('- Claude: voice agent on Claude Sonnet at Plivo');
+        expect(renderContext(context())).not.toContain('earlier days');
+        expect(renderContext({ ...context(), memoryIndex: '   ' })).not.toContain('earlier days');
+    });
 });
 
 describe('sanitizeDecision', () => {
@@ -103,6 +111,21 @@ describe('routeMessage', () => {
         });
         expect(decision.action).toBe('log_work');
         expect(decision.reply).toContain('300ms');
+    });
+
+    test('a figure the user told us on an earlier day is allowed back: memory is guard source', async () => {
+        let prompt = '';
+        aiTesting.setUsageLogger(async () => {});
+        aiTesting.setObjectRunner(async (args) => {
+            prompt = args.prompt;
+            return { object: { ...emptyDecision('answer', ''), action: 'answer', reply: 'Yes: your Plivo agent on Claude handles 2k calls a day.' }, inputTokens: 1, outputTokens: 1 };
+        });
+        const { decision } = await routeMessage({
+            userId: 'user_route', message: 'have I worked with Claude?', history: [],
+            context: { ...context(), memoryIndex: '- Claude: Plivo voice agent on Claude Sonnet, 2k calls a day' },
+        });
+        expect(prompt).toContain('- Claude: Plivo voice agent on Claude Sonnet, 2k calls a day');
+        expect(decision.reply).toContain('2k calls a day');
     });
 
     test('a bare link never reaches the model', async () => {

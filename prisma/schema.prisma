@@ -1987,3 +1987,44 @@ model JobMatch {
   @@unique([userId, postingId])
   @@index([userId, qualifies, status, score])
 }
+
+/// Long-term memory (docs/impl/08-memory.md): what the user has TOLD us, one
+/// short line per topic, so a question answered once is never asked again.
+///
+/// Session memory is `ChatConversation` (turns + focus, hours). This is the
+/// other half, kept for months: a clarification answer, a Scout answer, an
+/// edit in Settings → Memory. A memory is user-stated, never evidence: used
+/// in a resume it is treated exactly like a clarification answer (numeric
+/// guard, never a confirmed Win without the user's confirm).
+///
+/// At most ONE active row per (userId, key). Prisma 6 cannot express that
+/// partial unique index, so the migration creates it in raw SQL
+/// (`UserMemory_userId_key_active_key`, WHERE status = 'active'). Any
+/// migration Prisma generates later that tries to DROP it must keep it.
+model UserMemory {
+  id             String    @id @default(cuid())
+  userId         String
+  /// Normalised topic, derived in code: `skill:claude`, `pref:work_mode`, `fact:work_auth`.
+  key            String
+  /// How the topic reads to a person ("Claude", "Work mode"). Display only.
+  label          String    @default("")
+  /// One short line, in the user's terms.
+  text           String
+  /// clarification_answer | chat | scout_answer | consolidation | user_edit
+  source         String
+  /// The session / run / question the line came from.
+  sourceRef      String?
+  /// shareable | private. Private never reaches an artifact: filtered in the query.
+  sensitivity    String    @default("shareable")
+  /// active | superseded | deleted (soft delete; history is kept).
+  status         String    @default("active")
+  supersededById String?
+  /// Times it answered a question for the user; orders the prompt index.
+  useCount       Int       @default(0)
+  lastUsedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId, status, key])
+  @@index([updatedAt])
+}

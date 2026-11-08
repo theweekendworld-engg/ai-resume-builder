@@ -8,7 +8,10 @@ import {
     renderInboxCommand,
     renderInsights,
     renderJobs,
+    renderMemory,
     renderNotes,
+    MEMORY_LIST_LIMIT,
+    type MemoryListItem,
 } from './inboxCommands';
 import { withoutSpentButtons } from './telegramInbound';
 import type { JobBoardItem, NoteItem } from '@/lib/inbox/types';
@@ -148,5 +151,65 @@ describe('keyboard packing', () => {
             ['Draft referral note'],
             ['Why'],
         ]);
+    });
+});
+
+describe('/memory', () => {
+    const memory = (overrides: Partial<MemoryListItem> = {}): MemoryListItem => ({
+        label: 'Claude', key: 'skill:claude', text: 'Voice agent on Claude Sonnet at Plivo', sensitivity: 'shareable', createdAt: '2026-11-08T09:00:00.000Z', ...overrides,
+    });
+
+    test('is a command, with a slash on Telegram and bare on WhatsApp', () => {
+        expect(parseInboxCommand('/memory', { allowBare: false })).toBe('memory');
+        expect(parseInboxCommand('/memory@Patronus_resume_bot', { allowBare: false })).toBe('memory');
+        expect(parseInboxCommand('memory', { allowBare: true })).toBe('memory');
+        expect(parseInboxCommand('memory of my last job', { allowBare: true })).toBeNull();
+    });
+
+    test('lists what the user told us, topic first, with the date, and links to settings', () => {
+        const message = renderMemory([memory(), memory({ label: 'Work mode', key: 'pref:work_mode', text: 'remote', createdAt: '2026-11-01T00:00:00.000Z' })], APP);
+        const text = plain(message.lines);
+        expect(text).toContain('What I remember you told me');
+        expect(text).toContain('• Claude: Voice agent on Claude Sonnet at Plivo · Nov 8');
+        expect(text).toContain('• Work mode: remote · Nov 1');
+        expect(plain([message.footer ?? []])).toContain(`${APP}/settings/memory`);
+        expect(message.actions).toEqual([]);
+    });
+
+    test('private lines are marked, and the mark is explained', () => {
+        const text = plain(renderMemory([memory({ label: 'Minimum pay', key: 'pref:min_comp', text: '₹45 LPA', sensitivity: 'private' })], APP).lines);
+        expect(text).toContain('🔒 Minimum pay: ₹45 LPA');
+        expect(text).toContain('never put in a resume or message');
+    });
+
+    test('a long memory is capped, and says where the rest is', () => {
+        const many = Array.from({ length: MEMORY_LIST_LIMIT + 3 }, (_, i) => memory({ label: `Skill ${i}`, key: `skill:s${i}` }));
+        const text = plain(renderMemory(many, APP).lines);
+        expect(text).toContain(`Skill ${MEMORY_LIST_LIMIT - 1}:`);
+        expect(text).not.toContain(`Skill ${MEMORY_LIST_LIMIT}:`);
+        expect(text).toContain('And 3 more on the settings page.');
+    });
+
+    test('the empty state says what fills it', () => {
+        const text = plain(renderMemory([], APP).lines);
+        expect(text).toContain('Nothing remembered yet');
+        expect(text).toContain('never ask it twice');
+    });
+
+    test('renders for Telegram as HTML, with user text escaped', () => {
+        const html = formatForTelegram(renderMemory([memory({ text: 'Built <script> tools & more' })], APP), 'none');
+        expect(html.text).toContain('&lt;script&gt;');
+        expect(html.text).toContain('<b>Claude</b>');
+    });
+
+    test('reads through the deps it is given, and help lists it', async () => {
+        const deps = {
+            topFits: async () => [], listJobBoard: async () => [], listInsights: async () => [], listChatNotes: async () => [],
+            listMemories: async () => [memory()],
+        };
+        const message = await renderInboxCommand('memory', 'u', deps, APP, { bare: false });
+        expect(plain(message.lines)).toContain('Voice agent on Claude Sonnet at Plivo');
+        expect(plain(renderHelp(APP, { bare: false }).lines)).toContain('/memory: what I remember you told me');
+        expect(plain(renderHelp(APP, { bare: true }).lines)).toContain('memory: what I remember you told me');
     });
 });

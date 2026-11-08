@@ -23,6 +23,8 @@ import { INGEST_BOARD_JOB_KIND } from '@/lib/jobs/handlers/ingestBoard';
 import { MISSION_NUDGE_JOB_KIND } from '@/lib/jobs/handlers/missionNudge';
 import { MONTH_IN_REVIEW_JOB_KIND } from '@/lib/jobs/handlers/monthInReview';
 import { RADAR_SNAPSHOT_JOB_KIND } from '@/lib/jobs/handlers/radarSnapshot';
+import { MEMORY_CONSOLIDATE_JOB_KIND } from '@/lib/jobs/handlers/memoryConsolidate';
+import { weekKeyFor } from '@/lib/memory/week';
 
 /**
  * The tick is DAILY (Vercel Hobby allows one cron a day, `vercel.json`
@@ -56,6 +58,7 @@ export type PeriodicScheduleResult = {
     downgradeJobId: string | null;
     journeyJobId: string | null;
     jobWatchJobId: string | null;
+    memoryConsolidateJobId: string | null;
 };
 
 /**
@@ -69,6 +72,7 @@ export async function schedulePeriodicWork(
 ): Promise<PeriodicScheduleResult> {
     const day = now.toISOString().slice(0, 10);
     const month = now.toISOString().slice(0, 7);
+    const week = weekKeyFor(now);
     const result: PeriodicScheduleResult = {
         missionNudgeJobId: null,
         radarSnapshotJobId: null,
@@ -82,6 +86,7 @@ export async function schedulePeriodicWork(
         downgradeJobId: null,
         journeyJobId: null,
         jobWatchJobId: null,
+        memoryConsolidateJobId: null,
     };
 
     // Priority: lower runs first. Capture before anything that reads drafts;
@@ -105,6 +110,10 @@ export async function schedulePeriodicWork(
         // and any later tick that month (or a recovery after a missed day) is a no-op.
         ['radarSnapshotJobId', RADAR_SNAPSHOT_JOB_KIND, `${RADAR_SNAPSHOT_JOB_KIND}:${month}`, 80],
         ['monthInReviewJobId', MONTH_IN_REVIEW_JOB_KIND, `${MONTH_IN_REVIEW_JOB_KIND}:${month}`, 78],
+        // Weekly, keyed to the Monday of the week: the first tick of the week
+        // tidies long-term memory, every later one that week is a no-op
+        // (docs/impl/08-memory.md §5).
+        ['memoryConsolidateJobId', MEMORY_CONSOLIDATE_JOB_KIND, `${MEMORY_CONSOLIDATE_JOB_KIND}:${week}`, 85],
         // Daily integrity sweep of the evidence graph against the vector store.
         // It was weekly; daily since the pgvector move (2026-09-27), because it
         // is also what re-embeds rows whose vectors are missing, and a cheap

@@ -13,8 +13,39 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
 import { applyAnswer, isPreferenceQuestionId } from '@/lib/scout/fit/answers';
+import { SCOUT_QUESTION_TOPICS } from '@/lib/memory/topics';
+import { track } from '@/lib/track';
+import { cleanMemoryText, remember } from '@/services/memory';
 
-export async function applyAnswerToProfile(userId: string, questionId: string, value: string): Promise<void> {
+/**
+ * The answer, in the user's words, as long-term memory too
+ * (docs/impl/08-memory.md): the chat router and drafts read it there, and
+ * Settings → Memory shows it. Only an answer that was understood is kept,
+ * the same bar as the profile write. Never throws.
+ */
+async function rememberScoutAnswer(userId: string, questionId: string, value: string, sourceRef?: string): Promise<void> {
+    const topic = SCOUT_QUESTION_TOPICS[questionId];
+    // Kept as said: "yes" is the whole answer to "open to relocating?".
+    const text = cleanMemoryText(value);
+    if (!topic || !text) return;
+    try {
+        const saved = await remember(userId, {
+            key: topic.key,
+            label: topic.label,
+            text,
+            source: 'scout_answer',
+            sourceRef: sourceRef ? `scout:${sourceRef}:${questionId}` : `scout:${questionId}`,
+            // Private topics are always private; otherwise a refresh keeps
+            // whatever the user chose in Settings → Memory.
+            sensitivity: topic.sensitivity === 'private' ? 'private' : undefined,
+        });
+        if (saved) await track(userId, 'memory_saved', { key: topic.key, source: 'scout_answer' });
+    } catch (error: unknown) {
+        console.warn('[scout] could not remember the answer', { questionId, error: String(error) });
+    }
+}
+
+export async function applyAnswerToProfile(userId: string, questionId: string, value: string, sourceRef?: string): Promise<void> {
     if (!isPreferenceQuestionId(questionId)) return;
 
     const profile = await prisma.userProfile.findUnique({
@@ -33,4 +64,5 @@ export async function applyAnswerToProfile(userId: string, questionId: string, v
         create: { userId, preferences },
         update: { preferences },
     });
+    await rememberScoutAnswer(userId, questionId, value, sourceRef);
 }

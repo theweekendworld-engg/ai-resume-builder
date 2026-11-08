@@ -3,6 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { CheckCircle2, FileText, Loader2, Sparkles, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { tailorFromScout } from '@/actions/scout';
 import { processChannelGenerate } from '@/actions/channelGenerate';
+import { rememberedNote } from '@/lib/memory/format';
 
 import { EntitlementNotice } from './EntitlementNotice';
 
@@ -98,6 +100,9 @@ export function TailorButton({ runId }: { runId: string }) {
             return;
         }
         const { sessionId, resumeId, status, nextQuestion } = result.data;
+        // Questions answered from long-term memory: say what was used.
+        const recalled = rememberedNote(result.data.remembered);
+        if (recalled) toast.info(recalled, { duration: 12_000 });
         if (status === 'completed' && resumeId) {
             setState({ kind: 'done', resumeId });
             announceTailored(runId);

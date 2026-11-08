@@ -79,6 +79,7 @@ afterAll(async () => {
     telegramTesting.reset();
     await prisma.generationSession.deleteMany({ where: { userId: USER } });
     await prisma.channelIdentity.deleteMany({ where: { userId: USER } });
+    await prisma.userMemory.deleteMany({ where: { userId: USER } });
 });
 
 describe('the 2026-10-03 conversation', () => {
@@ -121,5 +122,27 @@ describe('the 2026-10-03 conversation', () => {
             expect(entry.text ?? '').not.toMatch(/\\[._\-!()]/);
             expect((entry.body as { parse_mode?: string }).parse_mode).toBe('HTML');
         }
+    });
+});
+
+describe('long-term memory on Telegram (docs/impl/08-memory.md)', () => {
+    test('an answer is remembered under its question\'s topic, and /memory shows it', async () => {
+        await prisma.userMemory.deleteMany({ where: { userId: USER } });
+        await send('Spring Boot services for the reporting team at Plivo');
+        const memory = await prisma.userMemory.findFirst({ where: { userId: USER, status: 'active' } });
+        expect(memory).toMatchObject({ key: 'skill:java', label: 'Java', text: 'Spring Boot services for the reporting team at Plivo', source: 'clarification_answer' });
+
+        await send('/memory');
+        const reply = telegram.sent.at(-1)?.text ?? '';
+        expect(reply).toContain('What I remember you told me');
+        expect(reply).toContain('Spring Boot services for the reporting team at Plivo');
+        expect(reply).toContain('/settings/memory');
+    });
+
+    test('"no" and "skip" remember nothing', async () => {
+        await prisma.userMemory.deleteMany({ where: { userId: USER } });
+        await send('no');
+        await send('skip');
+        expect(await prisma.userMemory.count({ where: { userId: USER } })).toBe(0);
     });
 });
