@@ -68,8 +68,8 @@ async function seedSubscription(
     create: {
       userId,
       slot,
-      stripeCustomerId: `cus_${RUN}`,
-      stripeSubId: `sub_${slot}_${RUN}`,
+      customerRef: `cus_${RUN}`,
+      subscriptionRef: `sub_${slot}_${RUN}`,
       tier,
       status,
       currentPeriodEnd,

@@ -93,6 +93,38 @@ export default async function OpsPage() {
                 )}
             </Section>
 
+            <Section
+                title="Billing"
+                hint="Docs: docs/impl/09-payments-dodo.md. While the launch is open everything is free and only admins see checkout."
+            >
+                <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Provider</dt>
+                        <dd className="num">
+                            {snap.billing.provider ?? 'none'}
+                            {snap.billing.provider === 'dodo' ? ` · ${snap.billing.dodoMode === 'live_mode' ? 'live' : 'test'}` : ''}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Checkout</dt>
+                        <dd>{snap.billing.checkoutAvailable ? (snap.billing.launchOpen ? 'admins only (launch open)' : 'everyone') : 'off'}</dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Webhooks, last {snap.windowHours}h</dt>
+                        <dd className="num">
+                            {snap.billing.webhookEvents}
+                            {snap.billing.webhookIgnored > 0 ? ` (${snap.billing.webhookIgnored} ignored)` : ''}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt className="text-xs text-muted-foreground">Last webhook</dt>
+                        <dd className="num">
+                            {snap.billing.lastWebhookAt ? `${snap.billing.lastWebhookAt.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'never'}
+                        </dd>
+                    </div>
+                </dl>
+            </Section>
+
             {(breaches.length > 0 || totalDead > 0) && (
                 <div className="mb-8 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm">
                     <p className="font-medium text-warning">Needs attention</p>

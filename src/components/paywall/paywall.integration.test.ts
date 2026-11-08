@@ -245,7 +245,7 @@ describe('loaders — real data or nothing (after the launch)', () => {
     await prisma.subscription.create({
       data: {
         userId,
-        stripeCustomerId: `cus_${RUN}`,
+        customerRef: `cus_${RUN}`,
         tier: CAREER_PLAN.tier,
         status: 'active',
         currentPeriodEnd: new Date(Date.now() + 86_400_000),
@@ -270,7 +270,7 @@ describe('loaders — real data or nothing (after the launch)', () => {
     await prisma.subscription.create({
       data: {
         userId,
-        stripeCustomerId: `cus_${RUN}`,
+        customerRef: `cus_${RUN}`,
         tier: CAREER_PLAN.tier,
         status: 'active',
         currentPeriodEnd: new Date(Date.now() + 86_400_000),

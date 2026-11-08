@@ -28,7 +28,8 @@ export const dynamic = 'force-dynamic';
  */
 async function userIdForCustomer(customerId: string): Promise<string | undefined> {
   const row = await prisma.subscription.findFirst({
-    where: { stripeCustomerId: customerId },
+    // Scoped to Stripe: Dodo customer ids share the `cus_` prefix.
+    where: { provider: 'stripe', customerRef: customerId },
     select: { userId: true },
   });
   return row?.userId;
@@ -54,8 +55,9 @@ async function syncSubscription(subscription: Stripe.Subscription): Promise<void
   });
 
   const data = {
-    stripeCustomerId: customerId,
-    stripeSubId: subscription.id,
+    provider: 'stripe' as const,
+    customerRef: customerId,
+    subscriptionRef: subscription.id,
     tier,
     status: localSubscriptionStatus(subscription),
     currentPeriodEnd: resolvePeriodEnd(subscription),
@@ -101,8 +103,8 @@ async function applyPaymentFailure(invoice: Stripe.Invoice): Promise<void> {
 
   const rows = await prisma.subscription.findMany({
     where: subscriptionId
-      ? { stripeCustomerId: customerId, stripeSubId: subscriptionId }
-      : { stripeCustomerId: customerId },
+      ? { provider: 'stripe', customerRef: customerId, subscriptionRef: subscriptionId }
+      : { provider: 'stripe', customerRef: customerId },
     select: { id: true, userId: true, slot: true, tier: true },
   });
   if (rows.length === 0) return;

@@ -23,6 +23,8 @@ function data(overrides: Partial<PlanPageData> = {}): PlanPageData {
         search: null,
         enforced: true,
         billingConfigured: false,
+        adminCheckoutPreview: false,
+        checkoutTestMode: false,
         portalAvailable: false,
         downgradeOffer: null,
         refundEligibleUntil: null,
@@ -78,6 +80,31 @@ describe('PlanScreen', () => {
         expect(html).not.toMatch(/open soon/i);
         // The 90-day hidden-history line is not true during the launch.
         expect(html).not.toContain('hidden on Free');
+    });
+
+    // Dodo, 2026-11-08: the owner tests a real (test-mode) purchase while the
+    // launch is still open for everyone else.
+    test('an admin during the launch sees the paid plans with a banner saying nobody else does', () => {
+        const html = renderToStaticMarkup(
+            <PlanScreen data={data({ launchOpen: true, billingConfigured: true, adminCheckoutPreview: true, checkoutTestMode: true })} />,
+        );
+        expect(html).toContain('Admin preview');
+        expect(html).toContain('Test mode: no real card is charged');
+        expect(html).toMatch(/Career · \$/);
+        expect(html).toContain('Free while we launch');
+    });
+
+    test('the admin banner warns when checkout is live', () => {
+        const html = renderToStaticMarkup(
+            <PlanScreen data={data({ launchOpen: true, billingConfigured: true, adminCheckoutPreview: true, checkoutTestMode: false })} />,
+        );
+        expect(html).toContain('Live mode: a real card will be charged.');
+    });
+
+    test('a member during the launch never sees the admin banner or a purchase button', () => {
+        const html = renderToStaticMarkup(<PlanScreen data={data({ launchOpen: true, billingConfigured: false })} />);
+        expect(html).not.toContain('Admin preview');
+        expect(html).not.toMatch(/Career · \$/);
     });
 
     test('the checkout return notice is shown', () => {

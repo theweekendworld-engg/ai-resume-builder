@@ -529,7 +529,7 @@ test('checkout alone grants nothing; a signed webhook is what changes the tier',
     const state = await getSubscriptionState(journey.userId);
     expect(state.tier).toBe(Tier.always_on);
     expect(state.career?.active).toBe(true);
-    expect(state.career?.stripeSubId).toBe(careerSubscriptionId);
+    expect(state.career?.subscriptionRef).toBe(careerSubscriptionId);
     expect(state.search).toBeNull();
 
     // Replaying the same event is a no-op, not a second row.
@@ -571,13 +571,13 @@ test('adding Search creates a second subscription and leaves Career alone', asyn
     const state = await getSubscriptionState(journey.userId);
     expect(state.tier).toBe(Tier.pro);
     expect(state.search?.active).toBe(true);
-    expect(state.search?.stripeSubId).toBe(searchSubscriptionId);
+    expect(state.search?.subscriptionRef).toBe(searchSubscriptionId);
 
     // Two rows, two Stripe objects, one customer.
     expect(state.all.length).toBe(2);
-    expect(state.career?.stripeSubId).toBe(careerBefore?.stripeSubId ?? null);
+    expect(state.career?.subscriptionRef).toBe(careerBefore?.subscriptionRef ?? null);
     expect(state.career?.active).toBe(true);
-    expect(state.search?.stripeCustomerId).toBe(state.career?.stripeCustomerId ?? null);
+    expect(state.search?.customerRef).toBe(state.career?.customerRef ?? null);
     expect(
         await prisma.subscription.findUnique({
             where: { userId_slot: { userId: journey.userId, slot: 'search' } },
@@ -611,7 +611,7 @@ test('turning Search off leaves Career intact rather than dropping to Free', asy
     // Period end arrives; Stripe says the Search subscription is gone.
     const ended = journey.m.stripe.seedSubscription({
         id: searchSubscriptionId,
-        customer: (await getSubscriptionState(journey.userId)).search?.stripeCustomerId ?? 'cus_j4',
+        customer: (await getSubscriptionState(journey.userId)).search?.customerRef ?? 'cus_j4',
         priceId: PRICE_IDS.STRIPE_PRICE_SEARCH_MONTHLY,
         status: 'canceled',
         currentPeriodEnd: PERIOD_END_SECONDS,
@@ -725,7 +725,7 @@ test('cancelling keeps every row the user ever made', async () => {
     // Period end. Stripe says the subscription is over.
     const ended = journey.m.stripe.seedSubscription({
         id: careerSubscriptionId,
-        customer: (await getSubscriptionState(journey.userId)).career?.stripeCustomerId ?? 'cus_j4',
+        customer: (await getSubscriptionState(journey.userId)).career?.customerRef ?? 'cus_j4',
         priceId: PRICE_IDS.STRIPE_PRICE_CAREER_MONTHLY,
         status: 'canceled',
         currentPeriodEnd: PERIOD_END_SECONDS,

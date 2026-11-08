@@ -49,7 +49,7 @@ async function givePlan(userId: string, tier: Tier): Promise<void> {
         data: {
             userId,
             // Required column; no Stripe call is made in these tests.
-            stripeCustomerId: `cus_test_${userId}`,
+            customerRef: `cus_test_${userId}`,
             tier,
             status: 'active',
             currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),

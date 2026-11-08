@@ -1,4 +1,4 @@
-import { ApplicationStatus, Tier } from '@prisma/client';
+import { ApplicationStatus, Tier, type SubscriptionProvider } from '@prisma/client';
 import { assertNotSuspended } from '@/lib/suspension';
 import { prisma } from '@/lib/prisma';
 import {
@@ -51,7 +51,7 @@ export { METERED_ACTIONS, METERED_ACTION_LABELS } from '@/lib/plans';
 // ---------------------------------------------------------------------------
 
 /**
- * Career and Search are two Stripe subscriptions, and therefore two rows,
+ * Career and Search are two provider subscriptions, and therefore two rows,
  * distinguished by `Subscription.slot`.
  *
  * They used to be distinguished by writing `${userId}::search` into `userId`,
@@ -83,8 +83,12 @@ export interface SubscriptionSummary {
   tier: Tier;
   status: string;
   currentPeriodEnd: Date | null;
-  stripeSubId: string | null;
-  stripeCustomerId: string | null;
+  /** Who bills this row: `stripe`, `dodo`, or `admin_grant` (a comp, nobody). */
+  provider: SubscriptionProvider;
+  /** The provider's subscription id. Null for admin grants. */
+  subscriptionRef: string | null;
+  /** The provider's customer id (or `admin_grant:<userId>`). */
+  customerRef: string | null;
   /** Access is live right now. */
   active: boolean;
   /** Turned off, still inside the paid period. */
@@ -99,8 +103,9 @@ function summarize(
     tier: Tier;
     status: string;
     currentPeriodEnd: Date | null;
-    stripeSubId: string | null;
-    stripeCustomerId: string | null;
+    provider: SubscriptionProvider;
+    subscriptionRef: string | null;
+    customerRef: string | null;
   },
   now: Date
 ): SubscriptionSummary {
@@ -111,8 +116,9 @@ function summarize(
     tier: row.tier,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd,
-    stripeSubId: row.stripeSubId,
-    stripeCustomerId: row.stripeCustomerId,
+    provider: row.provider,
+    subscriptionRef: row.subscriptionRef,
+    customerRef: row.customerRef,
     active,
     cancelAtPeriodEnd: row.status === 'canceling',
     pastDue: row.status === 'past_due',
@@ -145,8 +151,9 @@ export async function getSubscriptionState(
       tier: true,
       status: true,
       currentPeriodEnd: true,
-      stripeSubId: true,
-      stripeCustomerId: true,
+      provider: true,
+      subscriptionRef: true,
+      customerRef: true,
     },
   });
 

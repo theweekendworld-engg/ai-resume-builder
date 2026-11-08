@@ -121,8 +121,8 @@ async function seed(
     create: {
       userId,
       slot,
-      stripeCustomerId: `cus_${RUN}`,
-      stripeSubId: `sub_${slot}_${RUN}`,
+      customerRef: `cus_${RUN}`,
+      subscriptionRef: `sub_${slot}_${RUN}`,
       tier,
       status,
       currentPeriodEnd,
@@ -207,6 +207,18 @@ async function events(userId: string, type: string) {
 // ---------------------------------------------------------------------------
 
 describe('checkout', () => {
+  // Checkout as it behaves once paid plans return (`ENTITLEMENT_LAUNCH_OPEN=false`).
+  // During the launch only admins are offered one; that gate is tested last.
+  let launchBefore: string | undefined;
+  beforeAll(() => {
+    launchBefore = process.env.ENTITLEMENT_LAUNCH_OPEN;
+    process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+  });
+  afterAll(() => {
+    if (launchBefore === undefined) delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+    else process.env.ENTITLEMENT_LAUNCH_OPEN = launchBefore;
+  });
+
   test('unauthenticated is a value, never a throw', async () => {
     clerk.signOut();
     const result = await billing.startCheckout('career_monthly');
@@ -249,6 +261,28 @@ describe('checkout', () => {
     ).toBe('search');
     // No customer was created — we reused the one on the Career row.
     expect(callsTo('customers.create')).toHaveLength(0);
+  });
+
+  test('a slot that is already paid for is never sold again', async () => {
+    const userId = signIn('already-career');
+    await seed(userId, 'career', Tier.always_on);
+    const result = await billing.startCheckout('career_monthly');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.code).toBe('already_subscribed');
+    expect(callsTo('checkout.sessions.create')).toHaveLength(0);
+  });
+
+  test('during the launch a non-admin is not offered checkout, even with a provider configured', async () => {
+    process.env.ENTITLEMENT_LAUNCH_OPEN = 'true';
+    try {
+      signIn('launch-refused');
+      const result = await billing.startCheckout('career_monthly');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.code).toBe('billing_unavailable');
+      expect(callsTo('checkout.sessions.create')).toHaveLength(0);
+    } finally {
+      process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+    }
   });
 });
 
