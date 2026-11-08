@@ -13,6 +13,7 @@ import { COLUMN_OF_STATUS, type BoardColumn } from '@/lib/inbox/types';
 import { jobStageFacts, jobStages, type JobStage } from '@/lib/jobStages';
 import type { TrackedStatus } from '@/lib/scout/types';
 import { prisma } from '@/lib/prisma';
+import { titleCaseName } from '@/lib/resumeFileName';
 
 export type OverviewFlags = {
     chat: boolean;
@@ -260,7 +261,8 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     ];
 
     return {
-        firstName: profile?.fullName?.trim().split(/\s+/)[0] || null,
+        // "JAI SHANKAR" from a resume header greets as "Jai".
+        firstName: firstNameOf(profile?.fullName),
         needsYou: needsYou.slice(0, 8),
         pipeline: flags.scout
             ? (['to_review', 'applied', 'interviewing', 'offer'] as BoardColumn[]).map((column) => ({ column, label: COLUMN_LABEL[column], count: count(column), href: '/scout' }))
@@ -294,3 +296,8 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     };
 }
 
+/** The greeting's first name, cased the way the person would write it. */
+export function firstNameOf(fullName: string | null | undefined): string | null {
+    const first = fullName?.trim().split(/\s+/)[0];
+    return first ? titleCaseName(first) : null;
+}

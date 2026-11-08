@@ -37,7 +37,7 @@ function nameToken(fullName: string | null | undefined): string {
  * recruiter received (live test 2026-11-08). Mixed case is the person's own
  * ("McDonald", "DeSouza") and is kept.
  */
-function titleCaseName(word: string): string {
+export function titleCaseName(word: string): string {
     const lower = word.toLowerCase();
     if (word === lower || (word === word.toUpperCase() && word.length > 1)) {
         return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
