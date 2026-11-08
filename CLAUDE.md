@@ -219,6 +219,13 @@ the Chrome extension. Everything is behind feature flags, all seeded off.
   Apply addresses come from the posting by regex, never a model. Patronus
   never sends mail: Open in Gmail / Mail app (`/api/compose/[id]`, HMAC
   token) prefill the user's own client.
+- **Long-term memory** (`docs/impl/08-memory.md`, `src/services/memory.ts`).
+  Session memory is the channel thread + `ChatConversation.focus`; long-term
+  memory is `UserMemory`, one short line per topic key (`skill:claude`), one
+  active row per key. Answers to clarification and Scout questions are
+  remembered; a gap the record or memory already answers is never asked.
+  `memory_consolidate` merges and tightens weekly under the numeric guard.
+  Artifacts read only shareable memories, filtered in SQL.
 - **Workflow step code must never import `src/actions/`.** The step route
   bundles every import, and a `'use server'` module inside it fails
   `bun run build` only. Twice now (`fitScore.ts`, `embeddings.ts`).
