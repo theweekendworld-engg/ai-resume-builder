@@ -15,7 +15,8 @@ const CALENDAR_NOTICE: Record<string, { tone: 'ok' | 'warn'; text: string }> = {
     denied: { tone: 'warn', text: 'Google Calendar was not connected: access was declined.' },
     scope_missing: { tone: 'warn', text: 'Calendar access was not granted. Connect again and tick the calendar box on Google’s screen.' },
     invalid: { tone: 'warn', text: 'That connection link expired or was not yours. Start again from here.' },
-    not_configured: { tone: 'warn', text: 'Google Calendar is not set up on this server yet.' },
+    // The variable names are for /admin/ops and the server log, not for customers.
+    not_configured: { tone: 'warn', text: 'Google Calendar is coming soon. Nothing was connected.' },
     unavailable: { tone: 'warn', text: 'Email and calendar are not available on your account yet.' },
     error: { tone: 'warn', text: 'Something went wrong connecting Google Calendar. Try again.' },
 };
@@ -35,6 +36,10 @@ export default async function EmailSettingsPage({ searchParams }: { searchParams
     }
     const [inbox, calendar, params] = await Promise.all([getOrCreateInbox(userId), calendarStatus(userId), searchParams]);
     const notice = params.calendar ? CALENDAR_NOTICE[params.calendar] ?? null : null;
+    // What the customer reads as "coming soon", the operator reads here by name
+    // (and on /admin/ops: `inbound_email`, `google_calendar` in src/lib/health.ts).
+    if (!inbox.address) console.warn('[settings/email] forwarding unavailable: INBOUND_EMAIL_DOMAIN is not set');
+    if (!calendar.available) console.warn('[settings/email] calendar unavailable: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET or TOKEN_ENCRYPTION_KEY is not set');
 
     return (
         <div>

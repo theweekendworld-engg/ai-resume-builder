@@ -309,7 +309,12 @@ describe('the fit section end to end, with a scripted model', () => {
         expect(outcome.status).toBe('ok');
         if (outcome.status !== 'ok') return;
         expect(calls).toEqual(['match', 'summary']);
-        expect(outcome.data.verdict).toBe('possible');
+        // "2+ years of design or architecture" is answered by a Hyperbots
+        // bullet, and Hyperbots ran 15 months: the line shows the work, the
+        // dates do not show two years of it, so it is partial (QA 2026-11-07).
+        // That, with the short tenure, makes this a stretch rather than possible.
+        expect(outcome.data.matched.find((m) => m.requirementId === 'r2')?.strength).toBe('partial');
+        expect(outcome.data.verdict).toBe('stretch');
         expect(outcome.data.summary).not.toContain('strong fit');
         expect(outcome.data.summary).toContain('4 of 5');
         const programming = outcome.data.matched.find((m) => m.requirementId === 'r3');

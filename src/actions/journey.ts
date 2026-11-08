@@ -39,6 +39,7 @@ import {
     type JobEmailView,
     type JourneyEvent,
 } from '@/services/journey';
+import { aiFailureMessage } from '@/lib/usageTracker';
 
 type Gate = { userId: string } | { error: Result<never> };
 
@@ -67,7 +68,7 @@ async function metered<T>(userId: string, reason: string, run: () => Promise<Res
     } catch (error) {
         await refundMeteredAction(userId, 'cover_letter', { reason });
         console.warn('[journey] draft failed', { reason, error: String(error) });
-        return err('Could not write that draft. Try again.', 'draft_failed');
+        return err(aiFailureMessage(error, 'Could not write that draft. Try again.'), 'draft_failed');
     }
 }
 

@@ -107,7 +107,7 @@ export function EmailSetup({
                             <p className="text-sm text-muted-foreground">Replies, interview invites and rejections file themselves under the right job. No Gmail permission needed.</p>
                         </div>
                     </div>
-                    {inbox.received > 0 ? <Pill dot="success">{inbox.received} received</Pill> : inbox.forwardingSeenAt ? <Pill dot="info">Waiting for mail</Pill> : <Pill dot="muted">Not set up</Pill>}
+                    {!inbox.address ? <Pill dot="muted">Coming soon</Pill> : inbox.received > 0 ? <Pill dot="success">{inbox.received} received</Pill> : inbox.forwardingSeenAt ? <Pill dot="info">Waiting for mail</Pill> : <Pill dot="muted">Not set up</Pill>}
                 </div>
 
                 {inbox.address ? (
@@ -195,7 +195,9 @@ export function EmailSetup({
                         </div>
                     </div>
                 ) : (
-                    <p className="p-5 text-sm text-muted-foreground">Email forwarding is not set up on this server yet (INBOUND_EMAIL_DOMAIN).</p>
+                    // The operator half (which variable is missing) is on /admin/ops
+                    // and in the boot log, never on a customer's screen.
+                    <p className="p-5 text-sm text-muted-foreground">Email forwarding is coming soon. Once it is on, your Patronus address appears here, with the three Gmail steps to set it up.</p>
                 )}
             </section>
 
@@ -209,11 +211,11 @@ export function EmailSetup({
                             <p className="text-sm text-muted-foreground">Interviews on your calendar show up on the job and move it to Interviewing. Follow-up reminders go on your calendar when you ask.</p>
                         </div>
                     </div>
-                    {calendar.connected ? <Pill dot={calendar.lastError ? 'warning' : 'success'}>{calendar.lastError ? 'Needs attention' : 'Connected'}</Pill> : <Pill dot="muted">Not connected</Pill>}
+                    {!calendar.available ? <Pill dot="muted">Coming soon</Pill> : calendar.connected ? <Pill dot={calendar.lastError ? 'warning' : 'success'}>{calendar.lastError ? 'Needs attention' : 'Connected'}</Pill> : <Pill dot="muted">Not connected</Pill>}
                 </div>
                 <div className="space-y-4 p-5">
                     {!calendar.available ? (
-                        <p className="text-sm text-muted-foreground">Google Calendar is not set up on this server yet.</p>
+                        <p className="text-sm text-muted-foreground">Google Calendar is coming soon. Interviews on your calendar will then show up on the right job by themselves.</p>
                     ) : calendar.connected ? (
                         <>
                             <dl className="grid gap-3 text-sm sm:grid-cols-2">

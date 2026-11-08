@@ -4,11 +4,13 @@ import { classifySection } from '@/lib/scout/sections/classify';
 import { fakeContext } from '@/lib/scout/ingest/testContext.test-utils';
 import {
     NO_GUESS_REPLY,
+    ROUTER_SYSTEM,
     deterministicRoute,
     emptyDecision,
     renderContext,
     routeMessage,
     sanitizeDecision,
+    trailingToolInTitle,
 } from './router';
 import type { ChatContext, ChatJob } from './types';
 
@@ -137,3 +139,34 @@ describe('research_company intent in Scout', () => {
         expect(aiCalls).toHaveLength(0);
     });
 });
+
+describe('a trailing "| Claude" in a job title is the tool, not the employer (QA 2026-11-07)', () => {
+    const TITLE = 'Forward Deployed AI Engineer (#C3) | Claude';
+
+    test('the title and the tool are told apart; a real company after the pipe is left alone', () => {
+        expect(trailingToolInTitle(TITLE)).toEqual({ title: 'Forward Deployed AI Engineer', tool: 'Claude' });
+        expect(trailingToolInTitle('Backend Engineer | Go')).toEqual({ title: 'Backend Engineer', tool: 'Go' });
+        expect(trailingToolInTitle('Backend Engineer | Stripe')).toBeNull();
+        expect(trailingToolInTitle(`${TITLE}\nWe are hiring…`)).toBeNull();
+    });
+
+    test('"openings at Claude" becomes a request for the posting', () => {
+        const decision = sanitizeDecision(emptyDecision('clarify', 'Are you looking for Forward Deployed AI Engineer openings at Claude?'), context(), TITLE);
+        expect(decision.action).toBe('clarify');
+        expect(decision.reply).toContain('Claude is what the role works with, not the employer');
+        expect(decision.company).toBeNull();
+        const research = sanitizeDecision(emptyDecision('research_company', 'Looking up Claude.', { company: 'Claude' }), context(), TITLE);
+        expect(research.action).toBe('clarify');
+    });
+
+    test('a job search keeps the role and drops the tool as a company', () => {
+        const decision = sanitizeDecision(emptyDecision('find_jobs', 'Searching openings at Claude.', { company: 'Claude', query: 'Claude' }), context(), TITLE);
+        expect(decision).toMatchObject({ action: 'find_jobs', company: null, query: 'Forward Deployed AI Engineer', reply: 'Looking for Forward Deployed AI Engineer roles.' });
+    });
+
+    test('a real company after the pipe is still researched, and the prompt says why', () => {
+        expect(sanitizeDecision(emptyDecision('research_company', 'Looking up Stripe.', { company: 'Stripe' }), context(), 'Backend Engineer | Stripe').action).toBe('research_company');
+        expect(ROUTER_SYSTEM).toContain('Claude, GPT and Gemini are AI models, not companies');
+    });
+});
+

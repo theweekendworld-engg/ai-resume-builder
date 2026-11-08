@@ -49,6 +49,9 @@ export function checkoutAvailable(env: Env = process.env): boolean {
     return provider !== null && CHECKOUT_IMPLEMENTED.has(provider);
 }
 
-/** What the plan page says when nobody can buy anything yet. */
+/**
+ * What the plan page says when nobody can buy anything yet: the launch
+ * (2026-11-07). Everything is included, paid plans come later with notice.
+ */
 export const BILLING_UNAVAILABLE_COPY =
-    'Paid plans open soon — everything you use now stays free, and nothing you record is ever deleted.';
+    'Free while we launch — every feature is included. Paid plans come later, with notice first, and nothing you record is ever deleted.';

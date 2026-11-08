@@ -26,7 +26,7 @@ export default async function SettingsIndexPage() {
         { href: '/settings/channels', icon: MessageCircle, title: 'Channels', body: 'Web chat, Telegram, WhatsApp, the browser extension and the CLI.' },
         ...(capture ? [{ href: '/settings/sources', icon: GitBranch, title: 'Sources', body: 'Connect GitHub so your merged work becomes Work Log drafts.' }] : []),
         { href: '/settings/notifications', icon: Bell, title: 'Notifications', body: 'The weekly digest, monthly review and what reaches your inbox.' },
-        { href: '/settings/plan', icon: CreditCard, title: 'Plan & usage', body: 'What you have left this month, and paid plans.' },
+        { href: '/settings/plan', icon: CreditCard, title: 'Plan & usage', body: 'What you have used this month. Every feature is included while we launch.' },
         { href: '/account', icon: UserRound, title: 'Account', body: 'Email, sign-in methods and linked accounts like GitHub.' },
     ];
 
@@ -38,7 +38,11 @@ export default async function SettingsIndexPage() {
                     const Icon = item.icon;
                     return (
                         <li key={item.href}>
-                            <Link href={item.href} className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-secondary/50">
+                            <Link
+                                href={item.href}
+                                // Inset, so the focus ring is not clipped by the rounded list.
+                                className="flex items-center gap-4 px-5 py-4 transition-colors hover:bg-secondary/50 focus-visible:bg-secondary/50 focus-visible:outline-offset-[-2px]"
+                            >
                                 <Icon className="size-5 shrink-0 text-muted-foreground" aria-hidden />
                                 <span className="min-w-0 flex-1">
                                     <span className="block text-sm font-medium text-foreground">{item.title}</span>

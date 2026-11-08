@@ -278,6 +278,23 @@ html:has(.marketing) {
 }
 
 /*
+ * Keyboard focus, everywhere (UI audit 2026-11-07).
+ *
+ * Links had hover styles and no focus style: the sidebar, Home's rows, the
+ * settings list, the landing page's buttons and the FAQ's <summary>. Only the
+ * `<Button>` primitive drew a ring. In `@layer base` with zero specificity, so
+ * any component that styles its own focus (`focus-visible:ring-2 …`, which
+ * every ui/ primitive does) still wins. The ring token measures 4.64:1 on the
+ * app's white card and 10.9:1 on the landing page's ground.
+ */
+@layer base {
+  :where(a, button, summary, [role='button'], [tabindex]:not([tabindex='-1'])):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+}
+
+/*
  * The canvas background, which is not the same thing as body's.
  *
  * `body` below already sets bg-background, but the browser paints everything

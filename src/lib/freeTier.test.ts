@@ -1,6 +1,13 @@
 /**
  * What a free account gets, and what happens when it runs out.
  *
+ * ── Launch (2026-11-07) ──────────────────────────────────────────────────
+ * During the launch every account gets every feature and a monthly allowance
+ * (`LAUNCH_ALLOWANCE` in plans.ts, asserted in `plans.test.ts`). The trial
+ * shape below is what Free returns to once paid plans do, so its blocks run
+ * with `ENTITLEMENT_LAUNCH_OPEN=false`. The cost ceiling is not part of the
+ * launch switch: Free's is $5 either way, with a matching token budget.
+ *
  * The old shape gave Free a hard zero on most of the product — the cheapest
  * possible way to lose someone, because they never meet the thing they would
  * have paid for. Free is now a trial of the whole product: a few uses of every
@@ -12,7 +19,7 @@
  * change what the limit MEANS.
  */
 
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 
 import {
     METERED_ACTIONS,
@@ -42,6 +49,16 @@ afterEach(() => {
     for (const key of ENV_KEYS) delete process.env[key];
 });
 
+/** The trial packaging, which applies once the launch is switched off. */
+function afterTheLaunch(): void {
+    beforeAll(() => {
+        process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+    });
+    afterAll(() => {
+        delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+    });
+}
+
 /**
  * `win_draft` is the one BUILT metered action that is deliberately not a
  * trial: it is an abuse ceiling on the capture loop, which the product refuses
@@ -56,7 +73,8 @@ const NOT_A_TRIAL: MeteredAction[] = ['win_draft'];
  */
 const UNBUILT: MeteredAction[] = ['auto_apply', 'tier2_grounding', 'radar_refresh'];
 
-describe('free gets a taste of everything that exists', () => {
+describe('free gets a taste of everything that exists (after the launch)', () => {
+    afterTheLaunch();
     test.each(
         METERED_ACTIONS.filter((a) => !NOT_A_TRIAL.includes(a) && !UNBUILT.includes(a)),
     )('%s is available on Free', (action) => {
@@ -93,7 +111,8 @@ describe('free gets a taste of everything that exists', () => {
     });
 });
 
-describe('a trial does not make Free the answer to a paywall', () => {
+describe('a trial does not make Free the answer to a paywall (after the launch)', () => {
+    afterTheLaunch();
     test.each(['month_in_review', 'review_packet', 'tailored_generation'] as MeteredAction[])(
         '%s still points at a paid plan',
         (action) => {
@@ -109,7 +128,8 @@ describe('a trial does not make Free the answer to a paywall', () => {
     });
 });
 
-describe('the resume cap', () => {
+describe('the resume cap (after the launch)', () => {
+    afterTheLaunch();
     test('ten, total, not per month', () => {
         const limit = meteredLimit('free', 'tailored_generation');
         expect(limit.limit).toBe(10);
@@ -142,7 +162,8 @@ describe('the resume cap', () => {
     });
 });
 
-describe('the shared trial number', () => {
+describe('the shared trial number (after the launch)', () => {
+    afterTheLaunch();
     test('defaults to three', () => {
         expect(freeTrialUses()).toBe(3);
     });
@@ -175,6 +196,19 @@ describe('the token backstop is per tier', () => {
         // the backstop is tighter than the product limit and users will hit a
         // confusing "token limit reached" instead of an honest paywall.
         expect(tokenBudget('free')).toBeGreaterThan(freeResumeCap() * 30_000);
+        // …and the launch allowance, which is ten times the old cap.
+        expect(tokenBudget('free')).toBeGreaterThan(meteredLimit('free', 'tailored_generation').limit * 30_000);
+    });
+
+    // 2026-11-07: the abuse ceiling moved from $2 / 400k tokens to $5 with a
+    // matching token budget (tokens the dollars buy at the measured luna blend,
+    // ~3M per $1), so a launch-sized job search fits under it with room.
+    test('free is $5 a month, with a token budget matched to it', () => {
+        expect(costBudgetUsd('free')).toBe(5);
+        expect(tokenBudget('free')).toBe(15_000_000);
+        // Matched on every tier, so the cost ceiling is the one that binds.
+        expect(tokenBudget('always_on') / costBudgetUsd('always_on')).toBe(tokenBudget('free') / costBudgetUsd('free'));
+        expect(tokenBudget('pro') / costBudgetUsd('pro')).toBe(tokenBudget('free') / costBudgetUsd('free'));
     });
 
     test('both budgets are tunable', () => {
@@ -190,7 +224,8 @@ describe('the token backstop is per tier', () => {
     });
 });
 
-describe('the window on the two features that are screens, not runs', () => {
+describe('the window on the two features that are screens, not runs (after the launch)', () => {
+    afterTheLaunch();
     const CREATED = new Date('2026-08-01T00:00:00Z');
 
     test('a fresh free account sees the whole Radar', () => {

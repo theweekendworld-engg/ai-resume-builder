@@ -168,7 +168,12 @@ export function ImportPreviewDialog({ data, open, onClose, onImported, defaultOp
 
       const summary = result.summary!;
       const message = buildSummaryMessage(summary);
-      toast.success(message);
+      // Say what to do next: a fresh record is only useful once a job meets it.
+      toast.success(message, {
+        description: 'Next: send a job post and Patronus checks it against this and tailors your resume.',
+        duration: 10_000,
+        action: { label: 'Check a job', onClick: () => router.push('/chat') },
+      });
 
       if (summary.warnings.length > 0) {
         for (const w of summary.warnings.slice(0, 3)) {

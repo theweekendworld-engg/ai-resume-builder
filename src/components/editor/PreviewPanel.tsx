@@ -23,12 +23,13 @@ type PreviewMode = 'live' | 'pdf';
  *    template + theme, rendered from the user's own data. Updates instantly as
  *    the theme/content changes — no server round-trip, never blocks the UI.
  *  - "pdf": the full-fidelity LaTeX-compiled PDF (the export artifact). This is
- *    the expensive path; the user opts in via "Final PDF" and it compiles on
- *    demand (see `LatexPreview` -> `compileLatex`).
+ *    the expensive path, so it only runs while the "Final PDF" tab is open:
+ *    opening the tab compiles, and edits recompile once they settle (debounced
+ *    in `LatexPreview`). "Refresh Preview" forces a rebuild.
  */
 export function PreviewPanel({ latexCode, resumeData, theme }: PreviewPanelProps) {
   const [mode, setMode] = useState<PreviewMode>('live');
-  const length = useMemo(() => estimateResumeLength(resumeData), [resumeData]);
+  const length = useMemo(() => estimateResumeLength(resumeData, theme.templateId), [resumeData, theme.templateId]);
 
   return (
     <aside className="flex min-h-0 min-w-0 w-full flex-1 flex-col border-l border-border bg-card/30">
@@ -88,7 +89,7 @@ export function PreviewPanel({ latexCode, resumeData, theme }: PreviewPanelProps
           </div>
         ) : (
           <div className="h-full overflow-hidden rounded-md border border-border bg-white">
-            <LatexPreview code={latexCode} />
+            <LatexPreview code={latexCode} autoCompile />
           </div>
         )}
       </div>

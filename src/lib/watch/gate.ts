@@ -7,13 +7,17 @@
  * 6am and is wrong twice stops being read; the cost of a missed match is one
  * job, the cost of a false one is the channel.
  *
+ * Eligibility (citizenship, clearance, Public Trust, work authorization) and
+ * an unclear region scope on a remote role hold a match whatever its score: those are the two
+ * facts no skill outweighs, and "unknown" is never "fine".
+ *
  * The number itself is `scoreFit`: 70% requirement coverage (musts weigh 80%)
  * and 30% named-skill overlap, computed by code from line-level evidence. It
  * is the same score Scout shows on a shared link, so a job alerted at 88 opens
  * to a card that says 88.
  */
 
-import type { Coverage } from '@/lib/scout/fit/evaluate';
+import { isRemoteScopeCheck, type Coverage } from '@/lib/scout/fit/evaluate';
 import type { FitData } from '@/lib/scout/types';
 
 /** The user's bar. Below it nothing is sent, however good the rest looks. */
@@ -65,9 +69,23 @@ export function alertGate(input: GateInput): GateResult {
     if (input.matchedVia === 'fallback') {
         return { qualifies: false, reason: 'Requirements could not be checked properly tonight; it will be retried' };
     }
+    // Who may hold the job comes before anything about the job: citizenship,
+    // clearance, Public Trust, work authorization. Anything short of a
+    // positive match on the user's own stated authorization holds it.
+    const eligibility = fit.preferenceChecks.find((check) => check.key === 'eligibility' && check.status !== 'match');
+    if (eligibility) {
+        return {
+            qualifies: false,
+            reason: eligibility.status === 'conflict' ? eligibility.detail : `Eligibility unclear: ${eligibility.detail}`,
+        };
+    }
     if (input.questionOpen) {
         return { qualifies: false, reason: 'Needs one of your preferences (location, work mode, pay or role) to judge' };
     }
+    // A remote role scoped to a region the user may be outside of ("Remote -
+    // US" for someone whose places cannot be placed) is held, not sent.
+    const whereUnknown = fit.preferenceChecks.find((check) => check.status === 'unknown' && isRemoteScopeCheck(check));
+    if (whereUnknown) return { qualifies: false, reason: `Location unclear: ${whereUnknown.detail}` };
     const conflict = fit.preferenceChecks.find((check) => check.status === 'conflict');
     if (conflict) return { qualifies: false, reason: conflict.detail };
     if (fit.score === null) return { qualifies: false, reason: 'Not enough in your record to score this' };

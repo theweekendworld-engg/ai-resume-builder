@@ -68,4 +68,32 @@ describe('alertGate', () => {
         expect(alertGate(input({ postedAt: old })).qualifies).toBe(false);
         expect(alertGate(input({ postedAt: null })).qualifies).toBe(true);
     });
+
+    test('an eligibility conflict holds it whatever the score, and says why (QA 2026-11-07)', () => {
+        const detail = 'You may not be eligible: requires HHS Public Trust, which generally needs US citizenship or residency. Your profile puts you in Bengaluru, India.';
+        const result = alertGate(input({ fit: { score: 97, preferenceChecks: [{ key: 'eligibility', status: 'conflict', detail }] } }));
+        expect(result).toEqual({ qualifies: false, reason: detail });
+    });
+
+    test('unknown eligibility is a hold, never a pass', () => {
+        const result = alertGate(input({ fit: { preferenceChecks: [{ key: 'eligibility', status: 'unknown', detail: 'Requires US citizenship. Your work authorization is not on your profile.' }] } }));
+        expect(result.qualifies).toBe(false);
+        if (!result.qualifies) expect(result.reason).toStartWith('Eligibility unclear');
+        // Eligibility is checked before the open-question reason: it is the one to fix.
+        const both = alertGate(input({ questionOpen: true, fit: { preferenceChecks: [{ key: 'eligibility', status: 'unknown', detail: 'x' }] } }));
+        if (!both.qualifies) expect(both.reason).toStartWith('Eligibility unclear');
+    });
+
+    test('a matched eligibility check does not hold it', () => {
+        expect(alertGate(input({ fit: { preferenceChecks: [{ key: 'eligibility', status: 'match', detail: 'Requires US citizenship; you said "US citizen".' }] } }))).toEqual({ qualifies: true });
+    });
+
+    test('a remote role scoped to a region the user may be outside of is held when unclear', () => {
+        const scoped = alertGate(input({ fit: { preferenceChecks: [{ key: 'location', status: 'unknown', detail: 'Remote within the US (Remote - US); could not tell whether Atlantis is inside it' }] } }));
+        expect(scoped.qualifies).toBe(false);
+        const scopedConflict = alertGate(input({ fit: { preferenceChecks: [{ key: 'location', status: 'conflict', detail: 'Remote within the US (DMV preferred); you are based in Bengaluru, India' }] } }));
+        expect(scopedConflict).toEqual({ qualifies: false, reason: 'Remote within the US (DMV preferred); you are based in Bengaluru, India' });
+        // Any other unknown location behaves as before.
+        expect(alertGate(input({ fit: { preferenceChecks: [{ key: 'location', status: 'unknown', detail: 'The posting does not state a location' }] } })).qualifies).toBe(true);
+    });
 });

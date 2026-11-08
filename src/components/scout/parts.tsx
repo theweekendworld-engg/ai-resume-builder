@@ -146,7 +146,9 @@ export function SourceLink({
  *   unavailable  → the stored reason, as information, not apology
  *   skipped      → the stored reason (budget, not applicable)
  *   failed       → the stored reason, in the warning tone
- *   needs_input  → a pointer to the question card
+ *   needs_input  → the data computed so far, and a pointer to the question
+ *                  card below it. The fit is always shown, never withheld
+ *                  behind the question (QA 2026-11-07).
  */
 export function SectionShell({
     title,
@@ -213,10 +215,17 @@ export function SectionShell({
                 ) : null}
 
                 {state === 'needs_input' ? (
-                    <p className={cn(typeStyles.small, 'flex items-start gap-1.5 text-muted-foreground')}>
-                        <HelpCircle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-                        <span>Waiting on your answer above.</span>
-                    </p>
+                    <div>
+                        {section && 'data' in section && section.data ? <div className="mb-3">{children}</div> : null}
+                        <p className={cn(typeStyles.small, 'flex items-start gap-1.5 text-muted-foreground')}>
+                            <HelpCircle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                            <span>
+                                {section && 'data' in section && section.data
+                                    ? 'One answer below can change this. Until then, this is the fit on everything else.'
+                                    : 'Waiting on your answer below.'}
+                            </span>
+                        </p>
+                    </div>
                 ) : null}
             </div>
         </section>

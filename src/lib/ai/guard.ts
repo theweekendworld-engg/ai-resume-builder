@@ -55,6 +55,13 @@ export type Quantity = {
     index: number;
     /** range endpoints; a range is supported only if every part is supported */
     parts?: Quantity[];
+    /**
+     * Written as an estimate or a floor: "~50%", "about 2x", "100K+", "more
+     * than 40". An unhedged output figure is only supported by an unhedged
+     * source figure, so "~50%" can never come back as a flat "50%" (QA
+     * 2026-11-07). Hedging what the source stated exactly is fine.
+     */
+    hedged?: boolean;
 };
 
 export type NumericGuard = {
@@ -777,7 +784,17 @@ export function extractQuantities(input: string, mode: ExtractMode = 'strict'): 
         if (!advanced) i += 1;
     }
 
+    for (const quantity of found) markHedge(quantity, text);
     return found;
+}
+
+const HEDGE_BEFORE = /(?:~|∼|≈|\babout|\baround|\bapprox(?:\.|imately)?|\bnearly|\broughly|\balmost|\bcirca|\bmore than|\bover|\bat least|\bup to|\bunder|\bless than)\s*$/;
+
+function markHedge(quantity: Quantity, text: string): void {
+    const before = text.slice(Math.max(0, quantity.index - 16), quantity.index);
+    const after = text.slice(quantity.index + quantity.raw.length, quantity.index + quantity.raw.length + 1);
+    if (HEDGE_BEFORE.test(before) || after === '+') quantity.hedged = true;
+    for (const part of quantity.parts ?? []) markHedge(part, text);
 }
 
 /** Convenience for tests and callers: what kind is this single token? */
@@ -866,7 +883,10 @@ export function isQuantitySupported(quantity: Quantity, sourceQuantities: Quanti
     if (quantity.kind === 'range') {
         return (quantity.parts ?? []).every((part) => isQuantitySupported(part, sourceQuantities));
     }
-    return sourceQuantities.some((src) => quantityMatches(quantity, src));
+    const matches = sourceQuantities.filter((src) => quantityMatches(quantity, src));
+    if (matches.length === 0) return false;
+    // An estimate stated as exact is a stronger claim than the source made.
+    return quantity.hedged === true || matches.some((src) => !src.hedged);
 }
 
 // ───────────────────────────────────────────────────────────── field walking

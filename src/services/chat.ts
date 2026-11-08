@@ -27,6 +27,7 @@ import { JOB_ACTION_LABELS } from '@/lib/inbox/types';
 import { draftScoutOutreach, startScoutRun } from '@/services/scout';
 import { tailorResumeForRun } from '@/services/tailor';
 import { createWinDraftForUser } from '@/services/wins';
+import type { RichMessage } from '@/lib/channels/types';
 
 export const THREAD_PAGE = 60;
 
@@ -393,9 +394,46 @@ export async function sendChatMessage(params: {
  */
 export type ChannelRoute =
     | { kind: 'scout'; company: string | null }
-    | { kind: 'reply'; text: string };
+    | { kind: 'reply'; text: string }
+    /** A reply with buttons (a draft with Open in Gmail, Shorter, Stronger). */
+    | { kind: 'rich'; message: RichMessage; runId: string | null };
 
 const SCOUT_ACTIONS = new Set<ChatAction>(['log_work', 'analyze_job', 'research_company']);
+
+const CHANNEL_OF = { telegram: Channel.telegram, whatsapp: Channel.whatsapp } as const;
+
+/**
+ * The channel's own thread, oldest first. Channel turns used to reach the
+ * router with `history: []`, so "it" and "this job" meant nothing on Telegram
+ * (docs/impl/07-telegram-apply.md §2).
+ */
+async function channelHistory(conversationId: string): Promise<HistoryTurn[]> {
+    const rows = await prisma.chatMessage.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+        select: { role: true, text: true },
+    });
+    return rows.reverse().map((row) => ({ role: row.role === 'user' ? 'user' : 'assistant', text: row.text }));
+}
+
+/** Store one channel turn. Best effort: a storage error must not lose the reply. */
+async function recordChannelTurn(conversationId: string, userId: string, userText: string, reply: string, action: ChatAction | null): Promise<void> {
+    try {
+        await prisma.chatMessage.create({ data: { conversationId, userId, role: 'user', text: userText.slice(0, CHAT_MESSAGE_MAX) } });
+        const row = await prisma.chatMessage.create({ data: { conversationId, userId, role: 'assistant', text: reply.slice(0, CHAT_MESSAGE_MAX), action } });
+        await prisma.chatConversation.update({ where: { id: conversationId }, data: { lastMessageAt: row.createdAt } });
+    } catch (error) {
+        console.warn('[chat] could not store a channel turn', { error: error instanceof Error ? error.message : String(error) });
+    }
+}
+
+/** What the assistant "said" when the channel's Scout flow took the message. */
+const SCOUT_TURN_TEXT: Partial<Record<ChatAction, string>> = {
+    analyze_job: 'Reading the job and scoring it against your record.',
+    research_company: 'Researching the company.',
+    log_work: 'Drafting that as a Work Log entry for you to confirm.',
+};
 
 export async function routeChannelText(userId: string, text: string, channel: 'telegram' | 'whatsapp'): Promise<ChannelRoute | null> {
     const { isEnabled } = await import('@/lib/flags');
@@ -405,16 +443,36 @@ export async function routeChannelText(userId: string, text: string, channel: 't
     const limited = await checkChatRateLimit(userId);
     if (!limited.allowed) return { kind: 'reply', text: limited.error ?? 'Give it a minute.' };
     try {
-        const context = await buildChatContext(userId);
-        const { decision } = await routeMessage({ userId, message: text, history: [], context });
+        const conversation = await ensureConversation(userId, CHANNEL_OF[channel]);
+
+        // 1. The task in focus gets first look at a short follow-up.
+        const inTask = await routeAgainstFocus(userId, text, CHANNEL_OF[channel]);
+        if (inTask) {
+            await recordChannelTurn(conversation.id, userId, text, inTask.record, inTask.action);
+            return inTask.route;
+        }
+
+        // 2. The general router, with this channel's own memory.
+        const [context, history] = await Promise.all([buildChatContext(userId), channelHistory(conversation.id)]);
+        const { decision } = await routeMessage({ userId, message: text, history, context });
         await track(userId, 'chat_message', { action: decision.action, channel });
         if (SCOUT_ACTIONS.has(decision.action)) {
+            await recordChannelTurn(conversation.id, userId, text, SCOUT_TURN_TEXT[decision.action] ?? 'On it.', decision.action);
             return { kind: 'scout', company: decision.action === 'research_company' ? decision.company : null };
         }
+
+        if (decision.action === 'draft_outreach' && channel === 'telegram') {
+            const drafted = await draftForChannel(userId, decision, context, CHANNEL_OF[channel]);
+            await recordChannelTurn(conversation.id, userId, text, drafted.record, decision.action);
+            return drafted.route;
+        }
+
         const reply = await runAction(userId, decision, context, { channel });
         const { config } = await import('@/lib/config');
         const { replyToText } = await import('@/lib/chat/renderText');
-        return { kind: 'reply', text: replyToText(reply, config.app.url) };
+        const rendered = replyToText(reply, config.app.url);
+        await recordChannelTurn(conversation.id, userId, text, rendered, decision.action);
+        return { kind: 'reply', text: rendered };
     } catch (error) {
         if (error instanceof UsageLimitError || error instanceof SuspendedError) return { kind: 'reply', text: error.message };
         console.warn('[chat] channel routing failed; using the Scout flow', {
@@ -423,6 +481,82 @@ export async function routeChannelText(userId: string, text: string, channel: 't
         });
         return null;
     }
+}
+
+type InTaskResult = { route: ChannelRoute; record: string; action: ChatAction | null };
+
+/**
+ * A short follow-up while a draft is in focus: an edit to that draft, "done",
+ * or something else (null: the general router takes it).
+ */
+async function routeAgainstFocus(userId: string, text: string, channel: Channel): Promise<InTaskResult | null> {
+    const { getFocus, setFocus } = await import('@/lib/chat/focus');
+    const focus = await getFocus(userId, channel);
+    if (focus?.kind !== 'draft') return null;
+
+    const drafts = await import('@/services/drafts');
+    const draft = await drafts.getDraft(userId, focus.draftId);
+    if (!draft) {
+        await setFocus(userId, channel, null);
+        return null;
+    }
+
+    const { decideInTask } = await import('@/lib/chat/inTask');
+    const { choice } = await decideInTask({ userId, message: text, draft });
+    await track(userId, 'chat_in_task', { choice, channel });
+    if (choice === 'other') return null;
+
+    if (choice === 'done') {
+        await setFocus(userId, channel, null);
+        const reply = 'Good luck with it. Tell me when you hear back and I will update the job.';
+        return { route: { kind: 'reply', text: reply }, record: reply, action: null };
+    }
+
+    const revised = await drafts.reviseDraft(userId, draft.id, text);
+    if (!revised.success) {
+        return { route: { kind: 'reply', text: revised.error }, record: revised.error, action: 'draft_outreach' };
+    }
+    await setFocus(userId, channel, { kind: 'draft', draftId: revised.data.id, runId: revised.data.runId, workspaceId: revised.data.workspaceId });
+    return {
+        route: { kind: 'rich', message: drafts.renderDraftForTelegram(revised.data), runId: revised.data.runId },
+        record: draftTurnText(revised.data),
+        action: 'draft_outreach',
+    };
+}
+
+/** What the thread remembers of a draft: enough for "it" to mean this draft next turn. */
+function draftTurnText(draft: { version: number; toEmail: string | null; subject: string | null; body: string }): string {
+    return [
+        `Draft v${draft.version}${draft.toEmail ? ` to ${draft.toEmail}` : ''}.`,
+        draft.subject ? `Subject: ${draft.subject}` : null,
+        draft.body,
+    ].filter(Boolean).join('\n');
+}
+
+/** "Draft an email for it" on a channel: a versioned MessageDraft with buttons, not a one-off card. */
+async function draftForChannel(userId: string, decision: RouteDecision, context: ChatContext, channel: Channel): Promise<InTaskResult> {
+    const job = jobAt(context, decision);
+    if (!job?.runId) {
+        const reply = 'Send me the job link or paste the post first, then I can draft it.';
+        return { route: { kind: 'reply', text: reply }, record: reply, action: 'draft_outreach' };
+    }
+    const drafts = await import('@/services/drafts');
+    const created = await drafts.createDraftForRun(userId, job.runId, {
+        target: decision.draftTarget ?? 'recruiter',
+        // An email when the posting gave an address or the user said email; the service checks.
+        format: decision.draftFormat ?? null,
+        note: decision.query,
+    });
+    if (!created.success) {
+        return { route: { kind: 'reply', text: created.error }, record: created.error, action: 'draft_outreach' };
+    }
+    const { setFocus } = await import('@/lib/chat/focus');
+    await setFocus(userId, channel, { kind: 'draft', draftId: created.data.id, runId: created.data.runId, workspaceId: created.data.workspaceId });
+    return {
+        route: { kind: 'rich', message: drafts.renderDraftForTelegram(created.data), runId: created.data.runId },
+        record: draftTurnText(created.data),
+        action: 'draft_outreach',
+    };
 }
 
 // ───────────────────────────────────────────────────────────── the rail

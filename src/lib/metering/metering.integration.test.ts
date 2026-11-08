@@ -6,7 +6,7 @@
  *     did not refund a failed workflow start).
  */
 
-import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { gateMeteredAction } from '@/lib/entitlements';
 import { prisma } from '@/lib/prisma';
 import { chargeOncePerMonth, receiptAction } from './monthlyReceipt';
@@ -24,7 +24,17 @@ async function used(action: string): Promise<number> {
 afterEach(() => {
     env.ENTITLEMENTS_ENFORCE = originalEnforce;
 });
+/*
+ * Pinned to three through the operator's own variable. These tests are about
+ * charging once per month-document and refusing without a receipt, not about
+ * the number: the launch (2026-11-07) raised Free's Month in Review from a
+ * three-use trial to five a month, which broke the hardcoded count here.
+ */
+beforeAll(() => {
+    env.ENTITLEMENT_LIMIT_FREE_MONTH_IN_REVIEW = '3';
+});
 afterAll(async () => {
+    delete env.ENTITLEMENT_LIMIT_FREE_MONTH_IN_REVIEW;
     await prisma.usageQuota.deleteMany({ where: { userId: USER } });
     await prisma.funnelEvent.deleteMany({ where: { userId: USER } });
 });

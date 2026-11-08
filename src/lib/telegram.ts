@@ -200,6 +200,69 @@ export async function sendTelegramDocument(input: SendDocumentInput): Promise<vo
   }
 }
 
+const GetFileResponseSchema = z.object({
+  ok: z.boolean(),
+  description: z.string().optional(),
+  result: z.object({
+    file_path: z.string().optional(),
+    file_size: z.number().optional(),
+  }).passthrough().optional(),
+});
+
+export type TelegramFileDownload =
+  | { ok: true; bytes: Buffer }
+  /**
+   * `too_large`: over the caller's cap, or over Telegram's own 20 MB bot limit.
+   * `unavailable`: Telegram or the network failed. `detail` is for logs and
+   * never carries the bot token.
+   */
+  | { ok: false; reason: 'too_large' | 'unavailable'; detail: string };
+
+/** One file download must leave room for the reading after it, inside the webhook's 60s. */
+const FILE_DOWNLOAD_TIMEOUT_MS = 20_000;
+
+/**
+ * Download a file a user sent, by its `file_id`: `getFile` for the path, then
+ * the file itself. The bytes are returned and never written anywhere.
+ *
+ * Never throws. The size cap is checked three times (Telegram's `file_size`,
+ * `Content-Length`, the bytes read) because the first two are optional.
+ */
+export async function downloadTelegramFile(fileId: string, maxBytes: number): Promise<TelegramFileDownload> {
+  const tooLarge = (detail: string): TelegramFileDownload => ({ ok: false, reason: 'too_large', detail });
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? '';
+  // The download URL carries the token, and a fetch error may quote its URL.
+  const scrub = (text: string) => (token ? text.split(token).join('<token>') : text);
+  try {
+    const signal = AbortSignal.timeout(FILE_DOWNLOAD_TIMEOUT_MS);
+    const meta = await fetchImpl(buildTelegramApiUrl('getFile'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: fileId }),
+      signal,
+    });
+    const parsed = GetFileResponseSchema.safeParse(await meta.json().catch(() => ({})));
+    if (!parsed.success || !parsed.data.ok) {
+      const detail = parsed.success ? parsed.data.description ?? 'unknown' : 'invalid telegram response';
+      // Telegram refuses bot downloads over 20 MB with "file is too big".
+      if (/too big/i.test(detail)) return tooLarge(detail);
+      return { ok: false, reason: 'unavailable', detail: `getFile failed: ${scrub(detail)}` };
+    }
+    const path = parsed.data.result?.file_path;
+    if (!path) return { ok: false, reason: 'unavailable', detail: 'getFile returned no file_path' };
+    if ((parsed.data.result?.file_size ?? 0) > maxBytes) return tooLarge('file_size over the cap');
+
+    const file = await fetchImpl(`https://api.telegram.org/file/bot${getTelegramBotToken()}/${path}`, { signal });
+    if (!file.ok) return { ok: false, reason: 'unavailable', detail: `file download failed: HTTP ${file.status}` };
+    if (Number(file.headers.get('content-length') ?? 0) > maxBytes) return tooLarge('content-length over the cap');
+    const bytes = Buffer.from(await file.arrayBuffer());
+    if (bytes.length > maxBytes) return tooLarge('download over the cap');
+    return { ok: true, bytes };
+  } catch (error: unknown) {
+    return { ok: false, reason: 'unavailable', detail: scrub(error instanceof Error ? error.message : String(error)) };
+  }
+}
+
 export async function answerTelegramCallbackQuery(callbackQueryId: string): Promise<void> {
   await fetchImpl(buildTelegramApiUrl('answerCallbackQuery'), {
     method: 'POST',

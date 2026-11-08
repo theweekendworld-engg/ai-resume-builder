@@ -762,11 +762,13 @@ model EmailPreference {
   @@index([weeklyDigest, digestDay, digestHour])
 }
 
+/// Since launch (2026-11-07) every feature is on for every user. A row is a
+/// kill switch: set enabled=false in /admin to turn a broken feature off.
 model FeatureFlag {
   key            String   @id
-  enabled        Boolean  @default(false)
+  enabled        Boolean  @default(true)
   allowUserIds   Json     @default("[]")
-  rolloutPercent Int      @default(0)
+  rolloutPercent Int      @default(100)
   description    String   @default("")
   updatedAt      DateTime @updatedAt
 }
@@ -1664,9 +1666,44 @@ model ChatConversation {
   channel       Channel       @default(web)
   createdAt     DateTime      @default(now())
   lastMessageAt DateTime      @default(now())
+  /// The task the user is in the middle of on this channel, so a short
+  /// follow-up ("make it shorter") is read against it instead of from zero.
+  /// Shape: src/lib/chat/focus.ts. Expires on its own (focusAt + TTL).
+  focus         Json?
+  focusAt       DateTime?
   messages      ChatMessage[]
 
   @@unique([userId, channel])
+}
+
+/// One version of a message the user sends themselves: an application email,
+/// a note to a recruiter. Revisions are new rows pointing at their parent, so
+/// "make it shorter" edits the last version and every version stays readable.
+/// Patronus never sends these; the user opens them in their own mail app.
+model MessageDraft {
+  id          String   @id @default(cuid())
+  userId      String
+  /// The Scout run the draft is about, when there is one.
+  runId       String?
+  workspaceId String?
+  parentId    String?
+  version     Int      @default(1)
+  /// email | linkedin_message | linkedin_note
+  format      String
+  /// poster | recruiter | hiring_manager | referral | alumni
+  target      String
+  /// Found in the posting by code, or typed by the user. Never model-written.
+  toEmail     String?
+  subject     String?
+  body        String
+  /// The revision instruction that produced this version, verbatim.
+  instruction String?
+  /// draft | opened | discarded
+  status      String   @default("draft")
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([parentId])
 }
 
 /// One turn. `cards` is the typed payload the UI renders (src/lib/chat/types.ts);

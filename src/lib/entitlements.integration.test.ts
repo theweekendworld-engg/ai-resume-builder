@@ -10,6 +10,11 @@
  * `ENTITLEMENTS_ENFORCE=false`; tests that need enforcement flip it and put it
  * back. Every row created here is tagged with a per-run user id and deleted in
  * `afterEach` — never assume an empty table.
+ *
+ * Launch (2026-11-07): every account gets every feature, so most of this file
+ * runs against the PAID packaging (`ENTITLEMENT_LAUNCH_OPEN=false`), which is
+ * the only shape that still has every path to exercise (a trial, a lifetime
+ * counter, an action a tier lacks). The launch itself is the last describe.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
@@ -82,6 +87,14 @@ afterEach(async () => {
     await prisma.usageQuota.deleteMany({ where: { userId } });
     await prisma.funnelEvent.deleteMany({ where: { userId } });
   }
+});
+
+beforeAll(() => {
+  process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+});
+
+afterAll(() => {
+  delete process.env.ENTITLEMENT_LAUNCH_OPEN;
 });
 
 // ---------------------------------------------------------------------------
@@ -476,5 +489,58 @@ describe('getEntitlementSnapshot — the plan page read model', () => {
     expect(snapshot.tier).toBe(Tier.pro);
     const tailored = snapshot.usage.find((u) => u.action === 'tailored_generation');
     expect(tailored?.unlimited).toBe(true);
+  });
+});
+
+/**
+ * The launch: every feature on Free, and a monthly allowance that refills by
+ * itself, so running out is "more on the 1st", never an upsell.
+ */
+describe('during the launch (2026-11-07)', () => {
+  beforeAll(() => {
+    delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+  });
+  afterAll(() => {
+    process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+  });
+
+  test('a free account has every feature, with no query', () => {
+    expect(hasFeature(Tier.free, 'apply_orchestration')).toBe(true);
+    expect(checkFeature(Tier.free, 'rubric_mapping').allowed).toBe(true);
+  });
+
+  test('tailored resumes are a monthly counter, not a lifetime one', async () => {
+    const userId = newUser('launch-monthly');
+    const decision = await gateMeteredAction(userId, 'tailored_generation');
+    expect(decision.scope).toBe('period');
+    expect(decision.requiredTier).toBe(Tier.free);
+    const row = await prisma.usageQuota.findFirstOrThrow({ where: { userId } });
+    expect(row.periodStart.getTime()).toBe(getCurrentBillingPeriod().start.getTime());
+  });
+
+  test('running out says when it refills and offers nothing to buy', async () => {
+    const userId = newUser('launch-exhausted');
+    process.env.ENTITLEMENTS_ENFORCE = 'true';
+    try {
+      // CAP pins the free tailored allowance small, through the same variable
+      // an operator would use; the launch honours it.
+      for (let i = 0; i < CAP; i++) await gateMeteredAction(userId, 'tailored_generation');
+      const error = await gateMeteredAction(userId, 'tailored_generation').catch((e: unknown) => e);
+      expect(isEntitlementError(error)).toBe(true);
+      if (!isEntitlementError(error)) throw new Error('unreachable');
+      expect(error.decision.requiresUpgrade).toBe(false);
+      expect(error.message).toContain(`this month's ${CAP} tailored resumes`);
+      expect(error.message).toMatch(/More on [A-Z][a-z]+ 1/);
+      expect(error.message).not.toMatch(/Career|Search|upgrade|plan/i);
+    } finally {
+      process.env.ENTITLEMENTS_ENFORCE = 'false';
+    }
+  });
+
+  test('the plan page shows every built action as available', async () => {
+    const userId = newUser('launch-snapshot');
+    const snapshot = await getEntitlementSnapshot(userId);
+    const unavailable = snapshot.usage.filter((line) => !line.available).map((line) => line.action).sort();
+    expect(unavailable).toEqual(['auto_apply', 'radar_refresh', 'tier2_grounding']);
   });
 });

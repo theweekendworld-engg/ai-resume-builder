@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { CaptureSourceStatus, Tier } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getUserTier } from '@/lib/entitlements';
+import { launchOpenAccess } from '@/lib/plans';
 import { buildDedupeKey } from '@/lib/jobs/runner';
 import type { JobContext, JobHandler, JobResultObject } from '@/lib/jobs/types';
 import { BACKFILL_DAYS_FREE, BACKFILL_DAYS_PAID } from '@/lib/capture/caps';
@@ -39,9 +40,12 @@ const CaptureSyncPayloadSchema = z.object({
 
 export type CaptureSyncPayload = z.infer<typeof CaptureSyncPayloadSchema>;
 
-/** §9 — Free backfills 30 days, paid tiers 90. */
+/**
+ * §9 — Free backfills 30 days, paid tiers 90. During the launch every account
+ * gets the paid depth (`launchOpenAccess`, 2026-11-07).
+ */
 export function backfillDaysForTier(tier: Tier): number {
-    return tier === Tier.free ? BACKFILL_DAYS_FREE : BACKFILL_DAYS_PAID;
+    return tier === Tier.free && !launchOpenAccess() ? BACKFILL_DAYS_FREE : BACKFILL_DAYS_PAID;
 }
 
 /**

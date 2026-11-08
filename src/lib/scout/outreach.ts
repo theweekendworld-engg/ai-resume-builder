@@ -98,20 +98,49 @@ export function trimToSentence(text: string, max: number): string {
     return `${window.slice(0, lastSpace > 0 ? lastSpace : max - 1).trim().replace(/[,;:]$/, '')}…`;
 }
 
-/** Drop whole words past the limit, ending on a sentence where possible. */
+/**
+ * Drop whole words past the limit, ending on a sentence where possible. The
+ * cut is made in the original text, so the paragraph breaks an email is laid
+ * out with survive it.
+ */
 export function trimToWords(text: string, maxWords: number): string {
-    const words = text.trim().split(/\s+/);
-    if (words.length <= maxWords) return text.trim();
-    const cut = words.slice(0, maxWords).join(' ');
-    const lastStop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '), cut.endsWith('.') ? cut.length - 1 : -1);
+    const clean = text.trim();
+    const words = [...clean.matchAll(/\S+/g)];
+    if (words.length <= maxWords) return clean;
+    const last = words[maxWords - 1];
+    const cut = clean.slice(0, (last.index ?? 0) + last[0].length);
+    const stops = [...cut.matchAll(/[.?!](?=\s)/g)].map((match) => match.index ?? -1);
+    const lastStop = Math.max(stops.at(-1) ?? -1, cut.endsWith('.') ? cut.length - 1 : -1);
     return lastStop >= cut.length * 0.5 ? cut.slice(0, lastStop + 1).trim() : `${cut}…`;
 }
 
-/** Remove sentences containing a banned phrase, unless that empties the draft. */
+/**
+ * Remove sentences containing a banned phrase, unless that empties the
+ * draft. A draft with none comes back as written: rejoining every sentence
+ * with a space flattened "…attached.\n\nThanks,\nJai" into one paragraph.
+ */
 function stripCliches(body: string): string {
-    const sentences = body.split(/(?<=[.!?])\s+/);
-    const kept = sentences.filter((sentence) => !BANNED_PHRASES.some((phrase) => sentence.toLowerCase().includes(phrase)));
-    return kept.length ? kept.join(' ').trim() : body.trim();
+    const clean = body.trim();
+    // [sentence, separator, sentence, separator, …]: separators are kept as
+    // written. A line break also ends a "sentence", so "Hi,\n\nI hope this
+    // finds you well." loses the cliché and keeps the greeting.
+    const parts = clean.split(/((?<=[.!?])\s+|\s*\n\s*)/);
+    const banned = (sentence: string) => BANNED_PHRASES.some((phrase) => sentence.toLowerCase().includes(phrase));
+    if (!parts.some((part, index) => index % 2 === 0 && banned(part))) return clean;
+    const breaks = (value: string) => (value.match(/\n/g) ?? []).length;
+    let out = '';
+    let separator = '';
+    for (let index = 0; index < parts.length; index += 2) {
+        const after = parts[index + 1] ?? '';
+        if (banned(parts[index])) {
+            // Bridge the gap with the stronger break of the two around it.
+            if (breaks(after) > breaks(separator)) separator = after;
+            continue;
+        }
+        out += `${out ? separator || ' ' : ''}${parts[index]}`;
+        separator = after;
+    }
+    return out.trim() || clean;
 }
 
 export function enforceLimits(format: DraftFormat, draft: { subject: string | null; body: string }): { subject: string | null; body: string } {
@@ -138,17 +167,45 @@ export function outreachWinWhere(userId: string) {
     return externalRetrievalFilter(userId);
 }
 
-export type EvidenceLine = { text: string; source: string };
+export type EvidenceLine = {
+    text: string;
+    source: string;
+    /** `education` lines are always kept by `selectEvidence`: a degree rarely shares a word with a JD. */
+    kind?: 'role' | 'win' | 'project' | 'education';
+};
+
+/** "2014" from "2014", "Jul 2014", "2014-07"; else the value as written. */
+function yearOf(value: string): string {
+    return value.match(/\b(19|20)\d{2}\b/)?.[0] ?? value.trim();
+}
+
+/** "B.Tech in Computer Science, IIT Delhi (2014–2018)". Built from the row; nothing inferred. */
+export function educationLine(row: {
+    institution: string;
+    degree: string;
+    fieldOfStudy: string;
+    startDate: string;
+    endDate: string;
+    current: boolean;
+}): string {
+    const what = [row.degree.trim(), row.fieldOfStudy.trim()].filter(Boolean).join(' in ');
+    const where = [what, row.institution.trim()].filter(Boolean).join(', ');
+    const start = row.startDate.trim() ? yearOf(row.startDate) : '';
+    const end = row.current ? 'current' : row.endDate.trim() ? yearOf(row.endDate) : '';
+    const when = start && end ? `${start}–${end}` : end || start;
+    return where && when ? `${where} (${when})` : where;
+}
 
 /**
  * Everything outreach may quote about the user.
  *
- * Wins through the external filter (rule 3). Roles and projects are the
- * user's resume record — the same rows every resume they send is built from —
- * and carry no sensitivity field, so they are shareable by construction.
+ * Wins through the external filter (rule 3). Roles, projects and education
+ * are the user's resume record — the same rows every resume they send is
+ * built from — and carry no sensitivity field, so they are shareable by
+ * construction.
  */
 export async function loadShareableEvidence(userId: string): Promise<EvidenceLine[]> {
-    const [wins, roles, projects] = await Promise.all([
+    const [wins, roles, projects, schools] = await Promise.all([
         prisma.win.findMany({
             where: outreachWinWhere(userId),
             orderBy: { occurredAt: 'desc' },
@@ -165,23 +222,33 @@ export async function loadShareableEvidence(userId: string): Promise<EvidenceLin
             take: 10,
             select: { name: true, description: true, technologies: true },
         }),
+        prisma.userEducation.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'asc' },
+            take: 4,
+            select: { institution: true, degree: true, fieldOfStudy: true, startDate: true, endDate: true, current: true },
+        }),
     ]);
 
     const lines: EvidenceLine[] = [];
     for (const role of roles) {
         const where = `${role.role} at ${role.company}${role.current ? ' (current)' : ''}`;
-        lines.push({ text: where, source: where });
+        lines.push({ text: where, source: where, kind: 'role' });
         const highlights = Array.isArray(role.highlights) ? (role.highlights as unknown[]).filter((h): h is string => typeof h === 'string') : [];
         for (const line of highlights.length ? highlights : [role.description]) {
-            if (line?.trim()) lines.push({ text: line.trim(), source: where });
+            if (line?.trim()) lines.push({ text: line.trim(), source: where, kind: 'role' });
         }
     }
     for (const win of wins) {
-        lines.push({ text: win.narrative?.trim() ? `${win.title}. ${win.narrative.trim()}` : win.title, source: 'Work log' });
+        lines.push({ text: win.narrative?.trim() ? `${win.title}. ${win.narrative.trim()}` : win.title, source: 'Work log', kind: 'win' });
     }
     for (const project of projects) {
         const tech = Array.isArray(project.technologies) ? (project.technologies as string[]).join(', ') : '';
-        lines.push({ text: `${project.name}: ${project.description}${tech ? ` (${tech})` : ''}`.trim(), source: `Project: ${project.name}` });
+        lines.push({ text: `${project.name}: ${project.description}${tech ? ` (${tech})` : ''}`.trim(), source: `Project: ${project.name}`, kind: 'project' });
+    }
+    for (const school of schools) {
+        const text = educationLine(school);
+        if (text) lines.push({ text, source: `Education: ${school.institution.trim() || 'school'}`, kind: 'education' });
     }
     return lines;
 }
@@ -190,18 +257,29 @@ function tokens(text: string): Set<string> {
     return new Set(text.toLowerCase().replace(/[^a-z0-9+#.\s]+/g, ' ').split(/\s+/).filter((token) => token.length >= 3));
 }
 
-/** The lines most relevant to this role, so the prompt stays small and specific. */
+/** Degrees kept whatever their overlap with the posting. */
+const PINNED_EDUCATION = 2;
+
+/**
+ * The lines most relevant to this role, so the prompt stays small and specific.
+ * Education is always in: "B.Tech, IIT Delhi" shares no word with a JD, and
+ * an application email that cannot name the degree reads as hiding it.
+ */
 export function selectEvidence(lines: EvidenceLine[], jd: JdData | null, limit = 10): EvidenceLine[] {
-    if (!jd) return lines.slice(0, limit);
+    const pinned = lines.filter((line) => line.kind === 'education').slice(0, Math.min(PINNED_EDUCATION, limit));
+    const rest = lines.filter((line) => !pinned.includes(line));
+    const room = limit - pinned.length;
+    if (!jd) return [...rest.slice(0, room), ...pinned];
     const wanted = tokens([jd.role, jd.domain, ...jd.skills, ...jd.requirements.map((r) => r.text)].join(' '));
-    return lines
+    const ranked = rest
         .map((line, index) => {
             const overlap = [...tokens(line.text)].filter((token) => wanted.has(token)).length;
             return { line, score: overlap, index };
         })
         .sort((a, b) => b.score - a.score || a.index - b.index)
-        .slice(0, limit)
+        .slice(0, room)
         .map((entry) => entry.line);
+    return [...ranked, ...pinned];
 }
 
 // ──────────────────────────────────────────────────────────────── prompt
@@ -211,7 +289,8 @@ const DraftSchema = z.object({
     body: z.string().min(1).max(3000),
 });
 
-const FORMAT_RULES: Record<DraftFormat, string> = {
+/** Per-format length and shape rules, shared with draft revision (src/lib/drafts/revise.ts). */
+export const FORMAT_RULES: Record<DraftFormat, string> = {
     linkedin_note: `A LinkedIn connection-request note. HARD LIMIT ${LINKEDIN_NOTE_MAX} characters including spaces — aim for 220. Two or three short sentences. subject must be null.`,
     linkedin_message: `A LinkedIn direct message. Under ${LINKEDIN_MESSAGE_MAX} characters. Three to five short sentences. subject must be null.`,
     email: `A short email. Subject line under ${EMAIL_SUBJECT_MAX} characters, specific (the role, not "Opportunity"). Body under ${EMAIL_BODY_MAX_WORDS} words, three short paragraphs at most, signed with the sender's first name.`,

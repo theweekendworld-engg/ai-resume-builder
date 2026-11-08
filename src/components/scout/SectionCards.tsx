@@ -20,6 +20,7 @@ import {
     PenLine,
     Scale,
     Search,
+    ShieldAlert,
     Upload,
     Users,
     XCircle,
@@ -179,6 +180,7 @@ function JdBody({ data }: { data: JdData }) {
 /* ──────────────────────────────────────────────────────────────── fit */
 
 const PREFERENCE_LABEL: Record<PreferenceCheck['key'], string> = {
+    eligibility: 'Eligibility',
     role: 'Role',
     seniority: 'Seniority',
     work_mode: 'Work mode',
@@ -194,9 +196,36 @@ function PreferenceIcon({ status }: { status: PreferenceCheck['status'] }) {
     return <MinusCircle aria-label="Unknown" className="size-3.5 shrink-0 text-muted-foreground" />;
 }
 
-function FitBody({ data }: { data: FitData }) {
+/**
+ * Who may hold the job (citizenship, clearance, Public Trust, work
+ * authorization), when it is not a clear yes. Above everything else on the
+ * card: no match on skills outweighs it, and the user should read it before
+ * the score.
+ */
+export function EligibilityNotice({ check }: { check: PreferenceCheck }) {
+    const conflict = check.status === 'conflict';
+    return (
+        <div
+            role={conflict ? 'alert' : 'note'}
+            className={cn('mb-4 flex items-start gap-2.5 rounded-lg border p-4', conflict ? 'border-warning/50 bg-warning/5' : 'border-border bg-secondary/40')}
+        >
+            <ShieldAlert aria-hidden className={cn('mt-0.5 size-4 shrink-0', conflict ? 'text-warning' : 'text-muted-foreground')} />
+            <div className="min-w-0">
+                <p className={cn(typeStyles.h3, 'text-foreground')}>{conflict ? 'You may not be eligible' : 'Check your eligibility first'}</p>
+                <p className={cn(typeStyles.small, 'mt-1 text-foreground')}>{check.detail.replace(/^You may not be eligible:\s*/, '').replace(/^./, (c) => c.toUpperCase())}</p>
+            </div>
+        </div>
+    );
+}
+
+export function FitBody({ data }: { data: FitData }) {
+    const eligibility = data.preferenceChecks.find((check) => check.key === 'eligibility' && check.status !== 'match') ?? null;
+    // The notice says it; the reasons box would say it twice.
+    const reasons = eligibility ? data.notFitReasons.filter((reason) => reason !== eligibility.detail) : data.notFitReasons;
+    const checks = data.preferenceChecks.filter((check) => check !== eligibility);
     return (
         <div>
+            {eligibility ? <EligibilityNotice check={eligibility} /> : null}
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {data.score !== null ? (
                     <span className="num font-heading text-3xl font-semibold text-foreground">{data.score}</span>
@@ -206,18 +235,18 @@ function FitBody({ data }: { data: FitData }) {
             {data.summary ? <p className={cn(typeStyles.body, 'mt-2 text-foreground')}>{data.summary}</p> : null}
 
             {/* The "why not" is the most useful thing on the screen when it applies, so it leads. */}
-            {data.notFitReasons.length ? (
+            {reasons.length ? (
                 <div className="mt-4 rounded-lg border border-border bg-secondary/40 p-4">
                     <p className={cn(typeStyles.h3, 'text-foreground')}>Why this isn&rsquo;t a fit</p>
-                    <Bullets items={data.notFitReasons} className="mt-2" />
+                    <Bullets items={reasons} className="mt-2" />
                 </div>
             ) : null}
 
-            {data.preferenceChecks.length ? (
+            {checks.length ? (
                 <>
                     <SubHeading>Against your preferences</SubHeading>
                     <ul className="space-y-1.5">
-                        {data.preferenceChecks.map((check) => (
+                        {checks.map((check) => (
                             <li key={check.key} className={cn(typeStyles.small, 'flex items-start gap-2 text-foreground')}>
                                 <span className="mt-0.5"><PreferenceIcon status={check.status} /></span>
                                 <span>

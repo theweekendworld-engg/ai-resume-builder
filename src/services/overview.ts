@@ -203,7 +203,7 @@ export async function getOverview(userId: string, flags: OverviewFlags, now: Dat
     needsYou.sort((a, b) => rank[a.kind] - rank[b.kind] || (a.at && b.at ? a.at.localeCompare(b.at) : 0));
 
     const setup = [
-        { key: 'resume', label: 'Add your resume or work history', done: experienceCount > 0, href: '/dashboard?section=profile' },
+        { key: 'resume', label: 'Add your resume or work history', done: experienceCount > 0, href: '/dashboard?section=profile&tab=import' },
         { key: 'telegram', label: 'Link Telegram to log and share from your phone', done: telegram > 0, href: '/settings/channels' },
         ...(flags.journey
             ? [

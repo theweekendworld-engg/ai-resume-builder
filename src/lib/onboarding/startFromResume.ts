@@ -61,6 +61,8 @@ async function defaultDeps(): Promise<StartDeps> {
                 // the user typed a moment earlier.
                 mergeProfile: true,
                 sections: { experience: true, education: true, projects: true, achievements: true },
+                // The first run makes its own resume document right after this.
+                createBaseResume: false,
             });
             return {
                 success: result.success,

@@ -13,7 +13,9 @@ const ExperienceSchema = z.object({
   current: z.boolean().optional(),
   location: z.string().max(300).optional(),
   description: z.string().max(5000).optional(),
-  highlights: z.array(z.string().max(300)).max(100).optional(),
+  // Matches HIGHLIGHT_MAX in src/lib/resume/fitHighlights.ts. 300 split real
+  // two-line bullets in half on import (QA 2026-11-07).
+  highlights: z.array(z.string().max(1000)).max(100).optional(),
 });
 
 const ExperienceUpdateSchema = ExperienceSchema.partial().extend({

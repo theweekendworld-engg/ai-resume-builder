@@ -479,7 +479,7 @@ describe('parseImpactAnswer — the no-invention rule at full force', () => {
         stubImpact({
             metric: 'checkout p95 latency',
             baseline: null,
-            result: '180ms',
+            result: '~180ms',
             delta: null,
             scope: null,
             timeframe: null,
@@ -488,6 +488,12 @@ describe('parseImpactAnswer — the no-invention rule at full force', () => {
         expect(result.kind).toBe('impact');
         if (result.kind !== 'impact') return;
         expect(result.impact.metric).toBe('checkout p95 latency');
+    });
+
+    test('an estimate the user gave cannot be stored as exact', async () => {
+        stubImpact({ metric: 'checkout p95 latency', baseline: null, result: '180ms', delta: null, scope: null, timeframe: null });
+        const result = await parseImpactAnswer({ userId: USER, answer: 'about 180ms now', win });
+        expect(result.kind === 'impact' && result.impact.result === '180ms').toBe(false);
     });
 
     test('the prompt and system message name the rule and the source', () => {

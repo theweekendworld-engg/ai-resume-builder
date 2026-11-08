@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Menu, PanelRight, Sparkles } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { generateLatexFromResume, LatexTemplateType } from '@/templates/latex';
+import { generateLatexFromResume } from '@/templates/latex';
 import { compileLatex } from '@/actions/ai';
 import { loadJobTargetForResume, saveJobTargetToCloud } from '@/actions/jobTargets';
 import { loadResumeFromCloud, saveResumeToCloud } from '@/actions/resume';
@@ -31,7 +31,7 @@ import { JobMatchPanel } from '@/components/editor/tools/JobMatchPanel';
 import { LaTeXPanel } from '@/components/editor/tools/LaTeXPanel';
 import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { DesignPanel } from '@/components/editor/tools/DesignPanel';
-import { initialResumeData, type ResumeData } from '@/types/resume';
+import { initialResumeData, isResumeTemplateId, type ResumeData } from '@/types/resume';
 import { readPendingScore, clearPendingScore } from '@/lib/pendingScore';
 import { parseResumeText } from '@/actions/parseResumeText';
 import { getScoreStashFixes } from '@/actions/onboarding';
@@ -63,6 +63,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     latexCode,
     setLatexCode,
     theme,
+    setTheme,
     setTemplateId,
     atsScore,
     syncStatus,
@@ -94,8 +95,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
   useEffect(() => {
     const template = searchParams.get('template');
-    if (template && ['ats-simple', 'modern', 'classic', 'minimal'].includes(template)) {
-      setTemplateId(template as LatexTemplateType);
+    if (isResumeTemplateId(template)) {
+      setTemplateId(template);
     }
   }, [searchParams, setTemplateId]);
 
@@ -112,12 +113,17 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
         if (resumeResult.data) {
           setResumeData(resumeResult.data);
-          const generated = generateLatexFromResume(resumeResult.data, theme);
+          // A resume that carries its look opens in it; others use this browser's.
+          // Read from the store, not the hook value: this effect must not
+          // depend on `theme`, or applying the resume's theme would reload it.
+          const resumeTheme = resumeResult.data.theme ?? useResumeStore.getState().theme;
+          if (resumeResult.data.theme) setTheme(resumeResult.data.theme);
+          const generated = generateLatexFromResume(resumeResult.data, resumeTheme);
           setLatexCode(generated);
         } else {
           const emptyDraft = structuredClone(initialResumeData);
           setResumeData(emptyDraft);
-          const generated = generateLatexFromResume(emptyDraft, theme);
+          const generated = generateLatexFromResume(emptyDraft, useResumeStore.getState().theme);
           setLatexCode(generated);
         }
 
@@ -140,7 +146,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       .finally(() => {
         setInitialLoading(false);
       });
-  }, [resumeId, theme, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData]);
+  }, [resumeId, setJobDescription, setLastSyncedAt, setLatexCode, setResumeData, setTheme]);
 
   useEffect(() => {
     if (initialLoading || activePanel === 'latex') return;
@@ -169,7 +175,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       setSyncStatus('syncing');
       try {
         const saveResult = await saveResumeToCloud(
-          resumeData,
+          // Save the look with the content, so it reopens the same anywhere.
+          { ...resumeData, theme },
           title,
           'manual',
           resumeId,
@@ -193,7 +200,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     }, 1400);
 
     return () => clearTimeout(timeout);
-  }, [atsScore?.overall, initialLoading, jobDescription, resumeData, resumeId, setLastSyncedAt, setSyncStatus, title]);
+  }, [atsScore?.overall, initialLoading, jobDescription, resumeData, resumeId, setLastSyncedAt, setSyncStatus, theme, title]);
 
   // Phase 1 -> editor handoff: consume the anonymous score stashed in
   // sessionStorage exactly once. Seed the fix checklist always; preload the
@@ -209,7 +216,9 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     if (stashId) {
       void getScoreStashFixes(stashId).then((result) => {
         if (!result.success || result.data.fixes.length === 0) return;
-        setFixChecklist(result.data.fixes);
+        // The fixes belong to the resume the stash became, and only to it.
+        if (result.data.resumeId && result.data.resumeId !== resumeId) return;
+        setFixChecklist(result.data.fixes, resumeId);
         setActivePanel('fix-checklist');
         toast.message('Your fix checklist is ready', {
           description: `${result.data.fixes.length} item${result.data.fixes.length === 1 ? '' : 's'} from your free resume score.`,
@@ -223,7 +232,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     if (!pending) return;
 
     if (pending.fixes.length > 0) {
-      setFixChecklist(pending.fixes);
+      // Carried to the resume opened now, and scoped to it.
+      setFixChecklist(pending.fixes, resumeId);
       setActivePanel('fix-checklist');
       toast.message('Your fix checklist is ready', {
         description: `${pending.fixes.length} item${pending.fixes.length === 1 ? '' : 's'} carried over from your free resume score.`,
@@ -309,7 +319,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       case 'score-improve':
         return <ScoreImprovePanel />;
       case 'fix-checklist':
-        return <FixChecklistPanel />;
+        return <FixChecklistPanel resumeId={resumeId} />;
       case 'truthfulness':
         return <TruthfulnessPanel resumeId={resumeId} />;
       case 'latex':

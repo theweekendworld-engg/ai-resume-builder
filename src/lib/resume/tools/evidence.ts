@@ -180,6 +180,36 @@ export async function getRoleEvidence(
     return { ...base, lines: description ? [description] : [], summaryOnly: description || undefined };
 }
 
+/**
+ * The record behind a set of roles, for checking a draft after the loop.
+ *
+ * `lines` is everything a bullet for that role may be copied from (the same
+ * lines `getRoleEvidence` returned to the model). `restorable` is the subset
+ * that is the candidate's own resume lines (highlights), which tailoring may
+ * put back when the model left a quantified one out.
+ */
+export type RecordLines = { lines: string[]; restorable: string[] };
+
+export async function getRecordLines(userId: string, roleIds: readonly string[]): Promise<Map<string, RecordLines>> {
+    const ids = [...new Set(roleIds.filter(Boolean))];
+    const out = new Map<string, RecordLines>();
+    if (ids.length === 0) return out;
+    const rows = await prisma.userExperience.findMany({
+        where: { userId, id: { in: ids } },
+        select: { id: true, description: true, highlights: true },
+    });
+    await Promise.all(
+        rows.map(async (row) => {
+            const highlights = asStringArray(row.highlights);
+            const wins = await confirmedWinLines(userId, row.id);
+            const description = (row.description || '').trim();
+            const lines = highlights.length > 0 || wins.length > 0 ? [...highlights, ...wins] : description ? [description] : [];
+            out.set(row.id, { lines, restorable: highlights });
+        }),
+    );
+    return out;
+}
+
 /** Lines per role a resume can draw from the Work Log. Most recent first. */
 const WIN_LINES_PER_ROLE = 12;
 

@@ -1,10 +1,14 @@
 import { z } from 'zod';
 
+import { DEFAULT_TEMPLATE_ID, RESUME_TEMPLATE_IDS } from '@/types/resume';
+
 export const SectionOrderItemSchema = z.enum(['summary', 'experience', 'projects', 'education', 'skills']);
 export const WorkModePreferenceSchema = z.enum(['remote', 'hybrid', 'onsite']);
 
 export const UserGenerationPreferencesSchema = z.object({
-  defaultTemplate: z.enum(['ats-simple', 'modern', 'classic', 'minimal']).default('ats-simple'),
+  // `compact` for anyone who never chose: it keeps a tailored resume on one
+  // page. A stored choice is kept as it is.
+  defaultTemplate: z.enum(RESUME_TEMPLATE_IDS).default(DEFAULT_TEMPLATE_ID),
   defaultSectionOrder: z.array(SectionOrderItemSchema).min(1).max(5).default(['summary', 'experience', 'projects', 'education', 'skills']),
   maxProjects: z.number().int().min(1).max(6).default(3),
   targetLength: z.enum(['1-page', '2-page', 'auto']).default('auto'),

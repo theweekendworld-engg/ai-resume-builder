@@ -17,8 +17,8 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN } from '@/lib/plans';
-import { pricingHighlights } from './Pricing';
+import { CAREER_PLAN, FREE_PLAN, SEARCH_PLAN, jobWatchCompanyLimit, meteredLimit } from '@/lib/plans';
+import { launchHighlights } from './Pricing';
 import { PAYOFFS } from './Features';
 import { POLICY_LINKS, START_FREE_HREF } from './links';
 
@@ -40,8 +40,8 @@ function read(file: string): string {
 
 /**
  * Every component rendered on the marketing home page, plus the pieces the
- * public policy pages render. `Pricing.tsx` is back on the page (2026-09-27):
- * prices are public, paid columns say "Opening soon".
+ * public policy pages render. `Pricing.tsx` says "free while we launch, every
+ * feature included" (2026-11-07); `JobSearch.tsx` is the job-search section.
  *
  * Keep this list in step with `src/app/(marketing)/page.tsx`. A section that
  * renders to a logged-out visitor and is missing from here is a section that
@@ -51,6 +51,7 @@ const PAGE_SOURCES = [
     'Hero.tsx',
     'ChatDemo.tsx',
     'Channels.tsx',
+    'JobSearch.tsx',
     'EvidenceTicker.tsx',
     'TheProblem.tsx',
     'HowItWorks.tsx',
@@ -67,9 +68,11 @@ const PAGE_SOURCES = [
 
 describe('prices come from the catalog, not from retyped strings', () => {
     test('Pricing imports the catalog', () => {
+        // During the launch it shows the free plan's allowances, read from the
+        // catalog. The paid plans' prices stay in the catalog for later.
         const src = read('Pricing.tsx');
         expect(src).toContain("from '@/lib/plans'");
-        expect(src).toMatch(/CAREER_PLAN|PLAN_CATALOG/);
+        expect(src).toMatch(/FREE_PLAN|PLAN_CATALOG/);
     });
 
     test('no price literal is hardcoded anywhere on the page', () => {
@@ -135,29 +138,58 @@ describe('marketing does not advertise what a new user cannot use (audit 2026-09
         expect(PAGE_SOURCES).not.toMatch(/by request/i);
     });
 
-    test('features that are off for new users are marked coming soon', () => {
-        const soon = new Set(PAYOFFS.filter((item) => item.soon).map((item) => item.title));
-        for (const title of ['Review and promotion packets', 'Level readiness', 'A weekly ritual that maintains itself']) {
-            expect(soon.has(title)).toBe(true);
-        }
-        // The live ones really are live today.
-        expect(soon.has('A resume assembled from evidence')).toBe(false);
+    // Since the launch (2026-11-07) every feature is on for every account
+    // (`launchOpenAccess` in plans.ts; flags are kill switches), so nothing
+    // that ships may carry a "coming soon" label. This replaced the test that
+    // required packets, readiness and the weekly ritual to be marked soon.
+    test('nothing that ships is marked coming soon', () => {
+        expect(PAYOFFS.filter((item) => item.soon).map((item) => item.title)).toEqual([]);
+        expect(read('Pricing.tsx')).not.toMatch(/coming soon/i);
     });
 
-    test('pricing highlights label every unlaunched capability', () => {
-        const all = Object.values(pricingHighlights()).flat();
-        for (const pattern of [/packet/i, /readiness/i, /month in review/i, /autofill/i, /analysed for fit/i]) {
-            const item = all.find((entry) => pattern.test(entry.text));
-            expect(item?.soon).toBe(true);
-        }
-        expect(all.some((entry) => /github/i.test(entry.text) && !entry.soon)).toBe(false);
+    test('pricing is free while we launch, with one Start free and no "Opening soon"', () => {
+        const src = read('Pricing.tsx');
+        expect(src).toMatch(/Free while we launch/);
+        expect(src).toMatch(/Every feature included/);
+        expect(src).not.toMatch(/opening soon/i);
+        expect(src.match(/Start free/g) ?? []).toHaveLength(1);
+        // Paid plans are mentioned once, quietly, as later.
+        expect(src).toMatch(/Paid plans come later/);
+    });
+
+    test('the launch highlights state the real allowances, and nothing unbuilt', () => {
+        const all = launchHighlights();
+        expect(all.some((text) => text.includes(String(meteredLimit(FREE_PLAN.tier, 'tailored_generation').limit)))).toBe(true);
+        expect(all.some((text) => text.includes(String(meteredLimit(FREE_PLAN.tier, 'cover_letter').limit)))).toBe(true);
+        expect(all.some((text) => text.includes(String(jobWatchCompanyLimit(FREE_PLAN.tier))))).toBe(true);
+        // The extension is not in the Chrome Web Store and GitHub drafting is
+        // not proven, so neither is listed as included.
+        expect(all.some((text) => /autofill|github/i.test(text))).toBe(false);
     });
 
     test('limits in the pricing copy come from the catalog, not literals', () => {
         const src = read('Pricing.tsx');
         expect(src).toContain('meteredLimit');
-        expect(src).toContain('freeResumeCap');
         expect(src).not.toMatch(/'\d+ tailored resumes/);
+        expect(src).not.toMatch(/`\d+ /);
+    });
+
+    test('the job search is on the page: alerts, any post, the apply email, tracking', () => {
+        const src = read('JobSearch.tsx');
+        expect(src).toMatch(/Nightly alerts for companies you name/);
+        expect(src).toMatch(/fit/i);
+        expect(src).toMatch(/pay/i);
+        expect(src).toMatch(/recruiters and hiring managers/i);
+        expect(src).toMatch(/opens in Gmail/i);
+        expect(src).toMatch(/make it shorter/i);
+        expect(src).toMatch(/Forward job email/i);
+        // It never claims to send mail for you, or to crawl LinkedIn.
+        expect(src).not.toMatch(/we send|sends it for you|auto-?apply/i);
+        expect(src).not.toMatch(/crawl(s|ing)? linkedin/i);
+    });
+
+    test('no hype words', () => {
+        expect(PAGE_SOURCES).not.toMatch(/\b(revolutioni[sz]e|supercharge|seamless(ly)?|unlock(s|ed)?)\b/i);
     });
 
     test('no raw plan-tier identifiers are shown', () => {

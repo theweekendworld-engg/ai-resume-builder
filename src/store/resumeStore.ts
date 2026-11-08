@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME } from '@/types/resume';
+import { ResumeData, initialResumeData, ExperienceItem, ProjectItem, EducationItem, SectionType, ResumeTheme, ResumeTemplateId, DEFAULT_RESUME_THEME, LEGACY_RESUME_THEME, defaultThemeFor } from '@/types/resume';
 import { v4 as uuidv4 } from 'uuid';
 import { LatexTemplateType, generateLatexFromResume, DEFAULT_LATEX_TEMPLATE } from '@/templates/latex';
 import { latexToResume } from '@/actions/ai';
@@ -27,6 +27,19 @@ export type CopilotSectionKey = 'summary' | 'experience' | 'projects' | 'skills'
  * A fix carried over from the Phase 1 anonymous score, plus local resolution
  * state so the editor checklist can check items off as they are addressed.
  */
+const NO_FIXES: FixChecklistItem[] = [];
+
+/**
+ * The checklist for one resume: empty unless it was carried to `resumeId`.
+ * Returns a stable empty array, so it is safe as a store selector.
+ */
+export function fixChecklistFor(
+    state: { fixChecklist: FixChecklistItem[]; fixChecklistResumeId: string | null },
+    resumeId: string,
+): FixChecklistItem[] {
+    return state.fixChecklistResumeId === resumeId ? state.fixChecklist : NO_FIXES;
+}
+
 export interface FixChecklistItem extends ScoreFix {
     id: string;
     resolved: boolean;
@@ -80,6 +93,13 @@ interface ResumeState {
 
     // Fix checklist (carried from the Phase 1 anonymous score)
     fixChecklist: FixChecklistItem[];
+    /**
+     * The resume the checklist was carried to. The checklist is about THAT
+     * document; it was persisted unscoped, so every resume opened afterwards,
+     * a tailored copy included, showed the original's fixes (QA 2026-11-07,
+     * finding 12). Null: carried before scoping existed, shown nowhere.
+     */
+    fixChecklistResumeId: string | null;
 
     // Setters
     setResumeData: (data: ResumeData) => void;
@@ -115,7 +135,7 @@ interface ResumeState {
     clearCopilotSession: () => void;
 
     // Fix checklist actions
-    setFixChecklist: (fixes: ScoreFix[]) => void;
+    setFixChecklist: (fixes: ScoreFix[], resumeId: string) => void;
     toggleFixResolved: (id: string, resolved?: boolean) => void;
     clearFixChecklist: () => void;
 
@@ -171,7 +191,9 @@ export const useResumeStore = create<ResumeState>()(
             latexCode: DEFAULT_LATEX_TEMPLATE,
             atsScore: null,
             editorMode: 'visual',
-            selectedTemplate: 'ats-simple' as LatexTemplateType,
+            // A new editor state starts on the default (compact). A persisted
+            // one keeps its own template: see `merge` below.
+            selectedTemplate: DEFAULT_RESUME_THEME.templateId as LatexTemplateType,
             theme: DEFAULT_RESUME_THEME,
             isGenerating: false,
 
@@ -191,6 +213,7 @@ export const useResumeStore = create<ResumeState>()(
 
             // Fix checklist
             fixChecklist: [],
+            fixChecklistResumeId: null,
 
             setResumeData: (data) => {
                 const { visualDataVersion } = get();
@@ -368,12 +391,13 @@ export const useResumeStore = create<ResumeState>()(
             }),
 
             // Fix checklist actions
-            setFixChecklist: (fixes) => set({
+            setFixChecklist: (fixes, resumeId) => set({
                 fixChecklist: fixes.map((fix, index) => ({
                     ...fix,
                     id: `fix-${index}-${uuidv4()}`,
                     resolved: false,
                 })),
+                fixChecklistResumeId: resumeId,
             }),
             toggleFixResolved: (id, resolved) => {
                 const { fixChecklist } = get();
@@ -385,7 +409,7 @@ export const useResumeStore = create<ResumeState>()(
                     ),
                 });
             },
-            clearFixChecklist: () => set({ fixChecklist: [] }),
+            clearFixChecklist: () => set({ fixChecklist: [], fixChecklistResumeId: null }),
 
             generateLatexFromData: () => {
                 const { resumeData, theme } = get();
@@ -568,16 +592,20 @@ export const useResumeStore = create<ResumeState>()(
                 });
             },
 
-            resetResume: () => set({
-                resumeData: initialResumeData,
-                jobDescription: '',
-                githubUsername: '',
-                atsScore: null,
-                latexCode: DEFAULT_LATEX_TEMPLATE,
-                lastSyncedLatex: DEFAULT_LATEX_TEMPLATE,
-                visualDataVersion: 0,
-                latexVersion: 0,
-            }),
+            resetResume: () => {
+                // In the template the user has, not the default's.
+                const latex = generateLatexFromResume(initialResumeData, get().theme);
+                set({
+                    resumeData: initialResumeData,
+                    jobDescription: '',
+                    githubUsername: '',
+                    atsScore: null,
+                    latexCode: latex,
+                    lastSyncedLatex: latex,
+                    visualDataVersion: 0,
+                    latexVersion: 0,
+                });
+            },
 
             isUsingSampleData: () => {
                 return false;
@@ -597,6 +625,7 @@ export const useResumeStore = create<ResumeState>()(
                 visualDataVersion: state.visualDataVersion,
                 latexVersion: state.latexVersion,
                 fixChecklist: state.fixChecklist,
+                fixChecklistResumeId: state.fixChecklistResumeId,
             }),
             merge: (persistedState: unknown, currentState) => {
                 const hydratedState = (persistedState ?? {}) as Partial<ResumeState>;
@@ -613,17 +642,23 @@ export const useResumeStore = create<ResumeState>()(
                     if (!hydratedState.resumeData.sectionOrder) {
                         hydratedState.resumeData.sectionOrder = ['summary', 'experience', 'projects', 'education', 'skills'];
                     }
+                    // A state persisted before `compact` existed was made in
+                    // ats-simple (the default then) and stays there: changing
+                    // the default never changes a resume someone already has.
                     if (!hydratedState.selectedTemplate) {
                         hydratedState.selectedTemplate = 'ats-simple';
                     }
                     // Backfill the theme for users persisted before themes existed.
                     if (!hydratedState.theme) {
                         hydratedState.theme = {
-                            ...DEFAULT_RESUME_THEME,
+                            ...LEGACY_RESUME_THEME,
                             templateId: hydratedState.selectedTemplate || 'ats-simple',
                         };
                     } else {
-                        hydratedState.theme = { ...DEFAULT_RESUME_THEME, ...hydratedState.theme };
+                        hydratedState.theme = {
+                            ...defaultThemeFor(hydratedState.theme.templateId ?? 'ats-simple'),
+                            ...hydratedState.theme,
+                        };
                         // Keep the legacy mirror consistent with the persisted theme.
                         hydratedState.selectedTemplate = hydratedState.theme.templateId;
                     }

@@ -26,9 +26,9 @@ import { Reveal } from './Reveal';
  * way it would be said to someone's face. The temptation in an FAQ is to use it
  * as a second features list — questions phrased as "How does the powerful X
  * work?" — which readers correctly discount. The questions here are the ones a
- * sceptic actually has, including the two that are least flattering to us: how
- * little we integrate with today, and the fact that there is no price on the
- * page.
+ * sceptic actually has, including the least flattering one: how little it
+ * integrates with today. The job-search questions (does it apply for me, what
+ * does it read) are the two a careful job seeker asks first.
  */
 
 const QUESTIONS = [
@@ -57,12 +57,20 @@ const QUESTIONS = [
         a: 'Then you are the person this is actually for. The resume is the moment with a deadline, which is why it leads the page — but the record is what pays off at review time, at a promotion case, and on the day your manager changes and the person who saw you do the work is gone.',
     },
     {
-        q: 'What happens to my history if I stop paying?',
-        a: 'It is hidden, never deleted. Downgrading turns off the paid surfaces; your wins, evidence and confirmations stay exactly where they are, and come back untouched if you return.',
+        q: 'Does it apply to jobs for me?',
+        a: 'No. It finds and checks jobs, writes the resume and the email, and opens the email in your own Gmail or mail app. Nothing goes out until you read it and press send.',
+    },
+    {
+        q: 'Which job boards do the alerts read?',
+        a: 'The public job boards of the companies you name, on Greenhouse, Lever, Ashby and SmartRecruiters, found and verified from the name alone. LinkedIn is not crawled; a LinkedIn job you send yourself is read from its link.',
     },
     {
         q: 'What does it cost?',
-        a: `Keeping the log is free and always will be, and the free plan works today. The paid plans and their prices are listed under Pricing above; they open soon. If you are unsure which you need, write to ${CONTACT_EMAIL}.`,
+        a: `Nothing while we launch, and every feature is included. Each account gets monthly allowances sized so an active job search does not run into them, and the limits are shown on your plan page before you reach them. Paid plans come later, with notice first. If something is unclear, write to ${CONTACT_EMAIL}.`,
+    },
+    {
+        q: 'What happens to my history when paid plans arrive?',
+        a: 'Nothing is deleted, on any plan. A plan change only ever hides surfaces; your wins, evidence and confirmations stay exactly where they are.',
     },
 ];
 

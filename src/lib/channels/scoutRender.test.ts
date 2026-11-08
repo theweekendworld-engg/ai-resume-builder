@@ -48,15 +48,15 @@ describe('final: job', () => {
         expect(message.lines.length - 2).toBeLessThanOrEqual(MAX_KEY_LINES);
     });
 
-    test('a stretch offers the tracker, then draft, why-not-fit and open', () => {
-        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'why', 'open']);
+    test('a stretch offers the tracker, then draft, why-not-fit, email and open', () => {
+        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'why', 'draft', 'open']);
         expect(message.actions.slice(0, 3).map((action) => action.label)).toEqual(['💾 Save', '📨 Applied', '❌ Not interested']);
     });
 
     test('a strong fit does not offer "why not a fit"', () => {
         const base = JOB_SECTIONS.fit as { data: FitData };
         const strong = view({ sections: { ...JOB_SECTIONS, fit: ok<FitData>({ ...base.data, verdict: 'strong', notFitReasons: [] }) } });
-        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'open']);
+        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'draft', 'open']);
     });
 
     test('an unavailable section simply has no line', () => {
@@ -182,5 +182,30 @@ describe('final: job tracker line', () => {
         const message = renderScoutFinal(view({ sections: JOB_SECTIONS }), APP);
         const callbacks = message.actions.filter((action) => action.kind !== 'open');
         expect(callbacks.length).toBeGreaterThan(3);
+    });
+});
+
+describe('the pay follow-up on a finished job', () => {
+    test('is asked under the result, as a typed reply, without holding the fit back', () => {
+        const fit = (JOB_SECTIONS.fit as { data: FitData }).data;
+        const withFollowUp = view({
+            status: 'succeeded',
+            sections: {
+                ...JOB_SECTIONS,
+                fit: ok<FitData>({ ...fit, followUp: { id: 'pref.compFloor', step: 'fit', prompt: 'This posting states $90/hr. What is the lowest pay you would take?' } }),
+            },
+        });
+        const message = renderScoutFinal(withFollowUp, APP);
+        const text = message.lines.map((line) => line.map((span) => span.text).join('')).join('\n');
+        expect(text).toContain('What is the lowest pay you would take?');
+        expect(text).toContain('Reply here with your answer');
+        // The job's own buttons stay; the follow-up does not replace them.
+        expect(message.actions.some((action) => action.kind === 'tailor')).toBe(true);
+    });
+
+    test('nothing extra when there is no follow-up', () => {
+        const message = renderScoutFinal(view({ status: 'succeeded', sections: JOB_SECTIONS }), APP);
+        const text = message.lines.map((line) => line.map((span) => span.text).join('')).join('\n');
+        expect(text).not.toContain('Reply here with your answer');
     });
 });

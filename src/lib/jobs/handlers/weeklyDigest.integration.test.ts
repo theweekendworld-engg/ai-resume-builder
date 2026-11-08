@@ -837,6 +837,14 @@ describe('best fits this week', () => {
 
     test('is absent without the scout flag, and the inbox is not even read', async () => {
         installReader();
+        // Every feature is on by default since launch and a missing row means
+        // on, so "without the flag" is the kill switch: a row, enabled=false.
+        await prisma.featureFlag.upsert({
+            where: { key: 'scout' },
+            create: { key: 'scout', enabled: false, rolloutPercent: 0, allowUserIds: [] },
+            update: { enabled: false, rolloutPercent: 0 },
+        });
+        invalidateFlagCache();
         const userId = await seedUser('fits-noflag');
         await makeWin({ userId });
 

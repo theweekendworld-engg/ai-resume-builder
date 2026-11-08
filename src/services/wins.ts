@@ -22,6 +22,7 @@ import { kickQueue } from '@/lib/jobs/kick';
 import * as winGraph from '@/services/winGraph';
 import { findNearDuplicate, resolveOccurredAt, structureWin } from '@/services/winDrafting';
 import type { DismissReason, StructuredDraft, WinPatch, WinView } from '@/actions/wins.types';
+import { aiFailureMessage } from '@/lib/usageTracker';
 
 /** See the note in `src/actions/wins.ts`: capture is never gated by plan. */
 const WIN_DRAFT_ACTION = 'win_draft' as MeteredAction;
@@ -120,7 +121,7 @@ export async function createWinCore(input: CreateWinCoreInput): Promise<Result<C
             console.error('[services/wins] structureWin failed', {
                 error: error instanceof Error ? error.message : String(error),
             });
-            return err('Could not structure that just now — try again', 'ai_unavailable');
+            return err(aiFailureMessage(error, 'Could not structure that just now — try again'), 'ai_unavailable');
         }
 
         const structuredDraft = structured.draft;

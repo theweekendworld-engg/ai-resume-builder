@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { STEP_HREF } from '@/lib/missions/stepLinks';
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Circle, Lock, Minus, Pause, Play } from 'lucide-react';
+import { Check, ChevronRight, Circle, Loader2, Lock, Minus, Pause, Play } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -173,7 +173,7 @@ function MissionCard({ mission, onChanged }: { mission: MissionView; onChanged: 
     };
 
     return (
-        <section className="rounded-xl border border-border bg-card">
+        <section className="rounded-xl border border-border bg-card" aria-busy={busy || undefined}>
             <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
                 <div className="min-w-0">
                     <h2 className="font-heading text-lg font-semibold text-foreground">{mission.title}</h2>
@@ -199,7 +199,7 @@ function MissionCard({ mission, onChanged }: { mission: MissionView; onChanged: 
                     }
                     className="shrink-0 gap-1.5 text-xs"
                 >
-                    {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+                    {paused ? <Play className="size-3.5" aria-hidden /> : <Pause className="size-3.5" aria-hidden />}
                     {paused ? 'Resume' : 'Pause'}
                 </Button>
             </header>
@@ -275,19 +275,25 @@ function OptionCard({
     option,
     onStart,
     busy,
+    starting,
 }: {
     option: MissionOption;
     onStart: (option: MissionOption) => void;
     busy: boolean;
+    /** This is the one being started: it shows the spinner, the rest just wait. */
+    starting: boolean;
 }) {
     return (
         <button
             type="button"
             disabled={busy || !option.available}
+            aria-busy={starting || undefined}
             onClick={() => onStart(option)}
             className={cn(
                 'group flex w-full items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors',
-                option.available ? 'hover:border-primary/40 hover:bg-secondary/40' : 'opacity-70',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                option.available ? 'cursor-pointer hover:border-primary/40 hover:bg-secondary/40' : 'opacity-70',
+                busy && !starting && 'opacity-60',
             )}
         >
             <div className="min-w-0 flex-1">
@@ -302,7 +308,9 @@ function OptionCard({
                     {option.requiredPlan ? ` · needs ${option.requiredPlan}` : null}
                 </p>
             </div>
-            {option.available ? (
+            {starting ? (
+                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+            ) : option.available ? (
                 <ChevronRight
                     className="mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
                     aria-hidden
@@ -314,12 +322,13 @@ function OptionCard({
 
 export function HomeScreen({ initial }: { initial: HomeView }) {
     const router = useRouter();
-    const [busy, setBusy] = React.useState(false);
+    const [starting, setStarting] = React.useState<MissionOption['type'] | null>(null);
+    const busy = starting !== null;
 
     const onStart = async (option: MissionOption) => {
-        setBusy(true);
+        setStarting(option.type);
         const result = await startMission({ type: option.type });
-        setBusy(false);
+        setStarting(null);
         if (!result.success) {
             toast.error(result.error);
             return;
@@ -330,7 +339,11 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
     return (
         <div className="mx-auto w-full max-w-[760px] px-4 py-8">
             {initial.mission ? (
-                <MissionCard mission={initial.mission} onChanged={() => router.refresh()} />
+                <>
+                    {/* The card's title is an h2; the page still needs its h1. */}
+                    <h1 className="sr-only">Goals</h1>
+                    <MissionCard mission={initial.mission} onChanged={() => router.refresh()} />
+                </>
             ) : (
                 <section>
                     <h1 className="font-heading text-xl font-semibold text-foreground">
@@ -354,6 +367,7 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
                                 option={option}
                                 onStart={onStart}
                                 busy={busy}
+                                starting={starting === option.type}
                             />
                         ))}
                     </div>

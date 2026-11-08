@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { decodeScoutAction, encodeScoutAction, executeScoutAction, renderWhyNotFit, type ScoutActionDeps } from './scoutActions';
+import { decodeScoutAction, encodeScoutAction, executeScoutAction, renderWhyNotFit, type DraftActionDeps, type ScoutActionDeps } from './scoutActions';
+import { renderDraftMessage } from './scoutRender';
+import { REVISION_INSTRUCTIONS } from '@/lib/drafts/revisions';
+import type { DraftView } from '@/lib/drafts/types';
 import { inertInboxDeps, JOB_SECTIONS, RUN_ID, view } from './testViews.test-utils';
 
 describe('wire format', () => {
@@ -12,6 +15,7 @@ describe('wire format', () => {
             { kind: 'status' as const, status: 'n' as const, label: '' },
             { kind: 'confirm_win' as const, winId: 'cmwin0000000000000000000abcdefghij', label: '' },
             { kind: 'dismiss_win' as const, winId: 'cmwin0000000000000000000abcdefghij', label: '' },
+            { kind: 'revise_draft' as const, draftId: 'cmdraft000000000000000000abcdefghij', revision: 'g' as const, label: '' },
         ];
         for (const action of cases) {
             const data = encodeScoutAction(RUN_ID, action);
@@ -22,10 +26,11 @@ describe('wire format', () => {
         expect(decodeScoutAction(`sc:s:${RUN_ID}:i`)).toEqual({ kind: 'status', runId: RUN_ID, status: 'interviewing' });
         expect(decodeScoutAction('sc:c:cmwin000000000000000000a')).toEqual({ kind: 'confirm_win', winId: 'cmwin000000000000000000a' });
         expect(decodeScoutAction('sc:x:cmwin000000000000000000a')).toEqual({ kind: 'dismiss_win', winId: 'cmwin000000000000000000a' });
+        expect(decodeScoutAction('sc:v:cmdraft00000000000000000a:s')).toEqual({ kind: 'revise_draft', draftId: 'cmdraft00000000000000000a', revision: 'shorter' });
     });
 
     test('an unknown status code or a malformed win id decodes to null', () => {
-        for (const data of [`sc:s:${RUN_ID}:z`, `sc:s:${RUN_ID}`, 'sc:c:../x', 'sc:x:', 'sc:c:short']) {
+        for (const data of [`sc:s:${RUN_ID}:z`, `sc:s:${RUN_ID}`, 'sc:c:../x', 'sc:x:', 'sc:c:short', 'sc:v:cmdraft00000000000000000a:x', 'sc:v:cmdraft00000000000000000a', 'sc:v:../x:s']) {
             expect(decodeScoutAction(data)).toBeNull();
         }
     });
@@ -78,18 +83,17 @@ describe('execution', () => {
         expect(reply.lines[0][0].text).toContain('already been answered');
     });
 
-    test('a draft returns subject and body lines', async () => {
+    test('a LinkedIn draft returns its body lines, as before', async () => {
         const d = deps();
-        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'referral', format: 'email' }, d);
-        expect(d.calls).toEqual(['draft:referral:email']);
+        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'referral', format: 'linkedin_note' }, d);
+        expect(d.calls).toEqual(['draft:referral:linkedin_note']);
         const text = reply.lines.map((line) => line.map((s) => s.text).join('')).join('\n');
-        expect(text).toContain('Subject: Hi');
         expect(text).toContain('Hello\nThere');
     });
 
     test('a service error is relayed, not thrown', async () => {
         const d = deps({ draftScoutOutreach: async () => ({ success: false, error: 'Upgrade to draft more', code: 'entitlement_required' }) });
-        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'referral', format: 'email' }, d);
+        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'referral', format: 'linkedin_message' }, d);
         expect(reply.lines[0][0].text).toBe('Upgrade to draft more');
     });
 
@@ -188,5 +192,91 @@ describe('tailor', () => {
         const d = deps({ tailorResumeForRun: async () => ({ success: false, error: "You've used all 10 Tailored resumes on Free", code: 'entitlement_required' }) });
         const reply = await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d);
         expect(reply.lines[0][0].text).toContain('Tailored resumes');
+    });
+});
+
+// ─── versioned email drafts
+
+function draftView(overrides: Partial<DraftView> = {}): DraftView {
+    return {
+        id: 'cmdraft0000000000000000v1', version: 1, runId: RUN_ID, workspaceId: 'cmws00000000000000000000a',
+        format: 'email', target: 'recruiter', toEmail: 'jobs@x.com', subject: 'FDE application',
+        body: 'Hi,\n\nResume attached.\n\nJai', createdAt: '', ...overrides,
+    };
+}
+
+function draftDeps(overrides: Partial<DraftActionDeps> = {}): DraftActionDeps & { calls: string[]; focused: string[] } {
+    const calls: string[] = [];
+    const focused: string[] = [];
+    return {
+        calls,
+        focused,
+        createDraftForRun: async (_u, runId, params) => {
+            calls.push(`create:${runId}:${params.target}:${params.format}`);
+            return { success: true, data: draftView() };
+        },
+        reviseDraft: async (_u, draftId, instruction) => {
+            calls.push(`revise:${draftId}:${instruction}`);
+            return { success: true, data: draftView({ id: 'cmdraft0000000000000000v2', version: 2, body: 'Resume attached. Jai' }) };
+        },
+        focusDraft: async (_u, channel, draft) => {
+            focused.push(`${channel}:${draft.id}`);
+        },
+        render: (draft) => renderDraftMessage(draft, { gmail: 'https://mail.google.com/mail/?view=cm', mailApp: null }),
+        ...overrides,
+    };
+}
+
+function textOf(reply: { lines: { text: string }[][] }): string {
+    return reply.lines.map((line) => line.map((s) => s.text).join('')).join('\n');
+}
+
+describe('email drafts on Telegram', () => {
+    test('"✉️ Email jobs@x.com" writes v1 through the drafts service, focuses it, and shows To/Subject/Body with buttons', async () => {
+        const drafts = draftDeps();
+        const d = deps({ drafts });
+        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'recruiter', format: 'email' }, d, { channel: 'telegram' });
+        expect(drafts.calls).toEqual([`create:${RUN_ID}:recruiter:email`]);
+        expect(d.calls).toEqual([]); // not the one-off outreach path
+        expect(drafts.focused).toEqual(['telegram:cmdraft0000000000000000v1']);
+        expect(textOf(reply)).toContain('To: jobs@x.com');
+        expect(textOf(reply)).toContain('Subject: FDE application');
+        expect(reply.actions?.map((a) => a.label)).toEqual(['📨 Open in Gmail to send', '✂️ Shorter', '💪 Stronger']);
+        expect(reply.runId).toBe(RUN_ID);
+    });
+
+    test('a refused draft is relayed with the way forward, and nothing is focused', async () => {
+        const drafts = draftDeps({ createDraftForRun: async () => ({ success: false, error: 'You have used your drafts on Free', code: 'entitlement_required' }) });
+        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'recruiter', format: 'email' }, deps({ drafts }));
+        expect(textOf(reply)).toBe('You have used your drafts on Free');
+        // Was "See plans"; during the launch the page shows usage, not prices.
+        expect(reply.actions?.[0]).toMatchObject({ kind: 'open', label: 'See your usage' });
+        expect(drafts.focused).toEqual([]);
+    });
+
+    test('a focus write that fails does not lose the draft', async () => {
+        const drafts = draftDeps({ focusDraft: async () => { throw new Error('db down'); } });
+        const reply = await executeScoutAction('u', { kind: 'draft', runId: RUN_ID, target: 'recruiter', format: 'email' }, deps({ drafts }));
+        expect(textOf(reply)).toContain('To: jobs@x.com');
+    });
+
+    test('Shorter and Stronger revise the tapped version with their fixed instruction and move the focus', async () => {
+        const drafts = draftDeps();
+        const shorter = await executeScoutAction('u', { kind: 'revise_draft', draftId: 'cmdraft0000000000000000v1', revision: 'shorter' }, deps({ drafts }));
+        expect(drafts.calls).toEqual([`revise:cmdraft0000000000000000v1:${REVISION_INSTRUCTIONS.shorter}`]);
+        expect(drafts.focused).toEqual(['telegram:cmdraft0000000000000000v2']);
+        expect(textOf(shorter)).toContain('· v2');
+        expect(shorter.actions?.find((a) => a.kind === 'revise_draft')).toMatchObject({ draftId: 'cmdraft0000000000000000v2' });
+
+        await executeScoutAction('u', { kind: 'revise_draft', draftId: 'cmdraft0000000000000000v2', revision: 'stronger' }, deps({ drafts }), { channel: 'whatsapp' });
+        expect(drafts.calls[1]).toBe(`revise:cmdraft0000000000000000v2:${REVISION_INSTRUCTIONS.stronger}`);
+        expect(drafts.focused[1]).toBe('whatsapp:cmdraft0000000000000000v2');
+    });
+
+    test('a refused revision (the numeric guard) says why and keeps the focus where it was', async () => {
+        const drafts = draftDeps({ reviseDraft: async () => ({ success: false, error: 'I kept the last version.', code: 'guard_rejected' }) });
+        const reply = await executeScoutAction('u', { kind: 'revise_draft', draftId: 'cmdraft0000000000000000v1', revision: 'stronger' }, deps({ drafts }));
+        expect(textOf(reply)).toBe('I kept the last version.');
+        expect(drafts.focused).toEqual([]);
     });
 });

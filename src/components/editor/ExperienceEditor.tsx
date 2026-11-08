@@ -188,6 +188,28 @@ export function ExperienceEditor() {
                                     </div>
                                 </div>
 
+                                {/* Printed beside the company and the title. Optional. */}
+                                <div className="mt-4 grid grid-cols-2 gap-4">
+                                    <div className="flex flex-col gap-2">
+                                        <Label className="text-sm font-medium">Company note</Label>
+                                        <Input
+                                            value={item.companyNote ?? ''}
+                                            onChange={(e) => updateExperience(item.id, { companyNote: e.target.value })}
+                                            placeholder="Series B fintech"
+                                            className="h-10"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <Label className="text-sm font-medium">Stack</Label>
+                                        <Input
+                                            value={item.stack ?? ''}
+                                            onChange={(e) => updateExperience(item.id, { stack: e.target.value })}
+                                            placeholder="Go, Python"
+                                            className="h-10"
+                                        />
+                                    </div>
+                                </div>
+
                                 <div className="mt-4 grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-2">
                                         <Label className="text-sm font-medium">Start Date</Label>

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { allSkillSlugs } from '@/lib/radar/skills';
-import { groupSkills, isRenderableSkill, __testing } from './skillGroups';
+import { groupSkills, isRenderableSkill, resolveSkillGroups, __testing } from './skillGroups';
 import { contactParts, normalizeUrl, projectLinks } from './contact';
 
 describe('skills are grouped, not listed', () => {
@@ -192,5 +192,39 @@ describe('project links', () => {
     test('an unusable value produces no link rather than a broken one', () => {
         expect(projectLinks({ repoUrl: 'my-project' })).toEqual([]);
         expect(projectLinks({})).toEqual([]);
+    });
+});
+
+describe('umbrella slugs and the resume\'s own rows (QA 2026-11-07)', () => {
+    test('Prometheus and Grafana keep their names instead of becoming "Observability"', () => {
+        const groups = groupSkills(['Python', 'Go', 'Prometheus', 'Grafana']);
+        const row = groups.find((group) => group.skills.includes('Prometheus'));
+        expect(row?.skills).toEqual(['Prometheus', 'Grafana']);
+        expect(groups.flatMap((group) => group.skills)).not.toContain('Observability');
+    });
+
+    test('two spellings of one thing still collapse', () => {
+        const all = groupSkills(['Postgres', 'PostgreSQL', 'Go']).flatMap((group) => group.skills);
+        expect(all.filter((skill) => /postgres/i.test(skill))).toHaveLength(1);
+    });
+
+    test('the resume\'s own labels are printed, and only for skills still shown', () => {
+        const groups = resolveSkillGroups({
+            skills: ['PyTorch', 'TTS', 'FreeSWITCH', 'Kafka'],
+            skillGroups: [
+                { label: 'Speech / AI', items: ['PyTorch', 'ASR (Conformer, CTC)', 'TTS'] },
+                { label: 'Voice infra', items: ['FreeSWITCH', 'RTP'] },
+                { label: 'Languages', items: ['Rust'] },
+            ],
+        });
+        expect(groups[0]).toEqual({ label: 'Speech / AI', skills: ['PyTorch', 'TTS'] });
+        expect(groups[1]).toEqual({ label: 'Voice infra', skills: ['FreeSWITCH'] });
+        // A row with nothing left is not printed; an unclaimed skill is appended.
+        expect(groups.map((group) => group.label)).not.toContain('Languages');
+        expect(groups.flatMap((group) => group.skills)).toContain('Kafka');
+    });
+
+    test('without rows, grouping is unchanged', () => {
+        expect(resolveSkillGroups({ skills: ['Go', 'Kafka'] })).toEqual(groupSkills(['Go', 'Kafka']));
     });
 });

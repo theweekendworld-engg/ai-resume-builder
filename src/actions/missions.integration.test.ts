@@ -408,7 +408,38 @@ describe('§2 rule 4 — completion asks for the outcome', () => {
     });
 });
 
-describe('entitlements — §8', () => {
+/**
+ * Launch (2026-11-07): every mission is open to every account, so the Goals
+ * page shows no lock and no "needs Career / needs Search" (e2e QA finding 6).
+ */
+describe('during the launch, every goal is open', () => {
+    test('a free user starts a goal that needed Career, with no plan named', async () => {
+        signIn('launch-free-start');
+        const result = await missions.startMission({ type: MissionType.get_promoted });
+        expect(result.success).toBe(true);
+    });
+
+    test('the option list has no locked goal and names no plan', async () => {
+        signIn('launch-free-options');
+        const home = await missions.getHome();
+        if (!home.success) throw new Error(home.error);
+        expect(home.data.options.filter((o) => !o.available)).toEqual([]);
+        expect(home.data.options.map((o) => o.requiredPlan).filter(Boolean)).toEqual([]);
+    });
+});
+
+/**
+ * The plan gate, as it works once paid plans return
+ * (`ENTITLEMENT_LAUNCH_OPEN=false`). Kept so the machinery stays proven.
+ */
+describe('entitlements — §8 (after the launch)', () => {
+    beforeAll(() => {
+        process.env.ENTITLEMENT_LAUNCH_OPEN = 'false';
+    });
+    afterAll(() => {
+        delete process.env.ENTITLEMENT_LAUNCH_OPEN;
+    });
+
     test('a free user cannot start a Career mission, and is told which plan', async () => {
         const userId = signIn('free-user');
 

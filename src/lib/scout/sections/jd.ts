@@ -29,6 +29,7 @@ import {
     extractLocation,
 } from '@/lib/scout/fit/jdSignals';
 import type { JdData, ScoutRequirement } from '@/lib/scout/types';
+import { extractApplyEmails } from '@/lib/drafts/applyEmail';
 
 /** Below this there is nothing to read requirements out of. */
 const MIN_JD_CHARS = 200;
@@ -105,6 +106,8 @@ export const jdSection: ScoutSection<'jd'> = async (ctx) => {
         skills: brief.skills,
         responsibilities: brief.responsibilities,
         applyUrl: extractApplyUrl({ sourceUrl: ingest.sourceUrl, linkKind: ingest.linkKind, text }),
+        // Code-read from the posting, like applyUrl: the draft's To comes from here.
+        applyEmails: extractApplyEmails(text),
     };
 
     if (requirements.length === 0 && data.skills.length === 0) {

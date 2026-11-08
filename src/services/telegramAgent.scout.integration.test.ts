@@ -130,9 +130,9 @@ describe('routing', () => {
         try {
             await processTelegramUpdate(textUpdate('yes, 2 years of Kafka at Plivo'));
             expect(started).toHaveLength(0);
-            // The clarification branch answered (this empty payload is invalid, so it errors),
-            // proving the message went there and not to Scout.
-            expect(telegram.sent.at(-1)?.text).toContain('Clarification state is invalid');
+            // The clarification branch answered (this empty payload is invalid, so it errors,
+            // in plain words), proving the message went there and not to Scout.
+            expect(telegram.sent.at(-1)?.text).toContain('Something went wrong on our side with that resume');
         } finally {
             await prisma.generationSession.delete({ where: { id: session.id } });
         }
@@ -219,7 +219,7 @@ describe('routing', () => {
         try {
             await processTelegramUpdate(textUpdate('shipped retry queue, p99 down 40%'));
             expect(started).toHaveLength(0);
-            expect(telegram.sent.at(-1)?.text).toContain('Clarification state is invalid');
+            expect(telegram.sent.at(-1)?.text).toContain('Something went wrong on our side with that resume');
         } finally {
             await prisma.generationSession.delete({ where: { id: session.id } });
         }

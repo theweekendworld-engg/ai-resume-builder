@@ -4,12 +4,12 @@ import { prisma } from '@/lib/prisma';
 import {
   METERED_ACTIONS,
   METERED_ACTION_LABELS,
-  PLAN_FEATURES,
   UNLIMITED,
   isTrialLimit,
   isUnlimited,
   maxTier,
   meteredLimit,
+  planHasFeature,
   planName,
   tierRequiredFor,
   tierRequiredForAction,
@@ -171,9 +171,11 @@ export async function getUserTier(userId: string): Promise<Tier> {
 /**
  * Synchronous table lookup. Zero database queries once the tier is resolved —
  * that is a hard requirement, because these get called per row in a list.
+ *
+ * True for every tier during the launch (`launchOpenAccess` in plans.ts).
  */
 export function hasFeature(tier: Tier, feature: PlanFeature): boolean {
-  return PLAN_FEATURES[tier][feature];
+  return planHasFeature(tier, feature);
 }
 
 /**
@@ -275,7 +277,7 @@ function entitlementMessage(decision: EntitlementDecision): string {
     return `That's part of ${planName(decision.requiredTier)}, not ${planName(decision.tier)}.`;
   }
 
-  const noun = METERED_ACTION_LABELS[decision.action].toLowerCase();
+  const noun = meterNoun(decision.action);
 
   // An exhausted trial is a different sentence from an exhausted allowance.
   // They did not run out of something they pay for; they finished looking at
@@ -297,9 +299,31 @@ function entitlementMessage(decision: EntitlementDecision): string {
     return `That's part of ${planName(decision.requiredTier)}, not ${planName(decision.tier)}.`;
   }
 
-  return decision.scope === 'lifetime'
-    ? `You've used your ${decision.limit} ${noun} on ${planName(decision.tier)}.`
-    : `You've used your ${decision.limit} ${noun} for this period.`;
+  if (decision.scope === 'lifetime') {
+    return `You've used your ${decision.limit} ${noun} on ${planName(decision.tier)}.`;
+  }
+  // A monthly allowance refills by itself, so the sentence says when rather
+  // than offering a plan (during the launch there is none to offer).
+  const resets = decision.resetsOn ? formatResetDate(decision.resetsOn) : null;
+  return resets
+    ? `You've used this month's ${decision.limit} ${noun}. More on ${resets}; everything you've made is saved.`
+    : `You've used this month's ${decision.limit} ${noun}. Everything you've made is saved.`;
+}
+
+/**
+ * The meter label as a noun inside a sentence: "tailored resumes", but
+ * "AI-structured wins" and "Month in Review" keep their capitals (a plain
+ * `toLowerCase` wrote "ai-structured wins").
+ */
+function meterNoun(action: MeteredAction): string {
+  const label = METERED_ACTION_LABELS[action];
+  if (action === 'month_in_review' || /^[A-Z]{2}/.test(label)) return label;
+  return label.charAt(0).toLowerCase() + label.slice(1);
+}
+
+/** "December 1". Billing periods are calendar months in UTC. */
+function formatResetDate(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
 }
 
 export function isEntitlementError(error: unknown): error is EntitlementError {

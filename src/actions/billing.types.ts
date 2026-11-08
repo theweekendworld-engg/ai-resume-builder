@@ -65,6 +65,11 @@ export interface PlanPageData {
   refundEligibleUntil: string | null;
   /** Whether adding Search on top is the sensible next step. */
   canAddSearch: boolean;
+  /**
+   * The launch is on: every feature for every account (`launchOpenAccess`).
+   * Resolved on the server, because the client bundle cannot read the env.
+   */
+  launchOpen: boolean;
 }
 
 // ---------------------------------------------------------------------------

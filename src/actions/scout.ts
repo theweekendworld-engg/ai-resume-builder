@@ -118,14 +118,19 @@ export async function listScouts(): Promise<Result<ScoutRunSummary[]>> {
 
 // ──────────────────────────────────────────────────────────────── writes
 
-const AnswerSchema = z.object({ runId: RunIdSchema, value: z.string().trim().min(1).max(500) });
+const AnswerSchema = z.object({
+    runId: RunIdSchema,
+    value: z.string().trim().min(1).max(500),
+    /** The question the page showed; a blocking question or the fit's follow-up. */
+    questionId: z.string().min(1).max(64).optional(),
+});
 
 export async function answerScout(input: z.infer<typeof AnswerSchema>): Promise<Result<ScoutRunView>> {
     const gate = await gateSurface();
     if ('error' in gate) return gate.error;
     const parsed = AnswerSchema.safeParse(input);
     if (!parsed.success) return err(invalidInput(parsed.error), 'invalid_input');
-    return answerScoutQuestion(gate.userId, parsed.data.runId, parsed.data.value);
+    return answerScoutQuestion(gate.userId, parsed.data.runId, parsed.data.value, parsed.data.questionId ?? null);
 }
 
 export async function refreshScout(runId: string): Promise<Result<ScoutRunView>> {

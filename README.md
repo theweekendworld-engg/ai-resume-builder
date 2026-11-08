@@ -43,6 +43,4 @@ Use these env vars to control progressive rollout:
 - `FEATURE_INLINE_REWRITE_V2`
 - `FEATURE_JD_KEYWORD_MATCH_HINTS`
 - `FEATURE_TELEGRAM_SEND_PDF_DOCUMENT`
-- `FEATURE_TELEGRAM_ASYNC_PROCESSING`
 
-Telegram async processing endpoint uses `TELEGRAM_INTERNAL_SECRET` (or falls back to `TELEGRAM_WEBHOOK_SECRET`).

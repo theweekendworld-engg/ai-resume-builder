@@ -34,7 +34,8 @@ export default function TermsPage() {
             </LegalSection>
             <LegalSection heading="Plans and payment">
                 <p>
-                    The free plan is free. Paid plans are monthly subscriptions at the prices on the{' '}
+                    The free plan is free. Paid plans are not on sale yet; when they are, they will be monthly
+                    subscriptions at the prices on the{' '}
                     <Link href="/pricing" className="underline-offset-4 hover:underline">pricing page</Link>, and
                     renew until cancelled. Cancellation and refunds are covered by the{' '}
                     <Link href="/refund-policy" className="underline-offset-4 hover:underline">refund and cancellation policy</Link>.

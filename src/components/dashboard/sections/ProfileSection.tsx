@@ -1,7 +1,9 @@
 'use client';
 
+const PROFILE_TABS = new Set(['personal', 'experience', 'education', 'projects', 'import', 'preferences']);
+
 import { useState, useEffect, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   createUserExperience,
   deleteUserExperience,
@@ -15,6 +17,7 @@ import {
 } from '@/actions/education';
 import { upsertUserProfile, updateUserPreferences, type UserProfileDTO } from '@/actions/profile';
 import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import { RESUME_TEMPLATE_OPTIONS, type ResumeTemplateId } from '@/types/resume';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -237,6 +240,11 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
     technologies: (Array.isArray(p.technologies) ? p.technologies : []) as string[],
   }));
 
+  // `?tab=import` opens straight on the importer (Home's "Add your resume"
+  // used to land on an empty Personal form).
+  const requestedTab = useSearchParams().get('tab');
+  const initialTab = requestedTab && PROFILE_TABS.has(requestedTab) ? requestedTab : 'personal';
+
   return (
     <div className="space-y-6">
       <div>
@@ -244,7 +252,7 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
         <p className="text-sm text-muted-foreground">Personal info, experience, education, projects, and preferences.</p>
       </div>
 
-      <Tabs defaultValue="personal">
+      <Tabs defaultValue={initialTab}>
         <TabsList className="flex flex-wrap gap-1">
           <TabsTrigger value="personal">Personal</TabsTrigger>
           <TabsTrigger value="experience">Experience</TabsTrigger>
@@ -315,12 +323,12 @@ export function ProfileSection({ profile, projects }: ProfileSectionProps) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label>Default template</Label>
-                  <Select value={preferences.defaultTemplate} onValueChange={(v) => setPreferences((p) => ({ ...p, defaultTemplate: v as 'ats-simple' | 'modern' | 'classic' }))}>
+                  <Select value={preferences.defaultTemplate} onValueChange={(v) => setPreferences((p) => ({ ...p, defaultTemplate: v as ResumeTemplateId }))}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ats-simple">ATS Simple</SelectItem>
-                      <SelectItem value="modern">Modern</SelectItem>
-                      <SelectItem value="classic">Classic</SelectItem>
+                      {RESUME_TEMPLATE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

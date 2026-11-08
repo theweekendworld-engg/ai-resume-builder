@@ -5,6 +5,7 @@ import { EvidenceTicker } from '@/components/marketing/EvidenceTicker';
 import { TheProblem } from '@/components/marketing/TheProblem';
 import { HowItWorks } from '@/components/marketing/HowItWorks';
 import { Channels } from '@/components/marketing/Channels';
+import { JobSearch } from '@/components/marketing/JobSearch';
 import { Guarantees } from '@/components/marketing/Guarantees';
 import { Features } from '@/components/marketing/Features';
 import { Provenance } from '@/components/marketing/Provenance';
@@ -22,13 +23,19 @@ import { ClosingCta } from '@/components/marketing/ClosingCta';
  * Trust sits immediately before the questions on purpose. It is the last thing
  * a reader weighs before they start hunting for reasons this will not work.
  *
+ * ── The job search ──────────────────────────────────────────────────────────
+ *
+ * `<JobSearch />` (2026-11-07) sits after Channels: once a reader knows where
+ * they talk to it, it shows what it does for a search, from the nightly alert
+ * to the tracked reply. Between the sunken Channels band and the Guarantees
+ * band, so the rhythm rule below still holds.
+ *
  * ── Pricing ─────────────────────────────────────────────────────────────────
  *
- * `<Pricing />` is back (2026-09-27). Payments are not live yet, so the paid
- * columns say "Opening soon" instead of linking to checkout — but the prices
- * are public: a visitor deciding whether to invest in a record deserves to
- * know what it will cost, and a payment gateway's review requires a visible
- * price list. Contact is its own section again rather than standing in for it.
+ * Free while we launch, every feature included (owner decision, 2026-11-07).
+ * Payments are not live, so there are no paid columns and no "Opening soon"
+ * buttons; one quiet line says paid plans come later. Contact is its own
+ * section rather than standing in for pricing.
  *
  * ── Rhythm ──────────────────────────────────────────────────────────────────
  *
@@ -51,6 +58,7 @@ export default async function MarketingHomePage() {
       <TheProblem />
       <HowItWorks />
       <Channels />
+      <JobSearch />
       <Guarantees />
       <Features />
       <Provenance />

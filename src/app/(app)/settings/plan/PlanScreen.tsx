@@ -13,7 +13,7 @@ import type { PlanPageData, UsageLineView } from '@/actions/billing.types';
 import { ProactiveDowngradeCard } from '@/components/paywall';
 import { PageHeader, QuotaMeter, formatWinDate, pageContainer, typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
-import { Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import {
   CAREER_PLAN,
   COMPARISON_PLANS,
@@ -119,14 +119,29 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
   const visibleUsage = data.usage.filter((line) => line.available || line.used > 0);
 
   const currentPlan = COMPARISON_PLANS.find((plan) => plan.tier === data.tier) ?? null;
+  // During the launch nothing can be bought, so the paid columns and their
+  // prices would only advertise a purchase that is not there.
+  const launchWithoutCheckout = data.launchOpen && !data.billingConfigured;
+  const subscribed = Boolean(career?.active || search?.active);
+
+  /** A spinner on the button that is working, so a click is never silent. */
+  const spin = (key: string) =>
+    busy === key ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null;
 
   return (
     <main>
-      <PageHeader title="Plan" description={FREE_FOREVER_PROMISE} />
+      <PageHeader
+        title="Plan"
+        description={
+          data.launchOpen
+            ? 'Free while we launch: every feature is included. The allowances below are monthly.'
+            : FREE_FOREVER_PROMISE
+        }
+      />
       <div className={cn(pageContainer, 'py-6')}>
 
       {notice ? (
-        <p className={cn(typeStyles.small, 'mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-foreground')}>
+        <p role="status" className={cn(typeStyles.small, 'mb-4 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-foreground')}>
           {notice}
         </p>
       ) : null}
@@ -149,7 +164,9 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
               <p className={cn(typeStyles.caption, 'uppercase tracking-wide text-muted-foreground')}>Your plan</p>
               <h2 id="current-plan" className="font-heading text-xl font-semibold text-foreground">
                 {data.planName}
-                <span className="ml-2 text-sm font-normal text-muted-foreground">{data.planBlurb}</span>
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  {data.launchOpen && !subscribed ? 'Every feature, while we launch' : data.planBlurb}
+                </span>
               </h2>
             </div>
           </div>
@@ -201,6 +218,14 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
       {/* ---------------------------------------------------------------- */}
       {/* Change plan: the three plans side by side.                        */}
       {/* ---------------------------------------------------------------- */}
+      {launchWithoutCheckout ? (
+        <section aria-labelledby="paid-plans" className="mt-8">
+          <h2 id="paid-plans" className="font-heading text-base font-semibold text-foreground">Paid plans</h2>
+          <p role="status" className={cn(typeStyles.small, 'mt-3 rounded-lg border border-border bg-card px-4 py-3 text-foreground')}>
+            {BILLING_UNAVAILABLE_COPY}
+          </p>
+        </section>
+      ) : (
       <section aria-labelledby="change-plan" className="mt-8">
         <h2 id="change-plan" className="font-heading text-base font-semibold text-foreground">Change plan</h2>
 
@@ -246,12 +271,14 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
                           disabled={busy === p.key}
                           onClick={() => onCheckout(p.key)}
                         >
+                          {spin(p.key)}
                           {CAREER_PLAN.name} · {p.label}
                         </Button>
                       ))
                     : null}
                   {plan.tier === SEARCH_PLAN.tier && data.billingConfigured && data.canAddSearch ? (
                     <Button type="button" disabled={busy === 'search_monthly'} onClick={() => onCheckout('search_monthly')}>
+                      {spin('search_monthly')}
                       Add {SEARCH_PLAN.name} · {priceFor('search_monthly').label}
                     </Button>
                   ) : null}
@@ -281,6 +308,7 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
           </div>
         </details>
       </section>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       {/* Billing + leaving                                                 */}
@@ -298,10 +326,12 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
               onClick={onPortal}
               disabled={busy === 'portal'}
             >
+              {spin('portal')}
               Update payment and invoices
             </Button>
           ) : null}
           <Button type="button" variant="outline" onClick={onExport} disabled={busy === 'export'}>
+            {spin('export')}
             Export everything
           </Button>
           {data.refundEligibleUntil ? (
@@ -311,6 +341,7 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
               onClick={onRefund}
               disabled={busy === 'refund'}
             >
+              {spin('refund')}
               Refund (until {formatWinDate(data.refundEligibleUntil)})
             </Button>
           ) : null}
@@ -323,7 +354,9 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
         </div>
 
         <p className={cn(typeStyles.caption, 'mt-3 text-muted-foreground')}>
-          {NO_DELETION_PROMISE}
+          {/* The 90-day line describes Free once paid plans return; during the
+              launch nothing on Free is hidden, so it would not be true yet. */}
+          {data.launchOpen && !subscribed ? 'Nothing you record is ever deleted, on any plan.' : NO_DELETION_PROMISE}
         </p>
       </section>
       </div>

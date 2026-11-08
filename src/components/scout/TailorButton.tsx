@@ -13,6 +13,13 @@ import { processChannelGenerate } from '@/actions/channelGenerate';
 
 import { EntitlementNotice } from './EntitlementNotice';
 
+/** Tells the Apply-by-email panel on the same page that a tailored PDF now exists. */
+export const TAILORED_EVENT = 'patronus:tailored';
+function announceTailored(runId: string): void {
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(TAILORED_EVENT, { detail: { runId } }));
+}
+
+
 type Question = { id: string; question: string; gap: string };
 
 type State =
@@ -62,8 +69,10 @@ export function TailorButton({ runId }: { runId: string }) {
                 const payload = JSON.parse((event as MessageEvent).data) as { resumeId?: string };
                 const done = payload.resumeId ?? resumeId;
                 setState(done ? { kind: 'done', resumeId: done } : { kind: 'error', message: 'The resume finished but could not be found.', code: null });
+                if (done) announceTailored(runId);
             } catch {
                 setState(resumeId ? { kind: 'done', resumeId } : { kind: 'error', message: 'The resume finished but could not be found.', code: null });
+                if (resumeId) announceTailored(runId);
             }
         });
         source.addEventListener('error', (event) => {
@@ -79,7 +88,7 @@ export function TailorButton({ runId }: { runId: string }) {
                 setState({ kind: 'error', message: 'Tailoring failed.', code: null });
             }
         });
-    }, []);
+    }, [runId]);
 
     const start = async () => {
         setState({ kind: 'starting' });
@@ -91,6 +100,7 @@ export function TailorButton({ runId }: { runId: string }) {
         const { sessionId, resumeId, status, nextQuestion } = result.data;
         if (status === 'completed' && resumeId) {
             setState({ kind: 'done', resumeId });
+            announceTailored(runId);
             return;
         }
         if (status === 'awaiting_clarification' && nextQuestion) {
@@ -124,6 +134,7 @@ export function TailorButton({ runId }: { runId: string }) {
         }
         if (result.status === 'completed' && (result.resumeId ?? state.resumeId)) {
             setState({ kind: 'done', resumeId: (result.resumeId ?? state.resumeId)! });
+            announceTailored(runId);
             return;
         }
         stream(state.sessionId, state.resumeId);

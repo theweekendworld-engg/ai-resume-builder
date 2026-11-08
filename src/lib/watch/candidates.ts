@@ -15,6 +15,7 @@
 import { classifyFamily, classifySeniority } from '@/lib/radar/role';
 import { findMatchedSkills } from '@/lib/extension/fitScore';
 import { placeMatches } from '@/lib/scout/fit/evaluate';
+import { regionContains, regionOf } from '@/lib/scout/fit/region';
 
 export type CandidatePosting = {
     id: string;
@@ -87,7 +88,16 @@ export function locationAcceptable(location: string | null, profile: Pick<Candid
     if (profile.targetLocations.length === 0) return true;
     const remoteOk = profile.preferredWorkModes.length === 0 || profile.preferredWorkModes.includes('remote')
         || profile.targetLocations.some((place) => REMOTE.test(place));
-    if (REMOTE.test(location) && remoteOk) return true;
+    if (REMOTE.test(location) && remoteOk) {
+        // "Remote - US" is remote for people in the US. When the user's places
+        // are all known to be elsewhere, it is not theirs; when none can be
+        // placed, the fit check reads the description and asks.
+        const scope = regionOf(location);
+        if (!scope) return true;
+        const regions = profile.targetLocations.map((place) => regionOf(place));
+        if (regions.every((region) => region === null)) return true;
+        return regions.some((region) => regionContains(scope, region));
+    }
     return placeMatches(location, profile.targetLocations);
 }
 

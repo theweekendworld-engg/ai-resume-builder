@@ -23,7 +23,12 @@ import { generateLatexFromResume, type LatexTemplateType } from '@/templates/lat
 import { logUsageEvent } from '@/lib/usageTracker';
 import { track } from '@/lib/track';
 import { buildReport, type ResumeCoverage } from '@/lib/resume/report';
-import type { ResumeData } from '@/types/resume';
+import { fitToPages, type PageFit } from '@/lib/resume/pageFit';
+import { pageBudget } from '@/lib/resume/length';
+import { measurePdf } from '@/lib/pdfParser';
+import { parseUserGenerationPreferences } from '@/lib/userPreferences';
+import type { ResumeData, ResumeTheme } from '@/types/resume';
+import { defaultThemeFor } from '@/types/resume';
 
 type RunGenerationOptions = {
   sessionId: string;
@@ -47,8 +52,32 @@ export type GenerationRunResult = {
   atsEstimate?: number;
   pdfId?: string;
   pdfUrl?: string;
+  /**
+   * How the PDF measured against the page budget. `over` means it still runs
+   * long after trimming, and every surface that shows the result must say so.
+   * Absent on the reuse path, which compiles nothing.
+   */
+  pageFit?: PageFit;
   reused: boolean;
 };
+
+/** The page budget from the user's length preference (see `pageBudget`). */
+/**
+ * The page budget, and the template to render in, from one read of the
+ * user's preferences. The template is their Default template setting; with
+ * none stored, the setting's default, `compact`, which holds a full resume
+ * to one page instead of leaving the fit loop to cut bullets. This used to
+ * be a hardcoded 'ats-simple' that ignored the setting altogether.
+ */
+async function generationDefaultsFor(userId: string): Promise<{ maxPages: 1 | 2; template: LatexTemplateType }> {
+  const profile = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: { preferences: true, yearsExperience: true },
+  });
+  const preferences = parseUserGenerationPreferences(profile?.preferences);
+  const years = Number((profile?.yearsExperience ?? '').match(/\d+/)?.[0] ?? 0);
+  return { maxPages: pageBudget(preferences.targetLength, years), template: preferences.defaultTemplate };
+}
 
 function toPipelineStep(step: SmartPipelineStep): PipelineStep {
   switch (step) {
@@ -542,7 +571,6 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
   }
 
   let activeStep = session.currentStep ?? PipelineStep.reuse_check;
-  const template = options.templatePreference ?? 'ats-simple';
   const effectiveFallbackResume = options.fallbackResumeData
     ?? (session.fallbackResume as ResumeData | null)
     ?? undefined;
@@ -708,14 +736,64 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       },
     });
 
-    const finalResume = (pipelineResult?.resume
+    const draftedResume = (pipelineResult?.resume
       ?? (draftResumeFromSession?.draftResume as ResumeData | null)
       ?? null) as ResumeData | null;
-    if (!finalResume) {
+    if (!draftedResume) {
       throw new Error('No generated resume available to finalize session');
     }
 
-    const resumeId = draftResumeFromSession?.resultResumeId
+    // Compile, measure, and trim to the page budget BEFORE saving, so the
+    // stored resume is the one in the PDF. It used to compile once and store
+    // whatever came out: the owner's tailored resume was two pages and nothing
+    // said so (QA 2026-11-07, finding 2). See `src/lib/resume/pageFit.ts`.
+    activeStep = PipelineStep.pdf_generation;
+    await prisma.generationSession.update({
+      where: { id: session.id },
+      data: { currentStep: PipelineStep.pdf_generation, stepStartedAt: new Date() },
+    });
+    const defaults = await generationDefaultsFor(options.userId);
+    const maxPages = defaults.maxPages;
+    const template = options.templatePreference ?? defaults.template;
+    // The template's own look, as a theme, so the fit loop can tighten its
+    // spacing once before it trims any line.
+    let theme: ResumeTheme = defaultThemeFor(template);
+    const fitted = await fitToPages({
+      resume: draftedResume,
+      render: (resume) => generateLatexFromResume(resume, theme),
+      tighten: () => {
+        if (theme.density === 'compact') return false;
+        theme = { ...theme, density: 'compact' };
+        return true;
+      },
+      compile: (latex) => compileLatex(latex, { userId: options.userId, sessionId: session.id }),
+      measure: (pdfBase64) => measurePdf(Buffer.from(pdfBase64, 'base64'), maxPages),
+      maxPages,
+    });
+    if (!fitted.ok) {
+      throw new Error(fitted.error || 'Failed to compile PDF');
+    }
+    // The theme rides with the resume, so the editor opens it in the look its PDF has.
+    const finalResume: ResumeData = { ...fitted.resume, theme };
+    if (fitted.fit.status === 'over') {
+      console.warn('[generation] PDF still over its page budget after trimming', {
+        sessionId: session.id,
+        pages: fitted.fit.pages,
+        maxPages,
+        trimmed: fitted.fit.trimmed.length,
+      });
+    }
+
+    const existingResultId = draftResumeFromSession?.resultResumeId ?? null;
+    if (existingResultId) {
+      // A retry after the save: the stored copy must match the PDF too.
+      await prisma.resume.updateMany({
+        where: { id: existingResultId, userId: options.userId },
+        data: { content: finalResume as unknown as Prisma.InputJsonValue },
+      });
+    }
+
+    const resumeId = existingResultId
       ?? await saveGeneratedResumeForUser({
         userId: options.userId,
         resume: finalResume,
@@ -740,6 +818,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
               role: pipelineResult.brief?.role ?? '',
               company: pipelineResult.brief?.company ?? '',
             },
+            pageFit: fitted.fit,
           })
           : null,
         ...extractParsedJDTarget(pipelineResult?.artifacts.parsedJD ?? session.parsedJD),
@@ -760,7 +839,6 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       }
     }
 
-    activeStep = PipelineStep.pdf_generation;
     await prisma.generationSession.update({
       where: { id: session.id },
       data: {
@@ -783,22 +861,12 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       });
     }
 
-    const latex = generateLatexFromResume(finalResume, template);
-    const compiled = await compileLatex(latex, {
-      userId: options.userId,
-      sessionId: session.id,
-    });
-
-    if (!compiled.success || !compiled.pdfBase64) {
-      throw new Error(compiled.error || 'Failed to compile PDF');
-    }
-
     const storedPdf = await persistStoredPdf({
       userId: options.userId,
       sessionId: session.id,
       resumeId,
       template,
-      pdfBase64: compiled.pdfBase64,
+      pdfBase64: fitted.pdfBase64,
     });
 
     const totals = await getSessionUsageTotals(session.id);
@@ -828,6 +896,9 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       sessionId: session.id,
       reused: false,
       atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? null,
+      pages: fitted.fit.pages,
+      pageFit: fitted.fit.status,
+      trimmed: fitted.fit.trimmed.length,
     });
 
     return {
@@ -838,6 +909,7 @@ export async function runGenerationSession(options: RunGenerationOptions): Promi
       atsEstimate: pipelineResult?.atsEstimate ?? draftResumeFromSession?.atsScore ?? undefined,
       pdfId: storedPdf.pdfId,
       pdfUrl: storedPdf.pdfUrl,
+      pageFit: fitted.fit,
       reused: false,
     };
   } catch (error: unknown) {

@@ -31,6 +31,8 @@ import {
 } from '@/lib/scout/types';
 import { COLUMN_LABELS, COLUMN_OF_STATUS } from '@/lib/inbox/types';
 import type { Line, RichMessage, ScoutAction } from '@/lib/channels/types';
+import { applyEmailsOf } from '@/lib/drafts/applyEmail';
+import type { DraftView } from '@/lib/drafts/types';
 
 export const MAX_KEY_LINES = 7;
 
@@ -249,6 +251,30 @@ function isJob(view: ScoutRunView): boolean {
     return view.kind === 'job_posting' || view.kind === 'hiring_post';
 }
 
+/** Telegram's button label cap (`TELEGRAM_LIMITS.maxButtonLabel`): a cut address is a guess. */
+const EMAIL_LABEL_MAX = 40;
+
+/**
+ * "✉️ Email jobs@x.com" when the posting names where to apply, else a plain
+ * "✉️ Draft email". The address is read by code from the posting
+ * (`applyEmailsOf`); the button only names it. The draft's To is set from
+ * the same read when the draft is written (`src/services/drafts.ts`).
+ */
+export function emailDraftAction(view: ScoutRunView): { action: Extract<ScoutAction, { kind: 'draft' }>; hasAddress: boolean } {
+    const address = applyEmailsOf(view.sections)[0] ?? null;
+    const named = address ? `✉️ Email ${address}` : null;
+    return {
+        action: {
+            kind: 'draft',
+            // The poster asked for the email; on a posting, an apply inbox is a recruiter's.
+            target: view.kind === 'hiring_post' ? 'p' : 'r',
+            format: 'e',
+            label: named && [...named].length <= EMAIL_LABEL_MAX ? named : address ? '✉️ Email your application' : '✉️ Draft email',
+        },
+        hasAddress: Boolean(address),
+    };
+}
+
 function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     // Status first: one row of three on Telegram, the first choices of the
     // list on WhatsApp. Moving a job along is the most common next step.
@@ -259,6 +285,13 @@ function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     ];
     // The JD is already stored: tailoring is one tap, not a copy-paste into /build.
     actions.push({ kind: 'tailor', label: '✍️ Tailor resume' });
+    // Telegram shows the first six (TELEGRAM_LIMITS.maxButtons), so order is
+    // priority. A posting that names its apply address makes the email THE
+    // way to apply: it comes straight after tailoring. Without an address it
+    // is one option among several and goes after the existing ones, ahead of
+    // only the "Open" link, which the footer repeats.
+    const email = emailDraftAction(view);
+    if (email.hasAddress) actions.push(email.action);
     const fit = okData<FitData>(view.sections.fit);
     const poster = view.kind === 'hiring_post';
     actions.push(poster
@@ -267,8 +300,63 @@ function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     if (fit && (fit.verdict === 'not_a_fit' || fit.verdict === 'stretch')) {
         actions.push({ kind: 'why', label: 'Why not a fit' });
     }
+    if (!email.hasAddress) actions.push(email.action);
     actions.push({ kind: 'open', label: 'Open in Patronus', url: scoutRunUrl(appUrl, view.id) });
     return actions;
+}
+
+// ────────────────────────────────────────────────────────────────── drafts
+
+/** Where a draft's buttons point. Built by `src/lib/drafts/render.ts`, which holds the signing key. */
+export type DraftLinks = {
+    /** Gmail web compose (https), prefilled. */
+    gmail: string | null;
+    /** The signed `/api/compose/<id>` route, which redirects to `mailto:`. */
+    mailApp: string | null;
+};
+
+const DRAFT_TITLE: Record<DraftView['format'], string> = {
+    email: '✉️ Email draft',
+    linkedin_message: '💬 LinkedIn message draft',
+    linkedin_note: '💬 LinkedIn note draft',
+};
+
+export const DRAFT_EDIT_HINT = 'Reply with any change, like "add IIT Delhi". I\'ll edit this draft.';
+export const DRAFT_ATTACH_HINT = 'Attach your tailored resume PDF before you send. Patronus never sends email for you.';
+
+/**
+ * A draft version as a chat message: To / Subject / Body as plain text, the
+ * compose links and the two fixed revisions. Pure: the links come in.
+ *
+ * Telegram gets the links as URL buttons. WhatsApp reply messages cannot
+ * carry URL buttons, so there they travel in the text.
+ */
+export function renderDraftMessage(draft: DraftView, links: DraftLinks, channel: 'telegram' | 'whatsapp' = 'telegram'): RichMessage {
+    const email = draft.format === 'email';
+    const lines: Line[] = [[{ text: DRAFT_TITLE[draft.format] ?? 'Draft', bold: true }, { text: ` · v${draft.version}` }], []];
+    if (email) {
+        lines.push([{ text: 'To: ', bold: true }, { text: draft.toEmail ?? '(add the address in your mail app)' }]);
+        lines.push([{ text: 'Subject: ', bold: true }, { text: draft.subject ?? '' }]);
+        lines.push([]);
+    }
+    for (const paragraph of draft.body.split('\n')) lines.push([{ text: paragraph }]);
+    lines.push([], [{ text: DRAFT_EDIT_HINT, italic: true }]);
+    if (email) lines.push([{ text: DRAFT_ATTACH_HINT, italic: true }]);
+
+    const actions: ScoutAction[] = [];
+    if (email && channel === 'telegram') {
+        if (links.gmail) actions.push({ kind: 'open', label: '📨 Open in Gmail to send', url: links.gmail });
+        if (links.mailApp) actions.push({ kind: 'open', label: '📱 Mail app', url: links.mailApp });
+    }
+    if (email && channel === 'whatsapp') {
+        const url = links.mailApp ?? links.gmail;
+        if (url) lines.push([], [{ text: 'Open it in your mail app: ' }, { text: url, href: url }]);
+    }
+    actions.push(
+        { kind: 'revise_draft', draftId: draft.id, revision: 's', label: '✂️ Shorter' },
+        { kind: 'revise_draft', draftId: draft.id, revision: 'g', label: '💪 Stronger' },
+    );
+    return { lines, actions };
 }
 
 export function renderScoutFinal(view: ScoutRunView, appUrl: string): RichMessage {
@@ -312,8 +400,16 @@ export function renderScoutFinal(view: ScoutRunView, appUrl: string): RichMessag
         };
     }
 
+    // The fit is never withheld for the pay floor any more; it is asked after
+    // the result, and a typed reply answers it (findOpenQuestionRun).
+    const fitData = okData<FitData>(view.sections.fit);
+    const followUp = isJob(view) ? fitData?.followUp ?? null : null;
+    const followUpLines: Line[] = followUp
+        ? [[], [{ text: '❓ ' }, { text: followUp.prompt, bold: true }], [{ text: 'Reply here with your answer, or ignore it.', italic: true }]]
+        : [];
+
     return {
-        lines: [headline, ...(body.length ? [[] as Line, ...body] : [])],
+        lines: [headline, ...(body.length ? [[] as Line, ...body] : []), ...followUpLines],
         footer,
         actions: isJob(view) ? jobActions(view, appUrl) : view.kind === 'work_note' ? noteActions(view, appUrl) : [],
     };

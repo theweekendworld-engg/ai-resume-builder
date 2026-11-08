@@ -23,6 +23,19 @@ describe('topStrength', () => {
         expect(topStrength([])).toBeNull();
     });
 
+    test('tenure never leads: "3 years of experience" was the top strength for an engineer with an agent platform (QA 2026-11-07)', () => {
+        const matched = [
+            { requirementId: 'r1', text: '3+ years in engineering', evidence: 'About 4 years full-time (from your role dates)', strength: 'direct' as const },
+            { requirementId: 'r2', text: 'Client-facing delivery', evidence: 'Delivered client-facing deployments for enterprise customers', strength: 'partial' as const },
+            { requirementId: 'r3', text: "Bachelor's degree", evidence: 'B.Tech, VIT', strength: 'direct' as const },
+        ];
+        expect(topStrength(matched)?.requirementId).toBe('r2');
+        expect(orderStrengths(matched).map((m) => m.requirementId)).toEqual(['r2', 'r3', 'r1']);
+        // Only tenure and a degree: the degree, then tenure as the last resort.
+        expect(topStrength([matched[0], matched[2]])?.requirementId).toBe('r3');
+        expect(topStrength([{ ...matched[0], evidence: '5 years of experience (stated on your profile)' }])?.requirementId).toBe('r1');
+    });
+
     test('orderStrengths puts the degree last', () => {
         const ordered = orderStrengths([
             { requirementId: 'r1', text: "Bachelor's degree", evidence: 'B.Tech', strength: 'direct' },

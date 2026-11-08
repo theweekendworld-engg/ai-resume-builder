@@ -27,6 +27,8 @@ function data(overrides: Partial<PlanPageData> = {}): PlanPageData {
         downgradeOffer: null,
         refundEligibleUntil: null,
         canAddSearch: false,
+        // The paid-plan behaviour below is what returns after the launch.
+        launchOpen: false,
         ...overrides,
     };
 }
@@ -43,7 +45,7 @@ const activeCareer: SubscriptionView = {
 } as unknown as SubscriptionView;
 
 describe('PlanScreen', () => {
-    test('with no provider it says paid plans open soon and renders no purchase button', () => {
+    test('with no provider it says nothing can be bought yet and renders no purchase button', () => {
         const html = renderToStaticMarkup(<PlanScreen data={data()} />);
         expect(html).toContain(BILLING_UNAVAILABLE_COPY.replace(/—/g, '—'));
         expect(html).not.toMatch(/Career · \$/);
@@ -63,6 +65,19 @@ describe('PlanScreen', () => {
         );
         expect(html).toContain('Add Search');
         expect(html).toContain('Update payment and invoices');
+    });
+
+    // Launch (2026-11-07): everything is included and nothing can be bought, so
+    // the page says that and shows no paid columns, prices or "Change plan".
+    test('during the launch it says free with every feature, and shows no prices', () => {
+        const html = renderToStaticMarkup(<PlanScreen data={data({ launchOpen: true })} />);
+        expect(html).toContain('Free while we launch');
+        expect(html).toContain(BILLING_UNAVAILABLE_COPY);
+        expect(html).not.toContain('Change plan');
+        expect(html).not.toMatch(/\$\d+\/month/);
+        expect(html).not.toMatch(/open soon/i);
+        // The 90-day hidden-history line is not true during the launch.
+        expect(html).not.toContain('hidden on Free');
     });
 
     test('the checkout return notice is shown', () => {

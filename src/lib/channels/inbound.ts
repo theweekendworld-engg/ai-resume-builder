@@ -46,7 +46,9 @@ export const TINY_HELP =
 /** The user-facing sentence for a start failure, by error code. */
 export function startFailureText(error: string, code: string | undefined, appUrl: string): string {
     if (code === 'entitlement_required') {
-        return `${error}\n\nSee plans: ${appUrl.replace(/\/$/, '')}/settings/plan`;
+        // "Your usage", not "plans": during the launch there is nothing to buy,
+        // and the page shows what is left and when it resets.
+        return `${error}\n\nYour usage: ${appUrl.replace(/\/$/, '')}/settings/plan`;
     }
     return error;
 }

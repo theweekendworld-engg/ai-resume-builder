@@ -20,11 +20,17 @@ export function QuestionCard({
     pending,
     error,
     onAnswer,
+    variant = 'blocking',
 }: {
     question: PendingQuestion;
     pending: boolean;
     error: string | null;
     onAnswer: (value: string) => void;
+    /**
+     * `followUp`: the fit is already shown above and does not wait on this
+     * (the pay floor). Quieter, and it says the answer is optional.
+     */
+    variant?: 'blocking' | 'followUp';
 }) {
     const [text, setText] = React.useState('');
     const inputId = React.useId();
@@ -39,14 +45,17 @@ export function QuestionCard({
     return (
         <section
             aria-labelledby={`${inputId}-title`}
-            className="surface-work rounded-xl border border-primary/40 bg-card p-5"
+            data-variant={variant}
+            className={cn('surface-work rounded-xl border bg-card p-5', variant === 'followUp' ? 'border-border' : 'border-primary/40')}
         >
             <h2 id={`${inputId}-title`} className={cn(typeStyles.h3, 'flex items-start gap-2 text-foreground')}>
-                <HelpCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />
+                <HelpCircle aria-hidden className={cn('mt-0.5 size-4 shrink-0', variant === 'followUp' ? 'text-muted-foreground' : 'text-primary')} />
                 {question.prompt}
             </h2>
             <p className={cn(typeStyles.small, 'mt-1 pl-6 text-muted-foreground')}>
-                Preferences you answer here are saved, so the next job will not ask again.
+                {variant === 'followUp'
+                    ? 'Optional. Your fit above stands; an answer updates its pay check and is saved, so the next job will not ask.'
+                    : 'Preferences you answer here are saved, so the next job will not ask again.'}
             </p>
 
             {question.options?.length ? (

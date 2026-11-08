@@ -100,6 +100,8 @@ export async function importResumeText(resumeText: string): Promise<Result<Impor
         // something typed a moment earlier.
         mergeProfile: true,
         sections: { experience: true, education: true, projects: true, achievements: true },
+        // The first run makes its own resume document (startOnboardingFromStash).
+        createBaseResume: false,
     });
     if (!result.success) return err(result.error ?? 'Import failed', 'import_failed');
 
@@ -275,13 +277,20 @@ export async function startOnboardingFromUpload(parsed: unknown): Promise<Result
 }
 
 /** The fixes carried from `/score`, for the editor's checklist. Claims if unclaimed. */
-export async function getScoreStashFixes(stashId: string): Promise<Result<{ fixes: ScoreFix[]; score: number }>> {
+/**
+ * The free check's fixes, and the resume they were carried to. The editor
+ * shows them on that resume only; a copy tailored from it is a different
+ * document (QA 2026-11-07, finding 12).
+ */
+export async function getScoreStashFixes(
+    stashId: string,
+): Promise<Result<{ fixes: ScoreFix[]; score: number; resumeId: string | null }>> {
     const { userId } = await auth();
     if (!userId) return err('Not signed in', 'unauthenticated');
     if (!isStashId(stashId)) return err('That link is not valid.', 'invalid_input');
     const stash = await claimScoreStash(stashId, userId);
     if (!stash) return err('Those fixes are no longer available.', 'stash_missing');
-    return ok({ fixes: stash.fixes, score: stash.score });
+    return ok({ fixes: stash.fixes, score: stash.score, resumeId: stash.resumeId ?? null });
 }
 
 /** Cheap: does the profile have anything a resume could be built from? */

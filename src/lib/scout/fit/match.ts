@@ -33,7 +33,7 @@
 import { z } from 'zod';
 import { findMatchedSkills } from '@/lib/extension/fitScore';
 import type { JdData, ScoutRequirement } from '@/lib/scout/types';
-import { minYearsFrom } from '@/lib/scout/fit/jdSignals';
+import { detectEligibility, minYearsFrom } from '@/lib/scout/fit/jdSignals';
 
 export type MatchStrength = 'direct' | 'partial';
 
@@ -139,6 +139,23 @@ export function tenureRequirement(text: string): TenureRequirement | null {
     return { minYears, qualified: rest.length > 0 };
 }
 
+// ──────────────────────────────────────────────────────────── eligibility
+
+/**
+ * "Must obtain HHS Public Trust before onboarding" is not a skill a record
+ * can evidence, and scoring it as an ordinary must-have made it one gap among
+ * nine (QA 2026-11-07). It is a condition on who may hold the job, judged by
+ * the eligibility check from the user's stated work authorization. A line
+ * that also names something checkable ("a CS degree and US citizenship")
+ * stays a requirement for the checkable part.
+ */
+export function isEligibilityRequirement(text: string): boolean {
+    const found = detectEligibility(text);
+    if (found.length === 0) return false;
+    const rest = found.reduce((acc, restriction) => acc.replace(restriction.quote, ' '), text);
+    return !HARD_SIGNAL.test(rest);
+}
+
 // ─────────────────────────────────────────────────────────────── planning
 
 function normalize(value: string): string {
@@ -150,6 +167,8 @@ export type MatchPlan = {
     hard: ScoutRequirement[];
     /** Dropped from scoring: traits and culture. */
     soft: ScoutRequirement[];
+    /** Dropped from scoring: who may hold the job (citizenship, clearance). The eligibility check judges these. */
+    eligibility: ScoutRequirement[];
     /** Answered by years alone; code judges these, never the model. */
     pureTenure: Map<string, TenureRequirement>;
     /** Years plus a qualifier: code judges the years, the matcher the qualifier. */
@@ -180,6 +199,7 @@ export function planMatching(jd: JdData, record: MatchRecord): MatchPlan {
     const plan: MatchPlan = {
         hard: [],
         soft: [],
+        eligibility: [],
         pureTenure: new Map(),
         qualifiedTenure: new Map(),
         prefiltered: new Map(),
@@ -190,6 +210,10 @@ export function planMatching(jd: JdData, record: MatchRecord): MatchPlan {
         if (requirement.kind === 'responsibility') continue;
 
         const tenure = tenureRequirement(requirement.text);
+        if (!tenure && isEligibilityRequirement(requirement.text)) {
+            plan.eligibility.push(requirement);
+            continue;
+        }
         if (tenure && !tenure.qualified) {
             plan.hard.push(requirement);
             plan.pureTenure.set(requirement.id, tenure);

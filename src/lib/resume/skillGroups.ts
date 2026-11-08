@@ -218,11 +218,21 @@ export function groupSkills(skills: readonly string[]): SkillGroup[] {
 
         // De-duplicate on the slug so "Postgres" and "PostgreSQL" cannot both
         // appear — in different rows, which is how it would have looked.
-        const key = normalizeSkill(label) ?? label.toLowerCase();
+        //
+        // Only when the slug names the SAME thing as the label, though. Some
+        // slugs are umbrellas: Prometheus and Grafana both normalise to
+        // `observability`, so the slug-only version printed
+        // "Observability: Observability" and dropped Grafana (QA 2026-11-07).
+        // A label that is not a spelling of its slug's name keeps its own
+        // words and its own place.
+        const slug = normalizeSkill(label);
+        const canonical = slug ? displaySkill(slug) : null;
+        const sameThing = Boolean(slug && canonical && spellsTheSame(label, canonical));
+        const key = sameThing ? slug! : label.toLowerCase();
         if (seen.has(key)) continue;
         seen.add(key);
 
-        const display = normalizeSkill(label) ? displaySkill(normalizeSkill(label)!) : label;
+        const display = sameThing ? canonical! : label;
         const category = categoryFor(label);
         if (!category) {
             other.push(display);
@@ -245,6 +255,56 @@ export function groupSkills(skills: readonly string[]): SkillGroup[] {
      */
     if (groups.length === 1) return [{ label: '', skills: groups[0].skills }];
 
+    return groups;
+}
+
+/** "Postgres" and "PostgreSQL", "Next.js" and "NextJS": one thing spelled two ways. */
+function spellsTheSame(a: string, b: string): boolean {
+    const squash = (value: string) => value.toLowerCase().replace(/[^a-z0-9+#]/g, '');
+    const x = squash(a);
+    const y = squash(b);
+    if (!x || !y) return false;
+    if (x === y) return true;
+    const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+    return long.startsWith(short) && long.length - short.length <= 3;
+}
+
+/**
+ * The rows to print: the resume's own when it has them, else a grouping.
+ *
+ * `skillGroups` is how the candidate labelled their skills ("Speech / AI",
+ * "Voice infra"); `skills` decides WHICH skills show, so a tailored copy that
+ * dropped a skill drops it from its row too. A row left empty is not printed,
+ * and anything in `skills` no row claims is grouped as before and appended.
+ * The candidate's own items are printed as written: they are not a job
+ * posting's sentences leaking in, which is what `isRenderableSkill` guards.
+ */
+export function resolveSkillGroups(data: {
+    skills: readonly string[];
+    skillGroups?: ReadonlyArray<{ label: string; items: readonly string[] }>;
+}): SkillGroup[] {
+    const own = (data.skillGroups ?? []).filter((group) => group.items.some((item) => item.trim()));
+    if (own.length === 0) return groupSkills(data.skills);
+
+    const showing = new Set(data.skills.map((skill) => skill.trim().toLowerCase()).filter(Boolean));
+    const placed = new Set<string>();
+    const groups: SkillGroup[] = [];
+    for (const group of own) {
+        const items: string[] = [];
+        for (const raw of group.items) {
+            const item = raw.trim();
+            const key = item.toLowerCase();
+            if (!item || !showing.has(key) || placed.has(key)) continue;
+            placed.add(key);
+            items.push(item);
+        }
+        if (items.length > 0) groups.push({ label: group.label.trim(), skills: items });
+    }
+
+    const rest = data.skills.filter((skill) => skill.trim() && !placed.has(skill.trim().toLowerCase()));
+    for (const extra of groupSkills(rest)) {
+        groups.push({ label: extra.label || (groups.length > 0 ? OTHER_LABEL : ''), skills: extra.skills });
+    }
     return groups;
 }
 

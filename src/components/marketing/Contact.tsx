@@ -51,12 +51,12 @@ const NOTES = [
         body: 'Keeping the record costs nothing and always will. Losing your history is the problem this exists to solve, so putting it behind a card would be self-defeating.',
     },
     {
-        title: 'Nothing is deleted if you stop paying',
-        body: 'Downgrade and the paid surfaces are hidden. Your wins, evidence and confirmations stay exactly where they are.',
+        title: 'Nothing is deleted, on any plan',
+        body: 'Everything is included while we launch. When paid plans arrive, a plan change only hides surfaces; your wins, evidence and confirmations stay exactly where they are.',
     },
     {
         title: 'A reply within two business days',
-        body: 'Billing, a data-deletion request, a bug, or a question about whether the free plan covers what you need — a person reads every message.',
+        body: 'A data-deletion request, a bug, or a feature you need — a person reads every message.',
     },
 ];
 
@@ -73,8 +73,7 @@ export function Contact() {
                 lead={
                     <>
                         Patronus is run by {OPERATOR}, based in {OPERATOR_LOCATION}. Write with
-                        anything — billing, your data, a bug, or whether the free plan already
-                        covers what you need.
+                        anything — your data, a bug, or a feature you need.
                     </>
                 }
             />
@@ -109,10 +108,10 @@ export function Contact() {
                         className="mk-btn group mt-8 w-full sm:w-auto"
                     >
                         Contact us
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
                     </a>
 
-                    <p className="mt-6 text-xs text-muted-foreground/60">
+                    <p className="mt-6 text-xs text-muted-foreground">
                         A person reads this. Expect a reply within two business days.
                     </p>
                 </div>

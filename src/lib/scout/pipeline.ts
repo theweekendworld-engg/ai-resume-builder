@@ -26,6 +26,7 @@ import {
     type StoredSection,
 } from '@/lib/agent/run';
 import { settleChargeForKind } from '@/lib/scout/metering';
+import { isUsageLimitError, usageLimitMessage } from '@/lib/usageTracker';
 import { SCOUT_SECTION_IMPLS, SCOUT_SECTION_OPTIONS } from '@/lib/scout/sections';
 import type { StageDriver } from '@/lib/scout/stages';
 import type { ScoutInput, ScoutKind, ScoutSectionName, ScoutSections } from '@/lib/scout/types';
@@ -44,14 +45,25 @@ export async function runScoutSection(runId: string, name: ScoutSectionName): Pr
             // Re-read inside the step: a concurrent section may have finished
             // since the outer load, and the answers may have changed.
             const fresh = (await loadRun(runId)) ?? run;
-            return impl({
-                runId,
-                userId: run.userId,
-                input: fresh.input as unknown as ScoutInput,
-                answers: readAnswers(fresh),
-                sections: readSections(fresh) as ScoutSections,
-                step,
-            }) as never;
+            try {
+                return await (impl({
+                    runId,
+                    userId: run.userId,
+                    input: fresh.input as unknown as ScoutInput,
+                    answers: readAnswers(fresh),
+                    sections: readSections(fresh) as ScoutSections,
+                    step,
+                }) as never);
+            } catch (error) {
+                // The monthly cost ceiling is an answer, not a failure: a retry
+                // fails the same way, and "This part failed after a retry" hid
+                // when it comes back. The section says it in the ceiling's words.
+                if (isUsageLimitError(error)) {
+                    step.log('stopped at the monthly AI limit');
+                    return { status: 'unavailable', reason: usageLimitMessage() } as never;
+                }
+                throw error;
+            }
         },
         { ...options, feature: name === 'network' ? 'outreach' : 'scout' },
     );

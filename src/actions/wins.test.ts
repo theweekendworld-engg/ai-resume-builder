@@ -261,11 +261,13 @@ describe('the capture round trip through the actions', () => {
         expect(created.success).toBe(true);
         if (!created.success) return;
 
+        // The qualifier travels with the figure: "about 180ms" is stored as an
+        // estimate, never as an exact 180ms (the guard rejects that).
         aiTesting.setObjectRunner(async () => ({
             object: {
                 metric: 'checkout p95 latency',
                 baseline: null,
-                result: '180ms',
+                result: '~180ms',
                 delta: null,
                 scope: null,
                 timeframe: null,
@@ -274,19 +276,21 @@ describe('the capture round trip through the actions', () => {
             outputTokens: 10,
         }));
 
-        const result = await wins.addImpact(created.data.id, 'about 180ms now');
-        expect(result.success).toBe(true);
-        if (!result.success) return;
+        try {
+            const result = await wins.addImpact(created.data.id, 'about 180ms now');
+            expect(result.success).toBe(true);
+            if (!result.success) return;
 
-        expect(result.data.impact?.result).toBe('180ms');
-        expect(result.data.quantifyPrompt).toBeNull();
+            expect(result.data.impact?.result).toBe('~180ms');
+            expect(result.data.quantifyPrompt).toBeNull();
 
-        const answered = await prisma.funnelEvent.findFirst({
-            where: { userId, type: 'quantify_prompt_answered' },
-        });
-        expect(answered).not.toBeNull();
-
-        aiTesting.setObjectRunner(async () => ({ object: MODEL_OUTPUT, inputTokens: 10, outputTokens: 10 }));
+            const answered = await prisma.funnelEvent.findFirst({
+                where: { userId, type: 'quantify_prompt_answered' },
+            });
+            expect(answered).not.toBeNull();
+        } finally {
+            aiTesting.setObjectRunner(async () => ({ object: MODEL_OUTPUT, inputTokens: 10, outputTokens: 10 }));
+        }
     });
 
     test('addImpact with no figure in the answer changes nothing', async () => {

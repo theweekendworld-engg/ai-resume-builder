@@ -281,6 +281,35 @@ export class UsageLimitError extends Error {
   }
 }
 
+export function isUsageLimitError(error: unknown): error is UsageLimitError {
+  return error instanceof UsageLimitError;
+}
+
+/**
+ * What a signed-in user reads when they reach the monthly ceiling.
+ *
+ * Friendly and specific: when it comes back, and that nothing is lost. It
+ * never says "upgrade": during the launch there is nothing to buy, and a
+ * ceiling is abuse protection rather than a sales prompt.
+ */
+export function usageLimitMessage(now: Date = new Date()): string {
+  const resets = getCurrentBillingPeriod(now).end.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+  return `You've reached this month's limit for AI features. It resets on ${resets}, and everything you've made is saved.`;
+}
+
+/**
+ * The sentence for a failed AI step: the ceiling's own words when that is why
+ * it failed, otherwise the caller's fallback. "Try again" is the wrong advice
+ * for a ceiling, because the retry fails the same way.
+ */
+export function aiFailureMessage(error: unknown, fallback: string): string {
+  return isUsageLimitError(error) ? error.message : fallback;
+}
+
 /** Anonymous /score traffic is pooled under one id; it gets its own monthly ceiling. */
 const ANON_ID = 'anon';
 function anonBudgetUsd(): number {
@@ -349,14 +378,21 @@ export async function enforceUsageLimit(userId: string): Promise<void> {
     return;
   }
 
-  if (Number.isFinite(tokenLimit) && tokenLimit > 0 && usage.totalTokens >= tokenLimit) {
-    throw new UsageLimitError('You have used this month\'s AI allowance. It resets on the 1st, or upgrade for more.');
-  }
-  if (Number.isFinite(costLimit) && costLimit > 0 && usage.totalCostUsd >= costLimit) {
-    throw new UsageLimitError(userId === ANON_ID
-      ? 'The free check is busy right now. Sign up to keep going.'
-      : 'You have used this month\'s AI allowance. It resets on the 1st, or upgrade for more.');
-  }
+  const over =
+    (Number.isFinite(tokenLimit) && tokenLimit > 0 && usage.totalTokens >= tokenLimit) ||
+    (Number.isFinite(costLimit) && costLimit > 0 && usage.totalCostUsd >= costLimit);
+  if (!over) return;
+
+  if (userId === ANON_ID) throw new UsageLimitError('The free check is busy right now. Sign up to keep going.');
+  // The operator side: the numbers, in the server log only.
+  console.warn('[usage] monthly ceiling reached', {
+    userId,
+    tokens: usage.totalTokens,
+    tokenLimit,
+    costUsd: Number(usage.totalCostUsd.toFixed(4)),
+    costLimit,
+  });
+  throw new UsageLimitError(usageLimitMessage());
 }
 
 export const __usageTesting = {

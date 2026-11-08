@@ -291,6 +291,8 @@ export const IMPACT_ANSWER_SYSTEM = [
     'answer or in the accomplishment it describes. Do not estimate, do not round, and do not',
     'compute a delta from a baseline and a result — a derived percentage is a fabricated number.',
     'If a field has no value in the source, it is null. Never guess.',
+    'Keep the qualifier that came with a figure: "about 180ms" is "~180ms", "100K+" stays',
+    '"100K+", "over 40%" stays "over 40%". An estimate written as exact is a fabricated claim.',
     '',
     '`metric` names WHAT was measured ("checkout p95 latency", "onboarding time"), never the',
     'figure itself. Take the wording from the accomplishment where you can.',

@@ -25,6 +25,7 @@ import {
     checkEntitlement,
     gateMeteredAction,
     getUserTier,
+    hasFeature,
     isEntitlementError,
 } from '@/lib/entitlements';
 import { isEnabled } from '@/lib/flags';
@@ -62,6 +63,7 @@ import {
 } from '@/services/reviewPacket';
 import { handleReviewPacketWorkflow } from '@/workflows/reviewPacket';
 import { withRefundOnFailure } from '@/lib/metering/refundOnFailure';
+import { aiFailureMessage } from '@/lib/usageTracker';
 
 const FEATURE = { feature: 'review_packet' } as const;
 
@@ -166,7 +168,9 @@ export async function getPacketScope(range: {
         thin: summary.data.totalConfirmed < 8,
         employers: employers.success ? employers.data : [],
         frameworks,
-        allowedTypes: tier === Tier.free ? ['brag_doc'] : ALL_PACKET_TYPES,
+        // Through the plan table, not `tier === free`: during the launch every
+        // account has `rubric_mapping` and so every packet type.
+        allowedTypes: hasFeature(tier, 'rubric_mapping') ? ALL_PACKET_TYPES : ['brag_doc'],
         tier,
         remaining: Number.isFinite(entitlement.remaining) ? entitlement.remaining : Number.MAX_SAFE_INTEGER,
         requiresUpgrade: entitlement.requiresUpgrade,
@@ -228,7 +232,7 @@ export async function startPacket(input: {
     // PRD §8: the free tier's single lifetime packet is a brag doc. Everything
     // else is the peak-intent paywall, and it is deliberately precise.
     const tier = await getUserTier(access.userId);
-    if (tier === Tier.free && scope.type !== 'brag_doc') {
+    if (!hasFeature(tier, 'rubric_mapping') && scope.type !== 'brag_doc') {
         return err(
             'A full review packet with the competency breakdown is part of the paid plan.',
             'entitlement_required',
@@ -384,7 +388,7 @@ export async function getPacket(packetId: string): Promise<Result<PacketView>> {
         progress: readProgress(row.content),
         content,
         wins,
-        competencyLocked: tier === Tier.free,
+        competencyLocked: !hasFeature(tier, 'rubric_mapping'),
     });
 }
 
@@ -741,7 +745,7 @@ export async function parseRubric(input: {
         console.error('[actions/packets] parseRubric failed', {
             error: error instanceof Error ? error.message : String(error),
         });
-        return err('Could not read that document — try pasting the text instead', 'ai_unavailable');
+        return err(aiFailureMessage(error, 'Could not read that document — try pasting the text instead'), 'ai_unavailable');
     }
 }
 

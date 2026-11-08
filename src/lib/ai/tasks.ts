@@ -45,6 +45,9 @@ export const TASK_KEYS = [
     'scoutResearchExtract',
     'scoutDigest',
     'outreachDraft',
+    // A revision of a stored MessageDraft ("make it shorter"): an edit of
+    // the previous version, guarded against it and the evidence.
+    'draftRevise',
     // Requirement ↔ record-line matching inside fit: its own key so its cost
     // is not folded into the explanation's in ApiUsageLog.
     'scoutFitMatch',

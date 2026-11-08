@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, ChevronLeft, Loader2, Sparkles, AlertCircle, Circle, FileCheck2, Wand2 } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, Loader2, Sparkles, AlertCircle, Circle, FileCheck2, Info, Wand2 } from 'lucide-react';
 import { processChannelGenerate } from '@/actions/channelGenerate';
 import { getGitHubIntegrationStatus, syncTopGitHubProjects } from '@/actions/github';
 import { parseResumeText } from '@/actions/parseResumeText';
@@ -21,11 +21,13 @@ import { getProfileReadinessState, startOnboardingFromUpload } from '@/actions/o
 import type { ParsedResumeData } from '@/lib/aiSchemas';
 
 /**
- * A plan-limit refusal reads like "You've used all 10 Tailored resumes on Free
- * — Career continues them." It deserves a way forward, not just red text.
+ * A usage ceiling ("You've reached this month's limit for AI features. It
+ * resets on …"), or a legacy plan refusal. It is not an error the user made,
+ * and during launch every feature is free, so it reads as a neutral notice
+ * with no plans link (launchOpenAccess in src/lib/plans.ts).
  */
-function isPlanLimitMessage(message: string): boolean {
-  return /\b(on free|career continues|search continues|upgrade|your plan|plan limit|continues them)\b/i.test(message);
+function isLimitNotice(message: string): boolean {
+  return /\b(this month's limit|limit for AI features|on free|career continues|search continues|upgrade|your plan|plan limit|continues them)\b/i.test(message);
 }
 import { toast } from 'sonner';
 
@@ -765,17 +767,17 @@ export function BuildWizard() {
               )}
 
               {error && (
-                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-                  <AlertCircle className="mt-0.5 h-4 w-4" />
-                  <div className="space-y-1">
+                isLimitNotice(error) ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-foreground">
+                    <Info className="mt-0.5 h-4 w-4 text-muted-foreground" />
                     <p>{error}</p>
-                    {isPlanLimitMessage(error) && (
-                      <Link href="/settings/plan" className="font-medium underline underline-offset-4">
-                        See plans
-                      </Link>
-                    )}
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertCircle className="mt-0.5 h-4 w-4" />
+                    <p>{error}</p>
+                  </div>
+                )
               )}
 
               {status === 'completed' && (

@@ -130,9 +130,33 @@ function parsedResume() {
     };
 }
 
-/** `parseResumeText` goes through `trackedChatCompletion`, not generateStructured. */
-function scriptParse(response: unknown = parsedResume()) {
-    mocks().openai.onChat(/./, JSON.stringify(response));
+/**
+ * `parseResumeText` goes through `generateStructured` (task `resumeParse`) and
+ * asks for bullets per role rather than a free-text description; this is the
+ * same content in that shape. What is stored is then rebuilt from
+ * RESUME_TEXT itself (`faithfulImport`).
+ */
+function scriptParse(response: ReturnType<typeof parsedResume> = parsedResume()) {
+    mocks().openai.onObject('You copy a resume', {
+        object: {
+            personalInfo: response.personalInfo,
+            experiences: response.experiences.map((item) => ({
+                company: item.company,
+                companyNote: '',
+                role: item.role,
+                stack: '',
+                location: item.location,
+                startDate: item.startDate,
+                endDate: item.endDate,
+                current: item.current,
+                bullets: [item.description, ...item.highlights].filter(Boolean),
+            })),
+            education: response.education,
+            projects: [],
+            achievements: [],
+            skillGroups: [{ label: '', items: response.skills }],
+        },
+    });
 }
 
 async function setMissionsFlag(enabled: boolean) {
@@ -224,7 +248,8 @@ describe('the /score handoff finally lands', () => {
 
     test('a parse failure is reported, not swallowed into an empty profile', async () => {
         const userId = signIn('parse-fail');
-        mocks().openai.onChat(/./, 'not json at all');
+        // Never schema-valid, so both attempts fail validation and it throws.
+        mocks().openai.onObject('You copy a resume', { object: { nope: true } });
 
         const result = await onboarding.importResumeText(RESUME_TEXT);
         expect(result.success).toBe(false);

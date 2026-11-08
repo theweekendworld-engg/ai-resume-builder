@@ -34,11 +34,25 @@ export const dynamic = 'force-dynamic';
  */
 export const maxDuration = 60;
 
+/**
+ * The host that actually served this tick comes first. The apex domain
+ * 308-redirects to www, and fetch drops the Authorization header on a
+ * cross-origin redirect, so a retrigger aimed at APP_URL's apex would arrive
+ * without its bearer and be refused, silently.
+ */
 function resolveBaseUrl(req: NextRequest): string {
+    const origin = (() => {
+        try {
+            return new URL(req.url).origin;
+        } catch {
+            return '';
+        }
+    })();
+    if (origin.startsWith('https://')) return origin;
     return (
         process.env.APP_URL?.trim() ||
         process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-        new URL(req.url).origin
+        origin
     );
 }
 

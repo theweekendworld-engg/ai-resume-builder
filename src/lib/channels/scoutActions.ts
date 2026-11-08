@@ -10,6 +10,11 @@
  *   sc:c:<winId>                        confirm a Work Log draft
  *   sc:x:<winId>                        dismiss a Work Log draft
  *   sc:t:<runId>                        tailor a resume for the run's job
+ *   sc:v:<draftId>:<revision>           revise a MessageDraft (s shorter, g stronger)
+ *
+ * `sc:d:<runId>:<target>:e` (an email) writes a versioned MessageDraft with
+ * compose buttons (src/services/drafts.ts); the LinkedIn formats keep the
+ * one-off draft they always had.
  *
  * Indexes and single-letter codes rather than values: an option value such as
  * "willing_to_relocate_case_by_case" would overflow the Telegram limit. The
@@ -19,7 +24,9 @@
 
 import { orderStrengths } from '@/lib/scout/fit/strength';
 import type { DraftFormat, DraftTarget, FitData, JdData, OutreachDraft, ScoutRunView } from '@/lib/scout/types';
-import type { DraftFormatCode, DraftTargetCode, JobStatusCode, Line, ScoutAction } from '@/lib/channels/types';
+import type { DraftFormatCode, DraftRevisionCode, DraftTargetCode, JobStatusCode, Line, RichMessage, ScoutAction } from '@/lib/channels/types';
+import type { DraftRevision, DraftView } from '@/lib/drafts/types';
+import { REVISION_INSTRUCTIONS } from '@/lib/drafts/revisions';
 import { JOB_ACTION_LABELS, type JobAction, type JobBoardItem } from '@/lib/inbox/types';
 import type { Result } from '@/lib/result';
 import type { TailorStart } from '@/services/tailor';
@@ -41,6 +48,11 @@ export const FORMAT_CODES: Record<DraftFormatCode, DraftFormat> = {
     e: 'email',
 };
 
+export const REVISION_CODES: Record<DraftRevisionCode, DraftRevision> = {
+    s: 'shorter',
+    g: 'stronger',
+};
+
 export const STATUS_CODES: Record<JobStatusCode, JobAction> = {
     s: 'saved',
     a: 'applied',
@@ -58,7 +70,8 @@ export type DecodedScoutAction =
     | { kind: 'status'; runId: string; status: JobAction }
     | { kind: 'confirm_win'; winId: string }
     | { kind: 'dismiss_win'; winId: string }
-    | { kind: 'tailor'; runId: string };
+    | { kind: 'tailor'; runId: string }
+    | { kind: 'revise_draft'; draftId: string; revision: DraftRevision };
 
 export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { kind: 'open' }>): string {
     switch (action.kind) {
@@ -78,7 +91,16 @@ export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { 
             return `sc:x:${action.winId}`;
         case 'tailor':
             return `sc:t:${runId}`;
+        case 'revise_draft':
+            return `sc:v:${action.draftId}:${action.revision}`;
     }
+}
+
+/** The fit's non-blocking follow-up on a finished run, if any. */
+function followUpOf(view: { sections: Record<string, { status: string; data?: unknown } | undefined> }): { id: string; prompt: string; options?: { label: string; value: string }[] } | null {
+    const fit = view.sections.fit;
+    if (!fit || fit.status !== 'ok') return null;
+    return ((fit.data as { followUp?: { id: string; prompt: string; options?: { label: string; value: string }[] } | null }).followUp) ?? null;
 }
 
 const ID = /^[a-z0-9]{8,40}$/i;
@@ -111,6 +133,10 @@ export function decodeScoutAction(data: string): DecodedScoutAction | null {
             return { kind: 'dismiss_win', winId: id };
         case 't':
             return { kind: 'tailor', runId: id };
+        case 'v': {
+            const revision = REVISION_CODES[a as DraftRevisionCode];
+            return revision ? { kind: 'revise_draft', draftId: id, revision } : null;
+        }
         default:
             return null;
     }
@@ -135,7 +161,43 @@ export type ScoutActionDeps = {
     tailorResumeForRun: (userId: string, runId: string, channel: 'web' | 'telegram' | 'whatsapp') => Promise<Result<TailorStart>>;
     /** The next unanswered clarification of a generation session, or null. */
     nextGenerationQuestion: (userId: string, sessionId: string) => Promise<string | null>;
+    /** Versioned drafts. Optional so channel test doubles need not grow; absent means the real service. */
+    drafts?: DraftActionDeps;
 };
+
+type ActionChannel = 'telegram' | 'whatsapp';
+
+export type DraftActionDeps = {
+    createDraftForRun: (
+        userId: string,
+        runId: string,
+        params: { target: DraftTarget; format: DraftFormat | null; note?: string | null },
+    ) => Promise<Result<DraftView>>;
+    reviseDraft: (userId: string, draftId: string, instruction: string) => Promise<Result<DraftView>>;
+    /** Point the channel's focus at this version, so a typed follow-up edits it. */
+    focusDraft: (userId: string, channel: ActionChannel, draft: DraftView) => Promise<void>;
+    render: (draft: DraftView, channel: ActionChannel) => RichMessage;
+};
+
+async function defaultDraftDeps(): Promise<DraftActionDeps> {
+    const [drafts, focus, render, prismaClient] = await Promise.all([
+        import('@/services/drafts'),
+        import('@/lib/chat/focus'),
+        import('@/lib/drafts/render'),
+        import('@prisma/client'),
+    ]);
+    return {
+        createDraftForRun: drafts.createDraftForRun,
+        reviseDraft: drafts.reviseDraft,
+        focusDraft: (userId, channel, draft) => focus.setFocus(userId, prismaClient.Channel[channel], {
+            kind: 'draft',
+            draftId: draft.id,
+            runId: draft.runId,
+            workspaceId: draft.workspaceId,
+        }),
+        render: (draft, channel) => (channel === 'whatsapp' ? render.renderDraftForWhatsApp(draft) : render.renderDraftForTelegram(draft)),
+    };
+}
 
 /**
  * What an action produces for the chat.
@@ -214,8 +276,10 @@ export async function executeScoutAction(
         case 'answer': {
             const run = await svc.getScoutRun(userId, action.runId);
             if (!run.success) return { lines: [text('I could not find that analysis.')] };
-            const option = run.data.pendingQuestion?.options?.[action.index];
-            if (!run.data.pendingQuestion || !option) {
+            // A blocking question, or the fit's non-blocking follow-up (the pay floor).
+            const question = run.data.pendingQuestion ?? followUpOf(run.data);
+            const option = question?.options?.[action.index];
+            if (!question || !option) {
                 return { lines: [text('That question has already been answered.')] };
             }
             const answered = await svc.answerScoutQuestion(userId, action.runId, option.value);
@@ -223,6 +287,7 @@ export async function executeScoutAction(
             return { lines: [text(`Got it: ${option.label}. Updating the fit…`)] };
         }
         case 'draft': {
+            if (action.format === 'email') return draftEmailReply(userId, action.runId, action.target, svc, context.channel);
             const drafted = await svc.draftScoutOutreach(userId, action.runId, { target: action.target, format: action.format });
             if (!drafted.success) return { lines: [text(drafted.error)] };
             return { lines: renderDraft(drafted.data) };
@@ -263,13 +328,58 @@ export async function executeScoutAction(
         }
         case 'tailor':
             return tailorReply(userId, action.runId, svc, context.channel);
+        case 'revise_draft':
+            return reviseReply(userId, action.draftId, action.revision, svc, context.channel);
     }
+}
+
+/** A draft version as the reply, with the focus moved to it. */
+async function draftReply(drafts: DraftActionDeps, userId: string, draft: DraftView, channel: ActionChannel): Promise<ScoutActionReply> {
+    // The focus is a convenience (a typed "add IIT Delhi" edits this draft);
+    // failing to set it must not lose the draft the user just paid for.
+    await drafts.focusDraft(userId, channel, draft).catch((error: unknown) => {
+        console.warn('[scout] could not focus the draft', { draftId: draft.id, error: error instanceof Error ? error.message : String(error) });
+    });
+    const message = drafts.render(draft, channel);
+    return { lines: message.lines, actions: message.actions, runId: draft.runId ?? undefined };
+}
+
+/** "✉️ Email jobs@x.com": version 1 of an application email, To from the posting. */
+async function draftEmailReply(
+    userId: string,
+    runId: string,
+    target: DraftTarget,
+    svc: ScoutActionDeps,
+    channel: ActionChannel,
+): Promise<ScoutActionReply> {
+    const drafts = svc.drafts ?? (await defaultDraftDeps());
+    const created = await drafts.createDraftForRun(userId, runId, { target, format: 'email' });
+    if (!created.success) {
+        const next = nextStepFor(created.code);
+        return { lines: [text(created.error)], actions: next ? [next] : undefined, runId };
+    }
+    return draftReply(drafts, userId, created.data, channel);
+}
+
+/** "✂️ Shorter" / "💪 Stronger": the next version of the tapped one. */
+async function reviseReply(
+    userId: string,
+    draftId: string,
+    revision: DraftRevision,
+    svc: ScoutActionDeps,
+    channel: ActionChannel,
+): Promise<ScoutActionReply> {
+    const drafts = svc.drafts ?? (await defaultDraftDeps());
+    const revised = await drafts.reviseDraft(userId, draftId, REVISION_INSTRUCTIONS[revision]);
+    if (!revised.success) return { lines: [text(revised.error)] };
+    return draftReply(drafts, userId, revised.data, channel);
 }
 
 /** The one link that unblocks a refused generation. */
 export function nextStepFor(code: string | undefined): ScoutAction | null {
     const app = config.app.url.replace(/\/$/, '');
-    if (code === 'entitlement_required') return { kind: 'open', label: 'See plans', url: `${app}/settings/plan` };
+    // "See your usage", not "See plans": during the launch there is nothing to buy.
+    if (code === 'entitlement_required') return { kind: 'open', label: 'See your usage', url: `${app}/settings/plan` };
     if (code === 'no_base_resume' || code === 'empty_profile') {
         return { kind: 'open', label: 'Add your resume', url: `${app}/dashboard?section=profile` };
     }

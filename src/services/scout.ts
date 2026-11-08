@@ -19,6 +19,8 @@ import {
     createOrGetRun,
     invalidateSections,
     loadRun,
+    readAnswers,
+    readSections,
     recordAnswer,
     type AgentRunRow,
     type PendingQuestion,
@@ -27,10 +29,11 @@ import { gateMeteredAction, isEntitlementError, refundMeteredAction } from '@/li
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { scoutInputKey } from '@/lib/scout/inputKey';
-import { SCOUT_AGENT, type DraftFormat, type DraftTarget, type OutreachDraft, type ScoutInput, type ScoutRunSummary, type ScoutRunView } from '@/lib/scout/types';
+import { SCOUT_AGENT, type DraftFormat, type DraftTarget, type FitData, type OutreachDraft, type ScoutInput, type ScoutRunSummary, type ScoutRunView } from '@/lib/scout/types';
 import { toRunSummary, toRunView } from '@/lib/scout/view';
 import { METER_KEY, readMeter, recordCharge, refreshCharge, refundCharge } from '@/lib/scout/metering';
 import { track } from '@/lib/track';
+import { isUsageLimitError } from '@/lib/usageTracker';
 
 /**
  * Short on purpose: "shipped the retry queue today" is a complete Work Log
@@ -332,33 +335,70 @@ export async function refreshScoutRun(userId: string, runId: string): Promise<Re
 // ──────────────────────────────────────────────────────────────── answer
 
 /**
+ * The fit's non-blocking follow-up (the pay floor), when the run finished
+ * with one and it has not been answered. Read from the stored fit section:
+ * the run itself is not paused on it.
+ */
+export function openFollowUp(run: Pick<AgentRunRow, 'result' | 'answers'>): PendingQuestion | null {
+    const fit = readSections(run).fit;
+    if (!fit || (fit.status !== 'ok' && fit.status !== 'needs_input') || !fit.data) return null;
+    const followUp = (fit.data as FitData).followUp ?? null;
+    if (!followUp || readAnswers(run)[followUp.id] !== undefined) return null;
+    return followUp;
+}
+
+/**
  * Answer the run's pending question and resume it.
+ *
+ * Two kinds of question reach here. A blocking one paused the run
+ * (`awaiting_input`, `pendingQuestion`); a follow-up rides on a finished
+ * run's fit (`openFollowUp`). Either way the answer is recorded, the fit and
+ * the tracker row are recomputed, and the profile learns it.
  *
  * The conditional status flip is the concurrency guard: the same answer
  * arriving from a Telegram button and a dashboard click resumes once.
  * The answer is also written to the profile (`applyAnswerToProfile`), so the
- * next job does not ask again — the whole point of asking.
+ * next job does not ask again — the whole point of asking. `questionId`,
+ * when given, must be the question the caller showed: an answer to a
+ * question that has since changed is refused rather than misfiled.
  */
 export async function answerScoutQuestion(
     userId: string,
     runId: string,
     value: string,
+    questionId?: string | null,
 ): Promise<Result<ScoutRunView>> {
     const run = await ownedRun(userId, runId);
     if (!run) return err('Not found', 'not_found');
-    const question = run.pendingQuestion as unknown as PendingQuestion | null;
-    if (run.status !== 'awaiting_input' || !question) return err('There is no open question on this run', 'no_question');
 
     const answer = value.trim().slice(0, 500);
     if (!answer) return err('Answer is empty', 'invalid_input');
     // Free text is accepted even when the question offered options: a user
     // typing "Bangalore, but open to Pune" is answering better than a button.
 
-    const flipped = await prisma.agentRun.updateMany({
-        where: { id: run.id, status: 'awaiting_input' },
-        data: { status: 'queued' },
-    });
-    if (flipped.count === 0) return ok(toRunView((await loadRun(run.id)) ?? run));
+    const pending = run.pendingQuestion as unknown as PendingQuestion | null;
+    let question: PendingQuestion;
+    if (run.status === 'awaiting_input' && pending) {
+        if (questionId && questionId !== pending.id) return err('That question has changed. Reload to see the current one.', 'stale_question');
+        question = pending;
+        const flipped = await prisma.agentRun.updateMany({
+            where: { id: run.id, status: 'awaiting_input' },
+            data: { status: 'queued' },
+        });
+        if (flipped.count === 0) return ok(toRunView((await loadRun(run.id)) ?? run));
+    } else {
+        const followUp = openFollowUp(run);
+        if (!followUp || (questionId && questionId !== followUp.id)) return err('There is no open question on this run', 'no_question');
+        if (run.status !== 'succeeded' && run.status !== 'partial') {
+            return err('This analysis is still updating. Answer once it finishes.', 'not_ready');
+        }
+        question = followUp;
+        const flipped = await prisma.agentRun.updateMany({
+            where: { id: run.id, status: { in: ['succeeded', 'partial'] } },
+            data: { status: 'queued' },
+        });
+        if (flipped.count === 0) return ok(toRunView((await loadRun(run.id)) ?? run));
+    }
 
     await recordAnswer(run.id, question.id, answer);
     // The tracker row copies the fit verdict, so an answer that changes fit
@@ -415,6 +455,8 @@ export async function draftScoutOutreach(
     } catch (error) {
         await refundMeteredAction(userId, 'cover_letter', { reason: 'scout_draft_failed' });
         console.warn('[scout] draft failed', { runId, error: String(error) });
+        // At the monthly ceiling, "try again" is the wrong advice: say when it resets.
+        if (isUsageLimitError(error)) return err(error.message, 'usage_limit');
         return err('Could not write that draft. Try again.', 'draft_failed');
     }
 }
@@ -441,12 +483,43 @@ export async function listScoutRuns(userId: string, limit = 30): Promise<ScoutRu
 }
 
 /** The latest run awaiting an answer, for channels that reply in free text. */
-export async function findOpenQuestionRun(userId: string): Promise<ScoutRunView | null> {
-    const run = await prisma.agentRun.findFirst({
+/** How long a finished run's non-blocking follow-up (the pay floor) still takes a typed reply. */
+const FOLLOW_UP_WINDOW_MS = 30 * 60_000;
+
+/** The question a run is waiting on, blocking or not. */
+export function openQuestionOf(view: ScoutRunView): ScoutRunView['pendingQuestion'] {
+    if (view.pendingQuestion) return view.pendingQuestion;
+    const fit = view.sections.fit;
+    const followUp = fit && fit.status === 'ok' ? (fit.data as { followUp?: ScoutRunView['pendingQuestion'] }).followUp : null;
+    return followUp ?? null;
+}
+
+/**
+ * The run a channel reply might be answering: one paused on a question, or
+ * else a recently finished one whose fit carries an unanswered follow-up
+ * (the pay floor no longer pauses the run). The returned view's
+ * `pendingQuestion` is that question either way.
+ */
+export async function findOpenQuestionRun(userId: string, now: Date = new Date()): Promise<ScoutRunView | null> {
+    const paused = await prisma.agentRun.findFirst({
         where: { userId, agent: SCOUT_AGENT, status: 'awaiting_input' },
         orderBy: { updatedAt: 'desc' },
     });
-    return run ? toRunView(run) : null;
+    if (paused) return toRunView(paused);
+
+    const recent = await prisma.agentRun.findFirst({
+        where: {
+            userId,
+            agent: SCOUT_AGENT,
+            status: { in: ['succeeded', 'partial'] },
+            updatedAt: { gte: new Date(now.getTime() - FOLLOW_UP_WINDOW_MS) },
+        },
+        orderBy: { updatedAt: 'desc' },
+    });
+    if (!recent) return null;
+    const view = toRunView(recent);
+    const question = openQuestionOf(view);
+    return question ? { ...view, pendingQuestion: question } : null;
 }
 
 /** Step timeline for the run detail page: the same rows the operator sees. */

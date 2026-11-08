@@ -19,6 +19,7 @@ import {
   freeResumeCap,
   freeTrialDays,
   freeTrialUses,
+  launchOpenAccess,
   meteredLimit,
   tokenBudget,
   type MeteredAction,
@@ -533,6 +534,8 @@ export type EffectiveLimits = {
   resumeCap: number;
   trialDays: number;
   enforced: boolean;
+  /** Every feature on for every account, launch allowance in force. */
+  launchOpen: boolean;
 };
 
 function formatLimit(limit: { limit: number; scope: string; trial?: boolean }): string {
@@ -566,6 +569,7 @@ export async function getEffectiveLimits(): Promise<EffectiveLimits> {
     resumeCap: freeResumeCap(),
     trialDays: freeTrialDays(),
     enforced: entitlementsEnforced(),
+    launchOpen: launchOpenAccess(),
   };
 }
 

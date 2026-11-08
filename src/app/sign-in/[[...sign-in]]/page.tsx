@@ -29,7 +29,10 @@ export default async function SignInPage({
   const newAccount = welcomeUrl({ next: target, stash });
 
   return (
-    <div className="relative min-h-screen bg-background">
+    // Dark, like the marketing site every visitor arrives from: the app's
+    // light default made sign-up look like leaving Patronus. The tokens in
+    // clerkAuthAppearance resolve against this subtree.
+    <div className="dark relative min-h-screen bg-background text-foreground">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.18),transparent_55%)]" />
       <div className="relative flex min-h-screen items-center justify-center px-4 py-10 w-full">
         <div className="flex w-full justify-center">

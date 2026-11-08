@@ -15,6 +15,12 @@
  * Every judgement in between — score, verdict, preference conflicts, the one
  * question — is code in `fit/evaluate.ts`. Either call failing degrades the
  * section (keyword fallback, plain summary); neither can fail it.
+ *
+ * The fit is always computed and always stored with its data. A question
+ * that only refines one check (the pay floor, `NON_BLOCKING_QUESTIONS`) does
+ * not pause the run at all: it rides on the fit as `followUp`, shown after
+ * the result, so a first-time user sees their fit straight away (QA
+ * 2026-11-07, "Your fit: Waiting on your answer above").
  */
 
 import { z } from 'zod';
@@ -43,6 +49,7 @@ import {
     type Judgement,
     type MatchPlan,
 } from '@/lib/scout/fit/match';
+import { NON_BLOCKING_QUESTIONS, isPreferenceQuestionId } from '@/lib/scout/fit/answers';
 import type { FitData, JdData } from '@/lib/scout/types';
 import { parseUserGenerationPreferences, type UserGenerationPreferences } from '@/lib/userPreferences';
 
@@ -199,10 +206,15 @@ export const fitSection: ScoutSection<'fit'> = async (ctx) => {
         verdict: evaluation.fit.verdict,
     });
 
+    const question = evaluation.question;
+    const followUp = question && isPreferenceQuestionId(question.id) && NON_BLOCKING_QUESTIONS.has(question.id) ? question : null;
+    const blocking = question && !followUp ? question : null;
+
     let summary = deterministicSummary(evaluation.fit, jd, evaluation.coverage);
-    // No prose while a question is open: the answer re-runs this section, so a
-    // model summary now would be paid for and thrown away.
-    if (!record.empty && !evaluation.question) {
+    // No prose while a blocking question is open: the answer re-runs this
+    // section, so a model summary now would be paid for and thrown away. A
+    // follow-up is optional, so the user gets the full result now.
+    if (!record.empty && !blocking) {
         try {
             const { data, degraded } = await ctx.step.ai({
                 task: 'scoutFitExplain',
@@ -232,9 +244,9 @@ export const fitSection: ScoutSection<'fit'> = async (ctx) => {
         }
     }
 
-    const fit: FitData = { ...evaluation.fit, summary };
-    if (evaluation.question) {
-        return { status: 'needs_input', question: evaluation.question, data: fit };
+    const fit: FitData = { ...evaluation.fit, summary, followUp };
+    if (blocking) {
+        return { status: 'needs_input', question: blocking, data: fit };
     }
     return { status: 'ok', data: fit };
 };
