@@ -138,6 +138,13 @@ export const SERVER_EVENTS = [
     'chat_in_task',
     'message_draft_revised',
     'message_draft_opened',
+    // Share and go: the goal read off a share, and the apply chain's steps
+    // (docs/impl/07-telegram-apply.md §5).
+    'share_goal_decided',
+    'apply_chain_requested',
+    'apply_chain_tailoring',
+    'apply_chain_drafted',
+    'apply_chain_sent',
     // Job-search journey (docs/prd/11-job-journey.md)
     'job_email_received',
     'job_email_drafted',

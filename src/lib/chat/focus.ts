@@ -65,3 +65,17 @@ export async function setFocus(userId: string, channel: Channel, focus: ChatFocu
         update: { focus: value, focusAt: focus ? now : null },
     });
 }
+
+/**
+ * True when a draft is in focus on the channel and was focused after `since`.
+ * The newer task owns a short reply: "add IIT Delhi" or "sent it" after a
+ * draft is about the draft, not about a question asked before it.
+ */
+export async function draftFocusedSince(userId: string, channel: Channel, since: Date, now: Date = new Date()): Promise<boolean> {
+    const row = await prisma.chatConversation.findUnique({
+        where: { userId_channel: { userId, channel } },
+        select: { focus: true, focusAt: true },
+    });
+    if (!row?.focusAt || !focusIsLive(row.focusAt, now)) return false;
+    return parseFocus(row.focus)?.kind === 'draft' && row.focusAt.getTime() > since.getTime();
+}

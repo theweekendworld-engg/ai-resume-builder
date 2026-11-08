@@ -120,3 +120,20 @@ describe('education evidence', () => {
         expect(selectEvidence(lines, null, 2).map((line) => line.source)).toEqual(['Razorpay', 'Education: IIT Delhi']);
     });
 });
+
+describe('the sign-off is its own paragraph', () => {
+    test('splitSignOff finds "Jai" and "Thanks,\\nJai", not a closing sentence', async () => {
+        const { splitSignOff } = await import('./outreach');
+        expect(splitSignOff('Hi,\n\nI build Go services.\n\nJai')).toEqual({ main: 'Hi,\n\nI build Go services.', signOff: 'Jai' });
+        expect(splitSignOff('Hi,\n\nI build Go services.\n\nThanks,\nJai')).toEqual({ main: 'Hi,\n\nI build Go services.', signOff: 'Thanks,\nJai' });
+        expect(splitSignOff('Hi,\n\nI build Go services.\n\nWould a short call make sense?').signOff).toBeNull();
+    });
+
+    test('an email over the word limit is trimmed above the sign-off, never through it', async () => {
+        const { enforceLimits, EMAIL_BODY_MAX_WORDS } = await import('./outreach');
+        const long = `Hi,\n\n${'I built settlement services in Go at Razorpay. '.repeat(30).trim()}\n\nThanks,\nJai`;
+        const { body } = enforceLimits('email', { subject: 'Backend role', body: long });
+        expect(body).toEndWith('\n\nThanks,\nJai');
+        expect(body.split(/\s+/).length).toBeLessThanOrEqual(EMAIL_BODY_MAX_WORDS);
+    });
+});

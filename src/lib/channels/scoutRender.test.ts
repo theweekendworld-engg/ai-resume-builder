@@ -49,14 +49,14 @@ describe('final: job', () => {
     });
 
     test('a stretch offers the tracker, then draft, why-not-fit, email and open', () => {
-        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'why', 'draft', 'open']);
+        expect(message.actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'apply', 'tailor', 'draft', 'why', 'draft', 'open']);
         expect(message.actions.slice(0, 3).map((action) => action.label)).toEqual(['💾 Save', '📨 Applied', '❌ Not interested']);
     });
 
     test('a strong fit does not offer "why not a fit"', () => {
         const base = JOB_SECTIONS.fit as { data: FitData };
         const strong = view({ sections: { ...JOB_SECTIONS, fit: ok<FitData>({ ...base.data, verdict: 'strong', notFitReasons: [] }) } });
-        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'tailor', 'draft', 'draft', 'open']);
+        expect(renderScoutFinal(strong, APP).actions.map((action) => action.kind)).toEqual(['status', 'status', 'status', 'apply', 'tailor', 'draft', 'draft', 'open']);
     });
 
     test('an unavailable section simply has no line', () => {
@@ -207,5 +207,80 @@ describe('the pay follow-up on a finished job', () => {
         const message = renderScoutFinal(view({ status: 'succeeded', sections: JOB_SECTIONS }), APP);
         const text = message.lines.map((line) => line.map((span) => span.text).join('')).join('\n');
         expect(text).not.toContain('Reply here with your answer');
+    });
+});
+
+describe('share and go: the final message follows the goal', () => {
+    const fit = (JOB_SECTIONS.fit as { data: FitData }).data;
+    const input = (extra: Record<string, unknown>) => ({ url: 'https://www.linkedin.com/jobs/view/4455902670', source: 'telegram' as const, ...extra });
+    const text = (message: { lines: { text: string }[][] }) => plain(message.lines);
+
+    test('a blocking eligibility conflict: the analysis, then "Apply anyway?" with Yes and No', () => {
+        const held = view({
+            sections: JOB_SECTIONS,
+            input: input({ goal: 'apply', apply: { stage: 'eligibility_hold', at: '', reason: 'You may not be eligible: requires US citizenship.' } }),
+        });
+        const message = renderScoutFinal(held, APP);
+        expect(text(message)).toContain('📍 Chennai');
+        expect(text(message)).toContain('You may not be eligible: requires US citizenship. Apply anyway?');
+        expect(message.actions.map((a) => a.label)).toEqual(['Yes, apply anyway', 'No, skip it', 'Open in Patronus']);
+    });
+
+    test('tailoring: the analysis, then what is happening, and no buttons to repeat it', () => {
+        const working = view({ sections: JOB_SECTIONS, input: input({ goal: 'apply', apply: { stage: 'tailoring', at: '' } }) });
+        const message = renderScoutFinal(working, APP);
+        expect(text(message)).toContain('🚀 Tailoring your resume for Software Dev Engineer II at Amazon now.');
+        expect(message.actions.map((a) => a.kind)).toEqual(['open']);
+    });
+
+    test('a blocking preference question: asked as before, with a word that the application follows', () => {
+        const asking = view({
+            status: 'awaiting_input',
+            sections: JOB_SECTIONS,
+            pendingQuestion: { id: 'pref.relocate', step: 'fit', prompt: 'Would you relocate to Chennai?', options: [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] },
+            input: input({ goal: 'apply' }),
+        });
+        const message = renderScoutFinal(asking, APP);
+        expect(text(message)).toContain('Would you relocate to Chennai?');
+        expect(text(message)).toContain('Once you answer, I will tailor your resume and draft the application.');
+        expect(message.actions.map((a) => a.kind)).toEqual(['answer', 'answer']);
+    });
+
+    test('a stopped chain says why and keeps the buttons, Apply for me included', () => {
+        const stopped = view({ sections: JOB_SECTIONS, input: input({ goal: 'apply', apply: { stage: 'stopped', at: '', reason: 'Upload your resume first.', code: 'no_base_resume' } }) });
+        const message = renderScoutFinal(stopped, APP);
+        expect(text(message)).toContain('⚠️ Upload your resume first.');
+        expect(message.actions.some((a) => a.kind === 'apply')).toBe(true);
+    });
+
+    test('Apply for me is not offered once applied or while the chain works', () => {
+        const applied = view({ sections: { ...JOB_SECTIONS, track: ok({ workspaceId: 'w', status: 'applied' as const, created: false }) } });
+        expect(renderScoutFinal(applied, APP).actions.some((a) => a.kind === 'apply')).toBe(false);
+        const drafted = view({ sections: JOB_SECTIONS, input: input({ goal: 'apply', apply: { stage: 'drafted', at: '' } }) });
+        expect(renderScoutFinal(drafted, APP).actions.some((a) => a.kind === 'apply')).toBe(false);
+    });
+
+    test('"who should I talk to": the people by name, and the message to them leads', () => {
+        const people = view({
+            sections: {
+                ...JOB_SECTIONS,
+                fit: ok<FitData>({ ...fit, verdict: 'strong', notFitReasons: [] }),
+                network: ok({
+                    targets: [{ contactId: 'c1', fullName: 'Priya Raman', position: 'Engineering Manager', company: 'Amazon', profileUrl: null, tier: 'first_degree' as const, why: '1st-degree connection' }],
+                    searchLinks: [],
+                    hasContactsImported: true,
+                }),
+            },
+            input: input({ goal: 'people' }),
+        });
+        const message = renderScoutFinal(people, APP);
+        expect(text(message)).toContain('🤝 Who to talk to');
+        expect(text(message)).toContain('• Priya Raman, Engineering Manager · 1st-degree connection');
+        expect(message.actions[0]).toMatchObject({ kind: 'draft', target: 'f', format: 'n' });
+    });
+
+    test('"save for later": says it is saved', () => {
+        const saved = view({ sections: { ...JOB_SECTIONS, track: ok({ workspaceId: 'w', status: 'analyzed' as const, created: true }) }, input: input({ goal: 'save' }) });
+        expect(text(renderScoutFinal(saved, APP))).toContain('💾 Saved for later');
     });
 });

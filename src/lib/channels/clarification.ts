@@ -100,3 +100,19 @@ export function nextClarificationQuestion(value: unknown): string | null {
     }
     return null;
 }
+
+/**
+ * How a resume's questions are introduced, the same on /generate and on
+ * "Tailor resume": "3 quick questions about things the job asks for that your
+ * record does not show yet. Nothing you do not confirm goes on the resume."
+ * Lower-case first word: it follows "Before I write it, ".
+ */
+export function questionsIntro(total: number): string {
+    const what = total > 1
+        ? `${total} quick questions about things the job asks for that your record does not show yet`
+        : 'one quick question about something the job asks for that your record does not show yet';
+    return `${what}. Nothing you do not confirm goes on the resume.`;
+}
+
+/** What a question message ends with. */
+export const CLARIFICATION_REPLY_HINT = 'Answer it, or say "skip", "skip all" or "cancel".';

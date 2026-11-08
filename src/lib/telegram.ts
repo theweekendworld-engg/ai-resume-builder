@@ -14,6 +14,8 @@ type SendDocumentInput = {
   fileName: string;
   document: Buffer | Uint8Array | ArrayBuffer | Blob | string;
   caption?: string;
+  /** Buttons under the document, so a file and its actions are one message. */
+  replyMarkup?: TelegramReplyMarkup;
 };
 
 const TelegramSendResponseSchema = z.object({
@@ -163,6 +165,9 @@ export async function sendTelegramDocument(input: SendDocumentInput): Promise<vo
 
   if (input.caption) {
     form.append('caption', input.caption);
+  }
+  if (input.replyMarkup) {
+    form.append('reply_markup', JSON.stringify(input.replyMarkup));
   }
 
   if (typeof input.document === 'string') {

@@ -57,6 +57,9 @@ export const TASK_KEYS = [
     // Chat (docs/prd/10-chat.md): one routing call per message. It picks an
     // action from a closed list; the code runs it.
     'chatRoute',
+    // The goal of a share (apply / evaluate / people / save), asked only when
+    // code's keywords cannot tell (docs/impl/07-telegram-apply.md §5).
+    'shareGoal',
     // Job-search journey (docs/prd/11-job-journey.md): file a forwarded email
     // against an application, and draft the reply or follow-up.
     'jobEmailClassify',
@@ -137,6 +140,7 @@ export const TASK_REASONING_EFFORT: Partial<Record<TaskKey, 'minimal' | 'low' | 
     scoutPostingRead: 'low',
     // A person is waiting on every message; routing is classification.
     chatRoute: 'low',
+    shareGoal: 'low',
     jobEmailClassify: 'low',
     // Shortening lines the user wrote: copying, not reasoning.
     memoryConsolidate: 'low',

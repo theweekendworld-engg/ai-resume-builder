@@ -29,7 +29,7 @@ import { gateMeteredAction, isEntitlementError, refundMeteredAction } from '@/li
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { scoutInputKey } from '@/lib/scout/inputKey';
-import { SCOUT_AGENT, type DraftFormat, type DraftTarget, type FitData, type OutreachDraft, type ScoutInput, type ScoutRunSummary, type ScoutRunView } from '@/lib/scout/types';
+import { SCOUT_AGENT, SHARE_GOALS, type DraftFormat, type DraftTarget, type FitData, type OutreachDraft, type ScoutInput, type ScoutRunSummary, type ScoutRunView } from '@/lib/scout/types';
 import { toRunSummary, toRunView } from '@/lib/scout/view';
 import { METER_KEY, readMeter, recordCharge, refreshCharge, refundCharge } from '@/lib/scout/metering';
 import { track } from '@/lib/track';
@@ -188,6 +188,9 @@ export async function startScoutRun(params: StartScoutParams): Promise<Result<St
                 companyHint: params.input.companyHint?.trim().slice(0, 120) || null,
             }
             : {}),
+        // What the user asked for with the share (src/lib/scout/goal.ts). Not
+        // in the dedupe key: the same post with "apply for me" is the same run.
+        ...(params.input.goal && params.input.goal !== 'evaluate' && SHARE_GOALS.includes(params.input.goal) ? { goal: params.input.goal } : {}),
     };
     const inputKey = scoutInputKey(input);
 

@@ -193,6 +193,111 @@ describe('tailor', () => {
         const reply = await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d);
         expect(reply.lines[0][0].text).toContain('Tailored resumes');
     });
+
+    // Live test 2026-11-08: "One detail first:" with three questions waiting.
+    test('three questions: says how many, numbers the first, in the /generate wording', async () => {
+        const d = deps({
+            tailorResumeForRun: async () => ({
+                success: true,
+                data: {
+                    sessionId: 's1', workspaceId: 'w1', resumeId: null, status: 'awaiting_clarification',
+                    nextQuestion: { id: 'q1', question: 'Do you have hands-on experience with MCP?', gap: 'MCP' },
+                    progress: { current: 1, total: 3 },
+                },
+            }),
+        });
+        const text = (await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d)).lines.map((l) => l.map((s) => s.text).join('')).join('\n');
+        expect(text).not.toContain('One detail first');
+        expect(text).toContain('Before I write it, 3 quick questions about things the job asks for that your record does not show yet.');
+        expect(text).toContain('Question 1 of 3: Do you have hands-on experience with MCP?');
+        expect(text).toContain('Answer it, or say "skip", "skip all" or "cancel".');
+    });
+
+    test('one question: "one quick question", not numbered', async () => {
+        const d = deps({
+            tailorResumeForRun: async () => ({
+                success: true,
+                data: { sessionId: 's1', workspaceId: 'w1', resumeId: null, status: 'awaiting_clarification', progress: { current: 1, total: 1 } },
+            }),
+            nextGenerationQuestion: async () => 'Have you run Kafka in production?',
+        });
+        const text = (await executeScoutAction('u', { kind: 'tailor', runId: RUN_ID }, d)).lines.map((l) => l.map((s) => s.text).join('')).join('\n');
+        expect(text).toContain('one quick question about something the job asks for');
+        expect(text).not.toContain('Question 1 of');
+    });
+});
+
+describe('apply for me', () => {
+    test('the button and both answers round-trip in 64 bytes', () => {
+        for (const confirm of [undefined, 'y' as const, 'n' as const]) {
+            const data = encodeScoutAction(RUN_ID, { kind: 'apply', label: '', ...(confirm ? { confirm } : {}) });
+            expect(Buffer.byteLength(data)).toBeLessThanOrEqual(64);
+            expect(decodeScoutAction(data)).toEqual({ kind: 'apply', runId: RUN_ID, ...(confirm ? { confirm } : {}) });
+        }
+        expect(decodeScoutAction(`sc:g:${RUN_ID}:x`)).toBeNull();
+    });
+
+    function applyDeps(chain: { stage: string; reason?: string } | null, status: 'succeeded' | 'awaiting_input' = 'succeeded') {
+        const calls: string[] = [];
+        const v = view({ status, sections: JOB_SECTIONS, input: { url: 'https://www.linkedin.com/jobs/view/1', source: 'telegram', goal: 'apply', apply: chain ? { at: '', ...chain } as never : null } });
+        const d = deps({
+            apply: {
+                requestApply: async (_u, runId, opts) => {
+                    calls.push(`apply:${runId}:${opts.channel}:${opts.override ? 'override' : 'plain'}`);
+                    return { success: true, data: { view: v, chain: (chain as never) ?? null, already: false } };
+                },
+                declineApply: async (_u, runId) => {
+                    calls.push(`decline:${runId}`);
+                    return { success: true, data: undefined };
+                },
+            },
+        });
+        return { d, calls };
+    }
+
+    test('tailoring started: says so, and the tapped button is spent', async () => {
+        const { d, calls } = applyDeps({ stage: 'tailoring' });
+        const reply = await executeScoutAction('u', { kind: 'apply', runId: RUN_ID }, d, { channel: 'telegram' });
+        expect(calls).toEqual([`apply:${RUN_ID}:telegram:plain`]);
+        expect(reply.lines[0][0].text).toContain('Tailoring your resume for Software Dev Engineer II at Amazon');
+        expect(reply.settled).toBe(true);
+    });
+
+    test('an eligibility conflict comes back as the one question, with Yes and No', async () => {
+        const { d } = applyDeps({ stage: 'eligibility_hold', reason: 'You may not be eligible: requires US citizenship.' });
+        const reply = await executeScoutAction('u', { kind: 'apply', runId: RUN_ID }, d, { channel: 'telegram' });
+        expect(reply.lines[0][0].text).toBe('You may not be eligible: requires US citizenship. Apply anyway?');
+        expect(reply.actions?.map((a) => a.kind === 'apply' ? a.confirm : null)).toEqual(['y', 'n']);
+    });
+
+    test('"Yes, apply anyway" passes the override; "No" stops it', async () => {
+        const { d, calls } = applyDeps({ stage: 'tailoring' });
+        await executeScoutAction('u', { kind: 'apply', runId: RUN_ID, confirm: 'y' }, d, { channel: 'telegram' });
+        const no = await executeScoutAction('u', { kind: 'apply', runId: RUN_ID, confirm: 'n' }, d, { channel: 'telegram' });
+        expect(calls).toEqual([`apply:${RUN_ID}:telegram:override`, `decline:${RUN_ID}`]);
+        expect(no.lines[0][0].text).toContain('I will not apply');
+        expect(no.settled).toBe(true);
+    });
+
+    test('a blocking question first: asks it, and says the application follows', async () => {
+        const { d } = applyDeps({ stage: 'pending' }, 'awaiting_input');
+        const v = await d.getScoutRun('u', RUN_ID);
+        const reply = await executeScoutAction('u', { kind: 'apply', runId: RUN_ID }, { ...d, apply: { ...d.apply!, requestApply: async () => ({ success: true, data: { view: { ...(v.success ? v.data : view()), input: { source: 'telegram', goal: 'apply' } }, chain: { stage: 'pending', at: '' }, already: false } }) } }, { channel: 'telegram' });
+        expect(reply.lines[0][0].text).toContain('as soon as you answer');
+        expect(reply.actions?.map((a) => a.kind)).toEqual(['answer', 'answer']);
+    });
+
+    test('a refusal keeps its way forward', async () => {
+        const d = deps({
+            apply: {
+                requestApply: async () => ({ success: false, error: 'Upload your resume first.', code: 'no_base_resume' }),
+                declineApply: async () => ({ success: true, data: undefined }),
+            },
+        });
+        const reply = await executeScoutAction('u', { kind: 'apply', runId: RUN_ID }, d, { channel: 'telegram' });
+        expect(reply.lines[0][0].text).toBe('Upload your resume first.');
+        expect(reply.actions?.[0]).toMatchObject({ kind: 'open', label: 'Add your resume' });
+    });
 });
 
 // ─── versioned email drafts

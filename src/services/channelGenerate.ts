@@ -49,7 +49,25 @@ type ClarificationPayload = {
    * a session with questions is in `continueSession`, long after the decision.
    */
   free?: boolean;
+  /**
+   * The Scout run whose apply chain started this session
+   * (src/services/applyChain.ts). Its completion writes the application
+   * draft instead of the plain "resume ready" message.
+   */
+  chain?: SessionChainLink;
 };
+
+/** A generation session's link to the apply chain that started it. */
+export type SessionChainLink = { runId: string };
+
+/** The chain link stored in a session's `clarifications`, or null. */
+export function chainLinkOf(value: Prisma.JsonValue | null | undefined): SessionChainLink | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const chain = (value as Record<string, unknown>).chain;
+  if (!chain || typeof chain !== 'object' || Array.isArray(chain)) return null;
+  const runId = (chain as Record<string, unknown>).runId;
+  return typeof runId === 'string' && runId ? { runId } : null;
+}
 
 /** Where `continueSession` appends the answers to the JD. */
 export const CLARIFICATION_MARKER = '\n\nCandidate clarifications (verified user input):';
@@ -267,12 +285,14 @@ function readClarificationPayload(value: Prisma.JsonValue | null): Clarification
     : [];
   const remembered = readRemembered(obj.remembered);
 
+  const chain = chainLinkOf(value);
   return {
     questions,
     answers,
     gaps,
     ...(remembered.length > 0 ? { remembered } : {}),
     ...(obj.free === true ? { free: true } : {}),
+    ...(chain ? { chain } : {}),
   };
 }
 
@@ -540,6 +560,8 @@ async function startNewSession(params: {
   workspaceId?: string;
   /** Waive the unit (a recent regeneration). */
   free?: boolean;
+  /** The apply chain this session belongs to (src/services/applyChain.ts). */
+  chain?: SessionChainLink;
 }): Promise<ChannelGenerateResponse> {
   // Nothing to tailor from: say so BEFORE anything is charged or parsed.
   if (!(await hasGenerationContext(params.userId, params.fallbackResumeData))) {
@@ -610,7 +632,10 @@ async function startNewSession(params: {
       fallbackResume: params.fallbackResumeData
         ? params.fallbackResumeData as unknown as Prisma.InputJsonValue
         : undefined,
-      clarifications: payload as unknown as Prisma.InputJsonValue,
+      clarifications: {
+        ...payload,
+        ...(params.chain ? { chain: params.chain } : {}),
+      } as unknown as Prisma.InputJsonValue,
       currentStep: PipelineStep.reuse_check,
       stepStartedAt: new Date(),
       status: questions.length > 0 ? GenerationStatus.awaiting_clarification : GenerationStatus.generating,
@@ -871,6 +896,7 @@ export async function startGenerationForUser(params: {
   workspaceId: string;
   fallbackResumeData?: ResumeData;
   maxQuestions?: number;
+  chain?: SessionChainLink;
 }): Promise<ChannelGenerateResponse> {
   return startNewSession({
     userId: params.userId,
@@ -880,5 +906,40 @@ export async function startGenerationForUser(params: {
     workspaceId: params.workspaceId,
     fallbackResumeData: params.fallbackResumeData,
     maxQuestions: params.maxQuestions ?? 3,
+    ...(params.chain ? { chain: params.chain } : {}),
   });
+}
+
+/**
+ * Skip every remaining question of the user's own session and start it: the
+ * same path as typing "skip all" (charged once, claimed once). For the apply
+ * chain, which runs without the user at each step: the questions exist to ADD
+ * facts, and nothing unanswered is ever claimed (`buildClarificationContext`
+ * drops empty answers).
+ */
+export async function skipAllGenerationQuestions(userId: string, sessionId: string): Promise<ChannelGenerateResponse> {
+  const session = await prisma.generationSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { channel: true },
+  });
+  if (!session) return { success: false, error: 'Generation session not found', code: 'not_found' };
+  return continueSession({ userId, sessionId, channel: session.channel, skipAll: true });
+}
+
+/**
+ * Tie an existing session to an apply chain, so its completion writes the
+ * draft. Conditional on the session still being the user's and unfinished.
+ */
+export async function linkSessionToChain(userId: string, sessionId: string, chain: SessionChainLink): Promise<boolean> {
+  const session = await prisma.generationSession.findFirst({
+    where: { id: sessionId, userId },
+    select: { clarifications: true },
+  });
+  if (!session) return false;
+  const payload = readClarificationPayload(session.clarifications);
+  const updated = await prisma.generationSession.updateMany({
+    where: { id: sessionId, userId, status: { in: [GenerationStatus.pending, GenerationStatus.generating, GenerationStatus.awaiting_clarification] } },
+    data: { clarifications: { ...payload, chain } as unknown as Prisma.InputJsonValue },
+  });
+  return updated.count > 0;
 }

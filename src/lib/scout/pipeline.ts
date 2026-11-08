@@ -84,6 +84,13 @@ export async function finishScoutRun(runId: string, error: string | null): Promi
         if (asking && asking.status === 'needs_input') await pauseForInput(runId, asking.question);
     }
     await finishRun(runId, error);
+    // Share and go: a run shared with "apply for me" takes its next step here,
+    // before the final message, so the message says what is happening
+    // (src/services/applyChain.ts). Runs without that goal return at once.
+    const { advanceApplyChain } = await import('@/services/applyChain');
+    await advanceApplyChain(runId).catch((chainError: unknown) => {
+        console.warn('[scout] apply chain did not advance', { runId, error: String(chainError) });
+    });
     const { notifyScoutRun } = await import('@/lib/scout/notify');
     await notifyScoutRun(runId, 'finished').catch((notifyError: unknown) => {
         console.warn('[scout] finish notification failed', { runId, error: String(notifyError) });

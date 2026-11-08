@@ -11,6 +11,7 @@
  *   sc:x:<winId>                        dismiss a Work Log draft
  *   sc:t:<runId>                        tailor a resume for the run's job
  *   sc:v:<draftId>:<revision>           revise a MessageDraft (s shorter, g stronger)
+ *   sc:g:<runId>[:y|n]                  apply for me (the apply chain); y = apply anyway, n = stop
  *
  * `sc:d:<runId>:<target>:e` (an email) writes a versioned MessageDraft with
  * compose buttons (src/services/drafts.ts); the LinkedIn formats keep the
@@ -30,7 +31,10 @@ import { REVISION_INSTRUCTIONS } from '@/lib/drafts/revisions';
 import { JOB_ACTION_LABELS, type JobAction, type JobBoardItem } from '@/lib/inbox/types';
 import type { Result } from '@/lib/result';
 import type { TailorStart } from '@/services/tailor';
+import type { ApplyOutcome } from '@/services/applyChain';
 import { config } from '@/lib/config';
+import { questionsIntro, CLARIFICATION_REPLY_HINT } from '@/lib/channels/clarification';
+import { roleAtCompany } from '@/lib/scout/applyChain';
 import { rememberedNote } from '@/lib/memory/format';
 
 export const SCOUT_ACTION_PREFIX = 'sc:';
@@ -72,7 +76,8 @@ export type DecodedScoutAction =
     | { kind: 'confirm_win'; winId: string }
     | { kind: 'dismiss_win'; winId: string }
     | { kind: 'tailor'; runId: string }
-    | { kind: 'revise_draft'; draftId: string; revision: DraftRevision };
+    | { kind: 'revise_draft'; draftId: string; revision: DraftRevision }
+    | { kind: 'apply'; runId: string; confirm?: 'y' | 'n' };
 
 export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { kind: 'open' }>): string {
     switch (action.kind) {
@@ -94,6 +99,8 @@ export function encodeScoutAction(runId: string, action: Exclude<ScoutAction, { 
             return `sc:t:${runId}`;
         case 'revise_draft':
             return `sc:v:${action.draftId}:${action.revision}`;
+        case 'apply':
+            return action.confirm ? `sc:g:${runId}:${action.confirm}` : `sc:g:${runId}`;
     }
 }
 
@@ -138,6 +145,9 @@ export function decodeScoutAction(data: string): DecodedScoutAction | null {
             const revision = REVISION_CODES[a as DraftRevisionCode];
             return revision ? { kind: 'revise_draft', draftId: id, revision } : null;
         }
+        case 'g':
+            if (a === undefined) return { kind: 'apply', runId: id };
+            return a === 'y' || a === 'n' ? { kind: 'apply', runId: id, confirm: a } : null;
         default:
             return null;
     }
@@ -164,6 +174,13 @@ export type ScoutActionDeps = {
     nextGenerationQuestion: (userId: string, sessionId: string) => Promise<string | null>;
     /** Versioned drafts. Optional so channel test doubles need not grow; absent means the real service. */
     drafts?: DraftActionDeps;
+    /** The apply chain. Optional for the same reason; absent means `src/services/applyChain.ts`. */
+    apply?: ApplyActionDeps;
+};
+
+export type ApplyActionDeps = {
+    requestApply: (userId: string, runId: string, opts: { channel: 'telegram' | 'whatsapp' | 'web'; override?: boolean }) => Promise<Result<ApplyOutcome>>;
+    declineApply: (userId: string, runId: string) => Promise<Result<void>>;
 };
 
 type ActionChannel = 'telegram' | 'whatsapp';
@@ -331,6 +348,88 @@ export async function executeScoutAction(
             return tailorReply(userId, action.runId, svc, context.channel);
         case 'revise_draft':
             return reviseReply(userId, action.draftId, action.revision, svc, context.channel);
+        case 'apply':
+            return applyReply(userId, action.runId, action.confirm, svc, context.channel);
+    }
+}
+
+async function defaultApplyDeps(): Promise<ApplyActionDeps> {
+    const chain = await import('@/services/applyChain');
+    return { requestApply: chain.requestApply, declineApply: chain.declineApply };
+}
+
+/**
+ * "🚀 Apply for me", and the eligibility question's Yes / No. The chain does
+ * the work in the background; this says what it is doing now.
+ */
+async function applyReply(
+    userId: string,
+    runId: string,
+    confirm: 'y' | 'n' | undefined,
+    svc: ScoutActionDeps,
+    channel: ActionChannel,
+): Promise<ScoutActionReply> {
+    const chain = svc.apply ?? (await defaultApplyDeps());
+    if (confirm === 'n') {
+        const declined = await chain.declineApply(userId, runId);
+        if (!declined.success) return { lines: [text(declined.error)] };
+        return { lines: [text('OK, I will not apply to this one. It stays in your tracker.')], settled: true };
+    }
+    const requested = await chain.requestApply(userId, runId, { channel, override: confirm === 'y' });
+    if (!requested.success) {
+        const next = nextStepFor(requested.code);
+        return { lines: [text(requested.error)], actions: next ? [next] : undefined, runId };
+    }
+    return { ...applyOutcomeReply(requested.data), settled: true };
+}
+
+/** What the chain is doing, as a reply. Pure, for the button and for a re-share. */
+export function applyOutcomeReply(outcome: ApplyOutcome): ScoutActionReply {
+    const { view, chain, already } = outcome;
+    const { label } = roleAtCompany(view.sections);
+    const runId = view.id;
+    if (view.status === 'awaiting_input' && view.pendingQuestion) {
+        const question = view.pendingQuestion;
+        return {
+            lines: [
+                text(`I will apply to ${label} as soon as you answer this:`),
+                [{ text: question.prompt, bold: true }],
+                ...((question.options ?? []).length ? [] : [[{ text: 'Reply here with your answer.', italic: true }]]),
+            ],
+            actions: (question.options ?? []).map((option, index) => ({ kind: 'answer' as const, index, label: option.label })),
+            runId,
+        };
+    }
+    if (view.status === 'queued' || view.status === 'running') {
+        return { lines: [text(`Still reading ${label}. I will tailor your resume and draft the application as soon as the analysis is done.`)] };
+    }
+    switch (chain?.stage) {
+        case 'eligibility_hold':
+            return {
+                lines: [[{ text: `${chain.reason ?? 'You may not be eligible for this one.'} Apply anyway?`, bold: true }]],
+                actions: [
+                    { kind: 'apply', confirm: 'y', label: 'Yes, apply anyway' },
+                    { kind: 'apply', confirm: 'n', label: 'No, skip it' },
+                ],
+                runId,
+            };
+        case 'tailoring':
+        case 'drafting':
+            return {
+                lines: [text(already
+                    ? `Already on it: tailoring your resume for ${label}. The PDF and the draft follow here.`
+                    : `🚀 On it. Tailoring your resume for ${label} now; the PDF and your application draft follow here, usually within a couple of minutes.`)],
+            };
+        case 'drafted':
+            return { lines: [text(`The PDF and the draft for ${label} are above. Send it from your mail app, then tell me "sent it" and I will mark it Applied.`)] };
+        case 'applied':
+            return { lines: [text(`You already applied to ${label}. It is in your tracker under Applied.`)] };
+        case 'stopped': {
+            const next = nextStepFor(chain.code ?? undefined);
+            return { lines: [text(chain.reason ?? 'I could not apply to this one.')], actions: next ? [next] : undefined, runId };
+        }
+        default:
+            return { lines: [text(`Applying to ${label}. I will send the PDF and the draft here.`)] };
     }
 }
 
@@ -422,18 +521,24 @@ async function tailorReply(
     if (started.data.status === 'awaiting_clarification') {
         const question = started.data.nextQuestion?.question
             ?? await svc.nextGenerationQuestion(userId, started.data.sessionId);
+        const progress = started.data.progress ?? { current: 1, total: 1 };
+        // The same words as /generate (src/services/telegramAgent.ts): "3 quick
+        // questions…", then "Question 1 of 3: …". It said "One detail first"
+        // even when there were three.
+        const intro = `Tailoring your resume for ${label}. Before I write it, ${questionsIntro(progress.total)}`;
         if (channel === 'whatsapp') {
             return {
-                lines: [text(`Tailoring your resume for ${label}. One detail first: answer it in Patronus.`), ...recalled],
+                lines: [text(`${intro} Answer ${progress.total > 1 ? 'them' : 'it'} in Patronus.`), ...recalled],
                 actions: [{ kind: 'open', label: 'Answer in Patronus', url: `${config.app.url}/build` }],
                 runId,
             };
         }
+        const numbered = progress.total > 1 ? `Question ${progress.current} of ${progress.total}: ` : '';
         return {
             lines: [
-                text(`Tailoring your resume for ${label}. One detail first:`),
-                [{ text: question ?? 'Reply with anything the job asks for that your record does not show yet.', bold: true }],
-                [{ text: 'Reply here, or send "skip all" to go ahead without.', italic: true }],
+                text(intro),
+                [{ text: `${numbered}${question ?? 'Reply with anything the job asks for that your record does not show yet.'}`, bold: true }],
+                [{ text: CLARIFICATION_REPLY_HINT, italic: true }],
                 ...recalled,
             ],
         };

@@ -192,6 +192,9 @@ export const config = {
             // Chat routing: high volume, latency-felt, classification-shaped.
             // Scout's cheap default, with its own override.
             chatRoute: process.env.OPENAI_MODEL_CHAT || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
+            // What a share is for ("apply for me", "worth it?"), when code's
+            // keywords cannot tell: one closed-enum pick, on chat's cheap model.
+            shareGoal: process.env.OPENAI_MODEL_CHAT || process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,
             // Job email: classification on every forwarded message, and a
             // short reply draft on request. Scout's cheap default.
             jobEmailClassify: process.env.OPENAI_MODEL_SCOUT || scoutDefaultModel,

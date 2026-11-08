@@ -28,25 +28,33 @@ describe('the job message\'s email button', () => {
     test('a posting that names its address: "✉️ Email jobs@x.com" straight after tailoring', () => {
         const message = renderScoutFinal(view({ sections: withEmails(['jobs@x.com']) }), APP);
         expect(message.actions.map((a) => a.label)).toEqual([
-            '💾 Save', '📨 Applied', '❌ Not interested', '✍️ Tailor resume', '✉️ Email jobs@x.com', 'Draft referral note', 'Why not a fit', 'Open in Patronus',
+            '💾 Save', '📨 Applied', '❌ Not interested', '🚀 Apply for me', '✍️ Tailor resume', '✉️ Email jobs@x.com', 'Draft referral note', 'Why not a fit', 'Open in Patronus',
         ]);
-        expect(message.actions[4]).toEqual({ kind: 'draft', target: 'r', format: 'e', label: '✉️ Email jobs@x.com' });
+        expect(message.actions[5]).toEqual({ kind: 'draft', target: 'r', format: 'e', label: '✉️ Email jobs@x.com' });
     });
 
-    test('Telegram keeps the primary buttons and the email inside its six', () => {
+    test('Telegram keeps the primary buttons, Apply for me and the email inside its six', () => {
         const buttons = formatForTelegram(renderScoutFinal(view({ sections: withEmails(['jobs@x.com']) }), APP), RUN_ID).buttons;
         expect(buttons).toHaveLength(6);
-        expect(buttons.slice(0, 4).map((b) => b.label)).toEqual(['💾 Save', '📨 Applied', '❌ Not interested', '✍️ Tailor resume']);
+        expect(buttons.slice(0, 5).map((b) => b.label)).toEqual(['💾 Save', '📨 Applied', '❌ Not interested', '🚀 Apply for me', '✍️ Tailor resume']);
+        const apply = buttons[3];
+        if (apply.kind !== 'callback') throw new Error('no apply button');
+        expect(Buffer.byteLength(apply.data)).toBeLessThanOrEqual(64);
+        expect(decodeScoutAction(apply.data)).toEqual({ kind: 'apply', runId: RUN_ID });
         const email = buttons.find((b) => b.label === '✉️ Email jobs@x.com');
         if (!email || email.kind !== 'callback') throw new Error('no email button');
         expect(Buffer.byteLength(email.data)).toBeLessThanOrEqual(64);
         expect(decodeScoutAction(email.data)).toEqual({ kind: 'draft', runId: RUN_ID, target: 'recruiter', format: 'email' });
     });
 
-    test('no address: a plain "✉️ Draft email" after the existing drafts, so a strong fit still shows them all', () => {
+    test('no address: a plain "✉️ Draft email" after the existing drafts (past Telegram\'s six, where Apply for me writes the message)', () => {
         const strong = withEmails([], { fit: ok<FitData>({ ...fit.data, verdict: 'strong', notFitReasons: [] }) });
-        const labels = formatForTelegram(renderScoutFinal(view({ sections: strong }), APP), RUN_ID).buttons.map((b) => b.label);
-        expect(labels).toEqual(['💾 Save', '📨 Applied', '❌ Not interested', '✍️ Tailor resume', 'Draft referral note', '✉️ Draft email']);
+        const message = renderScoutFinal(view({ sections: strong }), APP);
+        expect(message.actions.map((a) => a.label)).toEqual([
+            '💾 Save', '📨 Applied', '❌ Not interested', '🚀 Apply for me', '✍️ Tailor resume', 'Draft referral note', '✉️ Draft email', 'Open in Patronus',
+        ]);
+        const labels = formatForTelegram(message, RUN_ID).buttons.map((b) => b.label);
+        expect(labels).toEqual(['💾 Save', '📨 Applied', '❌ Not interested', '🚀 Apply for me', '✍️ Tailor resume', 'Draft referral note']);
     });
 
     test('a hiring post addresses the poster; a long address is not cut', () => {

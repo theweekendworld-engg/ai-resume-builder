@@ -12,7 +12,9 @@ import { prisma } from '@/lib/prisma';
 import { __testing as depsTesting, type ScoutChannelDeps } from '@/lib/channels/scoutDeps';
 import { notifyTelegramScout } from '@/lib/channels/telegramScout';
 import { __testing as telegramTesting } from '@/lib/telegram';
-import { inertInboxDeps, view } from '@/lib/channels/testViews.test-utils';
+import { inertInboxDeps, JOB_SECTIONS, view } from '@/lib/channels/testViews.test-utils';
+import { __testing as aiTesting } from '@/lib/ai/structured';
+import { setFocus } from '@/lib/chat/focus';
 import { processTelegramUpdate } from './telegramAgent';
 
 const RUN = `itest-tg-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -64,6 +66,7 @@ afterAll(async () => {
     telegramTesting.reset();
     await prisma.generationSession.deleteMany({ where: { userId: USER } });
     await prisma.agentRun.deleteMany({ where: { userId: USER } });
+    await prisma.chatConversation.deleteMany({ where: { userId: USER } });
     await prisma.channelIdentity.deleteMany({ where: { userId: USER } });
 });
 
@@ -468,5 +471,85 @@ describe('group chats (launch audit 2026-10-02)', () => {
         await processTelegramUpdate({ update_id: updateId, message: { message_id: 1, text: '/jobs', chat: { id: CHAT, type: 'group' } } });
         expect(started).toHaveLength(0);
         expect(telegram.sent.at(-1)?.text).toContain('private chat');
+    });
+});
+
+describe('share and go (docs/impl/07-telegram-apply.md §5)', () => {
+    const JOB = 'https://www.linkedin.com/jobs/view/4455902670';
+
+    afterEach(() => aiTesting.reset());
+
+    test('"apply for me" with a link: the run starts with the apply goal, and the first message says what follows', async () => {
+        await processTelegramUpdate(textUpdate(`apply for me ${JOB}`));
+        expect(started).toHaveLength(1);
+        expect(started[0]).toMatchObject({ input: { url: JOB, text: null, goal: 'apply' } });
+        expect(telegram.sent[0].text).toContain('tailor your resume and draft the application');
+    });
+
+    test('a bare link keeps today\'s behaviour: no goal', async () => {
+        await processTelegramUpdate(textUpdate(JOB));
+        expect((started[0].input as { goal?: string }).goal).toBeUndefined();
+    });
+
+    test('a pasted post with "worth it?" under it: the post is analysed without the note', async () => {
+        const post = `We are hiring a Forward Deployed AI Engineer. ${'You will build agents with customers and ship them. '.repeat(6)}`;
+        await processTelegramUpdate(textUpdate(`${post}\n\nworth it?`));
+        expect(started).toHaveLength(1);
+        expect((started[0].input as { text: string }).text).toBe(post.trim());
+        expect((started[0].input as { goal?: string }).goal).toBeUndefined();
+    });
+
+    test('a note code cannot read goes to one small model call', async () => {
+        const prompts: string[] = [];
+        aiTesting.setUsageLogger(async () => {});
+        aiTesting.setBudgetGuard(async () => undefined);
+        aiTesting.setObjectRunner(async ({ prompt }) => {
+            prompts.push(prompt);
+            return { object: { goal: 'people' }, inputTokens: 1, outputTokens: 1 };
+        });
+        await processTelegramUpdate(textUpdate(`hmm, this team looks interesting ${JOB}`));
+        expect(prompts).toHaveLength(1);
+        expect(prompts[0]).toContain('hmm, this team looks interesting');
+        expect(started[0]).toMatchObject({ input: { goal: 'people' } });
+    });
+
+    test('the same post again with "apply for me": the existing run gets the chain', async () => {
+        const requested: string[] = [];
+        depsTesting.setDeps(fakeDeps({
+            startScoutRun: async (params) => {
+                started.push(params as unknown as Record<string, unknown>);
+                return { success: true, data: { run: view({ status: 'succeeded', sections: JOB_SECTIONS }), created: false } };
+            },
+            apply: {
+                requestApply: async (_u, runId, opts) => {
+                    requested.push(`${runId}:${opts.channel}`);
+                    return { success: true, data: { view: view({ sections: JOB_SECTIONS }), chain: { stage: 'tailoring', at: '' }, already: false } };
+                },
+                declineApply: async () => ({ success: true, data: undefined }),
+            },
+        }));
+        await processTelegramUpdate(textUpdate(`apply for me ${JOB}`));
+        expect(requested).toEqual([`${view().id}:telegram`]);
+        expect(telegram.sent.at(-1)?.text).toContain('Tailoring your resume for Software Dev Engineer II at Amazon');
+    });
+
+    // "sent it" after the chain's draft must not become the answer to an
+    // open-ended question asked a few minutes before it.
+    test('a draft focused after an open question owns a short reply', async () => {
+        const answers: string[] = [];
+        depsTesting.setDeps(fakeDeps({
+            findOpenQuestionRun: async () => view({ status: 'awaiting_input', pendingQuestion: { ...OPEN_LOCATION(), askedAt: new Date(Date.now() - 120_000).toISOString() } }),
+            answerScoutQuestion: async (_u, _r, value) => {
+                answers.push(value);
+                return { success: true, data: view() };
+            },
+        }));
+        await setFocus(USER, Channel.telegram, { kind: 'draft', draftId: 'cmdraftfocus00000000000001', runId: null, workspaceId: null });
+        try {
+            await processTelegramUpdate(textUpdate('sent it'));
+            expect(answers).toEqual([]);
+        } finally {
+            await setFocus(USER, Channel.telegram, null);
+        }
     });
 });

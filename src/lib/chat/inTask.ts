@@ -29,7 +29,7 @@ const ChoiceSchema = z.object({ choice: z.enum(IN_TASK_CHOICES) });
 export const IN_TASK_SYSTEM = `The user is editing a message draft with an assistant. Decide what their new message is.
 
 - revise: it asks for any change to the draft: shorter, longer, warmer, more confident, add or remove a fact ("add that I went to IIT Delhi"), change the greeting, the subject, the tone, fix a word. Also a bare fact they want included.
-- done: they are finished with the draft ("sent it", "looks good, thanks", "done").
+- done: they are finished with the draft ("sent it", "applied", "looks good, thanks", "done").
 - other: anything that is not about this draft: a new job link or post, a question about something else, a note about their work, a request for a different message or job.
 
 Answer with one choice.`;
@@ -42,7 +42,7 @@ export function decideInTaskByCode(message: string): InTaskChoice | null {
     if (extractUrls(text).length > 0) return 'other';
     if (text.length > MAX_INSTRUCTION_CHARS) return 'other';
     if (/^(shorter|make it shorter|stronger|longer|more formal|less formal|warmer)[.!]?$/i.test(text)) return 'revise';
-    if (/^(done|sent|sent it|i sent it|all good|perfect|looks good)[.!,]*(\s*(thanks|thank you|thx|ty))?[.!]*$/i.test(text)) return 'done';
+    if (/^(done|sent|sent it|i sent it|just sent it|i'?ve sent it|sent the (email|mail|message)|applied|i applied|just applied|submitted|all good|perfect|looks good)[.!,]*(\s*(thanks|thank you|thx|ty))?[.!]*$/i.test(text)) return 'done';
     return null;
 }
 

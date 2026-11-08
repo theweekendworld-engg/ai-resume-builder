@@ -33,6 +33,7 @@ import { SettingsPanel } from '@/components/editor/tools/SettingsPanel';
 import { DesignPanel } from '@/components/editor/tools/DesignPanel';
 import { initialResumeData, isResumeTemplateId, type ResumeData } from '@/types/resume';
 import { readPendingScore, clearPendingScore } from '@/lib/pendingScore';
+import { resumeFileName } from '@/lib/resumeFileName';
 import { parseResumeText } from '@/actions/parseResumeText';
 import { getScoreStashFixes } from '@/actions/onboarding';
 
@@ -84,6 +85,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
 
   const searchParams = useSearchParams();
   const [title, setTitle] = useState('Untitled Resume');
+  const [targetCompany, setTargetCompany] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -130,6 +132,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
         if (resumeResult.title) {
           setTitle(resumeResult.title);
         }
+        setTargetCompany(resumeResult.targetCompany ?? null);
 
         if (resumeResult.updatedAt) {
           setLastSyncedAt(resumeResult.updatedAt);
@@ -286,7 +289,8 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
       const dataUrl = `data:application/pdf;base64,${result.pdfBase64}`;
       const link = document.createElement('a');
       link.href = dataUrl;
-      link.download = `${title || 'resume'}.pdf`;
+      // Jai_Shankar_Resume_Acme.pdf: what a recruiter sees when it is attached.
+      link.download = resumeFileName({ fullName: resumeData.personalInfo.fullName, company: targetCompany });
       link.click();
       toast.success('PDF exported');
     } catch {
@@ -294,7 +298,7 @@ export function EditorLayout({ resumeId }: EditorLayoutProps) {
     } finally {
       setExporting(false);
     }
-  }, [latexCode, title]);
+  }, [latexCode, resumeData.personalInfo.fullName, targetCompany]);
 
   const renderedPanel = useMemo(() => {
     switch (activePanel) {

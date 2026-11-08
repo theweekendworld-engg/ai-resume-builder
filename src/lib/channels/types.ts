@@ -40,6 +40,12 @@ export type ScoutAction =
      * own row (docs/impl/07-telegram-apply.md §3).
      */
     | { kind: 'revise_draft'; draftId: string; revision: DraftRevisionCode; label: string }
+    /**
+     * "🚀 Apply for me": run the apply chain for the run's job
+     * (src/services/applyChain.ts). `confirm` answers the eligibility
+     * question: `y` applies anyway, `n` stops.
+     */
+    | { kind: 'apply'; label: string; confirm?: 'y' | 'n' }
     /** A plain link. Telegram renders a URL button; WhatsApp puts it in the text. */
     | { kind: 'open'; label: string; url: string };
 
