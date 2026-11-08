@@ -27,8 +27,22 @@ function words(value: string | null | undefined): string[] {
 function nameToken(fullName: string | null | undefined): string {
     return words(fullName)
         .slice(0, MAX_NAME_PARTS)
-        .map((word) => (word === word.toLowerCase() ? `${word.charAt(0).toUpperCase()}${word.slice(1)}` : word))
+        .map(titleCaseName)
         .join('_');
+}
+
+/**
+ * "jai" and "JAI" both become "Jai": names parsed from a resume header often
+ * arrive in capitals, and "JAI_SHANKAR_Resume_SarvamLabs.pdf" was the file a
+ * recruiter received (live test 2026-11-08). Mixed case is the person's own
+ * ("McDonald", "DeSouza") and is kept.
+ */
+function titleCaseName(word: string): string {
+    const lower = word.toLowerCase();
+    if (word === lower || (word === word.toUpperCase() && word.length > 1)) {
+        return `${lower.charAt(0).toUpperCase()}${lower.slice(1)}`;
+    }
+    return word;
 }
 
 /** "Goldman Sachs Pvt. Ltd." → "GoldmanSachs"; "iServeWorld" stays as written. */
