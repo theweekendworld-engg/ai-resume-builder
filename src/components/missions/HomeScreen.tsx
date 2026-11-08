@@ -341,8 +341,8 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
         <div>
             {initial.mission ? (
                 <>
-                    <PageHeader eyebrow="Goals" title="What you are working toward" description="One goal at a time, paced week by week from your record." />
-                    <PageBody className="max-w-3xl">
+                    <PageHeader width="narrow" eyebrow="Goals" title="What you are working toward" description="One goal at a time, paced week by week from your record." />
+                    <PageBody width="narrow">
                         <MissionCard mission={initial.mission} onChanged={() => router.refresh()} />
                     </PageBody>
                 </>
@@ -354,12 +354,12 @@ export function HomeScreen({ initial }: { initial: HomeView }) {
                         dismissal — it selects the resting state, which every
                         user already has running.
                     */}
-                    <PageHeader
+                    <PageHeader width="narrow"
                         eyebrow="Goals"
                         title="What are you working toward?"
                         description="Pick one and we will pace it with you. Nothing specific right now is a fine answer — the log keeps working either way."
                     />
-                    <PageBody className="max-w-3xl">
+                    <PageBody width="narrow">
                     <div className="space-y-2">
                         {initial.options.map((option) => (
                             <OptionCard

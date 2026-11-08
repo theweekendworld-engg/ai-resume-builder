@@ -37,7 +37,7 @@ export interface PacketListProps {
 /** `/packets` — every review packet, newest first (Dossier, 2026-11-08). */
 export function PacketList({ packets }: PacketListProps) {
     const header = (
-        <PageHeader
+        <PageHeader width="narrow"
             eyebrow="Record"
             title="Review packets"
             description="Your confirmed wins, arranged for a performance review or a promotion case."
@@ -55,7 +55,7 @@ export function PacketList({ packets }: PacketListProps) {
         return (
             <div>
                 {header}
-                <PageBody className="max-w-3xl">
+                <PageBody width="narrow">
                     <EmptyState
                         icon={FileText}
                         title="No packets yet"
@@ -71,7 +71,7 @@ export function PacketList({ packets }: PacketListProps) {
     return (
         <div>
             {header}
-            <PageBody className="max-w-3xl">
+            <PageBody width="narrow">
                 <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
                     {packets.map((packet) => (
                         <li key={packet.id}>

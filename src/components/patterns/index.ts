@@ -72,7 +72,7 @@ export {
   type WinCardState,
   type WinCardVariant,
 } from './win-card';
-export { EyebrowLink, InitialAvatar, PageBody, PageHeader, PageTabs, Pill, Segmented, pageContainer, type PageTab } from './page';
+export { EyebrowLink, InitialAvatar, PageBody, PageHeader, PageTabs, Pill, Segmented, pageColumn, pageContainer, type PageTab, type PageWidth } from './page';
 
 /* Dossier (2026-11-08, docs/design/03-dossier.md) */
 export { Section, SectionLink, type SectionProps } from './section';

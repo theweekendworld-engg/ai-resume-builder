@@ -26,12 +26,12 @@ export default async function ChannelsPage() {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Channels"
                 description="Talk to Patronus wherever you are. Everything you send lands in the same record."
             />
-            <PageBody className="max-w-3xl space-y-6">
+            <PageBody width="narrow" className="space-y-6">
 
             <Card>
                 <CardHeader>

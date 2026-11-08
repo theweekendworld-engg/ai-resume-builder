@@ -169,12 +169,12 @@ export function SourcesScreen({ initial, actions }: SourcesScreenProps) {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Connected sources"
                 description="What we watch, and what it has found. Everything we pull is shown to you before it becomes part of your record."
             />
-            <PageBody className="flex max-w-3xl flex-col gap-6">
+            <PageBody width="narrow" className="flex flex-col gap-6">
 
             {error ? (
                 <p className="text-sm text-destructive">

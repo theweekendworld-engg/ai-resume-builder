@@ -26,12 +26,12 @@ export default async function MemorySettingsPage() {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Memory"
                 description="What you have told me, kept so I never ask the same thing twice. When a job asks about something here, I use your answer and say so. Each week new lines are tidied to the fewest words, and nothing is added. Private lines help me answer you but never go into a resume or a message."
             />
-            <PageBody className="max-w-3xl space-y-6">
+            <PageBody width="narrow" className="space-y-6">
 
             <MemoryPanel
                 initial={memories.map((memory) => ({

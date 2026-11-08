@@ -101,12 +101,12 @@ export function NotificationsScreen({ initial, emailOn = true }: { initial: Noti
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Notifications"
                 description="When we check in, and how."
             />
-            <PageBody className="max-w-3xl space-y-6">
+            <PageBody width="narrow" className="space-y-6">
 
             {/* Said plainly rather than letting the next-digest time imply a
                 send that will not happen (audit 2026-10-02). */}

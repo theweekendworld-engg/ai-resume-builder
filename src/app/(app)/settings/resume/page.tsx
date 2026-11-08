@@ -34,12 +34,12 @@ export default async function ResumeSettingsPage() {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Resume defaults"
                 description="These apply to every resume you generate from now on. Resumes you have already made are unchanged."
             />
-            <PageBody className="max-w-3xl space-y-6">
+            <PageBody width="narrow" className="space-y-6">
 
             <ResumeSectionsPanel initial={preferences.defaultSectionOrder} />
             </PageBody>

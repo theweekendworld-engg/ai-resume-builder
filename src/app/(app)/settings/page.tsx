@@ -35,8 +35,8 @@ export default async function SettingsIndexPage() {
 
     return (
         <div>
-            <PageHeader title="Settings" description="How Patronus works for you: what it builds, where it reaches you, what it remembers." />
-            <PageBody className="max-w-3xl space-y-8">
+            <PageHeader width="narrow" title="Settings" description="How Patronus works for you: what it builds, where it reaches you, what it remembers." />
+            <PageBody width="narrow" className="space-y-8">
             <section aria-labelledby="settings-list">
             <h2 id="settings-list" className={typeStyles.eyebrow + ' mb-3'}>Everything</h2>
             <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">

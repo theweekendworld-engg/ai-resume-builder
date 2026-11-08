@@ -302,7 +302,7 @@ export function RadarScreen({ view }: { view: RadarView }) {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="medium"
                 eyebrow="Record"
                 title="Career Radar"
                 description={
@@ -316,7 +316,7 @@ export function RadarScreen({ view }: { view: RadarView }) {
                     </>
                 }
             />
-            <PageBody className="max-w-5xl">
+            <PageBody width="medium">
             <div className="grid gap-4 lg:grid-cols-2">
                 <BandPanel band={view.band} cell={cell} />
                 <PositionPanel view={view} />

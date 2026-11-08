@@ -35,12 +35,12 @@ export default async function JobSearchSettingsPage() {
 
     return (
         <div>
-            <PageHeader
+            <PageHeader width="narrow"
                 eyebrow={<EyebrowLink href="/settings">Settings</EyebrowLink>}
                 title="Job search"
                 description="What you are looking for, and who you already know. Scout uses both on every job you share."
             />
-            <PageBody className="max-w-3xl space-y-6">
+            <PageBody width="narrow" className="space-y-6">
 
             <JobSearchPreferencesPanel
                 initial={{

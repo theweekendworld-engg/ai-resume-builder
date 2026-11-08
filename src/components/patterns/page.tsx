@@ -27,8 +27,24 @@ import { focusRing, typeStyles } from './tokens';
  * Tabs underline in blue, the one accent.
  */
 
-/** Width and gutters for every page. Left-aligned to the sidebar from lg. */
-export const pageContainer = 'w-full max-w-6xl px-4 sm:px-6 lg:px-8';
+/**
+ * Width and gutters for every page, centred in the space beside the sidebar
+ * (owner, 2026-11-08: "why are the contents so left aligned and not in the
+ * centre?").
+ */
+export const pageContainer = 'mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8';
+
+/**
+ * A page's column. Header and body take the same one, so a narrow page (a
+ * settings form, the goal checklist) is one centred column, title included.
+ */
+export type PageWidth = 'wide' | 'medium' | 'narrow';
+const PAGE_WIDTH: Record<PageWidth, string | null> = { wide: null, medium: 'max-w-5xl', narrow: 'max-w-3xl' };
+
+/** The container classes for a page column of the given width. */
+export function pageColumn(width: PageWidth = 'wide'): string {
+    return cn(pageContainer, PAGE_WIDTH[width]);
+}
 
 export function PageHeader({
     title,
@@ -38,6 +54,7 @@ export function PageHeader({
     eyebrow,
     meta,
     size = 'default',
+    width = 'wide',
     className,
 }: {
     title: React.ReactNode;
@@ -53,11 +70,13 @@ export function PageHeader({
     meta?: React.ReactNode;
     /** `display` sets the title at 34/42 — Home's greeting only. */
     size?: 'default' | 'display';
+    /** The page's column; pass the same value to its PageBody. */
+    width?: PageWidth;
     className?: string;
 }) {
     return (
         <header className={cn('border-b border-border', !children && 'pb-6', className)}>
-            <div className={cn(pageContainer, 'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-7 md:pt-10')}>
+            <div className={cn(pageColumn(width), 'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 pt-7 md:pt-10')}>
                 <div className="min-w-0 max-w-3xl">
                     {eyebrow ? <p className={typeStyles.eyebrow}>{eyebrow}</p> : null}
                     <h1 className={cn(size === 'display' ? typeStyles.display : typeStyles.h1, 'text-balance text-foreground', eyebrow ? 'mt-1.5' : null)}>{title}</h1>
@@ -66,7 +85,7 @@ export function PageHeader({
                 </div>
                 {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
             </div>
-            {children ? <div className={cn(pageContainer, 'mt-5')}>{children}</div> : null}
+            {children ? <div className={cn(pageColumn(width), 'mt-5')}>{children}</div> : null}
         </header>
     );
 }
@@ -119,8 +138,8 @@ export function PageTabs({ tabs, active, label }: { tabs: PageTab[]; active: str
 }
 
 /** The page body under the header. */
-export function PageBody({ children, className }: { children: React.ReactNode; className?: string }) {
-    return <div className={cn(pageContainer, 'py-6', className)}>{children}</div>;
+export function PageBody({ children, width = 'wide', className }: { children: React.ReactNode; width?: PageWidth; className?: string }) {
+    return <div className={cn(pageColumn(width), 'py-6', className)}>{children}</div>;
 }
 
 /**
