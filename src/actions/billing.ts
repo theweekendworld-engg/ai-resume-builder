@@ -12,8 +12,23 @@ import type {
   UsageLineView,
   Url,
 } from '@/actions/billing.types';
+import { z } from 'zod';
 import { config } from '@/lib/config';
-import { BILLING_UNAVAILABLE_COPY, checkoutAvailable } from '@/lib/billing/provider';
+import { isAdminUserId } from '@/lib/adminAuth';
+import {
+  createDodoCheckout,
+  dodoPortalLink,
+  reconcileDodoReturn,
+  refundDodoSubscription,
+  setDodoCancelAtPeriodEnd,
+} from '@/lib/billing/dodoBilling';
+import {
+  BILLING_UNAVAILABLE_COPY,
+  billingProvider,
+  checkoutAvailable,
+  dodoEnvironment,
+  dodoKeyConfigured,
+} from '@/lib/billing/provider';
 import {
   evaluateProactiveDowngrade,
   getEntitlementSnapshot,
@@ -68,12 +83,42 @@ import { track } from '@/lib/track';
  *
  * Types and constants live in `billing.types.ts` — a `'use server'` module may
  * only export async functions.
+ *
+ * Providers: a NEW purchase goes to `billingProvider()` (Dodo Payments when it
+ * is configured, docs/impl/09-payments-dodo.md); everything that touches an
+ * EXISTING subscription follows that row's `provider` column, so Stripe rows
+ * keep working through the Stripe paths and admin grants touch no provider.
  */
 
 const REFUND_WINDOW_DAYS = 14;
 
 function iso(date: Date | null | undefined): string | null {
   return date ? date.toISOString() : null;
+}
+
+/**
+ * Can THIS user start a purchase? A provider must be able to take money, and
+ * while the launch is on (`launchOpenAccess`) only admins are offered one, so
+ * the owner can run a test-mode purchase without switching everyone to paid.
+ * Enforced in `startCheckout` too: the plan page is not where money is taken.
+ */
+function checkoutOfferedTo(userId: string): boolean {
+  return checkoutAvailable() && (!launchOpenAccess() || isAdminUserId(userId));
+}
+
+/** The provider client for this row can be reached (cancel, portal, refund). */
+function manageable(sub: SubscriptionSummary | null): boolean {
+  if (!sub?.active || !sub.subscriptionRef) return false;
+  if (sub.provider === 'dodo') return dodoKeyConfigured();
+  if (sub.provider === 'stripe') return stripeKeyConfigured();
+  return false;
+}
+
+async function checkoutIdentity(): Promise<{ email: string | null; name: string | null }> {
+  const user = await currentUser();
+  const email = user?.emailAddresses?.[0]?.emailAddress ?? null;
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || null;
+  return { email, name };
 }
 
 // ---------------------------------------------------------------------------
@@ -86,11 +131,12 @@ function iso(date: Date | null | undefined): string | null {
  */
 async function ensureStripeCustomer(userId: string): Promise<string> {
   const existing = await prisma.subscription.findFirst({
-    // Either slot will do — both rows carry the same Stripe customer.
-    where: { userId, stripeCustomerId: { not: '' } },
-    select: { stripeCustomerId: true },
+    // Either slot will do — both rows carry the same Stripe customer. Scoped to
+    // Stripe: an admin grant's `admin_grant:` id or a Dodo customer is not one.
+    where: { userId, provider: 'stripe', customerRef: { not: '' } },
+    select: { customerRef: true },
   });
-  if (existing?.stripeCustomerId) return existing.stripeCustomerId;
+  if (existing?.customerRef) return existing.customerRef;
 
   const stripe = getStripe();
   const user = await currentUser();
@@ -102,15 +148,16 @@ async function ensureStripeCustomer(userId: string): Promise<string> {
   // tier/status once checkout completes.
   await prisma.subscription.upsert({
     where: { userId_slot: { userId, slot: 'career' } },
-    create: { userId, slot: 'career', stripeCustomerId: customer.id, status: 'incomplete' },
-    update: { stripeCustomerId: customer.id },
+    create: { userId, slot: 'career', provider: 'stripe', customerRef: customer.id, status: 'incomplete' },
+    update: { provider: 'stripe', customerRef: customer.id },
   });
 
   return customer.id;
 }
 
 /**
- * Start Stripe Checkout for one plan.
+ * Start checkout for one plan, with whichever provider is configured (Dodo
+ * Payments first, then Stripe).
  *
  * Adding Search to an active Career account creates a *second* subscription on
  * the same customer — deliberate (PRD 06 §5.2), and what makes "turn Search
@@ -123,15 +170,11 @@ export async function startCheckout(
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
   if (!isPriceKey(plan)) return err('Unknown plan.', 'bad_plan');
-  if (!checkoutAvailable()) return err(BILLING_UNAVAILABLE_COPY, 'billing_unavailable');
-
-  const priceId = stripePriceId(plan);
-  if (!priceId) {
-    return err(`No price configured for ${priceFor(plan).label}.`, 'price_unconfigured');
-  }
+  if (!checkoutOfferedTo(userId)) return err(BILLING_UNAVAILABLE_COPY, 'billing_unavailable');
 
   const price = priceFor(plan);
   const tier = tierForPriceKey(plan);
+  const provider = billingProvider();
 
   // Search sits ON TOP of Career — both the pricing page and the plan screen
   // say so in those words — and nothing enforced it.
@@ -144,14 +187,41 @@ export async function startCheckout(
   //
   // Enforced here rather than in the UI because the UI is not where money is
   // taken. A checkout URL is reachable by anyone who can call a server action.
+  const state = await getSubscriptionState(userId);
   if (slotForPriceKey(plan) === 'search') {
-    const { career } = await getSubscriptionState(userId);
-    if (!career?.active) {
+    if (!state.career?.active) {
       return err(
         `${SEARCH_PLAN.name} sits on top of ${CAREER_PLAN.name} — add ${CAREER_PLAN.name} first, then turn ${SEARCH_PLAN.name} on for as long as you are looking.`,
         'career_required'
       );
     }
+  }
+
+  // Never sell a slot that is already paid for. A comp (admin grant) does not
+  // count: buying over it is how the owner tests a real purchase.
+  const current = slotForPriceKey(plan) === 'search' ? state.search : state.career;
+  if (current?.active && current.provider !== 'admin_grant') {
+    return err(`You already have ${planName(current.tier)}.`, 'already_subscribed');
+  }
+
+  if (provider === 'dodo') {
+    const checkout = await createDodoCheckout(userId, plan, checkoutIdentity);
+    if (!checkout.success) return checkout;
+    if (!checkout.data.reused) {
+      await track(userId, 'checkout_started', {
+        tier: planName(tier),
+        interval: price.interval,
+        amount: price.amountCents,
+        paywall: options.paywallCode,
+        provider: 'dodo',
+      });
+    }
+    return ok({ url: checkout.data.url });
+  }
+
+  const priceId = stripePriceId(plan);
+  if (!priceId) {
+    return err(`No price configured for ${price.label}.`, 'price_unconfigured');
   }
 
   try {
@@ -225,8 +295,9 @@ export async function reconcileCheckout(sessionId: string): Promise<Result<{ pla
     const slot = slotForStripePriceId(priceId);
 
     const data = {
-      stripeCustomerId: stripeCustomerId(subscription.customer),
-      stripeSubId: subscription.id,
+      provider: 'stripe' as const,
+      customerRef: stripeCustomerId(subscription.customer),
+      subscriptionRef: subscription.id,
       tier,
       status: localSubscriptionStatus(subscription),
       currentPeriodEnd: resolvePeriodEnd(subscription),
@@ -246,22 +317,67 @@ export async function reconcileCheckout(sessionId: string): Promise<Result<{ pla
   }
 }
 
-/** Open the Stripe Billing Portal (payment method, invoices). */
+const DodoReturnSchema = z.object({
+  // Dodo ids are short opaque tokens (`sub_…`). Anything else is not one.
+  subscriptionId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/).nullish(),
+});
+
+/**
+ * The Dodo return redirect (`/settings/plan?checkout=dodo&subscription_id=…`).
+ * The query string is a hint: `reconcileDodoReturn` reads the subscription
+ * from Dodo and checks it is this user's before granting anything.
+ */
+export async function reconcileDodoCheckout(input: {
+  subscriptionId?: string | null;
+}): Promise<Result<{ planName: string }>> {
+  const { userId } = await auth();
+  if (!userId) return err('Not authenticated', 'unauthenticated');
+  const parsed = DodoReturnSchema.safeParse(input);
+  if (!parsed.success) return err('No checkout to reconcile.', 'no_session');
+  if (!dodoKeyConfigured()) return err('Billing is not available yet.', 'provider_unconfigured');
+
+  const result = await reconcileDodoReturn(userId, parsed.data.subscriptionId ?? null);
+  if (!result.success) return result;
+  return ok({ planName: planName(result.data.tier) });
+}
+
+/**
+ * Open the provider's billing portal (payment method, invoices). Follows the
+ * live subscription's provider; a Dodo customer with nothing live can still
+ * open theirs to read past invoices.
+ */
 export async function createBillingPortalSession(): Promise<Result<Url>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
+
+  const { career, search } = await getSubscriptionState(userId);
+  const live = [career, search].find((sub) => manageable(sub)) ?? null;
+
+  if (live?.provider === 'dodo' || (!live && dodoKeyConfigured())) {
+    const customerRef =
+      live?.customerRef ??
+      (
+        await prisma.billingCustomer.findUnique({
+          where: { userId_provider: { userId, provider: 'dodo' } },
+          select: { customerRef: true },
+        })
+      )?.customerRef;
+    if (customerRef) return dodoPortalLink(customerRef);
+    if (live) return err('No billing account found.', 'no_customer');
+  }
+
   if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   const sub = await prisma.subscription.findFirst({
-    where: { userId, stripeCustomerId: { not: '' } },
-    select: { stripeCustomerId: true },
+    where: { userId, provider: 'stripe', customerRef: { not: '' } },
+    select: { customerRef: true },
   });
-  if (!sub?.stripeCustomerId) return err('No billing account found.', 'no_customer');
+  if (!sub?.customerRef) return err('No billing account found.', 'no_customer');
 
   try {
     const stripe = getStripe();
     const session = await stripe.billingPortal.sessions.create({
-      customer: sub.stripeCustomerId,
+      customer: sub.customerRef,
       return_url: `${config.app.url}/settings/plan`,
     });
     return ok({ url: session.url });
@@ -330,9 +446,14 @@ export async function getPlanPageData(): Promise<Result<PlanPageData>> {
     career: toSubscriptionView(career),
     search: toSubscriptionView(search),
     enforced: snapshot.enforced,
-    billingConfigured: checkoutAvailable(),
-    // The portal and cancel/refund need only a key and a customer to exist.
-    portalAvailable: stripeKeyConfigured() && Boolean(career?.active || search?.active),
+    billingConfigured: checkoutOfferedTo(userId),
+    // While the launch is on, only admins get here with a live checkout: say
+    // so on the page, and say whether a real card would be charged.
+    adminCheckoutPreview: launchOpenAccess() && checkoutAvailable() && isAdminUserId(userId),
+    checkoutTestMode: billingProvider() === 'dodo' && dodoEnvironment() === 'test_mode',
+    // The portal needs the live subscription's provider to be reachable. An
+    // admin grant has no provider, so it has no portal.
+    portalAvailable: manageable(career) || manageable(search),
     downgradeOffer: offer,
     refundEligibleUntil: iso(refundWindowEnd(career)),
     // Search sits on top of Career (enforced in startCheckout). Offering it to
@@ -401,10 +522,14 @@ export async function turnOffSearch(
     });
   }
 
-  if (state.search.stripeSubId && stripeKeyConfigured()) {
+  if (state.search.provider === 'dodo' && state.search.subscriptionRef) {
+    if (!dodoKeyConfigured()) return err('Billing is not available right now. Nothing was changed.', 'provider_unconfigured');
+    const cancelled = await setDodoCancelAtPeriodEnd(state.search.subscriptionRef, true);
+    if (!cancelled.success) return cancelled;
+  } else if (state.search.subscriptionRef && stripeKeyConfigured()) {
     try {
       const stripe = getStripe();
-      await stripe.subscriptions.update(state.search.stripeSubId, {
+      await stripe.subscriptions.update(state.search.subscriptionRef, {
         cancel_at_period_end: true,
         metadata: { userId, winBack: '1', winBackAt: new Date().toISOString() },
       });
@@ -456,11 +581,15 @@ export async function reactivateSearch(): Promise<Result<{ url: string | null }>
   const state = await getSubscriptionState(userId);
   const daysSinceOff = await daysSinceSearchOff(userId);
 
-  if (state.search?.cancelAtPeriodEnd && state.search.stripeSubId) {
-    if (stripeKeyConfigured()) {
+  if (state.search?.cancelAtPeriodEnd && state.search.subscriptionRef) {
+    if (state.search.provider === 'dodo') {
+      if (!dodoKeyConfigured()) return err('Billing is not available right now. Nothing was changed.', 'provider_unconfigured');
+      const resumed = await setDodoCancelAtPeriodEnd(state.search.subscriptionRef, false);
+      if (!resumed.success) return resumed;
+    } else if (stripeKeyConfigured()) {
       try {
         const stripe = getStripe();
-        await stripe.subscriptions.update(state.search.stripeSubId, {
+        await stripe.subscriptions.update(state.search.subscriptionRef, {
           cancel_at_period_end: false,
         });
       } catch (error: unknown) {
@@ -529,10 +658,15 @@ export async function cancelPlan(input: {
   const target = slot === 'search' ? state.search : state.career;
   if (!target?.active) return err('There is nothing to cancel.', 'not_subscribed');
 
-  if (target.stripeSubId && stripeKeyConfigured()) {
+  if (target.provider === 'dodo' && target.subscriptionRef) {
+    // Dodo: `cancel_at_next_billing_date`, the same at-period-end posture.
+    if (!dodoKeyConfigured()) return err('Billing is not available right now. Nothing was changed.', 'provider_unconfigured');
+    const cancelled = await setDodoCancelAtPeriodEnd(target.subscriptionRef, true);
+    if (!cancelled.success) return cancelled;
+  } else if (target.subscriptionRef && stripeKeyConfigured()) {
     try {
       const stripe = getStripe();
-      await stripe.subscriptions.update(target.stripeSubId, { cancel_at_period_end: true });
+      await stripe.subscriptions.update(target.subscriptionRef, { cancel_at_period_end: true });
     } catch (error: unknown) {
       return err(
         error instanceof Error ? error.message : 'Could not cancel your plan.',
@@ -570,16 +704,34 @@ export async function cancelPlan(input: {
 export async function requestRefund(): Promise<Result<{ refunded: boolean }>> {
   const { userId } = await auth();
   if (!userId) return err('Not authenticated', 'unauthenticated');
-  if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   const { career } = await getSubscriptionState(userId);
-  if (!career?.active || !career.stripeSubId) return err('Nothing to refund.', 'not_subscribed');
+  if (!career?.active || !career.subscriptionRef) return err('Nothing to refund.', 'not_subscribed');
   if (!refundWindowEnd(career)) return err('The 14-day refund window has passed.', 'window_closed');
+
+  if (career.provider === 'dodo') {
+    if (!dodoKeyConfigured()) return err('Billing is not available right now. Write to support for the refund.', 'provider_unconfigured');
+    const refunded = await refundDodoSubscription(career.subscriptionRef);
+    if (!refunded.success) return refunded;
+    await prisma.subscription.update({
+      where: { userId_slot: { userId, slot: 'career' } },
+      data: { status: 'canceled', currentPeriodEnd: new Date() },
+    });
+    await track(userId, 'plan_changed', {
+      from: planName(career.tier),
+      to: planName(Tier.free),
+      reason: 'refund',
+      provider: 'dodo',
+    });
+    return ok({ refunded: true });
+  }
+
+  if (!stripeKeyConfigured()) return err('Billing is not available yet.', 'stripe_unconfigured');
 
   try {
     const stripe = getStripe();
     const invoices = await stripe.invoices.list({
-      customer: career.stripeCustomerId ?? undefined,
+      customer: career.customerRef ?? undefined,
       limit: 1,
     });
     const invoice = invoices.data[0];
@@ -589,7 +741,7 @@ export async function requestRefund(): Promise<Result<{ refunded: boolean }>> {
     if (!intentId) return err('No payment found to refund.', 'no_payment');
 
     await stripe.refunds.create({ payment_intent: intentId });
-    await stripe.subscriptions.cancel(career.stripeSubId);
+    await stripe.subscriptions.cancel(career.subscriptionRef);
     await prisma.subscription.update({
       where: { userId_slot: { userId, slot: 'career' } },
       data: { status: 'canceled', currentPeriodEnd: new Date() },

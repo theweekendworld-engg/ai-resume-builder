@@ -9,6 +9,8 @@
  */
 
 import { configHealth, type HealthCheck } from '@/lib/health';
+import { billingProvider, checkoutAvailable, dodoEnvironment, type BillingProvider } from '@/lib/billing/provider';
+import { launchOpenAccess } from '@/lib/plans';
 import { probeVectorStore, vectorStoreCheck } from '@/lib/vectorStoreHealth';
 import { JobStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -59,6 +61,19 @@ export type ActivationFunnel = {
     threeWinsBy21Days: number;
 };
 
+/** Billing at a glance: which provider, which mode, and whether webhooks arrive. */
+export type BillingOps = {
+    provider: BillingProvider | null;
+    /** Dodo only: `test_mode` until the owner sets live. */
+    dodoMode: 'test_mode' | 'live_mode';
+    checkoutAvailable: boolean;
+    /** True while everything is free; checkout is then offered to admins only. */
+    launchOpen: boolean;
+    webhookEvents: number;
+    webhookIgnored: number;
+    lastWebhookAt: Date | null;
+};
+
 export type OpsSnapshot = {
     generatedAt: Date;
     windowHours: number;
@@ -69,7 +84,25 @@ export type OpsSnapshot = {
     funnel: ActivationFunnel;
     /** Env checks (names only) plus the engine's own pulse. */
     health: HealthCheck[];
+    billing: BillingOps;
 };
+
+async function billingOps(from: Date): Promise<BillingOps> {
+    const [webhookEvents, webhookIgnored, last] = await Promise.all([
+        prisma.billingEvent.count({ where: { receivedAt: { gte: from } } }),
+        prisma.billingEvent.count({ where: { receivedAt: { gte: from }, outcome: { startsWith: 'ignored:' } } }),
+        prisma.billingEvent.findFirst({ orderBy: { receivedAt: 'desc' }, select: { receivedAt: true } }),
+    ]);
+    return {
+        provider: billingProvider(),
+        dodoMode: dodoEnvironment(),
+        checkoutAvailable: checkoutAvailable(),
+        launchOpen: launchOpenAccess(),
+        webhookEvents,
+        webhookIgnored,
+        lastWebhookAt: last?.receivedAt ?? null,
+    };
+}
 
 function since(hours: number): Date {
     return new Date(Date.now() - hours * 3_600_000);
@@ -200,7 +233,7 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
     await requireAdminUserId();
     const from = since(windowHours);
 
-    const [oldestPending, jobs, dead, cost, email, funnel] = await Promise.all([
+    const [oldestPending, jobs, dead, cost, email, funnel, billing] = await Promise.all([
         prisma.job.findFirst({ where: { status: JobStatus.pending, runAt: { lte: new Date() } }, orderBy: { runAt: 'asc' }, select: { runAt: true } }),
         jobHealth(from),
         prisma.job.findMany({
@@ -212,6 +245,7 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
         featureCost(from),
         emailHealth(from),
         activationFunnel(),
+        billingOps(from),
     ]);
 
     // The engine's pulse: a due job waiting more than 36h means the daily tick
@@ -230,5 +264,5 @@ export async function getOpsSnapshot(windowHours = 24): Promise<OpsSnapshot> {
     const vectorCheck = vectorStoreCheck(await probeVectorStore());
     if (vectorCheck) health.push(vectorCheck);
 
-    return { generatedAt: new Date(), windowHours, jobs, dead, cost, email, funnel, health };
+    return { generatedAt: new Date(), windowHours, jobs, dead, cost, email, funnel, health, billing };
 }

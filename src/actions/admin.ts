@@ -758,12 +758,13 @@ export async function unsuspendUser(input: { target: string }): Promise<{ succes
 }
 
 /**
- * Comp a plan without Stripe: the owner's own account, testers, goodwill.
+ * Comp a plan without a payment provider: the owner's own account, testers, goodwill.
  *
  * Written as a `Subscription` row so every entitlement read (tier, budgets,
  * history window) sees it through the one path that already exists. The row is
- * marked with an `admin_grant:` customer id, which no Stripe webhook will ever
- * match, and a real paid subscription in the same slot is never overwritten.
+ * marked `provider = admin_grant` with an `admin_grant:` customer id, which no
+ * provider webhook will ever match, and a real paid subscription in the same
+ * slot is never overwritten.
  * `tier: 'free'` revokes a grant (status → canceled).
  */
 const ADMIN_GRANT_PREFIX = 'admin_grant:';
@@ -780,10 +781,14 @@ export async function grantTier(input: { target: string; tier: Tier }): Promise<
 
   const existing = await prisma.subscription.findUnique({
     where: { userId_slot: { userId: target, slot: 'career' } },
-    select: { stripeCustomerId: true, status: true },
+    select: { customerRef: true, provider: true, status: true },
   });
-  if (existing && !existing.stripeCustomerId.startsWith(ADMIN_GRANT_PREFIX) && existing.status !== 'canceled') {
-    return { success: false, error: 'This user has a live paid subscription; change it in Stripe' };
+  // A row written before the `provider` column existed is recognised by its
+  // customer-id prefix too.
+  const isGrant = existing?.provider === 'admin_grant' || existing?.customerRef.startsWith(ADMIN_GRANT_PREFIX);
+  if (existing && !isGrant && existing.status !== 'canceled') {
+    const where = existing.provider === 'dodo' ? 'the Dodo Payments dashboard' : 'Stripe';
+    return { success: false, error: `This user has a live paid subscription; change it in ${where}` };
   }
 
   const revoke = tier === Tier.free;
@@ -792,13 +797,16 @@ export async function grantTier(input: { target: string; tier: Tier }): Promise<
     create: {
       userId: target,
       slot: 'career',
-      stripeCustomerId: `${ADMIN_GRANT_PREFIX}${target}`,
+      provider: 'admin_grant',
+      customerRef: `${ADMIN_GRANT_PREFIX}${target}`,
       tier,
       status: revoke ? 'canceled' : 'active',
     },
     update: {
-      stripeCustomerId: `${ADMIN_GRANT_PREFIX}${target}`,
-      stripeSubId: null,
+      provider: 'admin_grant',
+      customerRef: `${ADMIN_GRANT_PREFIX}${target}`,
+      subscriptionRef: null,
+      providerEventAt: null,
       tier,
       status: revoke ? 'canceled' : 'active',
       currentPeriodEnd: null,

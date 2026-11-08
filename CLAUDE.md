@@ -103,6 +103,7 @@ Four waves shipped with the tree unbuildable because `groundState.ts` and `claim
 | `docs/impl/02` | Phased build plan for R1 |
 | `docs/impl/03` | Parallel build orchestration and file ownership |
 | `docs/impl/06` | Scout: the link-in agent and the shared agent harness |
+| `docs/impl/09` | Payments through Dodo Payments: owner checklist, event→state table |
 | `docs/impl/BUILD-LOG.md` | What actually landed, per wave |
 | `docs/design/00-02` | Foundations, components, screens |
 
@@ -241,8 +242,14 @@ README:
   in `src/lib/plans.ts` (on unless `ENTITLEMENT_LAUNCH_OPEN=false`) gives every
   tier every feature and the `LAUNCH_ALLOWANCE` limits; the per-user monthly
   cost ceiling ($5 Free) stays as abuse protection and its message never says
-  "upgrade". Paid plans come back later through a Merchant of Record (Dodo or
-  Paddle); the Stripe code stays but no Stripe Prices exist.
+  "upgrade". Paid plans come back through **Dodo Payments** (Merchant of
+  Record, `docs/impl/09-payments-dodo.md`): built and tested, $1 TEST products,
+  checkout shown to admins only while the launch is open. `Subscription` rows
+  carry `provider` (`stripe | dodo | admin_grant`) and provider-neutral
+  `customerRef` / `subscriptionRef`; a new purchase goes to `billingProvider()`,
+  anything touching an existing row follows its `provider`. Webhook idempotency
+  is `BillingEvent(provider, eventId)`. The Stripe code stays; no Stripe Prices
+  exist.
 
 `prisma/schema.prisma`, `package.json`, and `docs/**` are orchestrator-owned
 during parallel builds. Feature agents must not edit them.

@@ -219,7 +219,7 @@ async function arrangeAccess(userId: string): Promise<void> {
     await prisma.subscription.create({
         data: {
             userId,
-            stripeCustomerId: `cus_${journey.runId}`,
+            customerRef: `cus_${journey.runId}`,
             tier: Tier.always_on,
             status: 'active',
             currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000),

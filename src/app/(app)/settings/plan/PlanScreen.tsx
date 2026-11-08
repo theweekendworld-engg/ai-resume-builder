@@ -120,7 +120,9 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
 
   const currentPlan = COMPARISON_PLANS.find((plan) => plan.tier === data.tier) ?? null;
   // During the launch nothing can be bought, so the paid columns and their
-  // prices would only advertise a purchase that is not there.
+  // prices would only advertise a purchase that is not there. The exception is
+  // an admin testing checkout (`adminCheckoutPreview`), who gets the paid
+  // plans with a banner saying nobody else does.
   const launchWithoutCheckout = data.launchOpen && !data.billingConfigured;
   const subscribed = Boolean(career?.active || search?.active);
 
@@ -228,6 +230,16 @@ export function PlanScreen({ data, checkoutNotice = null }: { data: PlanPageData
       ) : (
       <section aria-labelledby="change-plan" className="mt-8">
         <h2 id="change-plan" className="font-heading text-base font-semibold text-foreground">Change plan</h2>
+
+        {data.adminCheckoutPreview ? (
+          <p role="status" className={cn(typeStyles.small, 'mt-3 rounded-lg border border-warning/40 px-4 py-3 text-foreground')}>
+            Admin preview: you can buy a plan to test checkout. Everyone else still sees
+            &ldquo;free while we launch&rdquo;.{' '}
+            {data.checkoutTestMode
+              ? 'Test mode: no real card is charged, so pay with a test card.'
+              : 'Live mode: a real card will be charged.'}
+          </p>
+        ) : null}
 
         {/* No provider can take money yet: say so, instead of rendering
             buttons that are silently disabled or fail on click. */}

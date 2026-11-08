@@ -56,8 +56,18 @@ export interface PlanPageData {
   search: SubscriptionView | null;
   /** True once `ENTITLEMENTS_ENFORCE=true`. Soft mode says so out loud. */
   enforced: boolean;
-  /** A purchase can be started today (a provider with a working checkout). */
+  /**
+   * THIS user can start a purchase today: a provider with a working checkout,
+   * and either the launch is over or they are an admin testing it.
+   */
   billingConfigured: boolean;
+  /**
+   * An admin sees live checkout while everyone else still sees "free while we
+   * launch". The page says so, so the owner never mistakes it for launch.
+   */
+  adminCheckoutPreview: boolean;
+  /** Checkout runs in the provider's test mode: no real card is charged. */
+  checkoutTestMode: boolean;
   /** An existing subscription can be managed (portal, cancel, refund). */
   portalAvailable: boolean;
   downgradeOffer: DowngradeOffer | null;

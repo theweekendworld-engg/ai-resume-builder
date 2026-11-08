@@ -632,7 +632,7 @@ model ImpactMetric {
 // Monetization & entitlements (v2 architecture §7)
 // =========================================================================
 
-/// Career and Search are two Stripe subscriptions and therefore two rows.
+/// Career and Search are two provider subscriptions and therefore two rows.
 ///
 /// This used to be keyed by writing `${userId}::search` into `userId`, because
 /// the column was unique. That kept working right up until it did not: the
@@ -647,22 +647,82 @@ enum SubscriptionSlot {
   search
 }
 
+/// Who bills a Subscription row. `admin_grant` is a comped plan written from
+/// /admin (no provider ever sees it). Added with Dodo Payments (2026-11-08);
+/// every row that existed before is `stripe`, except the `admin_grant:` ones,
+/// which the migration backfilled by their customer-id prefix.
+enum SubscriptionProvider {
+  stripe
+  dodo
+  admin_grant
+}
+
 model Subscription {
-  id               String           @id @default(cuid())
+  id               String               @id @default(cuid())
   userId           String
-  slot             SubscriptionSlot @default(career)
-  stripeCustomerId String
-  stripeSubId      String?
-  tier             Tier             @default(free)
-  status           String // active | past_due | canceled | trialing | incomplete
+  slot             SubscriptionSlot     @default(career)
+  provider         SubscriptionProvider @default(stripe)
+  /// The provider's customer id (Stripe `cus_…`, Dodo `cus_…`, or
+  /// `admin_grant:<userId>`). Provider-neutral name over the original column,
+  /// so the rename moved no data.
+  customerRef      String               @map("stripeCustomerId")
+  /// The provider's subscription id. Null for admin grants.
+  subscriptionRef  String?              @map("stripeSubId")
+  tier             Tier                 @default(free)
+  status           String // active | canceling | past_due | canceled | paused | trialing | incomplete
   currentPeriodEnd DateTime?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  /// When the provider produced the state this row holds (the webhook's own
+  /// timestamp). Webhooks can arrive late and out of order; an event older than
+  /// this never overwrites the row. Null for rows written before Dodo.
+  providerEventAt  DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   /// One row per slot per user. Replaces the `userId @unique` that forced the
   /// `::search` suffix.
   @@unique([userId, slot])
-  @@index([stripeCustomerId])
+  @@index([customerRef])
+  @@index([subscriptionRef])
+}
+
+/// A user's customer record at a billing provider, written when they first
+/// start a checkout — BEFORE any payment, so the webhook can always find the
+/// user from the provider's customer id without trusting checkout metadata to
+/// have been copied onto the subscription (Dodo does not document that it is).
+/// Also holds the last checkout session, which the return redirect reconciles
+/// and a second click inside the hour reuses.
+model BillingCustomer {
+  id                 String               @id @default(cuid())
+  userId             String
+  provider           SubscriptionProvider
+  customerRef        String
+  pendingCheckoutRef String?
+  pendingCheckoutKey String?
+  pendingCheckoutUrl String?
+  pendingCheckoutAt  DateTime?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  @@unique([userId, provider])
+  @@unique([provider, customerRef])
+}
+
+/// Webhook idempotency. A provider retries a delivery until it gets a 2xx, and
+/// may deliver one event twice; the unique key turns the second delivery into
+/// a no-op. Written before the event is applied and deleted again if applying
+/// fails, so a failed delivery is retried rather than swallowed.
+model BillingEvent {
+  id         String               @id @default(cuid())
+  provider   SubscriptionProvider
+  /// The provider's delivery id (Dodo: the `webhook-id` header).
+  eventId    String
+  type       String
+  /// `applied`, or `ignored:<reason>`. Ops reading, never user content.
+  outcome    String?
+  receivedAt DateTime             @default(now())
+
+  @@unique([provider, eventId])
+  @@index([receivedAt])
 }
 
 model UsageQuota {

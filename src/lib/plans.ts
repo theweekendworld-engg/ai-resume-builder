@@ -47,18 +47,20 @@ export interface PlanPrice {
   interval: BillingInterval;
   /**
    * Display amount in cents — the source of truth for what the UI SAYS, and
-   * nothing more.
+   * nothing more. It is NOT the amount charged.
    *
-   * What a customer is actually CHARGED comes from the Stripe Price object
-   * behind {@link PlanPrice.envVar}: checkout passes `line_items: [{ price }]`
-   * and Stripe bills whatever that object says. The two are independent, so
-   * editing this number alone changes the label on the pricing page and leaves
-   * the charge untouched — a customer would read $30 and be billed the old
-   * amount.
+   * What a customer is actually CHARGED is owned by the provider's product:
+   * the Dodo product behind {@link PlanPrice.dodoEnvVar} (checkout sends only
+   * `product_cart: [{ product_id }]`, never an amount), or the Stripe Price
+   * behind {@link PlanPrice.envVar}. The two are independent, so editing this
+   * number alone changes the label on the pricing page and leaves the charge
+   * untouched — a customer would read $30 and be billed the old amount.
    *
-   * Changing a price therefore takes both halves: a NEW Stripe Price object
-   * (they are immutable, so amounts cannot be edited in place), the env var
-   * repointed at its id, and this figure updated to match.
+   * Changing a price therefore takes both halves: the product's price in the
+   * provider dashboard (or a new product, with the env var repointed at its
+   * id), and this figure updated to match. The $1 TEST-mode products used
+   * before launch live only in the Dodo dashboard; these labels keep showing
+   * the intended prices (docs/impl/09-payments-dodo.md).
    */
   amountCents: number;
   /** "$5/month" — precomputed so no call site does currency maths. */
@@ -67,6 +69,13 @@ export interface PlanPrice {
   cadence: string;
   /** Env var carrying the Stripe price id. Ids are deploy config, not code. */
   envVar: string;
+  /**
+   * Env var carrying the Dodo Payments product id for this price. A product
+   * resolves back to its price (and so its tier and slot) through
+   * {@link priceKeyForDodoProduct}, so adding a plan is a catalog entry plus an
+   * env var — the checkout and the webhook need no change.
+   */
+  dodoEnvVar: string;
   /** Marks the price we steer people to. */
   recommended?: boolean;
 }
@@ -82,7 +91,7 @@ export type SubscriptionSlot = 'career' | 'search';
 export const SUBSCRIPTION_SLOTS: readonly SubscriptionSlot[] = ['career', 'search'] as const;
 
 export function slotForPriceKey(key: PriceKey): SubscriptionSlot {
-  return key === 'search_monthly' ? 'search' : 'career';
+  return planForPriceKey(key)?.slot ?? 'career';
 }
 
 // ---------------------------------------------------------------------------
@@ -130,6 +139,7 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
         label: '$5/month',
         cadence: 'billed monthly, cancel any time',
         envVar: 'STRIPE_PRICE_CAREER_MONTHLY',
+        dodoEnvVar: 'DODO_PRODUCT_CAREER',
         recommended: true,
       },
     ],
@@ -150,6 +160,7 @@ export const PLAN_CATALOG: Record<Tier, PlanDefinition> = {
         label: '$2/month',
         cadence: 'billed monthly, cancel any time',
         envVar: 'STRIPE_PRICE_SEARCH_MONTHLY',
+        dodoEnvVar: 'DODO_PRODUCT_SEARCH',
       },
     ],
     purchasable: true,
@@ -200,8 +211,17 @@ export function priceFor(key: PriceKey): PlanPrice {
   return PRICES[key];
 }
 
+/**
+ * The plan a price belongs to. Tier and slot are read from the catalog rather
+ * than from the key's spelling, so a new price (a single "Pro" plan, say) is a
+ * catalog entry and nothing else.
+ */
+function planForPriceKey(key: PriceKey): PlanDefinition | null {
+  return Object.values(PLAN_CATALOG).find((plan) => plan.prices.some((price) => price.key === key)) ?? null;
+}
+
 export function tierForPriceKey(key: PriceKey): Tier {
-  return key === 'search_monthly' ? 'pro' : 'always_on';
+  return planForPriceKey(key)?.tier ?? 'free';
 }
 
 /**
@@ -231,6 +251,28 @@ export function priceKeyForStripeId(priceId: string | null | undefined): PriceKe
   if (!priceId) return null;
   for (const key of Object.keys(PRICES) as PriceKey[]) {
     if (stripePriceId(key) === priceId) return key;
+  }
+  return null;
+}
+
+/**
+ * The Dodo Payments product id configured for a price. **Server only**, like
+ * {@link stripePriceId}: a client bundle has no such env var.
+ */
+export function dodoProductId(key: PriceKey): string | undefined {
+  const value = process.env[PRICES[key].dodoEnvVar]?.trim();
+  return value ? value : undefined;
+}
+
+/**
+ * Reverse lookup: a Dodo product id back to its price. Unknown products are
+ * null, and callers fail closed on null — a product nobody mapped must never
+ * grant a paid tier.
+ */
+export function priceKeyForDodoProduct(productId: string | null | undefined): PriceKey | null {
+  if (!productId) return null;
+  for (const key of Object.keys(PRICES) as PriceKey[]) {
+    if (dodoProductId(key) === productId) return key;
   }
   return null;
 }

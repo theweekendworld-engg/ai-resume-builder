@@ -10,6 +10,7 @@ const FULL = {
     UPSTASH_REDIS_REST_URL: 'https://r', UPSTASH_REDIS_REST_TOKEN: 'x',
     INBOUND_EMAIL_DOMAIN: 'in.patronus.cv', INBOUND_EMAIL_SECRET: 'x',
     GOOGLE_CLIENT_ID: 'x', GOOGLE_CLIENT_SECRET: 'x', TOKEN_ENCRYPTION_KEY: 'x',
+    DODO_PAYMENTS_API_KEY: 'x', DODO_PAYMENTS_WEBHOOK_KEY: 'x', DODO_PRODUCT_CAREER: 'pdt_c', DODO_PRODUCT_SEARCH: 'pdt_s',
 };
 
 describe('configHealth', () => {
@@ -19,9 +20,39 @@ describe('configHealth', () => {
 
     // Production on 2026-09-27: no email provider, no payment provider.
     test('names what is missing, never a value', () => {
-        const failing = configHealth({ ...FULL, RESEND_API_KEY: '', RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '' }).filter((c) => !c.ok);
-        expect(failing.map((c) => c.id).sort()).toEqual(['email', 'payments']);
+        const failing = configHealth({
+            ...FULL, RESEND_API_KEY: '', RAZORPAY_KEY_ID: '', RAZORPAY_KEY_SECRET: '',
+            DODO_PAYMENTS_API_KEY: '', DODO_PAYMENTS_WEBHOOK_KEY: '', DODO_PRODUCT_CAREER: '', DODO_PRODUCT_SEARCH: '',
+        }).filter((c) => !c.ok);
+        expect(failing.map((c) => c.id).sort()).toEqual(['dodo', 'email', 'payments']);
         expect(JSON.stringify(failing)).not.toContain('a@b.c');
+    });
+
+    // Dodo Payments, 2026-11-08: half a configuration names exactly what is
+    // missing, and never prints a key.
+    test('dodo names its missing variables, never their values', () => {
+        const check = configHealth({ ...FULL, DODO_PAYMENTS_API_KEY: 'dodo_secret_value', DODO_PAYMENTS_WEBHOOK_KEY: '', DODO_PRODUCT_SEARCH: '' })
+            .find((c) => c.id === 'dodo');
+        expect(check?.ok).toBe(false);
+        expect(check?.fix).toBe('DODO_PAYMENTS_WEBHOOK_KEY, DODO_PRODUCT_SEARCH');
+        expect(JSON.stringify(check)).not.toContain('dodo_secret_value');
+        expect(check?.impact).toContain('test_mode');
+    });
+
+    test('the owner\'s test-key name counts in test mode only', () => {
+        const env = { ...FULL, DODO_PAYMENTS_API_KEY: '', DODO_PAYMENT_TEST_API_KEY: 'x' };
+        expect(configHealth(env).find((c) => c.id === 'dodo')?.ok).toBe(true);
+        const live = configHealth({ ...env, DODO_PAYMENTS_ENVIRONMENT: 'live_mode' }).find((c) => c.id === 'dodo');
+        expect(live?.ok).toBe(false);
+        expect(live?.fix).toBe('DODO_PAYMENTS_API_KEY');
+    });
+
+    test('paid plans switched on with no way to pay is an error', () => {
+        const none = { ...FULL, RAZORPAY_KEY_ID: '', DODO_PAYMENTS_API_KEY: '' };
+        expect(configHealth(none).some((c) => c.id === 'paid_plans_without_checkout')).toBe(false);
+        const check = configHealth({ ...none, ENTITLEMENT_LAUNCH_OPEN: 'false' }).find((c) => c.id === 'paid_plans_without_checkout');
+        expect(check).toMatchObject({ ok: false, severity: 'error' });
+        expect(configHealth({ ...FULL, ENTITLEMENT_LAUNCH_OPEN: 'false' }).find((c) => c.id === 'paid_plans_without_checkout')?.ok).toBe(true);
     });
 
     // Settings says "coming soon" to customers; the operator gets the names.

@@ -44,6 +44,8 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/compose(.*)',
     // Stripe webhook is authenticated by signature, not a Clerk session.
     '/api/stripe/webhook',
+    // Dodo Payments: Standard Webhooks signature (src/app/api/dodo/webhook/route.ts).
+    '/api/dodo/webhook',
     // ── Found 2026-09-27 (docs/audit/2026-09-27-user-flow-audit.html §C) ────
     // Each of these authenticates ITSELF and was 404'd by auth.protect() for
     // every caller without a Clerk session, which is every caller they have:
@@ -106,7 +108,9 @@ export default clerkMiddleware(async (auth, req) => {
     }
 
     const pathname = req.nextUrl.pathname;
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/inbound/email');
+    // Provider webhooks are signed and retried by the provider; a per-IP limit
+    // would 429 a burst of renewals arriving from the same few addresses.
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/dodo/webhook') && !pathname.startsWith('/api/inbound/email');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

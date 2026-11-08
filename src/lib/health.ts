@@ -22,6 +22,8 @@ export type HealthCheck = {
     fix: string;
 };
 
+import { dodoConfigured, dodoEnvironment, dodoMissingEnv } from '@/lib/billing/provider';
+
 type Env = Record<string, string | undefined>;
 
 const has = (env: Env, ...keys: string[]) => keys.every((key) => Boolean(env[key]?.trim()));
@@ -29,6 +31,9 @@ const has = (env: Env, ...keys: string[]) => keys.every((key) => Boolean(env[key
 export function configHealth(env: Env = process.env): HealthCheck[] {
     const stripe = has(env, 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRICE_CAREER_MONTHLY');
     const razorpay = has(env, 'RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET');
+    const dodo = dodoConfigured(env);
+    const dodoMissing = dodoMissingEnv(env);
+    const launchOpen = env.ENTITLEMENT_LAUNCH_OPEN !== 'false';
     const whatsappAny = Object.keys(env).some((key) => key.startsWith('WHATSAPP_') && env[key]?.trim());
 
     const checks: HealthCheck[] = [
@@ -62,10 +67,18 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
         },
         {
             id: 'payments',
-            ok: stripe || razorpay,
+            ok: dodo || stripe || razorpay,
             severity: 'warn',
-            impact: 'Nothing can be purchased; the plan page shows "paid plans open soon".',
-            fix: 'Razorpay (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET) or Stripe keys and Price ids',
+            impact: 'Nothing can be purchased; the plan page shows "free while we launch" to everyone, admins included.',
+            fix: 'Dodo Payments (see the dodo check) — or Stripe keys and Price ids',
+        },
+        // The chosen provider (docs/impl/09-payments-dodo.md). Names only.
+        {
+            id: 'dodo',
+            ok: dodo,
+            severity: 'warn',
+            impact: `Dodo Payments is not fully configured, so checkout stays off (and a purchase without the webhook key would be charged and never granted). Mode: ${dodoEnvironment(env)}.`,
+            fix: dodoMissing.length > 0 ? dodoMissing.join(', ') : 'nothing missing',
         },
         {
             id: 'research',
@@ -105,6 +118,18 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
             fix: 'NEXT_PUBLIC_APP_URL = the public https custom domain',
         },
     ];
+
+    // Paid plans switched on with nothing to buy them with: every gated user
+    // meets a limit and an upgrade that cannot be completed.
+    if (!launchOpen) {
+        checks.push({
+            id: 'paid_plans_without_checkout',
+            ok: dodo || stripe,
+            severity: 'error',
+            impact: 'The launch is off (paid plans are enforced) but no provider can take money: upgrades fail.',
+            fix: 'Configure Dodo Payments, or unset ENTITLEMENT_LAUNCH_OPEN to reopen the launch',
+        });
+    }
 
     // The vector store is Postgres unless Qdrant is asked for by name, and a
     // Qdrant opt-in without a server is every semantic search failing.
