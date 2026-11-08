@@ -183,6 +183,7 @@ export async function cleanupTestUser(userId: string): Promise<void> {
     await prisma.apiUsageLog.deleteMany({ where: { userId } });
     await prisma.usageQuota.deleteMany({ where: { userId } });
     await prisma.subscription.deleteMany({ where: { userId } });
+    await prisma.userMemory.deleteMany({ where: { userId } });
 
     await qdrantDeleteByUser(userId);
 }

@@ -141,4 +141,9 @@ export type ChatContext = {
     hasBaseResume: boolean;
     /** From job-search preferences (Settings → Job search), so "find me jobs" means theirs. */
     looking: { roles: string[]; locations: string[]; remote: boolean };
+    /**
+     * Long-term memory: one line per thing the user told us, most used first,
+     * ≤ ~1,500 chars (docs/impl/08-memory.md). Empty or absent when none.
+     */
+    memoryIndex?: string;
 };

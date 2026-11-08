@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { rememberedNote } from '@/lib/memory/format';
 import { useGenerationMonitorStore } from '@/store/generationMonitorStore';
 
 type PipelineStepId =
@@ -72,6 +73,10 @@ export function DashboardCopilot() {
         channel: 'web' as const,
         message: trimmed,
       });
+
+      // Questions answered from long-term memory: say what was used.
+      const recalled = result.success ? rememberedNote(result.remembered) : null;
+      if (recalled) toast.info(recalled, { duration: 12_000 });
 
       if (!result.success) {
         toast.error(result.error ?? 'Failed to start generation');

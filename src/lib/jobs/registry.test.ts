@@ -52,6 +52,7 @@ describe('registry', () => {
             'month_in_review',
             'weekly_digest',
             'reconcile_qdrant',
+            'memory_consolidate',
         ];
         for (const kind of wired) {
             expect(getHandler(kind)).toBeDefined();

@@ -27,6 +27,7 @@ import { JOB_ACTION_LABELS } from '@/lib/inbox/types';
 import { draftScoutOutreach, startScoutRun } from '@/services/scout';
 import { tailorResumeForRun } from '@/services/tailor';
 import { createWinDraftForUser } from '@/services/wins';
+import { rememberedNote } from '@/lib/memory/format';
 import type { RichMessage } from '@/lib/channels/types';
 
 export const THREAD_PAGE = 60;
@@ -203,10 +204,12 @@ export async function runAction(
                 return failure(started.error);
             }
             const session = started.data;
+            const recalled = rememberedNote(session.remembered);
+            const lead = session.status === 'awaiting_clarification'
+                ? 'One question first, so the resume says the right thing.'
+                : `Tailoring your resume for ${jobName(job)}.`;
             return {
-                text: session.status === 'awaiting_clarification'
-                    ? 'One question first, so the resume says the right thing.'
-                    : `Tailoring your resume for ${jobName(job)}.`,
+                text: recalled ? `${lead}\n\n${recalled}` : lead,
                 cards: [{
                     type: 'generation',
                     sessionId: session.sessionId,

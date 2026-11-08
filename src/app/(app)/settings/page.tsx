@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { auth } from '@clerk/nextjs/server';
-import { Bell, CalendarDays, ChevronRight, CreditCard, FileText, GitBranch, MessageCircle, Target, UserRound } from 'lucide-react';
+import { Bell, Brain, CalendarDays, ChevronRight, CreditCard, FileText, GitBranch, MessageCircle, Target, UserRound } from 'lucide-react';
 import { isEnabled } from '@/lib/flags';
 import { DeleteAccountSection } from '@/components/settings/DeleteAccountSection';
 
@@ -22,6 +22,7 @@ export default async function SettingsIndexPage() {
     const items = [
         { href: '/settings/resume', icon: FileText, title: 'Resume defaults', body: 'Template, section order and length for every resume you generate.' },
         { href: '/settings/job-search', icon: Target, title: 'Job search', body: 'Roles, locations and pay you are looking for, and your LinkedIn connections.' },
+        { href: '/settings/memory', icon: Brain, title: 'Memory', body: 'What you have told me, so I never ask twice. Edit, make private or delete any of it.' },
         ...(journey ? [{ href: '/settings/email', icon: CalendarDays, title: 'Email & calendar', body: 'Forward job email to Patronus and connect Google Calendar, so every application tracks itself.' }] : []),
         { href: '/settings/channels', icon: MessageCircle, title: 'Channels', body: 'Web chat, Telegram, WhatsApp, the browser extension and the CLI.' },
         ...(capture ? [{ href: '/settings/sources', icon: GitBranch, title: 'Sources', body: 'Connect GitHub so your merged work becomes Work Log drafts.' }] : []),

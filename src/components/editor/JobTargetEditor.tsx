@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useResumeStore } from '@/store/resumeStore';
 import { calculateATSScore } from '@/actions/ai';
 import { processChannelGenerate } from '@/actions/channelGenerate';
+import { toast } from 'sonner';
+import { rememberedNote } from '@/lib/memory/format';
 import { loadResumeFromCloud } from '@/actions/resume';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -230,6 +232,10 @@ export function JobTargetEditor({ resumeId }: JobTargetEditorProps) {
         sourceResumeId: resumeId,
         fallbackResumeData: resumeData,
       });
+
+      // Questions answered from long-term memory: say what was used.
+      const recalled = result.success ? rememberedNote(result.remembered) : null;
+      if (recalled) toast.info(recalled, { duration: 12_000 });
 
       if (!result.success) {
         setIsGenerating(false);

@@ -24,6 +24,8 @@ import { generateStructured } from '@/lib/ai/structured';
 import { loadRun, readSections } from '@/lib/agent/run';
 import { externalRetrievalFilter } from '@/lib/graph/visibility';
 import { prisma } from '@/lib/prisma';
+import { labelFromKey } from '@/lib/memory/topics';
+import { shareableMemoryWhere } from '@/services/memory';
 import {
     LINKEDIN_NOTE_MAX,
     type DraftFormat,
@@ -171,8 +173,11 @@ export type EvidenceLine = {
     text: string;
     source: string;
     /** `education` lines are always kept by `selectEvidence`: a degree rarely shares a word with a JD. */
-    kind?: 'role' | 'win' | 'project' | 'education';
+    kind?: 'role' | 'win' | 'project' | 'education' | 'memory';
 };
+
+/** Long-term memory lines an outreach draft may read. Small models read short context best. */
+export const OUTREACH_MEMORY_LINES = 12;
 
 /** "2014" from "2014", "Jul 2014", "2014-07"; else the value as written. */
 function yearOf(value: string): string {
@@ -205,7 +210,7 @@ export function educationLine(row: {
  * construction.
  */
 export async function loadShareableEvidence(userId: string): Promise<EvidenceLine[]> {
-    const [wins, roles, projects, schools] = await Promise.all([
+    const [wins, roles, projects, schools, memories] = await Promise.all([
         prisma.win.findMany({
             where: outreachWinWhere(userId),
             orderBy: { occurredAt: 'desc' },
@@ -228,6 +233,15 @@ export async function loadShareableEvidence(userId: string): Promise<EvidenceLin
             take: 4,
             select: { institution: true, degree: true, fieldOfStudy: true, startDate: true, endDate: true, current: true },
         }),
+        // What the user told us (docs/impl/08-memory.md). Rule 3: shareable
+        // only, filtered HERE in the query; a private line never reaches the
+        // prompt, so the model is never asked to leave it out.
+        prisma.userMemory.findMany({
+            where: shareableMemoryWhere(userId),
+            orderBy: [{ useCount: 'desc' }, { createdAt: 'desc' }],
+            take: OUTREACH_MEMORY_LINES,
+            select: { key: true, label: true, text: true },
+        }),
     ]);
 
     const lines: EvidenceLine[] = [];
@@ -249,6 +263,10 @@ export async function loadShareableEvidence(userId: string): Promise<EvidenceLin
     for (const school of schools) {
         const text = educationLine(school);
         if (text) lines.push({ text, source: `Education: ${school.institution.trim() || 'school'}`, kind: 'education' });
+    }
+    for (const memory of memories) {
+        const topic = memory.label.trim() || labelFromKey(memory.key);
+        lines.push({ text: `${topic}: ${memory.text}`, source: 'Told Patronus', kind: 'memory' });
     }
     return lines;
 }

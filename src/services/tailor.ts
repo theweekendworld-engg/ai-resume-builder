@@ -21,6 +21,7 @@ import { loadRun, readSections } from '@/lib/agent/run';
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { SCOUT_AGENT, type IngestData, type JdData } from '@/lib/scout/types';
+import type { RememberedAnswer } from '@/lib/memory/format';
 import { startGenerationForUser } from '@/services/channelGenerate';
 import type { ResumeData } from '@/types/resume';
 
@@ -33,6 +34,8 @@ export type TailorStart = {
     status: 'awaiting_clarification' | 'generating' | 'completed';
     /** Present while `status` is `awaiting_clarification`: the question to ask now. */
     nextQuestion?: { id: string; question: string; gap: string };
+    /** Questions not asked because the user answered them on an earlier day (`rememberedNote`). */
+    remembered?: RememberedAnswer[];
 };
 
 /** The first question not yet put to the user, from a session's clarifications. */
@@ -185,5 +188,6 @@ export async function tailorResumeForRun(
         resumeId: copy.id,
         status: started.status,
         ...(started.nextQuestion ? { nextQuestion: started.nextQuestion } : {}),
+        ...(started.remembered?.length ? { remembered: started.remembered } : {}),
     });
 }

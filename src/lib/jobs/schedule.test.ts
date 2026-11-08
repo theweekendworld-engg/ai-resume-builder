@@ -88,6 +88,26 @@ describe('idempotence — the tick runs hourly', () => {
     });
 });
 
+describe('weekly memory consolidation (docs/impl/08-memory.md §5)', () => {
+    test('every tick of a week produces one key, the Monday of that week', async () => {
+        const { fn, calls } = recorder();
+        // 2026-08-03 is a Monday; tick every day of that week, every hour.
+        for (let day = 3; day <= 9; day += 1) {
+            for (let hour = 0; hour < 24; hour += 6) await schedulePeriodicWork(at(day, hour), fn);
+        }
+        const keys = new Set(calls.filter((c) => c.kind === 'memory_consolidate').map((c) => c.dedupeKey));
+        expect([...keys]).toEqual(['memory_consolidate:2026-08-03']);
+    });
+
+    test('the next week gets the next key', async () => {
+        const { fn, calls } = recorder();
+        await schedulePeriodicWork(at(9), fn);
+        await schedulePeriodicWork(at(10), fn);
+        const keys = calls.filter((c) => c.kind === 'memory_consolidate').map((c) => c.dedupeKey);
+        expect(keys).toEqual(['memory_consolidate:2026-08-03', 'memory_consolidate:2026-08-10']);
+    });
+});
+
 describe('scheduling never takes the tick down', () => {
     test('an enqueue failure is swallowed and reported as null', async () => {
         // A missed nudge is one quiet day. An exception here would stop the

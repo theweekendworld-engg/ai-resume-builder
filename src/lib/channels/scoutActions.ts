@@ -31,6 +31,7 @@ import { JOB_ACTION_LABELS, type JobAction, type JobBoardItem } from '@/lib/inbo
 import type { Result } from '@/lib/result';
 import type { TailorStart } from '@/services/tailor';
 import { config } from '@/lib/config';
+import { rememberedNote } from '@/lib/memory/format';
 
 export const SCOUT_ACTION_PREFIX = 'sc:';
 
@@ -405,6 +406,10 @@ async function tailorReply(
     }
     const run = await svc.getScoutRun(userId, runId);
     const label = run.success ? jobLabelFromView(run.data) : 'this job';
+    // Said every time memory answered in place of a question, so the user sees
+    // what went in and where to change it (docs/impl/08-memory.md).
+    const recalledNote = rememberedNote(started.data.remembered);
+    const recalled: Line[] = recalledNote ? [[], ...recalledNote.split('\n').map((line) => [{ text: line, italic: true }])] : [];
 
     if (started.data.status === 'completed') {
         const url = started.data.resumeId ? `${config.app.url}/editor/${started.data.resumeId}` : null;
@@ -419,7 +424,7 @@ async function tailorReply(
             ?? await svc.nextGenerationQuestion(userId, started.data.sessionId);
         if (channel === 'whatsapp') {
             return {
-                lines: [text(`Tailoring your resume for ${label}. One detail first: answer it in Patronus.`)],
+                lines: [text(`Tailoring your resume for ${label}. One detail first: answer it in Patronus.`), ...recalled],
                 actions: [{ kind: 'open', label: 'Answer in Patronus', url: `${config.app.url}/build` }],
                 runId,
             };
@@ -429,10 +434,11 @@ async function tailorReply(
                 text(`Tailoring your resume for ${label}. One detail first:`),
                 [{ text: question ?? 'Reply with anything the job asks for that your record does not show yet.', bold: true }],
                 [{ text: 'Reply here, or send "skip all" to go ahead without.', italic: true }],
+                ...recalled,
             ],
         };
     }
-    return { lines: [text(`Tailoring your resume for ${label}. I will send it here when it is ready, usually within a minute.`)] };
+    return { lines: [text(`Tailoring your resume for ${label}. I will send it here when it is ready, usually within a minute.`), ...recalled] };
 }
 
 /** A job's short label from a run view, for replies that have no board item. */
