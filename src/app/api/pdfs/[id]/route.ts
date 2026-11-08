@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { readStoredPdf } from '@/lib/pdfStorage';
+import { resumePdfIdentity } from '@/lib/pdfLinks';
 
 export async function GET(
   req: NextRequest,
@@ -20,7 +21,7 @@ export async function GET(
 
     const pdf = await prisma.generatedPdf.findFirst({
       where: { id, userId },
-      select: { blobKey: true },
+      select: { blobKey: true, resumeId: true, sessionId: true },
     });
 
     if (!pdf) {
@@ -31,7 +32,9 @@ export async function GET(
     if (!buffer) {
       return NextResponse.json({ error: 'PDF file not found' }, { status: 404 });
     }
-    const filename = 'resume.pdf';
+    // Named from the record (Jai_Shankar_Resume_Acme.pdf): this is the file a
+    // recruiter receives when the user attaches the download.
+    const { fileName: filename } = await resumePdfIdentity({ userId, resumeId: pdf.resumeId, sessionId: pdf.sessionId });
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {

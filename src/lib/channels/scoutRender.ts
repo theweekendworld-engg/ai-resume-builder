@@ -33,6 +33,9 @@ import { COLUMN_LABELS, COLUMN_OF_STATUS } from '@/lib/inbox/types';
 import type { Line, RichMessage, ScoutAction } from '@/lib/channels/types';
 import { applyEmailsOf } from '@/lib/drafts/applyEmail';
 import type { DraftView } from '@/lib/drafts/types';
+import { ACTIVE_STAGES, chainOf, roleAtCompany } from '@/lib/scout/applyChain';
+import { goalOf } from '@/lib/scout/goal';
+import type { ApplyChainState } from '@/lib/scout/types';
 
 export const MAX_KEY_LINES = 7;
 
@@ -166,14 +169,35 @@ function jobLines(view: ScoutRunView): Line[] {
     // Where it now lives. Last, and kept even when the key lines are full:
     // "is this saved anywhere?" is the question behind every share.
     const kept = lines.slice(0, MAX_KEY_LINES);
+    // "Who should I talk to": the people, by name, right under the analysis.
+    if (goalOf(view.input) === 'people') kept.push(...peopleLines(network));
     const tracked = trackLine(view);
     if (tracked) kept.push(tracked);
     return kept;
 }
 
+/** Up to three people worth contacting, by name. Every name is from the run's network section. */
+function peopleLines(network: NetworkData | null): Line[] {
+    const targets = network?.targets.slice(0, 3) ?? [];
+    if (targets.length === 0) {
+        return [[], [{ text: '🤝 No one to name yet. Open the analysis for people-search links, or import your LinkedIn connections.' }]];
+    }
+    return [
+        [],
+        [{ text: '🤝 Who to talk to', bold: true }],
+        ...targets.map((target): Line => [
+            { text: `• ${target.fullName}`, bold: true },
+            { text: `${target.position ? `, ${shortLine(target.position, 60)}` : ''}${target.why ? ` · ${shortLine(target.why, 80)}` : ''}` },
+        ]),
+    ];
+}
+
 export function trackLine(view: ScoutRunView): Line | null {
     const track = okData<TrackData>(view.sections.track);
     if (!track) return null;
+    if (goalOf(view.input) === 'save' && COLUMN_OF_STATUS[track.status] === 'to_review') {
+        return [{ text: '💾 Saved for later · /jobs to see your saved jobs' }];
+    }
     if (track.created || COLUMN_OF_STATUS[track.status] === 'to_review') {
         return [{ text: '📋 Saved to your job tracker · /jobs to see your best fits' }];
     }
@@ -275,6 +299,21 @@ export function emailDraftAction(view: ScoutRunView): { action: Extract<ScoutAct
     };
 }
 
+/**
+ * "🚀 Apply for me" is offered while the job is still to review and no
+ * chain is already working on it (or done with it).
+ */
+export function offersApply(view: ScoutRunView): boolean {
+    // The chain delivers through the Telegram notifier and the web job page.
+    if (view.channel === 'whatsapp') return false;
+    const chain = chainOf(view.input);
+    if (chain && ACTIVE_STAGES.has(chain.stage)) return false;
+    const track = okData<TrackData>(view.sections.track);
+    return !track || COLUMN_OF_STATUS[track.status] === 'to_review';
+}
+
+export const APPLY_FOR_ME_LABEL = '🚀 Apply for me';
+
 function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     // Status first: one row of three on Telegram, the first choices of the
     // list on WhatsApp. Moving a job along is the most common next step.
@@ -283,6 +322,9 @@ function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
         { kind: 'status', status: 'a', label: '📨 Applied' },
         { kind: 'status', status: 'n', label: '❌ Not interested' },
     ];
+    // Share and go: tailoring, the draft and the tracker in one tap. Right
+    // after the status row, ahead of the single steps it chains.
+    if (offersApply(view)) actions.push({ kind: 'apply', label: APPLY_FOR_ME_LABEL });
     // The JD is already stored: tailoring is one tap, not a copy-paste into /build.
     actions.push({ kind: 'tailor', label: '✍️ Tailor resume' });
     // Telegram shows the first six (TELEGRAM_LIMITS.maxButtons), so order is
@@ -294,9 +336,12 @@ function jobActions(view: ScoutRunView, appUrl: string): ScoutAction[] {
     if (email.hasAddress) actions.push(email.action);
     const fit = okData<FitData>(view.sections.fit);
     const poster = view.kind === 'hiring_post';
-    actions.push(poster
+    const outreach: ScoutAction = poster
         ? { kind: 'draft', target: 'p', format: 'm', label: 'Draft message to poster' }
-        : { kind: 'draft', target: 'f', format: 'n', label: 'Draft referral note' });
+        : { kind: 'draft', target: 'f', format: 'n', label: 'Draft referral note' };
+    // "Who should I talk to": the message to them is the next step, so it leads.
+    if (goalOf(view.input) === 'people') actions.unshift(outreach);
+    else actions.push(outreach);
     if (fit && (fit.verdict === 'not_a_fit' || fit.verdict === 'stretch')) {
         actions.push({ kind: 'why', label: 'Why not a fit' });
     }
@@ -324,6 +369,16 @@ const DRAFT_TITLE: Record<DraftView['format'], string> = {
 export const DRAFT_EDIT_HINT = 'Reply with any change, like "add IIT Delhi". I\'ll edit this draft.';
 export const DRAFT_ATTACH_HINT = 'Attach your tailored resume PDF before you send. Patronus never sends email for you.';
 
+/** What a caller may add to a draft message (the apply chain's result). */
+export type DraftMessageOptions = {
+    /** Replaces the default attach hint ("Attach the PDF above and send."). */
+    attachHint?: string;
+    /** Lines after the hints, e.g. which skills were not claimed. */
+    extraLines?: Line[];
+    /** Buttons ahead of the compose links, e.g. "Open the application". */
+    leadActions?: ScoutAction[];
+};
+
 /**
  * A draft version as a chat message: To / Subject / Body as plain text, the
  * compose links and the two fixed revisions. Pure: the links come in.
@@ -331,7 +386,12 @@ export const DRAFT_ATTACH_HINT = 'Attach your tailored resume PDF before you sen
  * Telegram gets the links as URL buttons. WhatsApp reply messages cannot
  * carry URL buttons, so there they travel in the text.
  */
-export function renderDraftMessage(draft: DraftView, links: DraftLinks, channel: 'telegram' | 'whatsapp' = 'telegram'): RichMessage {
+export function renderDraftMessage(
+    draft: DraftView,
+    links: DraftLinks,
+    channel: 'telegram' | 'whatsapp' = 'telegram',
+    options: DraftMessageOptions = {},
+): RichMessage {
     const email = draft.format === 'email';
     const lines: Line[] = [[{ text: DRAFT_TITLE[draft.format] ?? 'Draft', bold: true }, { text: ` · v${draft.version}` }], []];
     if (email) {
@@ -341,9 +401,11 @@ export function renderDraftMessage(draft: DraftView, links: DraftLinks, channel:
     }
     for (const paragraph of draft.body.split('\n')) lines.push([{ text: paragraph }]);
     lines.push([], [{ text: DRAFT_EDIT_HINT, italic: true }]);
-    if (email) lines.push([{ text: DRAFT_ATTACH_HINT, italic: true }]);
+    if (options.attachHint) lines.push([{ text: options.attachHint, italic: true }]);
+    else if (email) lines.push([{ text: DRAFT_ATTACH_HINT, italic: true }]);
+    if (options.extraLines?.length) lines.push(...options.extraLines);
 
-    const actions: ScoutAction[] = [];
+    const actions: ScoutAction[] = [...(options.leadActions ?? [])];
     if (email && channel === 'telegram') {
         if (links.gmail) actions.push({ kind: 'open', label: '📨 Open in Gmail to send', url: links.gmail });
         if (links.mailApp) actions.push({ kind: 'open', label: '📱 Mail app', url: links.mailApp });
@@ -392,13 +454,19 @@ export function renderScoutFinal(view: ScoutRunView, appUrl: string): RichMessag
             index,
             label: option.label,
         }));
+        const chainWaits = isJob(view) && chainOf(view.input)?.stage === 'pending';
         return {
             lines: [headline, ...body, [], [{ text: '❓ ', bold: false }, { text: question.prompt, bold: true }],
-                ...(actions.length ? [] : [[{ text: 'Reply here with your answer.', italic: true }]])],
+                ...(actions.length ? [] : [[{ text: 'Reply here with your answer.', italic: true }]]),
+                ...(chainWaits ? [[{ text: 'Once you answer, I will tailor your resume and draft the application.', italic: true }]] : [])],
             footer,
             actions,
         };
     }
+
+    const chain = isJob(view) ? chainOf(view.input) : null;
+    const chained = chain ? renderApplyFinal(view, chain, headline, body, footer, appUrl) : null;
+    if (chained) return chained;
 
     // The fit is never withheld for the pay floor any more; it is asked after
     // the result, and a typed reply answers it (findOpenQuestionRun).
@@ -408,9 +476,51 @@ export function renderScoutFinal(view: ScoutRunView, appUrl: string): RichMessag
         ? [[], [{ text: '❓ ' }, { text: followUp.prompt, bold: true }], [{ text: 'Reply here with your answer, or ignore it.', italic: true }]]
         : [];
 
+    // Apply was asked for and something refused (no base resume, not a job):
+    // say why, and keep the buttons so it can be retried after the fix.
+    const stopped = view.input.goal === 'apply' && chainOf(view.input)?.stage === 'stopped' ? chainOf(view.input)?.reason ?? null : null;
+    const stoppedLines: Line[] = stopped ? [[], [{ text: `⚠️ ${stopped}` }]] : [];
+
     return {
-        lines: [headline, ...(body.length ? [[] as Line, ...body] : []), ...followUpLines],
+        lines: [headline, ...(body.length ? [[] as Line, ...body] : []), ...followUpLines, ...stoppedLines],
         footer,
         actions: isJob(view) ? jobActions(view, appUrl) : view.kind === 'work_note' ? noteActions(view, appUrl) : [],
     };
+}
+
+/**
+ * The final message while the apply chain is holding or working. Null means
+ * the normal final message (the chain is finished, stopped, or not started).
+ */
+function renderApplyFinal(
+    view: ScoutRunView,
+    chain: ApplyChainState,
+    headline: Line,
+    body: Line[],
+    footer: Line,
+    appUrl: string,
+): RichMessage | null {
+    const top: Line[] = [headline, ...(body.length ? [[] as Line, ...body] : [])];
+    const open: ScoutAction = { kind: 'open', label: 'Open in Patronus', url: scoutRunUrl(appUrl, view.id) };
+    if (chain.stage === 'eligibility_hold' && chain.reason) {
+        return {
+            lines: [...top, [], [{ text: '❓ ' }, { text: `${chain.reason.replace(/\s+$/, '')} Apply anyway?`, bold: true }]],
+            footer,
+            actions: [
+                { kind: 'apply', confirm: 'y', label: 'Yes, apply anyway' },
+                { kind: 'apply', confirm: 'n', label: 'No, skip it' },
+                open,
+            ],
+        };
+    }
+    if (chain.stage === 'tailoring' || chain.stage === 'drafting') {
+        const { label } = roleAtCompany(view.sections);
+        const what = applyEmailsOf(view.sections).length > 0 ? 'application email' : 'message to send with it';
+        return {
+            lines: [...top, [], [{ text: `🚀 Tailoring your resume for ${label} now. The PDF and your ${what} follow here, usually within a couple of minutes.` }]],
+            footer,
+            actions: [open],
+        };
+    }
+    return null;
 }

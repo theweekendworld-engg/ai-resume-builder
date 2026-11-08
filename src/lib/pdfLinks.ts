@@ -1,5 +1,7 @@
 import { config } from '@/lib/config';
 import { prisma } from '@/lib/prisma';
+import { resumeFileName } from '@/lib/resumeFileName';
+import { extractParsedJDTarget } from '@/lib/resumeIdentity';
 
 type PdfLocator = {
   userId: string;
@@ -53,4 +55,39 @@ export async function findLatestGeneratedPdf(params: PdfLocator): Promise<{
   }
 
   return null;
+}
+
+export type ResumePdfIdentity = {
+  fullName: string | null;
+  role: string | null;
+  company: string | null;
+  /** `Jai_Shankar_Resume_iServeWorld.pdf` (src/lib/resumeFileName.ts). */
+  fileName: string;
+};
+
+/**
+ * Who a resume PDF is for and which job, read from the record: the resume's
+ * own name and target, then the generation's parsed posting, then the
+ * profile. Every query is scoped by `userId`.
+ */
+export async function resumePdfIdentity(params: { userId: string; resumeId?: string | null; sessionId?: string | null }): Promise<ResumePdfIdentity> {
+  const [resume, session, profile] = await Promise.all([
+    params.resumeId
+      ? prisma.resume.findFirst({
+        where: { id: params.resumeId, userId: params.userId },
+        select: { content: true, targetRole: true, targetCompany: true },
+      })
+      : Promise.resolve(null),
+    params.sessionId
+      ? prisma.generationSession.findFirst({ where: { id: params.sessionId, userId: params.userId }, select: { parsedJD: true } })
+      : Promise.resolve(null),
+    prisma.userProfile.findUnique({ where: { userId: params.userId }, select: { fullName: true } }),
+  ]);
+  const content = resume?.content as { personalInfo?: { fullName?: unknown } } | null | undefined;
+  const contentName = typeof content?.personalInfo?.fullName === 'string' ? content.personalInfo.fullName.trim() : '';
+  const parsed = extractParsedJDTarget(session?.parsedJD);
+  const fullName = contentName || profile?.fullName?.trim() || null;
+  const role = resume?.targetRole?.trim() || parsed.role || null;
+  const company = resume?.targetCompany?.trim() || parsed.company || null;
+  return { fullName, role, company, fileName: resumeFileName({ fullName, company }) };
 }

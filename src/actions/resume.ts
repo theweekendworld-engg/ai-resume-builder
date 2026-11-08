@@ -131,6 +131,8 @@ export async function loadResumeFromCloud(resumeId?: string): Promise<{
     success: boolean;
     data?: ResumeData;
     title?: string;
+    /** The company this copy is tailored for, for the export's file name. */
+    targetCompany?: string | null;
     resumeId?: string;
     updatedAt?: Date;
     error?: string;
@@ -171,6 +173,7 @@ export async function loadResumeFromCloud(resumeId?: string): Promise<{
             success: true,
             data: content ?? undefined,
             title: identity.title,
+            targetCompany: identity.targetCompany,
             resumeId: resume.id,
             updatedAt,
         };

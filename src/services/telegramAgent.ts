@@ -1,7 +1,7 @@
 import { Channel, GenerationStatus } from '@prisma/client';
 import { z } from 'zod';
 import { consumeChannelLinkToken, describeAccount, unlinkChatByExternalId } from '@/actions/channelIdentity';
-import { clarificationProgress, routeClarificationReply, nextClarificationQuestion } from '@/lib/channels/clarification';
+import { CLARIFICATION_REPLY_HINT, clarificationProgress, questionsIntro, routeClarificationReply, nextClarificationQuestion } from '@/lib/channels/clarification';
 import { escapeTelegramHtml } from '@/lib/channels/format';
 import {
   UNLINK_CONFIRM,
@@ -16,10 +16,9 @@ import { processChannelGenerate } from '@/services/channelGenerate';
 import { config } from '@/lib/config';
 import { getGenerationProgressPercent, getGenerationStageLabel } from '@/lib/generationProgress';
 import { prisma } from '@/lib/prisma';
-import { focusIsLive, parseFocus } from '@/lib/chat/focus';
+import { draftFocusedSince } from '@/lib/chat/focus';
 import {
   answerTelegramCallbackQuery,
-  sendTelegramMessage,
   sendTelegramMessageDetailed,
 } from '@/lib/telegram';
 import {
@@ -27,6 +26,7 @@ import {
   handleTelegramScoutCallback,
   handleTelegramScoutCommand,
   handleTelegramScoutText,
+  type ShareHint,
 } from '@/lib/channels/telegramInbound';
 import { parseInboxCommand, renderHelp } from '@/lib/channels/inboxCommands';
 import { sendTelegramRich } from '@/lib/channels/telegramScout';
@@ -75,12 +75,7 @@ export const TelegramUpdateSchema = z.object({
 
 /** True when a draft is in focus on Telegram and was focused after `since`. */
 async function draftFocusIsNewerThan(userId: string, since: Date): Promise<boolean> {
-  const row = await prisma.chatConversation.findUnique({
-    where: { userId_channel: { userId, channel: Channel.telegram } },
-    select: { focus: true, focusAt: true },
-  });
-  if (!row?.focusAt || !focusIsLive(row.focusAt)) return false;
-  return parseFocus(row.focus)?.kind === 'draft' && row.focusAt.getTime() > since.getTime();
+  return draftFocusedSince(userId, Channel.telegram, since);
 }
 
 /** A verified Telegram → user link, or null. */
@@ -228,7 +223,10 @@ export async function processTelegramUpdate(update: TelegramUpdatePayload): Prom
  * was answered here. Files are read only for a linked account, under the
  * upload rate limit, so nobody can make the bot parse files for free.
  */
-async function readFileMessage(chatId: string, message: NonNullable<TelegramUpdatePayload['message']>): Promise<string | null> {
+async function readFileMessage(
+  chatId: string,
+  message: NonNullable<TelegramUpdatePayload['message']>,
+): Promise<{ text: string; hint: ShareHint } | null> {
   const attachment = classifyTelegramAttachment(message);
   if (attachment.kind === 'none') return null;
   if (attachment.kind === 'unreadable') {
@@ -251,7 +249,9 @@ async function readFileMessage(chatId: string, message: NonNullable<TelegramUpda
     return null;
   }
   if (read.truncated) await sayPlain(chatId, truncatedFileNotice());
-  return composeFileText(message.caption, read.text);
+  // The caption is the user's note about the file ("apply for me"), kept
+  // apart for Scout; everything else reads the two as one pasted text.
+  return { text: composeFileText(message.caption, read.text), hint: { post: read.text, note: message.caption ?? null } };
 }
 
 function telegramDashboardUrl(): string {
@@ -415,7 +415,8 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
 
   const chatId = String(message.chat.id);
   // A PDF or text file continues as if its text had been pasted.
-  const incoming = message.text ?? await readFileMessage(chatId, message);
+  const file = message.text === undefined ? await readFileMessage(chatId, message) : null;
+  const incoming = message.text ?? file?.text;
   if (!incoming) {
     return;
   }
@@ -606,7 +607,7 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
   }
 
   const scoutOn = clarificationRoute === 'pass'
-    ? await handleTelegramScoutText(chatId, identity.userId, text)
+    ? await handleTelegramScoutText(chatId, identity.userId, text, file?.hint)
     : false;
   if (scoutOn && pendingSession) {
     const question = nextClarificationQuestion(pendingSession.clarifications);
@@ -653,7 +654,7 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
   // before Scout existed. With the flag on, every other message is recorded
   // here: links, pasted posts, notes about the user's work, and replies to a
   // Scout question.
-  if (!isGenerateCommand && await handleTelegramScoutText(chatId, identity.userId, text)) {
+  if (!isGenerateCommand && await handleTelegramScoutText(chatId, identity.userId, text, file?.hint)) {
     return;
   }
 
@@ -680,7 +681,7 @@ async function handleTelegramUpdate(update: TelegramUpdatePayload): Promise<void
     const question = result.nextQuestion?.question ?? result.questions?.[0]?.question;
     const total = result.questions?.length ?? 0;
     await sayPlain(chatId, question
-        ? `Before I write it, ${total > 1 ? `${total} quick questions about things the job asks for that your record does not show yet` : 'one quick question about something the job asks for that your record does not show yet'}. Nothing you do not confirm goes on the resume.\n\n${total > 1 ? `Question 1 of ${total}: ` : ''}${question}\n\nAnswer it, or say "skip", "skip all" or "cancel".`
+        ? `Before I write it, ${questionsIntro(total)}\n\n${total > 1 ? `Question 1 of ${total}: ` : ''}${question}\n\n${CLARIFICATION_REPLY_HINT}`
         : 'I need clarification. Please answer the next question to continue.');
     return;
   }

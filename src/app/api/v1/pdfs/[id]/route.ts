@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { readStoredPdf } from '@/lib/pdfStorage';
+import { resumePdfIdentity } from '@/lib/pdfLinks';
 import { prisma } from '@/lib/prisma';
 import { authenticateApiKey } from '@/app/api/v1/_utils';
 
@@ -31,7 +32,7 @@ export async function GET(
       id,
       userId: parsedQuery.data.userId,
     },
-    select: { blobKey: true },
+    select: { blobKey: true, resumeId: true, sessionId: true },
   });
   if (!pdf) {
     return NextResponse.json({ success: false, error: 'PDF not found' }, { status: 404 });
@@ -42,11 +43,12 @@ export async function GET(
     return NextResponse.json({ success: false, error: 'PDF file not found' }, { status: 404 });
   }
 
+  const { fileName } = await resumePdfIdentity({ userId: parsedQuery.data.userId, resumeId: pdf.resumeId, sessionId: pdf.sessionId });
   return new NextResponse(new Uint8Array(buffer), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': 'attachment; filename="resume.pdf"',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
       'Content-Length': String(buffer.byteLength),
     },
   });

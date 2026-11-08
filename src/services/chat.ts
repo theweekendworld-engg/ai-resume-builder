@@ -20,7 +20,10 @@ import { err, ok, type Result } from '@/lib/result';
 import { buildChatContext, toChatJob } from '@/lib/chat/context';
 import { searchRecord } from '@/lib/chat/askRecord';
 import { findPostings } from '@/lib/chat/findJobs';
-import { CHAT_MESSAGE_MAX, ROUTER_FALLBACK, routeMessage, type HistoryTurn } from '@/lib/chat/router';
+import { CHAT_MESSAGE_MAX, ROUTER_FALLBACK, emptyDecision, routeMessage, type HistoryTurn } from '@/lib/chat/router';
+import { SHARE_TEXT_MIN } from '@/lib/channels/inbound';
+import { decideShareGoal, goalByCode, splitShare } from '@/lib/scout/goal';
+import { extractUrls } from '@/lib/scout/message';
 import type { ChatAction, ChatCard, ChatContext, ChatJob, ChatMessageView, RouteDecision } from '@/lib/chat/types';
 import { listJobBoard, setJobStatus } from '@/services/careerInbox';
 import { JOB_ACTION_LABELS } from '@/lib/inbox/types';
@@ -125,7 +128,8 @@ export async function runAction(
     userId: string,
     decision: RouteDecision,
     context: ChatContext,
-    opts: { channel?: ActionChannel } = {},
+    /** `message`: what the user typed, for the note on a share ("apply for me"). */
+    opts: { channel?: ActionChannel; message?: string } = {},
 ): Promise<Reply> {
     const channel = opts.channel ?? 'web';
     // The line above a card is written here, never by the model: the model
@@ -135,16 +139,33 @@ export async function runAction(
 
     switch (decision.action) {
         case 'analyze_job': {
+            // The user's own line about the share is the goal (src/lib/scout/goal.ts);
+            // "apply to this" runs the same apply chain as Telegram.
+            const share = opts.message ? splitShare(opts.message) : null;
+            const goal = share?.note ? (await decideShareGoal({ userId, note: share.note })).goal : 'evaluate';
+            const text = decision.url ? null : share?.text ?? decision.text;
             const started = await startScoutRun({
                 userId,
-                input: { url: decision.url, text: decision.url ? null : decision.text, source: 'dashboard' },
+                input: { url: decision.url, text, source: 'dashboard', ...(goal !== 'evaluate' ? { goal } : {}) },
                 channel: Channel.web,
             });
             if (!started.success) return failure(started.error);
             const { run, created } = started.data;
+            const card: ChatCard = { type: 'scout_run', runId: run.id, status: run.status, kind: run.kind, headline: run.headline };
+            if (goal === 'apply') {
+                if (!created) {
+                    const { requestApply } = await import('@/services/applyChain');
+                    const requested = await requestApply(userId, run.id, { channel: 'web' });
+                    if (!requested.success) return { text: requested.error, cards: [card] };
+                }
+                return {
+                    text: 'On it. I will read the job, tailor your resume and write the application draft. Both land on the job page; you send it yourself.',
+                    cards: [card],
+                };
+            }
             return {
                 text: created ? 'Reading it now. The fit, company and pay land below as they come in.' : 'You have shared this one before; here is what I found.',
-                cards: [{ type: 'scout_run', runId: run.id, status: run.status, kind: run.kind, headline: run.headline }],
+                cards: [card],
             };
         }
 
@@ -203,9 +224,10 @@ export async function runAction(
                 return failure(started.error);
             }
             const session = started.data;
+            const asks = session.progress?.total ?? 1;
             return {
                 text: session.status === 'awaiting_clarification'
-                    ? 'One question first, so the resume says the right thing.'
+                    ? `${asks > 1 ? `${asks} quick questions` : 'One question'} first, so the resume says the right thing.`
                     : `Tailoring your resume for ${jobName(job)}.`,
                 cards: [{
                     type: 'generation',
@@ -304,6 +326,18 @@ export async function runAction(
 
 // ───────────────────────────────────────────────────────────── the turn
 
+/**
+ * A link (or a pasted post) with an apply note that code reads for certain
+ * ("apply for me", "send my resume"): analyse it with the apply goal, no
+ * router call. Anything less certain goes to the router as before.
+ */
+export function applyShareRoute(message: string): RouteDecision | null {
+    if (extractUrls(message).length === 0 && message.trim().length < SHARE_TEXT_MIN) return null;
+    const share = splitShare(message);
+    if (!share.note || goalByCode(share.note) !== 'apply' || (!share.url && !share.text)) return null;
+    return emptyDecision('analyze_job', 'On it.', { url: share.url, text: share.url ? null : share.text });
+}
+
 export type SendResult = { user: ChatMessageView; assistant: ChatMessageView };
 
 export async function sendChatMessage(params: {
@@ -355,9 +389,12 @@ export async function sendChatMessage(params: {
     let reply: Reply;
     try {
         const context = await buildChatContext(params.userId);
-        const routed = await routeMessage({ userId: params.userId, message: text, history, context });
-        action = routed.decision.action;
-        reply = await runAction(params.userId, routed.decision, context);
+        // "Apply to this <link>" is a share with a goal, whatever the router
+        // would make of the words around the link.
+        const shortcut = applyShareRoute(text);
+        const decision = shortcut ?? (await routeMessage({ userId: params.userId, message: text, history, context })).decision;
+        action = decision.action;
+        reply = await runAction(params.userId, decision, context, { message: text });
     } catch (error) {
         // Never lose what the user typed: their message is stored, and they
         // get a reply that says what to do next.
@@ -508,8 +545,15 @@ async function routeAgainstFocus(userId: string, text: string, channel: Channel)
 
     if (choice === 'done') {
         await setFocus(userId, channel, null);
-        const reply = 'Good luck with it. Tell me when you hear back and I will update the job.';
-        return { route: { kind: 'reply', text: reply }, record: reply, action: null };
+        // An application they just sent: the job moves to Applied, which is
+        // what the weekly follow-up reminder reads (docs/impl/07-telegram-apply.md §5).
+        const { APPLIED_REPLY, markApplicationSent } = await import('@/services/applyChain');
+        const applied = await markApplicationSent(userId, draft).catch((error: unknown) => {
+            console.warn('[chat] could not mark the job applied', { error: error instanceof Error ? error.message : String(error) });
+            return false;
+        });
+        const reply = applied ? APPLIED_REPLY : 'Good luck with it. Tell me when you hear back and I will update the job.';
+        return { route: { kind: 'reply', text: reply }, record: reply, action: applied ? 'update_job' : null };
     }
 
     const revised = await drafts.reviseDraft(userId, draft.id, text);

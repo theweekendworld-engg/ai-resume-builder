@@ -30,7 +30,7 @@ let updateId = Date.now() * 10 + 3;
 const usedUpdateIds: string[] = [];
 
 let telegram: MockTelegram;
-let started: Array<{ input: { url: string | null; text: string | null } }> = [];
+let started: Array<{ input: { url: string | null; text: string | null; goal?: string } }> = [];
 const previousAdmins = process.env.ADMIN_USER_IDS;
 
 function fakeDeps(overrides: Partial<ScoutChannelDeps> = {}): ScoutChannelDeps {
@@ -155,7 +155,7 @@ describe('at most once per update_id', () => {
 });
 
 describe('files', () => {
-    test('a PDF job description continues as pasted text: caption, a blank line, the text', async () => {
+    test('a PDF job description continues as pasted text; its caption is the note, not part of the post', async () => {
         const bytes = minimalPdf(JD_LINES);
         const urls = serveTelegramFile({ bytes }, telegram.fetch);
         const outcome = await processTelegramUpdate(messageUpdate({
@@ -167,8 +167,24 @@ describe('files', () => {
         expect(urls).toHaveLength(2);
         expect(started).toHaveLength(1);
         // Line breaks kept, the same as a text file (see pdfParser.joinTextItems).
-        expect(started[0].input.text).toBe(`Is this one worth it?\n\n${JD_LINES.join('\n')}`);
+        // The caption is the user's note (src/lib/scout/goal.ts): it decides
+        // the goal ("worth it?" is evaluate) and is not analysed as the post.
+        expect(started[0].input.text).toBe(JD_LINES.join('\n'));
+        expect(started[0].input.goal).toBeUndefined();
         expect(toUser()[0]).toContain('Reading the post');
+    });
+
+    test('a PDF captioned "apply for me" starts the run with the apply goal', async () => {
+        const bytes = minimalPdf(JD_LINES);
+        serveTelegramFile({ bytes }, telegram.fetch);
+        await processTelegramUpdate(messageUpdate({
+            caption: 'apply for me',
+            document: { file_id: 'pdf-apply', file_name: 'jd.pdf', mime_type: 'application/pdf', file_size: bytes.length },
+        }));
+        expect(started).toHaveLength(1);
+        expect(started[0].input.text).toBe(JD_LINES.join('\n'));
+        expect(started[0].input.goal).toBe('apply');
+        expect(toUser()[0]).toContain('tailor your resume and draft the application');
     });
 
     test('a long text file is capped, and the user is told so', async () => {

@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 import { generateStructured } from '@/lib/ai/structured';
-import { checkDraft, enforceLimits, FORMAT_RULES, type EvidenceLine } from '@/lib/scout/outreach';
+import { checkDraft, enforceLimits, FORMAT_RULES, isSignOffBlock, splitSignOff, type EvidenceLine } from '@/lib/scout/outreach';
 import type { DraftFormat } from '@/lib/scout/types';
 
 export { REVISION_INSTRUCTIONS } from '@/lib/drafts/revisions';
@@ -36,6 +36,7 @@ Rules:
 - Facts about the sender come ONLY from the current draft, the SENDER EVIDENCE lines, and the instruction itself. Never invent employers, schools, degrees, projects, skills, dates, metrics or numbers.
 - When the instruction states a fact about the sender ("add that I went to IIT Delhi"), use it exactly as stated.
 - Keep the subject unless the instruction is about the subject. For LinkedIn formats subject is null.
+- Keep the paragraph breaks (blank lines) as they are. The sign-off stays its own paragraph after a blank line.
 - No emojis, no exclamation marks, no bullet points, no placeholders like [Name].
 - Return JSON: {"subject": string | null, "body": string}.`;
 
@@ -51,6 +52,39 @@ export function buildRevisePrompt(params: {
         `INSTRUCTION (from the sender, verbatim):\n"""\n${params.instruction}\n"""`,
         `SENDER EVIDENCE (the only facts you may add about the sender):\n${params.evidence.map((line) => `- ${line.text} [${line.source}]`).join('\n') || '- (none recorded)'}`,
     ].join('\n\n');
+}
+
+/** "Sign it as Jai Shankar", "drop my name": an instruction about the sign-off itself. */
+const ABOUT_SIGN_OFF = /\b(?:sign(?:ed|ing|-?off)?|signature|name at the end|closing)\b/i;
+
+/**
+ * The sign-off stays its own paragraph. Version 1 ended "…makes sense.\n\nJai";
+ * a revision ("add that I graduated from IIT Delhi") came back
+ * "…makes sense.\nJai", the name glued to the paragraph above (live test
+ * 2026-11-08). Code puts the blank line back; and when an email revision
+ * dropped the sign-off entirely, and the instruction was not about it, the
+ * previous one is restored.
+ */
+export function keepSignOffParagraph(previousBody: string, nextBody: string, instruction: string, format: DraftFormat): string {
+    const before = splitSignOff(previousBody).signOff;
+    const next = nextBody.trim();
+    if (!before || splitSignOff(next).signOff) return next;
+
+    const want = before.split('\n').map((line) => line.trim());
+    const firstNameOf = (line: string) => line.toLowerCase().split(/\s+/)[0] ?? '';
+    const name = firstNameOf(want[want.length - 1]);
+    const lines = next.split('\n');
+    // The sign-off's lines at the very end, attached by a single newline.
+    for (let k = Math.min(want.length + 1, 3, lines.length - 1); k >= 1; k -= 1) {
+        const tail = lines.slice(-k).map((line) => line.trim());
+        if (!isSignOffBlock(tail) || firstNameOf(tail[tail.length - 1]) !== name) continue;
+        const main = lines.slice(0, -k).join('\n').trimEnd();
+        if (main) return `${main}\n\n${tail.join('\n')}`;
+    }
+    if (format === 'email' && !ABOUT_SIGN_OFF.test(instruction) && !next.toLowerCase().includes(name)) {
+        return `${next}\n\n${before}`;
+    }
+    return next;
 }
 
 export type ReviseOutcome =
@@ -106,7 +140,7 @@ export async function reviseDraftText(params: {
     // the whole body; keeping the previous version is the honest outcome.
     if (output.degraded) return { ok: false, reason: 'guard', costUsd };
 
-    const final = enforceLimits(params.format, output.draft);
+    const final = enforceLimits(params.format, { ...output.draft, body: keepSignOffParagraph(params.previous.body, output.draft.body, instruction, params.format) });
     if (!final.body.trim()) return { ok: false, reason: 'empty', costUsd };
     if (params.format === 'email' && !final.subject && params.previous.subject) {
         final.subject = params.previous.subject;

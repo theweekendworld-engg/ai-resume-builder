@@ -143,13 +143,45 @@ function stripCliches(body: string): string {
     return out.trim() || clean;
 }
 
+/**
+ * A sign-off block: at most three short lines, none of them a sentence
+ * ("Jai", "Thanks,\nJai", "Best,\nJai Shankar\njai@example.com").
+ */
+export function isSignOffBlock(lines: readonly string[]): boolean {
+    if (lines.length === 0 || lines.length > 3) return false;
+    if (lines.some((line) => !line || line.length > 60 || /[.!?:;]$/.test(line))) return false;
+    return wordCount(lines.join(' ')) <= 10 && /[A-Za-z]/.test(lines[lines.length - 1]);
+}
+
+/**
+ * The message's sign-off when its last paragraph is one, and the rest. A
+ * sign-off is its own paragraph: limits trim the message ABOVE it, never the
+ * name off the bottom.
+ */
+export function splitSignOff(body: string): { main: string; signOff: string | null } {
+    const clean = body.trim();
+    const paragraphs = clean.split(/\n[ \t]*\n/);
+    if (paragraphs.length < 2) return { main: clean, signOff: null };
+    const lines = paragraphs[paragraphs.length - 1].split('\n').map((line) => line.trim()).filter(Boolean);
+    if (!isSignOffBlock(lines)) return { main: clean, signOff: null };
+    return { main: paragraphs.slice(0, -1).join('\n\n').trim(), signOff: lines.join('\n') };
+}
+
+/** Apply `cut` to the message above the sign-off, leaving room for it, and put the sign-off back. */
+function withinLimit(body: string, cut: (main: string, signOff: string | null) => string): string {
+    const { main, signOff } = splitSignOff(body);
+    const trimmed = cut(main, signOff);
+    return signOff && trimmed ? `${trimmed}\n\n${signOff}` : trimmed || body;
+}
+
 export function enforceLimits(format: DraftFormat, draft: { subject: string | null; body: string }): { subject: string | null; body: string } {
     let body = stripCliches(draft.body);
     let subject = draft.subject?.trim() || null;
-    if (format === 'linkedin_note') body = trimToSentence(body, LINKEDIN_NOTE_MAX);
-    if (format === 'linkedin_message') body = trimToSentence(body, LINKEDIN_MESSAGE_MAX);
+    const room = (max: number, signOff: string | null) => (signOff ? max - signOff.length - 2 : max);
+    if (format === 'linkedin_note') body = withinLimit(body, (main, signOff) => trimToSentence(main, room(LINKEDIN_NOTE_MAX, signOff)));
+    if (format === 'linkedin_message') body = withinLimit(body, (main, signOff) => trimToSentence(main, room(LINKEDIN_MESSAGE_MAX, signOff)));
     if (format === 'email') {
-        body = trimToWords(body, EMAIL_BODY_MAX_WORDS);
+        body = withinLimit(body, (main, signOff) => trimToWords(main, EMAIL_BODY_MAX_WORDS - (signOff ? wordCount(signOff) : 0)));
         if (subject && subject.length > EMAIL_SUBJECT_MAX) subject = trimToSentence(subject, EMAIL_SUBJECT_MAX).replace(/…$/, '');
     } else {
         subject = null;

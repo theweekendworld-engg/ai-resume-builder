@@ -21,7 +21,7 @@ import { loadRun, readSections } from '@/lib/agent/run';
 import { prisma } from '@/lib/prisma';
 import { err, ok, type Result } from '@/lib/result';
 import { SCOUT_AGENT, type IngestData, type JdData } from '@/lib/scout/types';
-import { startGenerationForUser } from '@/services/channelGenerate';
+import { linkSessionToChain, skipAllGenerationQuestions, startGenerationForUser, type ChannelGenerateResponse } from '@/services/channelGenerate';
 import type { ResumeData } from '@/types/resume';
 
 export type TailorStart = {
@@ -33,7 +33,50 @@ export type TailorStart = {
     status: 'awaiting_clarification' | 'generating' | 'completed';
     /** Present while `status` is `awaiting_clarification`: the question to ask now. */
     nextQuestion?: { id: string; question: string; gap: string };
+    /** Where that question sits: "Question 1 of 3". */
+    progress?: { current: number; total: number };
+    /**
+     * Auto mode only: the skills the skipped questions asked about. Nothing
+     * about them is claimed; the apply chain says so in its final message.
+     */
+    skipped?: string[];
 };
+
+export type TailorOptions = {
+    /**
+     * Run without stopping for questions (the apply chain): every
+     * clarification is skipped through the "skip all" path, and the session
+     * is tied to the chain so its completion writes the application draft.
+     */
+    auto?: boolean;
+};
+
+type StoredQuestion = { id: string; question: string; gap: string };
+
+function storedQuestions(clarifications: Prisma.JsonValue | null): { questions: StoredQuestion[]; answers: Record<string, unknown> } {
+    if (!clarifications || typeof clarifications !== 'object' || Array.isArray(clarifications)) return { questions: [], answers: {} };
+    const value = clarifications as { questions?: unknown; answers?: Record<string, unknown> };
+    const questions = (Array.isArray(value.questions) ? value.questions : []).filter((raw): raw is StoredQuestion => {
+        const q = raw as Partial<StoredQuestion> | null;
+        return Boolean(q) && typeof q?.id === 'string' && typeof q?.question === 'string' && typeof q?.gap === 'string';
+    });
+    const answers = value.answers && typeof value.answers === 'object' ? value.answers : {};
+    return { questions, answers };
+}
+
+/** "Question 2 of 3" for the first question not yet put to the user. */
+function progressOf(clarifications: Prisma.JsonValue | null): TailorStart['progress'] {
+    const { questions, answers } = storedQuestions(clarifications);
+    if (questions.length === 0) return undefined;
+    const answered = questions.filter((q) => answers[q.id] !== undefined).length;
+    return { current: Math.min(answered + 1, questions.length), total: questions.length };
+}
+
+/** The skills the session's questions asked about and the user did not answer. */
+function skippedGaps(clarifications: Prisma.JsonValue | null): string[] {
+    const { questions, answers } = storedQuestions(clarifications);
+    return questions.filter((q) => !String(answers[q.id] ?? '').trim()).map((q) => q.gap);
+}
 
 /** The first question not yet put to the user, from a session's clarifications. */
 function pendingQuestion(clarifications: Prisma.JsonValue | null): TailorStart['nextQuestion'] {
@@ -81,6 +124,7 @@ export async function tailorResumeForRun(
     userId: string,
     runId: string,
     channel: 'web' | 'telegram' | 'whatsapp',
+    options: TailorOptions = {},
 ): Promise<Result<TailorStart>> {
     const run = await loadRun(runId);
     if (!run || run.userId !== userId || run.agent !== SCOUT_AGENT) return err('Not found', 'not_found');
@@ -124,13 +168,21 @@ export async function tailorResumeForRun(
         select: { id: true, status: true, sourceResumeId: true, clarifications: true },
     });
     if (active) {
+        if (options.auto) {
+            await linkSessionToChain(userId, active.id, { runId });
+            return autoContinue(userId, active.id, workspace.id, active.sourceResumeId, active.status === GenerationStatus.awaiting_clarification
+                ? null
+                : { success: true, sessionId: active.id, status: statusOf(active.status) });
+        }
         const status = statusOf(active.status);
         return ok({
             sessionId: active.id,
             workspaceId: workspace.id,
             resumeId: active.sourceResumeId,
             status,
-            ...(status === 'awaiting_clarification' ? { nextQuestion: pendingQuestion(active.clarifications) } : {}),
+            ...(status === 'awaiting_clarification'
+                ? { nextQuestion: pendingQuestion(active.clarifications), progress: progressOf(active.clarifications) }
+                : {}),
         });
     }
 
@@ -175,15 +227,50 @@ export async function tailorResumeForRun(
         sourceResumeId: copy.id,
         workspaceId: workspace.id,
         fallbackResumeData: (copy.content as unknown as ResumeData | null) ?? undefined,
+        ...(options.auto ? { chain: { runId } } : {}),
     });
     if (!started.success || !started.sessionId || !started.status) {
         return err(started.error ?? 'Could not start tailoring.', started.code ?? 'tailor_failed');
     }
+    if (options.auto) {
+        return autoContinue(userId, started.sessionId, workspace.id, copy.id, started.status === 'awaiting_clarification' ? null : started);
+    }
+    const total = started.questions?.length ?? 0;
     return ok({
         sessionId: started.sessionId,
         workspaceId: workspace.id,
         resumeId: copy.id,
         status: started.status,
         ...(started.nextQuestion ? { nextQuestion: started.nextQuestion } : {}),
+        ...(started.status === 'awaiting_clarification' && total > 0 ? { progress: { current: 1, total } } : {}),
+    });
+}
+
+/**
+ * Auto mode: skip whatever questions the session has (the "skip all" path,
+ * which charges and enqueues exactly once), and report which skills they
+ * asked about. `started` is the session's state when there was nothing to skip.
+ */
+async function autoContinue(
+    userId: string,
+    sessionId: string,
+    workspaceId: string,
+    resumeId: string | null,
+    started: ChannelGenerateResponse | null,
+): Promise<Result<TailorStart>> {
+    const result = started ?? await skipAllGenerationQuestions(userId, sessionId);
+    if (!result.success || !result.status) {
+        return err(result.error ?? 'Could not start tailoring.', result.code ?? 'tailor_failed');
+    }
+    const session = await prisma.generationSession.findFirst({
+        where: { id: sessionId, userId },
+        select: { clarifications: true },
+    });
+    return ok({
+        sessionId,
+        workspaceId,
+        resumeId,
+        status: result.status,
+        skipped: skippedGaps(session?.clarifications ?? null),
     });
 }

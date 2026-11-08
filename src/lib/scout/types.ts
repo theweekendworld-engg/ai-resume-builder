@@ -24,6 +24,50 @@ export const SCOUT_AGENT = 'scout';
 
 export type ScoutInputSource = 'dashboard' | 'telegram' | 'whatsapp' | 'extension';
 
+/**
+ * What the user wants done with a share, read from the line they added to it
+ * ("apply for me", "worth it?", "who should I talk to", "save for later").
+ * `src/lib/scout/goal.ts` decides it; no note means `evaluate`, which is what
+ * a share always did (docs/impl/07-telegram-apply.md §5).
+ */
+export const SHARE_GOALS = ['apply', 'evaluate', 'people', 'save'] as const;
+export type ShareGoal = (typeof SHARE_GOALS)[number];
+
+/**
+ * Where the apply chain for a run stands. Code owns every transition
+ * (`src/services/applyChain.ts`); each one is a conditional write, so a
+ * retried step or a double tap moves it once.
+ *
+ *   pending           waiting for the analysis (or an answer) to finish
+ *   eligibility_hold  the fit found a blocking eligibility conflict; asked "Apply anyway?"
+ *   tailoring         a resume is being made (`sessionId`)
+ *   drafting          the resume is done; the application draft is being written
+ *   drafted           PDF and draft sent; waiting for the user to send it themselves
+ *   applied           the user said they sent it; the job is marked Applied
+ *   declined          the user said No at the eligibility question
+ *   stopped           something refused (no base resume, not a job, a failure): `reason`
+ */
+export const APPLY_STAGES = ['pending', 'eligibility_hold', 'tailoring', 'drafting', 'drafted', 'applied', 'declined', 'stopped'] as const;
+export type ApplyStage = (typeof APPLY_STAGES)[number];
+
+export type ApplyChainState = {
+    stage: ApplyStage;
+    /** When the stage was last set (ISO). */
+    at: string;
+    /** "Yes, apply anyway" over an eligibility conflict. */
+    override?: boolean;
+    /** The GenerationSession the chain started. */
+    sessionId?: string | null;
+    /** Skills the skipped resume questions asked about: not claimed on the resume. */
+    skipped?: string[];
+    /** Version 1 of the application draft. */
+    draftId?: string | null;
+    /** What holds it (`eligibility_hold`) or stopped it (`stopped`), in the user's words. */
+    reason?: string | null;
+    /** The refusing service's code, for the way forward (`nextStepFor`). */
+    code?: string | null;
+};
+
 export type ScoutInput = {
     /** The shared link, when there was one. */
     url?: string | null;
@@ -48,6 +92,10 @@ export type ScoutInput = {
     company?: string | null;
     /** What the user said the company is ("the project management software company"): disambiguates common-word names. */
     companyHint?: string | null;
+    /** What the user asked for with the share. Absent means `evaluate`. Not part of the dedupe key. */
+    goal?: ShareGoal | null;
+    /** The apply chain's state, when `goal` is `apply`. Written by code only. */
+    apply?: ApplyChainState | null;
 };
 
 // ────────────────────────────────────────────────────────────── sections

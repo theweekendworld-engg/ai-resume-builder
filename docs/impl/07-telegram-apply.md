@@ -54,3 +54,88 @@ limiter.
 
 Agents do not edit files outside their row, do not commit, and do not touch
 `prisma/schema.prisma`, `package.json` or `docs/**`.
+
+## 5. Share and go (2026-11-08)
+
+The owner: "in place of typing a post, what if I just shared a post … based
+on the post and what I want, it should figure out what to do and complete
+the work without me handholding every step." Sharing used to end at the
+analysis and six buttons; every next step was a tap. Now the share says
+what it is for, and code runs the steps.
+
+### The goal, decided narrowly (`src/lib/scout/goal.ts`)
+
+1. **Split the post from the note.** Text around a link is the note
+   (share-sheet boilerplate like "Check out this job at …" is dropped, and a
+   short hiring post with an address or "we're hiring" is the post, not a
+   note). On a paste, only a short first or last line that speaks to us
+   (first person, or a short question) is the note: "apply for me" on top
+   comes off, a post's own "Apply now!" never does. A file's caption is the
+   note and its text the post (`telegramAgent` passes them apart). Scout gets
+   the post without the note, so the same post with and without "apply for
+   me" is one run.
+2. **Code first.** `goalByCode` reads keywords into `apply | evaluate |
+   people | save`, evaluate first ("should I apply?" is a fit question).
+3. **One small call when code cannot tell.** Task `shareGoal` (config map,
+   chat's cheap model, effort `low`), a closed enum, the note only. Any
+   failure is `evaluate`. No note at all is `evaluate`: today's behaviour,
+   plus a **🚀 Apply for me** button (`sc:g:<runId>`) after the status row,
+   inside Telegram's six. It is hidden once the job is applied to, while a
+   chain works, and on WhatsApp.
+
+The goal is stored on the run (`AgentRun.input.goal`, not part of the dedupe
+key). `people` lists up to three people by name under the analysis and
+leads with the outreach button; `save` says it is saved.
+
+### The apply chain (`src/services/applyChain.ts`)
+
+State lives on the run (`input.apply`: `pending → eligibility_hold |
+tailoring → drafting → drafted → applied`, or `declined` / `stopped` with a
+reason and code). Every transition is a conditional write keyed on the row's
+`updatedAt`, so a retried workflow step or a double tap moves it once. No
+request is held open: each step runs in the function that finished the
+previous one. No schema change.
+
+| Step | Hook | What code does |
+|---|---|---|
+| a. Scout finished | `finishScoutRun` → `advanceApplyChain`, before the final message | Paused on a blocking question: wait (the answer re-runs the analysis and comes back here). A fit `eligibility` check in `conflict`: `eligibility_hold`, and the final message ends "You may not be eligible: … Apply anyway?" with Yes / No (`sc:g:<runId>:y|n`). Not a job, a failed run, WhatsApp: `stopped`, said in the final message. |
+| b. Tailor | same call | `tailorResumeForRun(…, { auto: true })`: the session is tied to the run (`GenerationSession.clarifications.chain = { runId }`, preserved by `readClarificationPayload`), and every question goes through the existing "skip all" path (`skipAllGenerationQuestions`: charged once, claimed once, nothing unanswered is claimed). The skipped questions' skills are kept (`input.apply.skipped`). The final message says "🚀 Tailoring your resume for <role> at <company> now." |
+| c. Generation done | `notifyTelegramGenerationSession` → `settleApplyChainSession` | Claims `tailoring → drafting`, writes the draft (`createDraftForRun`, format null: an email to the posting's address, else a LinkedIn message to the recruiter or poster), focuses it, and sends one result: the PDF (named from the record, "One page, tailored for …", Open resume · Regenerate), then the draft rendered by `renderDraftForTelegram` with "Attach the PDF above and send.", the skills not claimed ("I didn't claim MCP or Claude experience. Reply with details to add them to the email."), and how to finish. Without an address it leads with **Open the application** (the posting's apply link). The plain "resume ready" message is not sent for a chain session. |
+| d. "sent it" | `routeAgainstFocus` (`done`) → `markApplicationSent` | For an application draft (an email to the apply address, or the chain's own), the job moves to Applied (`setJobStatus`, never backwards) and the reply is "Marked Applied. I'll remind you to follow up in a week." `journey_daily` finds applied jobs quiet for 7 days. |
+| e. Apply for me | `sc:g:<runId>` → `requestApply` | Sets the goal and starts at step a; a chain already working is left alone and reported. Re-sharing a run that exists with "apply for me" does the same. |
+
+A reply goes to the draft, not to an open Scout question, when the draft was
+focused after the question was asked (`draftFocusedSince`): "sent it" must not
+become the answer to the pay-floor question asked minutes earlier.
+
+### Web chat
+
+A link or paste whose note code reads as `apply` (`applyShareRoute`) is
+analysed with the apply goal without a router call; an unclear note on an
+`analyze_job` share goes through `decideShareGoal`. The chain is the same
+(steps a–c run on the run's channel, `web`); the draft lands in the job
+page's email panel. What is left: the chat thread shows only the run card
+(no generation card or draft card is appended when the chain finishes), the
+web email panel lists email drafts only, so the no-address LinkedIn message
+is not shown there, and "sent it" is a Telegram/WhatsApp focus feature (on
+the web, the job page's Applied button does it).
+
+### Fixes from the same live test
+
+- The PDF is named `Jai_Shankar_Resume_iServeWorld.pdf` (`resumeFileName`),
+  on Telegram, on `/api/pdfs/[id]`, `/api/v1/pdfs/[id]` and the editor export.
+- One completion message, not two, and it does not lead with an ATS estimate.
+- "Tailor resume" says "3 quick questions…" and "Question 1 of 3", in the
+  `/generate` wording (`questionsIntro`).
+- A revision keeps the sign-off as its own paragraph (`keepSignOffParagraph`
+  in `src/lib/drafts/revise.ts`), and `enforceLimits` trims above the
+  sign-off instead of cutting it off.
+
+### Not proven here
+
+The chain is tested against the local database with the posting parse, the
+generation pipeline, the outreach model and Telegram replaced. It has not run
+on a real Telegram client or a deployed workflow. Starting the generation
+workflow from inside the Scout finish step relies on the workflow SDK
+allowing `start()` from a step; the step bundle's import graph has the same
+`'use server'` and `workflow/api` reach as before this change.
