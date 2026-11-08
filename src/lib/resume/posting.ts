@@ -205,6 +205,12 @@ REQUIREMENTS — the heart of this.
 Each requirement is one discrete thing a candidate is expected to have or have done.
 - Split compound sentences. "6+ years of backend systems and deep experience with
   distributed systems and databases" is THREE requirements, not one.
+- Never split examples or alternatives off the requirement they belong to.
+  "Experience with real-time audio or telephony (RTP, SIP, FreeSWITCH)" is ONE
+  requirement: items in parentheses, or after "e.g.", "such as", "like" or
+  "including", are examples of it, and any one of them meets it. "Go or Python"
+  is ONE requirement: either meets it. Split on "and" only when each part is
+  something the employer checks on its own ("Kubernetes and AWS" is two).
 - Use the posting's own wording, trimmed. Do not paraphrase into your own words —
   this text is quoted back to the candidate.
 - "kind": "must" if the posting states it as required, "nice" if it is preferred,

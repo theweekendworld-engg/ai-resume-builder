@@ -17,8 +17,8 @@ import { createHash } from 'node:crypto';
 import { readResearch, writeResearch } from '@/lib/research/cache';
 import { readPosting, type ReadPostingResult } from '@/lib/resume/posting';
 
-/** Bump when the posting prompt or its schema changes. */
-const POSTING_PARSE_VERSION = 'v1';
+/** Bump when the posting prompt or its schema changes. v2: examples and alternatives stay with their parent. */
+const POSTING_PARSE_VERSION = 'v2';
 import { dataOf, type ScoutSection } from '@/lib/scout/section';
 import {
     detectEmploymentType,
@@ -28,6 +28,7 @@ import {
     extractExperienceText,
     extractLocation,
 } from '@/lib/scout/fit/jdSignals';
+import { groupRequirements } from '@/lib/scout/fit/requirementGroups';
 import type { JdData, ScoutRequirement } from '@/lib/scout/types';
 import { extractApplyEmails } from '@/lib/drafts/applyEmail';
 
@@ -81,11 +82,13 @@ export const jdSection: ScoutSection<'jd'> = async (ctx) => {
         await writeResearch({ key: cacheKey, kind: 'posting', value: { brief }, pages: [], step: ctx.step });
     }
 
-    const requirements: ScoutRequirement[] = brief.requirements.map((requirement) => ({
-        id: requirement.id,
-        text: requirement.text,
-        kind: requirement.kind,
-    }));
+    // Examples and alternatives fold into their parent, in code, on every read
+    // (cached parses too): "telephony (RTP, SIP, FreeSWITCH)" is one
+    // requirement any one of them meets, not four must-haves.
+    const requirements: ScoutRequirement[] = groupRequirements(
+        brief.requirements.map((requirement) => ({ id: requirement.id, text: requirement.text, kind: requirement.kind })),
+        text,
+    );
 
     const location = ingest.location ?? extractLocation(text);
     const data: JdData = {

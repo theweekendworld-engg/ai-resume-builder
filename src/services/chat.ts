@@ -68,7 +68,110 @@ export async function listThread(userId: string, channel: Channel = Channel.web)
         orderBy: { createdAt: 'desc' },
         take: THREAD_PAGE,
     });
-    return hydrateDrafts(userId, rows.reverse().map(toMessageView));
+    const messages = await hydrateDrafts(userId, rows.reverse().map(toMessageView));
+    return hydrateApply(userId, await hydrateMessageDrafts(userId, messages));
+}
+
+/**
+ * Append one assistant message to a user's thread on a channel, from work
+ * that finished after the turn that started it (the apply chain's result).
+ * The web picks it up when it next reads the thread.
+ */
+export async function appendAssistantMessage(
+    userId: string,
+    reply: Reply,
+    opts: { channel?: Channel; action?: ChatAction | null } = {},
+): Promise<ChatMessageView> {
+    const conversation = await ensureConversation(userId, opts.channel ?? Channel.web);
+    const row = await prisma.chatMessage.create({
+        data: {
+            conversationId: conversation.id,
+            userId,
+            role: 'assistant',
+            text: reply.text.slice(0, CHAT_MESSAGE_MAX),
+            cards: reply.cards as unknown as Prisma.InputJsonValue,
+            action: opts.action ?? null,
+        },
+    });
+    await prisma.chatConversation.update({ where: { id: conversation.id }, data: { lastMessageAt: row.createdAt } });
+    return toMessageView(row);
+}
+
+// ───────────────────────────────────────────────────────────── apply chain cards
+
+type ApplyCard = Extract<ChatCard, { type: 'apply_chain' }>;
+type DraftCard = Extract<ChatCard, { type: 'message_draft' }>;
+
+/** Job statuses that already count as applied: the card stops offering Mark as applied. */
+const APPLIED_STATUSES: ReadonlySet<string> = new Set(['submitted', 'applied', 'in_review', 'interview', 'offer']);
+
+/** An apply card as the run stands now. Null when the run is not the user's. */
+export async function currentApplyCard(userId: string, card: ApplyCard): Promise<ApplyCard | null> {
+    const [fresh] = await applyCardsFor(userId, [card]);
+    return fresh ?? null;
+}
+
+async function applyCardsFor(userId: string, cards: readonly ApplyCard[]): Promise<(ApplyCard | null)[]> {
+    if (cards.length === 0) return [];
+    const [{ readSections }, { chainOf, roleAtCompany }] = await Promise.all([import('@/lib/agent/run'), import('@/lib/scout/applyChain')]);
+    const runs = await prisma.agentRun.findMany({
+        where: { id: { in: [...new Set(cards.map((card) => card.runId))] }, userId, agent: 'scout' },
+    });
+    const byId = new Map(runs.map((run) => [run.id, run]));
+    return cards.map((card) => {
+        const run = byId.get(card.runId);
+        if (!run) return null;
+        const chain = chainOf(run.input as Parameters<typeof chainOf>[0]);
+        if (!chain) return card;
+        const { label } = roleAtCompany(readSections(run));
+        return {
+            ...card,
+            stage: chain.stage,
+            title: label === 'this job' ? card.title : label,
+            reason: chain.reason ?? null,
+            code: chain.code ?? null,
+        };
+    });
+}
+
+/** Each apply card read from its run: the stored card was a snapshot of where the chain stood then. */
+async function hydrateApply(userId: string, messages: ChatMessageView[]): Promise<ChatMessageView[]> {
+    const cards = messages.flatMap((m) => m.cards.filter((card): card is ApplyCard => card.type === 'apply_chain'));
+    if (cards.length === 0) return messages;
+    const fresh = await applyCardsFor(userId, cards);
+    const lookup = new Map(cards.map((card, i) => [card, fresh[i]]));
+    return messages.map((m) => ({
+        ...m,
+        cards: m.cards.map((card) => (card.type === 'apply_chain' ? lookup.get(card) ?? card : card)),
+    }));
+}
+
+/**
+ * Each draft card at its latest version (Shorter on the job page is a new
+ * version) and whether the job is already Applied.
+ */
+async function hydrateMessageDrafts(userId: string, messages: ChatMessageView[]): Promise<ChatMessageView[]> {
+    const cards = messages.flatMap((m) => m.cards.filter((card): card is DraftCard => card.type === 'message_draft'));
+    const runIds = [...new Set(cards.map((card) => card.runId).filter((id): id is string => Boolean(id)))];
+    if (runIds.length === 0) return messages;
+    const [{ listDraftsForRun }, { draftChains }] = await Promise.all([import('@/services/drafts'), import('@/lib/drafts/history')]);
+    const [drafts, workspaces] = await Promise.all([
+        Promise.all(runIds.map((runId) => listDraftsForRun(userId, runId))).then((lists) => lists.flat()),
+        prisma.applicationWorkspace.findMany({ where: { userId, scoutRunId: { in: runIds } }, select: { scoutRunId: true, applicationStatus: true } }),
+    ]);
+    const chains = draftChains(drafts);
+    const applied = new Set(workspaces.filter((w) => APPLIED_STATUSES.has(w.applicationStatus)).map((w) => w.scoutRunId));
+    return messages.map((m) => ({
+        ...m,
+        cards: m.cards.map((card) => {
+            if (card.type !== 'message_draft') return card;
+            const latest = chains.find((chain) => chain.some((draft) => draft.id === card.draftId))?.at(-1);
+            const base = { ...card, applied: Boolean(card.runId && applied.has(card.runId)) };
+            return latest
+                ? { ...base, draftId: latest.id, version: latest.version, toEmail: latest.toEmail, subject: latest.subject, body: latest.body }
+                : base;
+        }),
+    }));
 }
 
 /** Read each Win draft card's current state from its Win: the card was a snapshot. */
@@ -154,14 +257,26 @@ export async function runAction(
             const { run, created } = started.data;
             const card: ChatCard = { type: 'scout_run', runId: run.id, status: run.status, kind: run.kind, headline: run.headline };
             if (goal === 'apply') {
+                let chain = run.input.apply ?? null;
                 if (!created) {
                     const { requestApply } = await import('@/services/applyChain');
                     const requested = await requestApply(userId, run.id, { channel: 'web' });
                     if (!requested.success) return { text: requested.error, cards: [card] };
+                    chain = requested.data.chain;
                 }
+                // Where the chain stands, re-read while it works; the resume and
+                // the draft arrive in this thread when they are done.
+                const progress: ChatCard = {
+                    type: 'apply_chain',
+                    runId: run.id,
+                    stage: chain?.stage ?? 'pending',
+                    title: null,
+                    reason: chain?.reason ?? null,
+                    code: chain?.code ?? null,
+                };
                 return {
-                    text: 'On it. I will read the job, tailor your resume and write the application draft. Both land on the job page; you send it yourself.',
-                    cards: [card],
+                    text: 'On it. I will read the job, tailor your resume and write the application draft. Both show up here when they are ready; you send it yourself.',
+                    cards: [card, progress],
                 };
             }
             return {

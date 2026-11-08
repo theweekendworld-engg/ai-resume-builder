@@ -34,6 +34,8 @@ import { z } from 'zod';
 import { findMatchedSkills } from '@/lib/extension/fitScore';
 import type { JdData, ScoutRequirement } from '@/lib/scout/types';
 import { detectEligibility, minYearsFrom } from '@/lib/scout/fit/jdSignals';
+import { disciplineOf, type Discipline } from '@/lib/scout/fit/discipline';
+import { normalizeOption, parentText } from '@/lib/scout/fit/requirementGroups';
 
 export type MatchStrength = 'direct' | 'partial';
 
@@ -131,6 +133,13 @@ export type TenureRequirement = {
      * qualifier needs evidence from the record like any other requirement.
      */
     qualified: boolean;
+    /**
+     * Set when the qualifier is a broad discipline and nothing else ("2+ years
+     * of backend engineering"). Then the years are summed over every
+     * full-time role that shows the discipline, not read off the one role a
+     * cited line sits in (`fit/discipline.ts`).
+     */
+    discipline: Discipline | null;
 };
 
 export function tenureRequirement(text: string): TenureRequirement | null {
@@ -139,7 +148,9 @@ export function tenureRequirement(text: string): TenureRequirement | null {
     const rest = normalize(text.replace(/\b\d{1,2}\s*(?:\+|plus)?\s*(?:(?:-|–|to)\s*\d{1,2}\s*\+?\s*)?(?:years?|yrs?)\b/gi, ' '))
         .split(' ')
         .filter((word) => word.length > 1 && !GENERIC_TENURE_WORDS.has(word));
-    return { minYears, qualified: rest.length > 0 };
+    // "recent" is a condition on WHEN, not part of the discipline's name.
+    const discipline = rest.length > 0 ? disciplineOf(rest.filter((word) => !/^(?:recent|recently|last|past)$/.test(word)).join(' ')) : null;
+    return { minYears, qualified: rest.length > 0, discipline };
 }
 
 // ──────────────────────────────────────────────────────────── eligibility
@@ -189,13 +200,64 @@ function lineContaining(record: MatchRecord, needle: string): number | null {
     return index >= 0 ? index : null;
 }
 
-/** Named skills the requirement's own text mentions. */
-function namedSkillsIn(requirement: ScoutRequirement, jd: JdData): string[] {
-    const text = ` ${normalize(requirement.text)} `;
+/** Named skills the text mentions. */
+function namedSkillsIn(text: string, jd: JdData): string[] {
+    const haystack = ` ${normalize(text)} `;
     return jd.skills.filter((skill) => {
         const s = normalize(skill);
-        return s.length > 0 && text.includes(` ${s} `);
+        return s.length > 0 && haystack.includes(` ${s} `);
     });
+}
+
+/**
+ * Short names that are also English words or letters ("Go", "C", "R"): only
+ * matched as written, so "go-to-market" is not Go and "c-level" is not C.
+ */
+const AMBIGUOUS_OPTIONS = new Set(['go', 'c', 'r', 'd', 'swift', 'rust', 'dart', 'julia', 'elixir', 'spark', 'chef', 'puppet', 'ruby', 'scala', 'java']);
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The first line that names one option of an any-of requirement. An option
+ * counts only when it is a name (a listed skill, or written with a capital,
+ * digit or symbol, at most three words): "RTP", "FreeSWITCH", "C#". A plain
+ * phrase like "real-time audio" is left to the model, which reads meaning.
+ */
+export function lineForOption(record: MatchRecord, option: string, skills: readonly string[] = []): number | null {
+    const key = normalizeOption(option);
+    if (!key || key.split(' ').length > 3) return null;
+    const named = skills.some((skill) => normalizeOption(skill) === key) || /[A-Z0-9#+.]/.test(option);
+    if (!named) return null;
+    if (AMBIGUOUS_OPTIONS.has(key)) {
+        const asWritten = new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(option.trim())}(?![A-Za-z0-9+#-])`);
+        const index = record.lines.findIndex((line) => asWritten.test(line.text));
+        return index >= 0 ? index : null;
+    }
+    const index = record.lines.findIndex((line) => ` ${normalizeOption(line.text)} `.includes(` ${key} `));
+    return index >= 0 ? index : null;
+}
+
+/**
+ * An any-of requirement ("experience with real-time audio or telephony (RTP,
+ * SIP, FreeSWITCH)") settled in code: every named skill of the parent in one
+ * record, or any one named option in a line. Null when neither, and the
+ * model reads it.
+ */
+function anyOfLine(requirement: ScoutRequirement, jd: JdData, record: MatchRecord): number | null {
+    const parentNamed = namedSkillsIn(parentText(requirement.text), jd).filter(
+        (skill) => !(requirement.anyOf ?? []).some((option) => normalizeOption(option) === normalizeOption(skill)),
+    );
+    if (parentNamed.length > 0 && findMatchedSkills(parentNamed, record.corpus).length === parentNamed.length) {
+        const index = lineContaining(record, parentNamed[0]);
+        if (index !== null) return index;
+    }
+    for (const option of requirement.anyOf ?? []) {
+        const index = lineForOption(record, option, jd.skills);
+        if (index !== null) return index;
+    }
+    return null;
 }
 
 export function planMatching(jd: JdData, record: MatchRecord): MatchPlan {
@@ -230,8 +292,19 @@ export function planMatching(jd: JdData, record: MatchRecord): MatchPlan {
         plan.hard.push(requirement);
         if (tenure) plan.qualifiedTenure.set(requirement.id, tenure);
 
+        // Any-of: the parent, or any ONE example or alternative. Never all of them.
+        if (!tenure && requirement.anyOf?.length) {
+            const index = anyOfLine(requirement, jd, record);
+            if (index !== null) {
+                plan.prefiltered.set(requirement.id, { requirementId: requirement.id, lineIndex: index, strength: 'direct', source: 'prefilter' });
+                continue;
+            }
+            plan.toAsk.push(requirement);
+            continue;
+        }
+
         // Prefilter: every named skill in the requirement is in one line.
-        const named = namedSkillsIn(requirement, jd);
+        const named = namedSkillsIn(requirement.text, jd);
         if (!tenure && named.length > 0 && findMatchedSkills(named, record.corpus).length === named.length) {
             const index = lineContaining(record, named[0]);
             if (index !== null) {
@@ -277,12 +350,15 @@ Judge like a recruiter, not a keyword filter:
 - "Large-scale distributed systems" needs evidence of services, data pipelines, or scale — not a stated interest.
 - A profile summary describing interests is weak evidence; prefer concrete role bullets and projects.
 - For a requirement that mentions years ("2+ years of design or architecture"), judge ONLY the thing after the years — whether the candidate has done design/architecture. Ignore the number; it is checked separately.
+- A requirement that gives examples (in parentheses, or after "e.g.", "such as", "like", "including") or alternatives ("Go or Python") is met by evidence for the general requirement OR for ANY ONE example or alternative. It never needs all of them: "real-time audio or telephony (RTP, SIP, FreeSWITCH)" is met directly by a line showing RTP work alone.
 - If unsure, prefer null. A wrong match tells the candidate they are qualified when they are not.
 
 Return {"judgements": [...]} with exactly one entry per requirement, using the requirement numbers given.`;
 
 export function buildMatchPrompt(toAsk: readonly ScoutRequirement[], record: MatchRecord): string {
-    const requirements = toAsk.map((requirement, i) => `${i + 1}. ${requirement.text}`).join('\n');
+    const requirements = toAsk
+        .map((requirement, i) => `${i + 1}. ${requirement.text}${requirement.anyOf?.length ? ' [any one is enough]' : ''}`)
+        .join('\n');
     const lines = record.lines
         .slice(0, MAX_PROMPT_LINES)
         .map((line, i) => {
@@ -343,6 +419,12 @@ const STOPWORDS = new Set([
 export function fallbackJudgements(toAsk: readonly ScoutRequirement[], record: MatchRecord): Map<string, Judgement> {
     const out = new Map<string, Judgement>();
     for (const requirement of toAsk) {
+        // Any one named option in a line is evidence for an any-of requirement.
+        const optionLine = (requirement.anyOf ?? []).map((option) => lineForOption(record, option)).find((index) => index !== null) ?? null;
+        if (optionLine !== null) {
+            out.set(requirement.id, { requirementId: requirement.id, lineIndex: optionLine, strength: 'partial', source: 'fallback' });
+            continue;
+        }
         const terms = [...new Set(normalize(requirement.text).split(' ').filter((term) => term.length >= 5 && !STOPWORDS.has(term)))];
         let best: { index: number; hits: number } | null = null;
         if (terms.length) {

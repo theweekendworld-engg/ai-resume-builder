@@ -36,6 +36,10 @@ export type RoleSpan = {
     current: boolean;
     /** Months between the role's end and now; 0 for a current role. */
     monthsSinceEnd: number;
+    /** The title as written ("Software Engineer I"), for discipline checks. */
+    title?: string;
+    /** When the role ran, epoch ms, so spans summed across roles can merge overlaps. */
+    intervals?: { start: number; end: number }[];
 };
 
 export type Tenure = {
@@ -89,7 +93,8 @@ export function parseRoleDate(value: string | null | undefined, edge: 'start' | 
 
 type Interval = { start: number; end: number };
 
-function mergedMonths(intervals: Interval[]): number {
+/** Months covered by these intervals, overlaps merged. */
+export function mergedMonths(intervals: readonly Interval[]): number {
     const sorted = [...intervals].sort((a, b) => a.start - b.start);
     let total = 0;
     let current: Interval | null = null;
@@ -147,9 +152,13 @@ export function computeTenure(roles: readonly DatedRole[], now: Date = new Date(
             internship,
             current: end === 'present' || endMs >= nowMs,
             monthsSinceEnd: Math.max(0, (nowMs - endMs) / DAY / MONTH_DAYS),
+            title: role.role.trim(),
+            intervals: [{ start: startMs, end: endMs }],
         };
         const existing = spans[key];
-        spans[key] = existing ? { ...span, months: Math.max(existing.months, months) } : span;
+        spans[key] = existing
+            ? { ...span, months: Math.max(existing.months, months), intervals: [...(existing.intervals ?? []), ...(span.intervals ?? [])] }
+            : span;
     }
 
     const anyDated = fullTime.length + internships.length > 0;

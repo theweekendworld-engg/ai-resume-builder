@@ -25,6 +25,18 @@ const STATUS: Record<string, string> = {
     ghosted: 'no reply', archived: 'not interested',
 };
 
+/** Where an apply chain stands, in a few words. Shared by the chat card. */
+export const APPLY_STAGE_TEXT: Record<Extract<ChatCard, { type: 'apply_chain' }>['stage'], string> = {
+    pending: 'Reading the job first',
+    eligibility_hold: 'Waiting for you',
+    tailoring: 'Tailoring your resume',
+    drafting: 'Writing the application draft',
+    drafted: 'Resume and draft ready',
+    applied: 'Marked Applied',
+    declined: 'Skipped',
+    stopped: 'Stopped',
+};
+
 function cardLines(card: ChatCard, appUrl: string): string[] {
     const base = appUrl.replace(/\/$/, '');
     switch (card.type) {
@@ -55,6 +67,14 @@ function cardLines(card: ChatCard, appUrl: string): string[] {
             return card.items.map((item) => `• ${item.title}`);
         case 'link':
             return [`${card.label}: ${base}${card.href}`];
+        case 'apply_chain':
+            return [`🚀 ${APPLY_STAGE_TEXT[card.stage]}${card.reason ? `: ${card.reason}` : ''} ${base}/scout/${card.runId}`];
+        case 'message_draft':
+            return [
+                card.toEmail ? `To: ${card.toEmail}` : null,
+                card.subject ? `Subject: ${card.subject}` : null,
+                card.body,
+            ].filter((l): l is string => Boolean(l));
     }
 }
 

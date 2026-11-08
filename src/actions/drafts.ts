@@ -22,6 +22,8 @@ import { latestChain } from '@/lib/drafts/history';
 import { REVISION_INSTRUCTIONS } from '@/lib/drafts/revisions';
 import type { DraftView } from '@/lib/drafts/types';
 import { applyEmailsOf } from '@/lib/drafts/applyEmail';
+import { prisma } from '@/lib/prisma';
+import { applyUrlOf } from '@/lib/scout/applyChain';
 import { isEnabled } from '@/lib/flags';
 import { err, ok, type Result } from '@/lib/result';
 import { track } from '@/lib/track';
@@ -44,9 +46,25 @@ export type ApplyEmailState = {
     applyEmails: string[];
     /** The email chain, oldest version first. Empty until the first draft. */
     versions: ApplyDraftVersion[];
+    /**
+     * The LinkedIn message to the recruiter or poster, oldest version first:
+     * what the apply chain writes when the posting gives no address. Empty
+     * when there is none.
+     */
+    messageVersions: ApplyDraftVersion[];
+    /** The posting's application link, for applying alongside a LinkedIn message. */
+    applyUrl: string | null;
+    /** The job is at Applied or further. */
+    applied: boolean;
     /** The tailored resume to attach, when this job has one. */
     attachment: TailoredAttachment | null;
 };
+
+/** Drafts that are the application itself, not a referral ask. */
+const APPLICATION_TARGETS: ReadonlySet<string> = new Set(['recruiter', 'poster']);
+
+/** Job statuses that already count as applied. */
+const APPLIED_STATUSES: ReadonlySet<string> = new Set(['submitted', 'applied', 'in_review', 'interview', 'offer']);
 
 type Gate = { userId: string } | { error: Result<never> };
 
@@ -66,13 +84,18 @@ const IdSchema = z.string().min(1).max(64);
 async function stateFor(userId: string, runId: string): Promise<Result<ApplyEmailState>> {
     const run = await getScoutRun(userId, runId);
     if (!run.success) return err('I could not find that job.', 'not_found');
-    const [drafts, attachment] = await Promise.all([
+    const [drafts, attachment, workspace] = await Promise.all([
         listDraftsForRun(userId, runId),
         tailoredAttachmentForRun(userId, runId).catch(() => null),
+        prisma.applicationWorkspace.findFirst({ where: { userId, scoutRunId: runId }, select: { applicationStatus: true } }),
     ]);
+    const withLinks = (draft: DraftView): ApplyDraftVersion => ({ ...draft, links: composeLinks(draft) });
     return ok({
         applyEmails: applyEmailsOf(run.data.sections),
-        versions: latestChain(drafts, 'email').map((draft) => ({ ...draft, links: composeLinks(draft) })),
+        versions: latestChain(drafts, 'email').map(withLinks),
+        messageVersions: latestChain(drafts.filter((draft) => APPLICATION_TARGETS.has(draft.target)), 'linkedin_message').map(withLinks),
+        applyUrl: applyUrlOf(run.data.sections, run.data.input.url),
+        applied: Boolean(workspace && APPLIED_STATUSES.has(workspace.applicationStatus)),
         attachment,
     });
 }
@@ -140,6 +163,29 @@ export async function reviseApplyEmail(input: z.infer<typeof ReviseSchema>): Pro
     if (!revised.success) return err(revised.error, revised.code);
     if (!revised.data.runId) return err('That draft is not tied to a job.', 'invalid_state');
     return stateFor(gate.userId, revised.data.runId);
+}
+
+// ─────────────────────────────────────────────────────────────── sent
+
+const SentSchema = z.object({ draftId: IdSchema });
+
+/**
+ * "Mark as applied" under a draft: the web's "sent it". The same
+ * `markApplicationSent` as Telegram: the job moves to Applied, never
+ * backwards, and the follow-up reminder finds it.
+ */
+export async function markApplyDraftSent(input: z.infer<typeof SentSchema>): Promise<Result<ApplyEmailState>> {
+    const gate = await gateSurface();
+    if ('error' in gate) return gate.error;
+    const parsed = SentSchema.safeParse(input);
+    if (!parsed.success) return err(invalidInput(parsed.error), 'invalid_input');
+
+    const draft = await getDraft(gate.userId, parsed.data.draftId);
+    if (!draft?.runId) return err('I could not find that draft.', 'not_found');
+    const { markApplicationSent } = await import('@/services/applyChain');
+    const applied = await markApplicationSent(gate.userId, draft);
+    if (!applied) return err('This draft is not the application, so the job was not marked. Use the status menu at the top.', 'not_applicable');
+    return stateFor(gate.userId, draft.runId);
 }
 
 // ─────────────────────────────────────────────────────────────── opened

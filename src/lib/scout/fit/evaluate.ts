@@ -25,7 +25,8 @@ import { applyAnswers, isPreferenceQuestionId, type PreferenceQuestionId } from 
 import { evaluateEligibility, workAuthQuestionPrompt, type EligibilityOutcome } from '@/lib/scout/fit/eligibility';
 import { detectEligibility, detectRegionScope, minYearsFrom, detectSponsorship, type EligibilityRestriction, type RegionScope } from '@/lib/scout/fit/jdSignals';
 import { REGION_NAME, regionContains, regionOf } from '@/lib/scout/fit/region';
-import { computeTenure, describeFullTime, NEAR_MISS_MONTHS, type RoleSpan } from '@/lib/scout/fit/tenure';
+import { computeTenure, describeFullTime, describeMonths, mergedMonths, NEAR_MISS_MONTHS, type RoleSpan } from '@/lib/scout/fit/tenure';
+import { DISCIPLINE_LABEL, lineMayShowDiscipline, roleShowsDiscipline, type Discipline } from '@/lib/scout/fit/discipline';
 import { comparePay, parseMoney } from '@/lib/scout/fit/money';
 import { fallbackJudgements, planMatching, type Judgement, type MatchPlan } from '@/lib/scout/fit/match';
 
@@ -192,12 +193,58 @@ function tenureEvidence(record: FitRecord): string {
  * years, so it is direct only when the dated role it sits in spans the years
  * asked (and, for "recent", is current or ended within the last year).
  */
+const RECENT = /\brecent(?:ly)?\b|\b(?:last|past)\s+\d+\s+years?\b/i;
+
+/** "Recent" means current, or ended within the last year. */
+function isRecentSpan(span: RoleSpan): boolean {
+    return span.current || span.monthsSinceEnd <= 12;
+}
+
 function datedSpanCovers(line: RecordLine, minYears: number, requirementText: string, record: FitRecord): boolean {
     const span = record.roleSpans?.[line.source];
     if (!span || span.internship) return false;
     if (span.months < minYears * 12) return false;
-    if (/\brecent(?:ly)?\b|\b(?:last|past)\s+\d+\s+years?\b/i.test(requirementText) && !span.current && span.monthsSinceEnd > 12) return false;
+    if (RECENT.test(requirementText) && !isRecentSpan(span)) return false;
     return true;
+}
+
+export type DisciplineTenure = {
+    /** Full-time months across the roles that show the discipline, overlaps merged. */
+    months: number;
+    /** Those roles, as their record sources ("Software Engineer I at Plivo"), most recent first. */
+    roles: string[];
+};
+
+/**
+ * "2+ years of backend engineering" is what a run of roles was, not one
+ * bullet: the full-time months of every role whose title or own lines show
+ * the discipline (`roleShowsDiscipline`), overlaps merged. Internships never
+ * count. With "recent", only roles that are current or ended within a year.
+ */
+export function disciplineTenure(record: Pick<FitRecord, 'roleSpans' | 'lines'>, discipline: Discipline, recent = false): DisciplineTenure {
+    const counted: { source: string; span: RoleSpan }[] = [];
+    for (const [source, span] of Object.entries(record.roleSpans ?? {})) {
+        if (span.internship || !span.intervals?.length) continue;
+        if (recent && !isRecentSpan(span)) continue;
+        const title = span.title ?? source.split(' at ')[0] ?? '';
+        const lines = record.lines.filter((line) => line.source === source && line.text !== source).map((line) => line.text);
+        if (roleShowsDiscipline({ title, lines }, discipline)) counted.push({ source, span });
+    }
+    const latestEnd = (span: RoleSpan) => Math.max(...(span.intervals ?? []).map((interval) => interval.end));
+    counted.sort((a, b) => latestEnd(b.span) - latestEnd(a.span));
+    return {
+        months: mergedMonths(counted.flatMap(({ span }) => span.intervals ?? [])),
+        roles: counted.map(({ source }) => source),
+    };
+}
+
+/** "About 2 years of backend work across Software Engineer I at Plivo and Software Engineer I at Hyperbots (from your role dates)". */
+function disciplineEvidence(found: DisciplineTenure, discipline: Discipline): string {
+    const words = describeMonths(found.months);
+    const where = found.roles.length === 1
+        ? `as ${found.roles[0]}`
+        : `across ${found.roles.slice(0, -1).join(', ')} and ${found.roles.at(-1)}`;
+    return `${words.charAt(0).toUpperCase()}${words.slice(1)} of ${DISCIPLINE_LABEL[discipline]} work ${where} (from your role dates)`;
 }
 
 // ─────────────────────────────────────────────────────────── requirements
@@ -257,6 +304,23 @@ export function applyJudgements(params: {
             return { ...base, credit: 0, evidence: null, severity: isMust && !close ? 'blocking' : 'minor' };
         }
 
+        const qualified = plan.qualifiedTenure.get(requirement.id);
+
+        // A broad discipline ("2+ years of backend engineering"): code sums the
+        // roles that show it. Met, or a few months short, is settled here; with
+        // too few months the matcher's line still counts, as partial at most.
+        const discipline = qualified?.discipline ?? null;
+        const found = discipline ? disciplineTenure(record, discipline, RECENT.test(requirement.text)) : null;
+        if (qualified && discipline && found && found.roles.length > 0) {
+            const need = qualified.minYears * 12;
+            if (found.months >= need) {
+                return { ...base, credit: 1, evidence: disciplineEvidence(found, discipline), severity: null };
+            }
+            if (found.months >= need - NEAR_MISS_MONTHS) {
+                return { ...base, credit: 0.5, evidence: `${disciplineEvidence(found, discipline)}, a few months short of ${qualified.minYears}`, severity: null };
+            }
+        }
+
         const judgement = plan.prefiltered.get(requirement.id) ?? judgements.get(requirement.id);
         const line = judgement && judgement.lineIndex !== null ? record.lines[judgement.lineIndex] ?? null : null;
         let credit = line ? (judgement?.strength === 'direct' ? 1 : 0.5) : 0;
@@ -265,13 +329,24 @@ export function applyJudgements(params: {
         // support a requirement, never settle one.
         if (line && line.source === PROFILE_SUMMARY_SOURCE) credit = Math.min(credit, 0.5);
 
-        const qualified = plan.qualifiedTenure.get(requirement.id);
         if (qualified && line) {
             const tenureMet = months !== null && months >= qualified.minYears * 12;
-            if (!tenureMet || !datedSpanCovers(line, qualified.minYears, requirement.text, record)) credit = Math.min(credit, 0.5);
+            // For a discipline, one role's span still counts when the cited line can
+            // be that work (the lexicon misses some), never when the role is another
+            // specialty: a frontend role's years are not backend years.
+            const title = record.roleSpans?.[line.source]?.title ?? line.source.split(' at ')[0] ?? '';
+            const covered = datedSpanCovers(line, qualified.minYears, requirement.text, record)
+                && (!discipline || lineMayShowDiscipline(line.text, title, discipline));
+            if (!tenureMet || !covered) credit = Math.min(credit, 0.5);
         }
 
-        if (!line) return { ...base, credit: 0, evidence: null, severity: isMust ? 'blocking' : 'minor' };
+        if (!line) {
+            // Roles that show the discipline, just not for long enough: partial, said with the dates.
+            if (qualified && discipline && found && found.roles.length > 0 && found.months >= 1) {
+                return { ...base, credit: 0.5, evidence: `${disciplineEvidence(found, discipline)}, short of ${qualified.minYears}`, severity: null };
+            }
+            return { ...base, credit: 0, evidence: null, severity: isMust ? 'blocking' : 'minor' };
+        }
         return { ...base, credit, evidence: quote(line), severity: null };
     });
 }

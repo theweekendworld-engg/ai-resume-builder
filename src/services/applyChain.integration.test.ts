@@ -23,12 +23,12 @@ import { prisma } from '@/lib/prisma';
 import { readApplyChain } from '@/lib/scout/applyChain';
 import { __testing as telegramTesting } from '@/lib/telegram';
 import { __testing as generateTesting } from '@/services/channelGenerate';
-import { routeChannelText } from '@/services/chat';
-import { __testing as draftsTesting } from '@/services/drafts';
+import { appendAssistantMessage, listThread, routeChannelText } from '@/services/chat';
+import { __testing as draftsTesting, getDraft } from '@/services/drafts';
 import { quietApplications } from '@/services/journey';
 import { getScoutRun } from '@/services/scout';
 import { notifyTelegramGenerationSession } from '@/services/telegramGenerationNotifications';
-import { __testing as chainTesting, advanceApplyChain, requestApply } from './applyChain';
+import { __testing as chainTesting, advanceApplyChain, markApplicationSent, requestApply } from './applyChain';
 
 const RUN = `itest-apply-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 let n = 0;
@@ -73,6 +73,8 @@ type Seed = {
     eligibilityConflict?: boolean;
     applyEmails?: string[];
     goal?: 'apply' | null;
+    /** Where the share came from: the chain delivers there. */
+    channel?: 'telegram' | 'web';
 };
 
 async function seed(options: Seed = {}) {
@@ -93,11 +95,11 @@ async function seed(options: Seed = {}) {
             userId,
             agent: 'scout',
             inputKey: `text:${RUN}-${n}`,
-            input: { text: jd, source: 'telegram', ...(options.goal === null ? {} : { goal: options.goal ?? 'apply' }) },
+            input: { text: jd, source: options.channel === 'web' ? 'dashboard' : 'telegram', ...(options.goal === null ? {} : { goal: options.goal ?? 'apply' }) },
             kind: 'job_posting',
             status: options.status ?? 'succeeded',
-            channel: Channel.telegram,
-            channelRef: { chatId },
+            channel: options.channel === 'web' ? Channel.web : Channel.telegram,
+            channelRef: options.channel === 'web' ? {} : { chatId },
             result: {
                 ingest: ok({ text: jd, title: 'Forward Deployed AI Engineer', companyName: company, sourceUrl: null, linkKind: 'text', fetchVia: 'provided_text' }),
                 jd: ok({
@@ -404,5 +406,92 @@ describe('d. "sent it"', () => {
         // journey_daily's reminder: an applied job quiet for a week is due.
         const inEightDays = new Date(Date.now() + 8 * 86_400_000);
         expect((await quietApplications(userId, inEightDays)).map((job) => job.workspaceId)).toContain(workspaceId);
+    });
+});
+
+describe('web chat parity: the chain\'s result lands in the thread', () => {
+    async function webThread(userId: string) {
+        const conversation = await prisma.chatConversation.findUnique({ where: { userId_channel: { userId, channel: Channel.web } } });
+        return conversation ? prisma.chatMessage.findMany({ where: { conversationId: conversation.id }, orderBy: { createdAt: 'asc' } }) : [];
+    }
+
+    async function settleOnWeb(options: Seed = {}) {
+        const seeded = await seed({ ...options, channel: 'web' });
+        await advanceApplyChain(seeded.runId);
+        const { sessionId } = (await chainOf(seeded.runId))!;
+        await completeGeneration(seeded.userId, sessionId!);
+        telegram.reset();
+        await notifyTelegramGenerationSession(sessionId!);
+        return { ...seeded, sessionId: sessionId! };
+    }
+
+    test('the resume (completed, with its PDF) and the email draft, as one assistant message, once; nothing on Telegram', async () => {
+        const { userId, chatId, runId, sessionId } = await settleOnWeb();
+
+        expect(sent(chatId)).toHaveLength(0);
+        const rows = await webThread(userId);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].role).toBe('assistant');
+        expect(rows[0].text).toContain('Your resume for Forward Deployed AI Engineer at Acme is ready, and so is the application email to jobs@acme.com.');
+        expect(rows[0].text).toContain("I didn't claim MCP or Claude experience.");
+
+        const pdf = await prisma.generatedPdf.findFirstOrThrow({ where: { userId, sessionId } });
+        const session = await prisma.generationSession.findUniqueOrThrow({ where: { id: sessionId } });
+        const draft = await prisma.messageDraft.findFirstOrThrow({ where: { userId, runId } });
+        expect(rows[0].cards).toEqual([
+            { type: 'generation', sessionId, resumeId: session.resultResumeId, status: 'completed', title: 'Forward Deployed AI Engineer at Acme', question: null, pdfUrl: `/api/pdfs/${pdf.id}` },
+            {
+                type: 'message_draft', draftId: draft.id, runId, format: 'email', target: 'recruiter', version: 1,
+                toEmail: 'jobs@acme.com', subject: 'Forward Deployed AI Engineer application', body: draft.body,
+                title: 'Forward Deployed AI Engineer at Acme', applyUrl: null, skipped: GAPS,
+            },
+        ]);
+        expect(await chainOf(runId)).toMatchObject({ stage: 'drafted', draftId: draft.id });
+
+        // The notify step can run twice: still one message.
+        await notifyTelegramGenerationSession(sessionId);
+        expect(await webThread(userId)).toHaveLength(1);
+    });
+
+    test('no apply address: the LinkedIn message, with the application link', async () => {
+        const { userId } = await settleOnWeb({ jd: JD_NO_ADDRESS, company: 'Globex', applyEmails: [] });
+        const [row] = await webThread(userId);
+        expect(row.text).toContain('here is a LinkedIn message for the recruiter');
+        const cards = row.cards as { type: string; format?: string; applyUrl?: string | null }[];
+        expect(cards[1]).toMatchObject({ type: 'message_draft', format: 'linkedin_message', applyUrl: 'https://jobs.globex.example/apply/42' });
+    });
+
+    test('read back: the draft at its latest version, the progress card where the chain stands, and Mark as applied marks the job', async () => {
+        const { userId, runId, workspaceId } = await settleOnWeb();
+        // The "On it" turn's progress card, as it was stored when the chain started.
+        await appendAssistantMessage(userId, { text: 'On it.', cards: [{ type: 'apply_chain', runId, stage: 'pending', title: null, reason: null, code: null }] });
+        // Shorter, on the job page: version 2 of the same draft.
+        const v1 = await prisma.messageDraft.findFirstOrThrow({ where: { userId, runId } });
+        const v2 = await prisma.messageDraft.create({
+            data: { userId, runId, workspaceId: v1.workspaceId, parentId: v1.id, version: 2, format: 'email', target: 'recruiter', toEmail: v1.toEmail, subject: v1.subject, body: 'Shorter body.', instruction: 'Make it shorter' },
+        });
+
+        const cardsOf = async () => (await listThread(userId)).flatMap((message) => message.cards);
+        let cards = await cardsOf();
+        const draftCard = cards.find((card) => card.type === 'message_draft');
+        expect(draftCard).toMatchObject({ draftId: v2.id, version: 2, body: 'Shorter body.', applied: false });
+        expect(cards.find((card) => card.type === 'apply_chain')).toMatchObject({ stage: 'drafted', title: 'Forward Deployed AI Engineer at Acme' });
+
+        // The card's button calls markApplicationSent with the card's draft.
+        const draft = await getDraft(userId, v2.id);
+        expect(await markApplicationSent(userId, draft!)).toBe(true);
+        expect((await prisma.applicationWorkspace.findUniqueOrThrow({ where: { id: workspaceId } })).applicationStatus).toBe(ApplicationStatus.applied);
+        cards = await cardsOf();
+        expect(cards.find((card) => card.type === 'message_draft')).toMatchObject({ applied: true });
+        expect(cards.find((card) => card.type === 'apply_chain')).toMatchObject({ stage: 'applied' });
+    });
+
+    test('someone else\'s run never hydrates into a card', async () => {
+        const { runId } = await settleOnWeb();
+        const intruder = `${RUN}-intruder-web`;
+        users.push(intruder);
+        await appendAssistantMessage(intruder, { text: 'x', cards: [{ type: 'apply_chain', runId, stage: 'pending', title: null, reason: null, code: null }] });
+        const [message] = await listThread(intruder);
+        expect(message.cards[0]).toMatchObject({ stage: 'pending', title: null });
     });
 });

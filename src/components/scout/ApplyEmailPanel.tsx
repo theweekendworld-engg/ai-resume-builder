@@ -2,21 +2,24 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { Check, Copy, Download, FileText, Loader2, Mail, MailOpen, Minimize2, Send, Sparkles } from 'lucide-react';
+import { Check, CircleCheck, Copy, Download, ExternalLink, FileText, Loader2, Mail, MailOpen, MessageSquare, Minimize2, Send, Sparkles } from 'lucide-react';
 
 import { typeStyles } from '@/components/patterns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { markApplyEmailOpened, reviseApplyEmail, startApplyEmail, getApplyEmailState, type ApplyDraftVersion, type ApplyEmailState } from '@/actions/drafts';
+import { markApplyDraftSent, markApplyEmailOpened, reviseApplyEmail, startApplyEmail, getApplyEmailState, type ApplyDraftVersion, type ApplyEmailState } from '@/actions/drafts';
 import { revisionLabel } from '@/lib/drafts/history';
 
 import { EntitlementNotice } from './EntitlementNotice';
 
-type Busy = null | 'start' | 'shorter' | 'stronger' | 'custom';
+type Busy = null | 'start' | 'shorter' | 'stronger' | 'custom' | 'sent';
 
 /** Shown under every email draft, as on Telegram. */
 export const ATTACH_NOTE = 'Attach your tailored resume PDF before you send. Patronus never sends email for you.';
+
+/** Shown under a LinkedIn message draft: the application itself happens at the posting's link. */
+export const MESSAGE_NOTE = 'Apply at the application link with your tailored resume PDF, then send this message on LinkedIn. Patronus never sends it for you.';
 
 /**
  * Apply by email, on the web job page: the posting gives an address
@@ -26,6 +29,11 @@ export const ATTACH_NOTE = 'Attach your tailored resume PDF before you send. Pat
  * the record, then Shorter, Stronger or the user's own words, each a new
  * version. The To is the posting's own address, read by code. Open in Gmail
  * and Mail app prefill the user's own client; nothing is sent from here.
+ *
+ * With no address, the apply chain writes a LinkedIn message to the
+ * recruiter or poster instead. It shows here the same way, with Copy and
+ * Open the application in place of the compose links. Either way, Mark as
+ * applied is the web's "sent it".
  */
 export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: ApplyEmailState }) {
     const [state, setState] = React.useState(initial);
@@ -56,11 +64,19 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
         };
     }, [runId]);
 
-    const latest = state.versions.at(-1) ?? null;
-    const shown: ApplyDraftVersion | null = state.versions.find((version) => version.id === viewing) ?? latest;
-    const address = latest?.toEmail ?? state.applyEmails[0] ?? null;
-    if (!address && !latest) return null;
+    const emailAddress = state.versions.at(-1)?.toEmail ?? state.applyEmails[0] ?? null;
+    // The email when the posting gives an address (or one was drafted); else the LinkedIn message.
+    const mode: 'email' | 'message' | null = emailAddress || state.versions.length > 0
+        ? 'email'
+        : (state.messageVersions ?? []).length > 0 ? 'message' : null;
+    const chain = mode === 'message' ? state.messageVersions : state.versions;
+    const latest = chain.at(-1) ?? null;
+    const shown: ApplyDraftVersion | null = chain.find((version) => version.id === viewing) ?? latest;
+    const address = mode === 'email' ? emailAddress : null;
+    if (!mode) return null;
+    const applyHref = state.applyUrl && /^https?:\/\//i.test(state.applyUrl) ? state.applyUrl : null;
 
+    const markSent = () => shown && run('sent', () => markApplyDraftSent({ draftId: shown.id }));
     const run = async (kind: Exclude<Busy, null>, work: () => Promise<Awaited<ReturnType<typeof startApplyEmail>>>) => {
         setBusy(kind);
         setError(null);
@@ -103,12 +119,14 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
         <section className="surface-work rounded-xl border border-border bg-card p-5" aria-labelledby={`${inputId}-title`} aria-live="polite">
             <header className="flex flex-wrap items-start justify-between gap-2">
                 <h2 id={`${inputId}-title`} className={cn(typeStyles.h3, 'flex items-center gap-2 text-foreground')}>
-                    <Mail aria-hidden className="size-4 text-muted-foreground" strokeWidth={1.5} />
-                    Apply by email
+                    {mode === 'email'
+                        ? <Mail aria-hidden className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                        : <MessageSquare aria-hidden className="size-4 text-muted-foreground" strokeWidth={1.5} />}
+                    {mode === 'email' ? 'Apply by email' : 'Apply with a LinkedIn message'}
                 </h2>
-                {state.versions.length > 0 ? (
+                {chain.length > 0 ? (
                     <div role="group" aria-label="Versions" className="flex flex-wrap gap-1">
-                        {state.versions.map((version) => (
+                        {chain.map((version) => (
                             <button
                                 key={version.id}
                                 type="button"
@@ -144,14 +162,23 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
                         v{shown.version} · {revisionLabel(shown)}
                     </p>
                     <dl className="mt-2 divide-y divide-border rounded-lg border border-border">
-                        <div className="flex gap-3 px-3 py-2">
-                            <dt className={cn(typeStyles.small, 'w-16 shrink-0 text-muted-foreground')}>To</dt>
-                            <dd className={cn(typeStyles.small, 'min-w-0 break-all text-foreground')}>{shown.toEmail ?? 'Add the address in your mail app'}</dd>
-                        </div>
-                        <div className="flex gap-3 px-3 py-2">
-                            <dt className={cn(typeStyles.small, 'w-16 shrink-0 text-muted-foreground')}>Subject</dt>
-                            <dd className={cn(typeStyles.small, 'min-w-0 text-foreground')}>{shown.subject ?? ''}</dd>
-                        </div>
+                        {mode === 'email' ? (
+                            <>
+                                <div className="flex gap-3 px-3 py-2">
+                                    <dt className={cn(typeStyles.small, 'w-16 shrink-0 text-muted-foreground')}>To</dt>
+                                    <dd className={cn(typeStyles.small, 'min-w-0 break-all text-foreground')}>{shown.toEmail ?? 'Add the address in your mail app'}</dd>
+                                </div>
+                                <div className="flex gap-3 px-3 py-2">
+                                    <dt className={cn(typeStyles.small, 'w-16 shrink-0 text-muted-foreground')}>Subject</dt>
+                                    <dd className={cn(typeStyles.small, 'min-w-0 text-foreground')}>{shown.subject ?? ''}</dd>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex gap-3 px-3 py-2">
+                                <dt className={cn(typeStyles.small, 'w-16 shrink-0 text-muted-foreground')}>To</dt>
+                                <dd className={cn(typeStyles.small, 'min-w-0 text-foreground')}>The {shown.target === 'poster' ? 'poster' : 'recruiter'}, on LinkedIn</dd>
+                            </div>
+                        )}
                         <div className="px-3 py-3">
                             <dt className="sr-only">Body</dt>
                             <dd className={cn(typeStyles.body, 'whitespace-pre-wrap text-foreground')}>{shown.body}</dd>
@@ -159,6 +186,14 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
                     </dl>
 
                     <div className="mt-3 flex flex-wrap gap-2">
+                        {mode === 'message' && applyHref ? (
+                            <Button asChild size="sm" className="gap-1.5">
+                                <a href={applyHref} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink aria-hidden className="size-3.5" />
+                                    Open the application
+                                </a>
+                            </Button>
+                        ) : null}
                         {shown.links.gmail ? (
                             <Button asChild size="sm" className="gap-1.5">
                                 <a href={shown.links.gmail} target="_blank" rel="noopener noreferrer" onClick={() => opened('gmail')}>
@@ -179,6 +214,17 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
                             {copied ? <Check aria-hidden className="size-3.5" /> : <Copy aria-hidden className="size-3.5" />}
                             {copied ? 'Copied' : 'Copy'}
                         </Button>
+                        {state.applied ? (
+                            <span className={cn(typeStyles.caption, 'inline-flex items-center gap-1 self-center text-success')}>
+                                <CircleCheck aria-hidden className="size-3.5" />
+                                Applied
+                            </span>
+                        ) : (
+                            <Button type="button" size="sm" variant="ghost" className="gap-1.5" onClick={() => void markSent()} disabled={busy !== null}>
+                                {busy === 'sent' ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <Check aria-hidden className="size-3.5" />}
+                                Mark as applied
+                            </Button>
+                        )}
                     </div>
 
                     {shown.id !== latest?.id ? (
@@ -225,7 +271,7 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
                 </div>
             )}
 
-            <AttachmentNote attachment={state.attachment} />
+            <AttachmentNote attachment={state.attachment} note={mode === 'message' ? MESSAGE_NOTE : ATTACH_NOTE} />
 
             {error ? (
                 error.entitlement ? (
@@ -238,10 +284,10 @@ export function ApplyEmailPanel({ runId, initial }: { runId: string; initial: Ap
     );
 }
 
-function AttachmentNote({ attachment }: { attachment: ApplyEmailState['attachment'] }) {
+function AttachmentNote({ attachment, note }: { attachment: ApplyEmailState['attachment']; note: string }) {
     return (
         <div className="mt-4 rounded-lg bg-secondary/40 p-3">
-            <p className={cn(typeStyles.small, 'text-foreground')}>{ATTACH_NOTE}</p>
+            <p className={cn(typeStyles.small, 'text-foreground')}>{note}</p>
             <div className="mt-2">
                 {attachment?.pdfUrl ? (
                     <Button asChild size="sm" variant="outline" className="gap-1.5">
