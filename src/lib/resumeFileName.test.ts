@@ -27,3 +27,11 @@ describe('resumeFileName', () => {
         expect(name).not.toContain('_.pdf');
     });
 });
+
+describe('names in capitals', () => {
+    test('a header parsed in capitals is title-cased; mixed case is kept', async () => {
+        const { resumeFileName } = await import('./resumeFileName');
+        expect(resumeFileName({ fullName: 'JAI SHANKAR', company: 'Sarvam Labs' })).toBe('Jai_Shankar_Resume_SarvamLabs.pdf');
+        expect(resumeFileName({ fullName: 'Ada McDonald', company: 'Acme' })).toBe('Ada_McDonald_Resume_Acme.pdf');
+    });
+});

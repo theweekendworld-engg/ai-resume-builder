@@ -131,11 +131,9 @@ the web, the job page's Applied button does it).
   in `src/lib/drafts/revise.ts`), and `enforceLimits` trims above the
   sign-off instead of cutting it off.
 
-### Not proven here
+### Proven live (2026-11-08, production Telegram)
 
-The chain is tested against the local database with the posting parse, the
-generation pipeline, the outreach model and Telegram replaced. It has not run
-on a real Telegram client or a deployed workflow. Starting the generation
-workflow from inside the Scout finish step relies on the workflow SDK
-allowing `start()` from a step; the step bundle's import graph has the same
-`'use server'` and `workflow/api` reach as before this change.
+"apply for me" + a pasted post ran the whole chain on patronus.cv: analysis,
+"🚀 Tailoring…", the PDF (named from the record), the email draft with the
+not-claimed skills, and "sent it" → "Marked Applied." Starting the
+generation workflow from inside the Scout finish step works on Vercel.
