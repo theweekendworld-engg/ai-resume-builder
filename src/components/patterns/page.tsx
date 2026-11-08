@@ -24,7 +24,7 @@ import { focusRing, typeStyles } from './tokens';
  * Dossier (2026-11-08, docs/design/03-dossier.md): the title is the serif at
  * 28/36, an optional letterspaced eyebrow sits above it (the section of the
  * product, or the date on Home), and the header ends on a hairline rule.
- * Tabs underline in teal, the one accent.
+ * Tabs underline in blue, the one accent.
  */
 
 /** Width and gutters for every page. Left-aligned to the sidebar from lg. */

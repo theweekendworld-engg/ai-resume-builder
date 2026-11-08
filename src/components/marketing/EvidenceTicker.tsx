@@ -1,9 +1,8 @@
-import { Check, GitPullRequest, NotebookPen } from 'lucide-react';
-import { marketingContainer } from './Section';
+import { Check, GitPullRequest } from 'lucide-react';
 import { Reveal } from './Reveal';
 
 /**
- * The band under the hero: a page from a record.
+ * The band under the hero: a record, scrolling.
  *
  * ── What normally goes here, and why it does not ────────────────────────────
  *
@@ -20,16 +19,19 @@ import { Reveal } from './Reveal';
  * shop window.
  *
  * So the strip shows what the format is genuinely for: the record itself. These
- * are example entries, labelled as example entries.
+ * are example entries, labelled as example entries. The motion sells the idea
+ * better than logos would anyway — the point of the product is that the log
+ * keeps accruing whether or not you are thinking about it, and a ticker is that
+ * sentence made visual.
  *
- * ── Why it stopped scrolling (Dossier, 2026-11-08) ──────────────────────────
+ * ── Mechanics ───────────────────────────────────────────────────────────────
  *
- * It was two marquee rows sliding in opposite directions. A claim you cannot
- * stop to read is a poor way to show that every claim carries a source, and
- * moving content that starts on its own is a WCAG 2.2.2 problem before it is a
- * design one. It is now what the product actually produces: a ruled sheet,
- * each line with its source tag beside it, the same shape as an entry in the
- * Work Log. Still, so the eye can check the claim against the source.
+ * Each row renders its entries twice and translates -50%, so the second copy
+ * lands exactly where the first began and the loop has no seam. `aria-hidden`
+ * on the duplicate keeps a screen reader from reading the list twice; the row
+ * is decorative in any case, which is why the section carries no heading of its
+ * own. Hovering pauses both rows — a moving element you cannot stop to read is
+ * an accessibility problem before it is a design one.
  */
 
 type Entry = { claim: string; source: string };
@@ -52,57 +54,59 @@ const ROW_TWO: readonly Entry[] = [
     { claim: 'Backfilled two years of history from old commits', source: 'PR #388' },
 ];
 
-/** One line of the record: confirmed mark, the claim, and where it came from. */
-function Line({ claim, source }: Entry) {
-    const fromNote = source === 'you added this';
-    const SourceIcon = fromNote ? NotebookPen : GitPullRequest;
+function Chip({ claim, source }: Entry) {
     return (
-        <li className="flex items-start gap-3 border-b border-border py-3 last:border-b-0 sm:items-center">
-            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success sm:mt-0" strokeWidth={2.5} aria-label="Confirmed" />
-            <span className="min-w-0 flex-1 text-[14px] leading-snug text-foreground">{claim}</span>
-            <span className="mk-source shrink-0">
-                <SourceIcon className="h-3 w-3" aria-hidden />
+        <span className="inline-flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-5 py-3">
+            <Check className="h-3.5 w-3.5 shrink-0 text-success" strokeWidth={2.5} aria-hidden />
+            <span className="text-[13.5px] font-medium text-foreground">{claim}</span>
+            <span className="ledger flex items-center gap-1.5 text-[11px] text-muted-foreground/70">
+                <GitPullRequest className="h-3 w-3" aria-hidden />
                 {source}
             </span>
-        </li>
+        </span>
+    );
+}
+
+function Row({ entries, reverse }: { entries: readonly Entry[]; reverse?: boolean }) {
+    return (
+        <div className="mk-marquee-mask overflow-hidden">
+            <div
+                className={`flex w-max gap-3 whitespace-nowrap ${
+                    reverse ? 'mk-marquee-rev' : 'mk-marquee'
+                }`}
+            >
+                {entries.map((entry) => (
+                    <Chip key={entry.claim} {...entry} />
+                ))}
+                {entries.map((entry) => (
+                    <span key={`${entry.claim}-copy`} className="shrink-0" aria-hidden>
+                        <Chip {...entry} />
+                    </span>
+                ))}
+            </div>
+        </div>
     );
 }
 
 export function EvidenceTicker() {
     return (
-        <section className="mk-band border-b border-border py-16 lg:py-20">
-            <div className={marketingContainer}>
-                <Reveal>
-                    <p className="eyebrow text-center">What a confirmed record looks like</p>
-                </Reveal>
+        <section className="mk-marquee-hover overflow-hidden border-b border-border/60 bg-card/30 py-16 lg:py-20">
+            <Reveal>
+                <p className="mb-9 text-center text-[11px] font-bold uppercase tracking-[0.3em] text-muted-foreground/70">
+                    What a confirmed record looks like
+                </p>
+            </Reveal>
 
-                <Reveal delay={80} className="mx-auto mt-8 max-w-5xl">
-                    <div className="paper rounded-lg">
-                        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3">
-                            <p className="font-display text-[15px] font-semibold text-foreground">Work Log</p>
-                            <p className="ledger text-[11px] text-muted-foreground">12 entries · all confirmed</p>
-                        </div>
-                        <div className="grid px-5 md:grid-cols-2 md:gap-x-10">
-                            <ul>
-                                {ROW_ONE.map((entry) => (
-                                    <Line key={entry.claim} {...entry} />
-                                ))}
-                            </ul>
-                            <ul className="border-t border-border md:border-t-0">
-                                {ROW_TWO.map((entry) => (
-                                    <Line key={entry.claim} {...entry} />
-                                ))}
-                            </ul>
-                        </div>
-                    </div>
-                </Reveal>
-
-                <Reveal delay={120}>
-                    <p className="mt-6 text-center text-xs text-muted-foreground">
-                        Example entries. Yours come from the wins you log.
-                    </p>
-                </Reveal>
+            <div className="space-y-3">
+                <Row entries={ROW_ONE} />
+                <Row entries={ROW_TWO} reverse />
             </div>
+
+            <Reveal delay={120}>
+                <p className="mt-9 text-center text-xs text-muted-foreground/50">
+                    Example entries. Yours come from the wins you log.
+                </p>
+            </Reveal>
         </section>
     );
 }

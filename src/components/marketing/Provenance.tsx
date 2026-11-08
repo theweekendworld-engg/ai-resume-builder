@@ -1,4 +1,4 @@
-import { Check, FileWarning, Fingerprint, GitPullRequest, Lock, ShieldCheck } from 'lucide-react';
+import { FileWarning, Fingerprint, Lock, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { marketingType, Section } from './Section';
 import { Reveal } from './Reveal';
@@ -44,15 +44,15 @@ const GUARANTEES = [
 export function Provenance() {
     return (
         <Section>
-            <div className="grid grid-cols-1 items-start gap-14 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
+            <div className="grid items-start gap-14 lg:grid-cols-[0.95fr_1.05fr] lg:gap-16">
                 <div>
                     <Reveal as="span" className="mk-pill">
                         Truthfulness
                     </Reveal>
                     <Reveal delay={80}>
-                        <h2 className={cn(marketingType.section, 'mt-5')}>
+                        <h2 className={cn(marketingType.section, 'mt-6')}>
                             A record is worthless{' '}
-                            <span className="mk-quiet">if you can’t defend it.</span>
+                            <span className="text-primary">if you can’t defend it.</span>
                         </h2>
                     </Reveal>
                     <Reveal delay={160}>
@@ -65,33 +65,34 @@ export function Provenance() {
                     </Reveal>
 
                     {/*
-                      The claim rendered as a document, with its provenance
-                      under it: the sentence a manager will read is the
-                      artifact, and the audit trail sits beneath it in the
-                      ledger voice, each win with its source tag. Showing the
+                      The claim rendered as paper, with its provenance under it.
+
+                      This is the section where the "lit record" idea has to
+                      earn its keep: the sentence a manager will read is the
+                      artifact, so it gets the paper treatment, and the audit
+                      trail sits beneath it in the ledger voice. Showing the
                       link is more convincing than a paragraph promising one.
                     */}
-                    <Reveal delay={240} className="mt-10">
-                    <figure className="paper rounded-lg">
-                        <blockquote className="px-5 pb-4 pt-5 font-display text-[17px] leading-relaxed text-foreground">
+                    <Reveal delay={240} direction="scale" className="mt-10">
+                    <figure className="paper rounded-2xl">
+                        <blockquote className="px-5 pb-4 pt-5 text-[15px] leading-relaxed">
                             “I stabilised payments by migrating off the legacy queue in four waves,
                             and fixing the duplicate-webhook bug that double-charged{' '}
-                            <mark className="rounded-sm bg-success/15 px-1 text-inherit">
+                            <mark className="rounded bg-success/15 px-1 text-inherit">
                                 38 accounts
                             </mark>
                             .”
                         </blockquote>
                         <figcaption className="paper-rule border-t px-5 py-3">
                             <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2 text-[11.5px] font-medium text-success">
-                                    <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
-                                    Grounded
+                                <span className="ledger inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2 py-[3px] text-[10.5px] text-success">
+                                    grounded
                                 </span>
                                 <span className="ledger paper-muted text-[11px]">
                                     3 confirmed wins · “38” appears in your log
                                 </span>
                             </div>
-                            <ul className="paper-muted mt-3 divide-y divide-border">
+                            <ul className="paper-muted mt-3 space-y-1">
                                 {[
                                     ['30 Jun', 'Fixed the duplicate-webhook bug', 'PR #455'],
                                     ['16 Jun', 'Led the payments migration', 'PR #431'],
@@ -99,14 +100,11 @@ export function Provenance() {
                                 ].map(([date, claim, src]) => (
                                     <li
                                         key={src}
-                                        className="flex items-center gap-3 py-2 text-[12.5px]"
+                                        className="ledger flex items-baseline gap-2 text-[11px]"
                                     >
-                                        <span className="ledger w-12 shrink-0 text-[11px]">{date}</span>
-                                        <span className="min-w-0 flex-1 truncate text-foreground">{claim}</span>
-                                        <span className="mk-source shrink-0">
-                                            <GitPullRequest className="h-3 w-3" aria-hidden />
-                                            {src}
-                                        </span>
+                                        <span className="shrink-0">{date}</span>
+                                        <span className="truncate">{claim}</span>
+                                        <span className="ml-auto shrink-0 opacity-70">{src}</span>
                                     </li>
                                 ))}
                             </ul>
@@ -115,17 +113,19 @@ export function Provenance() {
                     </Reveal>
                 </div>
 
-                <div className="grid gap-px self-start overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-2">
+                <div className="grid gap-px self-start overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-2">
                     {GUARANTEES.map((item, index) => {
                         const Icon = item.icon;
                         return (
                             <Reveal
                                 key={item.title}
                                 delay={index * 100}
-                                className="bg-card p-7"
+                                className="group bg-background p-7 transition-colors hover:bg-card/60"
                             >
-                                <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden />
-                                <p className="mt-4 font-display text-lg font-semibold leading-snug tracking-[-0.01em]">
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                                    <Icon className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden />
+                                </span>
+                                <p className="font-heading mt-4 text-base font-bold tracking-tight">
                                     {item.title}
                                 </p>
                                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

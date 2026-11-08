@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 /*
  * Dossier buttons (docs/design/03-dossier.md §5): flat, 6px corners, colour
- * changes on hover and press (150ms) and nothing moves. One teal primary per
+ * changes on hover and press (150ms) and nothing moves. One blue primary per
  * view; everything else is outline or ghost. The old `patronus-glow-sm` halo
  * is gone, and so is `transition-all`, which animated layout properties.
  */
@@ -15,7 +15,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // White on teal 5.52:1; on the 90% hover tint 4.9:1.
+        // White on blue 4.64:1.
         default: "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/85",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/85",

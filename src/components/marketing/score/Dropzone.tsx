@@ -52,14 +52,14 @@ export function Dropzone({ file, onFileSelected, onClear, onError, disabled }: D
 
     if (file) {
         return (
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
                 <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground">
-                        <FileText className="h-5 w-5" aria-hidden />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <FileText className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{file.name}</p>
-                        <p className="ledger text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                             {(file.size / 1024).toFixed(0)} KB
                         </p>
                     </div>
@@ -102,13 +102,15 @@ export function Dropzone({ file, onFileSelected, onClear, onError, disabled }: D
                 handleFiles(e.dataTransfer.files);
             }}
             className={cn(
-                'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-input bg-card px-6 py-12 text-center transition-colors duration-150 hover:border-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                isDragging && 'border-primary bg-accent',
+                'flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-card/50 px-6 py-12 text-center transition-colors',
+                isDragging && 'border-primary bg-primary/5',
                 disabled && 'cursor-not-allowed opacity-60'
             )}
         >
-            <UploadCloud className="mb-4 h-7 w-7 text-muted-foreground" strokeWidth={1.5} aria-hidden />
-            <p className="font-display text-lg font-semibold text-foreground">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <UploadCloud className="h-7 w-7" />
+            </div>
+            <p className="text-base font-medium text-foreground">
                 Drop your resume here
             </p>
             <p className="mt-1 text-sm text-muted-foreground">

@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { START_FREE_HREF } from './links';
 import { marketingContainer, marketingType } from './Section';
-import { Reveal } from './Reveal';
+import { Ambience, Reveal } from './Reveal';
 import { ChatDemo } from './ChatDemo';
 
 /**
@@ -33,30 +33,41 @@ import { ChatDemo } from './ChatDemo';
  * and neither wins. Stacking them makes the page a sequence — claim, then the
  * evidence for it, in the order you would say them out loud.
  *
- * Ink on paper, one teal button. The page used to put a drifting light and a
- * rotating sweep behind this headline and make the headline itself float;
- * Dossier keeps motion for changes of state only, so the hero is still and
- * the type does the work. The stagger on arrival is 80ms per element, top to
- * bottom: content arriving is a state change, and that is all it marks.
+ * The light behaves the way it does everywhere else on this page: one source,
+ * drifting, with the paper as the only bright surface. `Ambience` carries the
+ * blobs; `sweep` is on here because the hero is one of two places allowed the
+ * expensive rotating layer.
+ *
+ * The stagger is 80ms per element, top to bottom. Fast enough that the page
+ * feels assembled rather than animated, slow enough to read as intentional.
  */
 
 export function Hero() {
     return (
-        <section className="mk-hero-bg relative isolate overflow-hidden border-b border-border">
-            <div className={cn(marketingContainer, 'relative pb-20 pt-20 text-center sm:pt-24 lg:pb-24 lg:pt-28')}>
+        <section className="mk-hero-bg relative isolate overflow-hidden border-b border-border/60">
+            <Ambience sweep />
+
+            <div className={cn(marketingContainer, 'relative pb-24 pt-28 text-center lg:pt-32')}>
                 <Reveal as="span" className="mk-pill">
                     Your working life, on the record
                 </Reveal>
 
+                {/*
+                  The headline itself drifts, which is the reference's move and
+                  the reason its hero feels alive rather than composed. It is a
+                  10px rise over 6 seconds — far too slow to read as animation
+                  while you are reading the words, and unmistakable the moment
+                  you stop.
+                */}
                 <Reveal delay={80}>
-                    <h1 className={cn(marketingType.hero, 'mx-auto mt-7 max-w-4xl')}>
+                    <h1 className={cn(marketingType.hero, 'mk-float mx-auto mt-8 max-w-4xl')}>
                         The assistant that knows your work,{' '}
-                        <span className="mk-quiet">for your whole career.</span>
+                        <span className="text-primary">for your whole career.</span>
                     </h1>
                 </Reveal>
 
                 <Reveal delay={160}>
-                    <p className={cn(marketingType.lead, 'mx-auto mt-6 max-w-2xl')}>
+                    <p className={cn(marketingType.lead, 'mx-auto mt-7 max-w-2xl')}>
                         Tell Patronus what you shipped, in a sentence, whenever it happens. It keeps
                         the record, checks any job against it, tailors your resume, drafts the note to
                         the recruiter and gets your next review ready. Every line traces back to
@@ -76,9 +87,10 @@ export function Hero() {
                       demonstrates the thesis instead of asserting it — which is
                       worth more than a shorter path to a signup form.
                     */}
-                    <Link href="/score" className="mk-btn w-full sm:w-auto">
+                    {/* The one pulsing element on the page. */}
+                    <Link href="/score" className="mk-btn mk-pulse group w-full sm:w-auto">
                         Check your resume — free
-                        <ArrowRight className="h-4 w-4" aria-hidden />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
                     </Link>
                     <Link href={START_FREE_HREF} className="mk-btn-ghost w-full sm:w-auto">
                         Start free
@@ -98,12 +110,19 @@ export function Hero() {
                   provenance beneath it. The provenance line is still the
                   differentiator; the chat is how you get there.
                 */}
-                <Reveal delay={400} className="mx-auto mt-16 max-w-2xl">
+                <Reveal delay={400} direction="scale" className="mx-auto mt-20 max-w-2xl">
                     <ChatDemo />
                     <p className="mt-5 text-center text-[13px] text-muted-foreground">
                         The figure on the resume is the one you typed. No other resume tool can print the line beneath it.
                     </p>
                 </Reveal>
+            </div>
+
+            <div
+                className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 text-muted-foreground/40"
+                aria-hidden
+            >
+                <ChevronDown className="mk-bob h-5 w-5" />
             </div>
         </section>
     );

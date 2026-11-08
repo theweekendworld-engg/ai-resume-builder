@@ -75,7 +75,7 @@ export function Features() {
                 title={
                     <>
                         One record.{' '}
-                        <span className="mk-quiet">Every conversation about your career.</span>
+                        <span className="text-primary">Every conversation about your career.</span>
                     </>
                 }
                 lead={
@@ -100,13 +100,15 @@ export function Features() {
                             // the bottom row is still arriving well after the
                             // reader has finished the top one.
                             delay={(index % 3) * 100}
-                            className="mk-card mk-card-hover flex flex-col p-7"
+                            className="mk-card mk-card-hover mk-rail group flex flex-col overflow-hidden p-7 pl-8"
                         >
-                            <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden />
-                            <h3 className="mt-5 font-display text-xl font-semibold leading-snug tracking-[-0.01em]">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+                            </span>
+                            <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {item.title}
                                 {item.soon ? (
-                                    <span className="eyebrow ml-2 align-middle rounded-full border border-border px-2 py-0.5">
+                                    <span className="ml-2 align-middle rounded-full border border-border/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                                         Coming soon
                                     </span>
                                 ) : null}
@@ -114,7 +116,7 @@ export function Features() {
                             <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">
                                 {item.body}
                             </p>
-                            <p className="mt-5 border-t border-border pt-4 text-[13px] leading-relaxed text-muted-foreground">
+                            <p className="ledger mt-5 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
                                 {item.proof}
                             </p>
                         </Reveal>
@@ -124,23 +126,23 @@ export function Features() {
                 {/*
                   The sixth cell completes the 3×2 grid rather than leaving a
                   hole, and it is the only card that is an action — so it
-                  inverts: a teal wash and edge, and the CTA where the other
-                  five put their provenance line. Ink on the wash is 13.8:1.
+                  inverts: accent border, lit, and the CTA where the other five
+                  put their provenance line.
                 */}
                 <Reveal
                     delay={200}
-                    className="mk-card flex flex-col justify-center border-primary/40 bg-accent p-7"
+                    className="mk-card mk-glow flex flex-col justify-center border-primary/30 p-7"
                 >
-                    <h3 className="font-display text-xl font-semibold leading-snug tracking-[-0.01em] text-foreground">
+                    <h3 className="font-heading text-lg font-bold leading-snug tracking-tight">
                         Start with the record.
                     </h3>
-                    <p className="mt-2.5 text-sm leading-relaxed text-foreground/80">
+                    <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
                         Keeping a log is free, permanently, and every payoff is included while we
                         launch.
                     </p>
-                    <Link href={START_FREE_HREF} className="mk-btn mt-6">
+                    <Link href={START_FREE_HREF} className="mk-btn group mt-6">
                         Start free
-                        <ArrowRight className="h-4 w-4" aria-hidden />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden />
                     </Link>
                 </Reveal>
             </div>

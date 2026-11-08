@@ -31,27 +31,33 @@ import { Reveal } from './Reveal';
  *
  * Four roles, and the jump between them is deliberate. A landing page reads
  * as high-craft when the type contrast is large and the palette is small —
- * one large statement in the serif, one calm paragraph in Inter, and nothing
- * competing. Dossier (2026-11-08) moved the display roles from Sora 800 to
- * Source Serif 4 at 600: the page should read as a well-set document, the
- * same voice as the app's page titles.
+ * one enormous statement, one calm paragraph, and nothing competing.
  */
 
 export const marketingType = {
     /**
-     * 38 → 68px, fluid, serif 600. `clamp` rather than breakpoint steps: the
+     * 40 → 76px, fluid.
+     *
+     * The previous scale topped out at 58px and stepped at four breakpoints,
+     * each one measured against the longest line so the headline could not
+     * reflow mid-phrase. `clamp` removes the need for that measurement: the
      * size is a function of the viewport, so a line that fits at 1440 also
      * fits at 1100 rather than falling into a gap between two fixed steps.
+     *
+     * The weight is the real change. 800 rather than 600 — a landing page's
+     * headline is the only element competing with a full-bleed glow behind it,
+     * and semibold loses that fight. See `fonts.ts` for why the extra weight
+     * is loaded only here.
      */
     hero: 'mk-display mk-h1',
-    /** 30 → 48px, fluid. Section headings. */
+    /** 32 → 52px, fluid. Section headings. */
     section: 'mk-display mk-h2',
     /** 18 → 22px. A statement inside a section — a card title, a pull quote. */
     statement: 'mk-display mk-h3',
     /** 17 → 18px. The paragraph under a heading. Never smaller. */
     lead: 'text-[1.0625rem] leading-relaxed text-muted-foreground sm:text-lg',
-    /** 11px caps. The label above a heading — see `.mk-pill` and `.eyebrow`. */
-    eyebrow: 'eyebrow',
+    /** 11px caps. The label above a heading — see `.mk-pill`. */
+    eyebrow: 'text-[11px] font-bold uppercase tracking-[0.15em]',
     /** Body copy inside a section. */
     body: 'text-sm leading-relaxed text-muted-foreground',
 } as const;
@@ -70,20 +76,21 @@ export const marketingContainer = 'mx-auto w-full max-w-6xl px-5 sm:px-6 lg:px-8
  * One value, applied by `Section`. Sections that need more room say so by
  * composing, not by inventing a fourth number.
  *
- * `py-24 lg:py-32`: whitespace scales with the headline it surrounds, and an
- * 8px rhythm (96 / 128) keeps every section on the same grid.
+ * Opened up from `py-20 lg:py-28`. The display scale roughly doubled, and a
+ * headline at 52px inside 80px of air reads as cramped in a way the same
+ * padding around a 36px headline does not — whitespace has to scale with the
+ * thing it surrounds or the page looks like it was zoomed rather than designed.
  */
 const RHYTHM = 'py-24 lg:py-32';
 
-/** The ground a section sits on: paper, the warm secondary band, or a white
- *  sheet. They alternate so consecutive sections separate by a change of
- *  paper rather than by stacking more hairlines. */
+/** The ground a section sits on. `sunken`/`raised` alternate so consecutive
+ *  sections separate by value rather than by stacking more hairlines. */
 type SectionTone = 'default' | 'sunken' | 'raised';
 
 const TONE: Record<SectionTone, string> = {
     default: '',
     sunken: 'mk-band',
-    raised: 'bg-card',
+    raised: 'bg-card/30',
 };
 
 export function Section({
@@ -108,7 +115,7 @@ export function Section({
             id={id}
             className={cn(
                 'relative isolate',
-                bordered && 'border-b border-border',
+                bordered && 'border-b border-border/60',
                 TONE[tone],
                 RHYTHM,
                 className,
@@ -122,11 +129,10 @@ export function Section({
 /**
  * Pill → heading → lead.
  *
- * The heading takes a `<span className="mk-quiet">` for its second line
- * rather than accepting an `accent` prop: which words carry the second voice
- * is a copy decision, and it changes per section. A prop would force every
- * caller to split its headline the same way. The second clause is muted ink,
- * not teal — teal is kept for what you can press.
+ * The heading takes a `<span className="text-primary">` for its second line
+ * rather than accepting an `accent` prop: which words carry the accent is a
+ * copy decision, and it changes per section. A prop would force every caller
+ * to split its headline the same way.
  *
  * `align="center"` is now the common case rather than the exception. That is a
  * reversal of the previous rule and it is deliberate — at this display size the
@@ -157,7 +163,7 @@ export function SectionIntro({
                 </Reveal>
             ) : null}
             <Reveal delay={eyebrow ? 80 : 0}>
-                <h2 className={cn(marketingType.section, eyebrow ? 'mt-5' : undefined)}>{title}</h2>
+                <h2 className={cn(marketingType.section, eyebrow ? 'mt-6' : undefined)}>{title}</h2>
             </Reveal>
             {lead ? (
                 <Reveal delay={160}>

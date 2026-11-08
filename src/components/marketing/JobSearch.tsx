@@ -57,7 +57,7 @@ export function JobSearch() {
                 title={
                     <>
                         From the job post to the sent email.{' '}
-                        <span className="mk-quiet">Then it keeps track.</span>
+                        <span className="text-primary">Then it keeps track.</span>
                     </>
                 }
                 lead="Name the companies you want and send any job you find. Each one is checked against your record, the resume and the email are written for it, and the replies are filed as they arrive."
@@ -71,17 +71,16 @@ export function JobSearch() {
                             as="li"
                             key={step.title}
                             delay={(index % 2) * 120}
-                            className="mk-card mk-card-hover mk-rail flex flex-col p-7"
+                            className="mk-card mk-card-hover mk-rail group flex flex-col p-7 pl-8"
                         >
-                            <div className="flex items-center justify-between">
-                                <span className="ledger text-[12px] text-muted-foreground">{String(index + 1).padStart(2, '0')}</span>
-                                <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden />
-                            </div>
-                            <h3 className="mt-6 font-display text-xl font-semibold leading-snug tracking-[-0.01em]">
+                            <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                                <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+                            </span>
+                            <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">
                                 {step.title}
                             </h3>
                             <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">{step.body}</p>
-                            <p className="mt-5 border-t border-border pt-4 text-[13px] leading-relaxed text-muted-foreground">
+                            <p className="ledger mt-5 border-t border-border/60 pt-4 text-xs leading-relaxed text-muted-foreground">
                                 {step.proof}
                             </p>
                         </Reveal>

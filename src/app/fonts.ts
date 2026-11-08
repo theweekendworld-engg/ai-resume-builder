@@ -19,8 +19,8 @@ import localFont from 'next/font/local';
  *   The file is the weight axis only (400-700, opsz pinned): 51KB against
  *   122KB for the optical-size build, and titles never go above 40px here.
  *
- * Sora, the old heading face, is gone from the web app. The Chrome extension
- * still self-hosts its own copy (extension/src/shared/ui/fonts).
+ * Sora stays for the landing page and sign-in (owner decision 2026-11-08: the
+ * old homepage is kept as it was). Inside the app headings are Source Serif.
  */
 export const inter = localFont({
   src: './fonts/inter-latin-var.woff2',
@@ -39,4 +39,11 @@ export const sourceSerif = localFont({
   adjustFontFallback: 'Times New Roman',
 });
 
-export const fontVariables = `${inter.variable} ${sourceSerif.variable}`;
+export const sora = localFont({
+  src: './fonts/sora-latin-var.woff2',
+  display: 'swap',
+  weight: '500 800',
+  variable: '--font-sora',
+});
+
+export const fontVariables = `${inter.variable} ${sourceSerif.variable} ${sora.variable}`;

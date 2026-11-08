@@ -12,8 +12,8 @@ import type { JobStage, JobStageStatus } from '@/lib/jobStages';
  * Applied; derive them with `jobStages()` from `@/lib/jobStages`), but any
  * ordered steps work.
  *
- *   done      filled teal node with a check, teal connector after it
- *   current   teal ring with a dot; amber when `tone="attention"` (it waits
+ *   done      filled blue node with a check, blue connector after it
+ *   current   blue ring with a dot; warning when `tone="attention"` (it waits
  *             on the user, e.g. a drafted email nobody has sent)
  *   upcoming  hollow node on a ruled line
  *   skipped   dashed hollow node with a dash — the step was passed over, and

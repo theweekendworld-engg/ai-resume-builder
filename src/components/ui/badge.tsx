@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils"
 
 /*
  * Dossier badges: a small ruled tag, 4px corners, 12px medium. Colour only
- * where it means something — `attention` (amber) is "this needs you", and
- * nothing else uses amber. Tints are measured: teal on its 10% tint 4.81:1,
- * amber 5.00:1, accent-foreground on accent 7.34:1.
+ * where it means something — `attention` (warning) is "this needs you", and
+ * nothing else uses warning. Tints are measured: blue on its 10% tint (see globals.css),
+ * warning 5.00:1, accent-foreground on accent 7.34:1.
  */
 const badgeVariants = cva(
   "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-xs font-medium leading-4 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [&_svg]:size-3 [&_svg]:shrink-0",

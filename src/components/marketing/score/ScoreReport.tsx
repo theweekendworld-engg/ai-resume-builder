@@ -6,7 +6,7 @@ import { useAuth } from '@clerk/nextjs';
 import {
     ArrowRight,
     ShieldCheck,
-    PenLine,
+    Sparkles,
     AlertTriangle,
     CircleAlert,
     Lightbulb,
@@ -111,7 +111,7 @@ function ScoreRing({ score, band }: { score: number; band: ScoreBand }) {
                     cy="60"
                     r={radius}
                     fill="none"
-                    strokeWidth="8"
+                    strokeWidth="10"
                     className="stroke-muted"
                 />
                 <circle
@@ -119,16 +119,16 @@ function ScoreRing({ score, band }: { score: number; band: ScoreBand }) {
                     cy="60"
                     r={radius}
                     fill="none"
-                    strokeWidth="8"
+                    strokeWidth="10"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
                     strokeDashoffset={offset}
-                    className={cn('transition-[stroke-dashoffset] duration-200', meta.ring)}
+                    className={cn('transition-all duration-700', meta.ring)}
                     stroke="currentColor"
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={cn('num font-display text-4xl font-semibold', meta.text)}>{score}</span>
+                <span className={cn('text-4xl font-semibold', meta.text)}>{score}</span>
                 <span className="text-xs text-muted-foreground">/ 100</span>
             </div>
         </div>
@@ -142,7 +142,7 @@ function DimensionBar({ score, band }: { score: number; band: ScoreBand }) {
     return (
         <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-                className={cn('h-full rounded-full transition-[width] duration-200', color)}
+                className={cn('h-full rounded-full transition-all duration-700', color)}
                 style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
             />
         </div>
@@ -211,7 +211,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                         <Badge variant="outline" className={cn('mb-3', meta.chip)}>
                             {meta.label}
                         </Badge>
-                        <h2 className="font-display text-2xl font-semibold tracking-[-0.01em] text-foreground">
+                        <h2 className="text-2xl font-semibold tracking-tight text-foreground">
                             Your resume scored {report.overall} / 100
                         </h2>
                         <p className="mt-2 text-muted-foreground">{BAND_BLURB[report.band]}</p>
@@ -221,7 +221,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
 
             {/* Dimension breakdown */}
             <div>
-                <h3 className="eyebrow mb-4">
+                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Breakdown
                 </h3>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -232,7 +232,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                                     <span className="text-sm font-medium text-foreground">
                                         {dim.label}
                                     </span>
-                                    <span className="num text-sm font-semibold text-foreground">
+                                    <span className="text-sm font-semibold text-foreground">
                                         {dim.score}
                                     </span>
                                 </div>
@@ -258,7 +258,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
             */}
             {report.jobMatch && (
                 <div>
-                    <h3 className="eyebrow mb-4">
+                    <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                         Against{' '}
                         {[report.jobMatch.role, report.jobMatch.company].filter(Boolean).join(' at ') ||
                             'this job'}
@@ -268,7 +268,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                         <CardContent className="p-4 sm:p-6">
                             {report.jobMatch.score !== null ? (
                                 <div className="mb-5 flex items-baseline gap-3">
-                                    <span className="num font-display text-3xl font-semibold text-foreground">
+                                    <span className="text-3xl font-semibold tabular-nums text-foreground">
                                         {report.jobMatch.score}
                                         <span className="text-base text-muted-foreground">/100</span>
                                     </span>
@@ -350,7 +350,7 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
 
             {/* Fixes */}
             <div>
-                <h3 className="eyebrow mb-4">
+                <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Prioritized fixes
                 </h3>
                 <div className="space-y-4">
@@ -370,9 +370,9 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                                         </span>
                                     </div>
                                     <p className="text-sm text-muted-foreground">{fix.problem}</p>
-                                    <div className="mt-3 rounded-md border-l-2 border-primary bg-secondary p-3">
-                                        <p className="eyebrow mb-1 flex items-center gap-1.5 text-primary">
-                                            <PenLine className="h-3.5 w-3.5" aria-hidden /> Suggested rewrite
+                                    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                                        <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-primary">
+                                            <Sparkles className="h-3.5 w-3.5" /> Suggested rewrite
                                         </p>
                                         <p className="text-sm text-foreground">{fix.suggestion}</p>
                                     </div>
@@ -384,9 +384,9 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
             </div>
 
             {/* CTA */}
-            <Card className="border-primary/40 bg-accent">
+            <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="flex flex-col items-center gap-4 p-6 text-center sm:p-8">
-                    <h3 className="font-display text-2xl font-semibold tracking-[-0.01em] text-foreground">
+                    <h3 className="text-xl font-semibold tracking-tight text-foreground">
                         Fix all of these in one click
                     </h3>
                     <p className="max-w-md text-sm text-muted-foreground">
@@ -417,8 +417,8 @@ export function ScoreReport({ report, extractedText, onReset }: ScoreReportProps
                 </CardContent>
             </Card>
 
-            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground/70">
+                <ShieldCheck className="h-3.5 w-3.5" />
                 Your file is processed in memory. If you choose Fix all, we keep the text for 24 hours
                 so it can open after you sign up.
             </p>

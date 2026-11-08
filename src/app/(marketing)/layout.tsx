@@ -1,17 +1,13 @@
 import { Navbar } from '@/components/marketing/Navbar';
 import { Footer } from '@/components/marketing/Footer';
-import './marketing.css';
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
-    // Dossier paper, the same light tokens as the app (2026-11-08). Marketing
-    // used to force `.dark` here and override the accent with its own louder
-    // palette; it no longer does, so landing → sign-in → app is one product.
-    // Why, in full: the header of `./marketing.css`. `.marketing` stays as the
-    // scope class for that stylesheet and nothing else. `light` pins the paper
-    // tokens for this subtree, so a signed-in reader who chose dark in
-    // Settings still sees the public pages as designed.
-    <div className="marketing light min-h-screen bg-background text-foreground">
+    // Marketing keeps the dark identity while the authenticated app defaults to
+    // light (design/00 §3.1). `.dark` is a plain class, so it scopes to this subtree.
+    // `.marketing` sits on the same element and overrides the accent tokens to the
+    // landing page's louder palette — see the block in globals.css.
+    <div className="marketing dark min-h-screen bg-background text-foreground">
       {/*
         Scroll reveals start at opacity 0 and are promoted by an
         IntersectionObserver (`Reveal`). With scripting unavailable that promotion

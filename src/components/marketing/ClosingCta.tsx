@@ -3,7 +3,7 @@ import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { marketingContainer, marketingType } from './Section';
 import { START_FREE_HREF } from './links';
-import { Reveal } from './Reveal';
+import { Ambience, Reveal } from './Reveal';
 
 /**
  * The close.
@@ -14,14 +14,15 @@ import { Reveal } from './Reveal';
  * already gone — which is a genuinely urgent thing to say and does not need a
  * timer attached to it.
  *
- * Flat paper, like the hero: the page opens and closes on the same sheet,
- * which is what makes the scroll read as one document rather than a stack of
- * sections. The rotating light that used to bookend it is gone (Dossier rules:
- * no glow, motion only for state).
+ * This is the second of the two places allowed the expensive rotating sweep
+ * (the hero is the other). Bookending the page with the same light is what
+ * makes the scroll feel like one document rather than a stack of sections, and
+ * it means the last thing on screen before the footer is the brightest.
  */
 export function ClosingCta() {
     return (
-        <section className="mk-cta-bg relative">
+        <section className="mk-cta-bg relative isolate overflow-hidden">
+            <Ambience sweep />
 
             <div className={cn(marketingContainer, 'py-28 text-center lg:py-36')}>
                 <Reveal as="span" className="mk-pill">
@@ -29,9 +30,9 @@ export function ClosingCta() {
                 </Reveal>
 
                 <Reveal delay={80}>
-                    <h2 className={cn(marketingType.section, 'mx-auto mt-6 max-w-3xl')}>
+                    <h2 className={cn(marketingType.section, 'mx-auto mt-7 max-w-3xl')}>
                         The best time to start{' '}
-                        <span className="mk-quiet">was three years ago.</span>
+                        <span className="text-primary">was three years ago.</span>
                     </h2>
                 </Reveal>
 
@@ -47,9 +48,9 @@ export function ClosingCta() {
                     delay={240}
                     className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row"
                 >
-                    <Link href={START_FREE_HREF} className="mk-btn w-full sm:w-auto">
+                    <Link href={START_FREE_HREF} className="mk-btn group w-full sm:w-auto">
                         Start free
-                        <ArrowRight className="h-4 w-4" aria-hidden />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </Link>
                     <Link href="/score" className="mk-btn-ghost w-full sm:w-auto">
                         Just check a resume

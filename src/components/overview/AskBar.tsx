@@ -15,7 +15,7 @@ export function AskBar() {
                 const value = text.trim();
                 router.push(value ? `/chat?q=${encodeURIComponent(value.slice(0, 2000))}` : '/chat');
             }}
-            // A white field with a real edge (--input, 3.2:1); teal edge and
+            // A white field with a real edge (--input, 3.2:1); blue edge and
             // a soft ring while focused. No shadow: borders over shadows.
             className="flex items-center gap-2 rounded-lg border border-input bg-card p-1.5 pl-3.5 transition-colors duration-150 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20"
         >

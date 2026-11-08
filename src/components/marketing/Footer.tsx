@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { CONTACT_EMAIL, OPERATOR, OPERATOR_LOCATION } from './Contact';
 import { POLICY_LINKS, START_FREE_HREF } from './links';
-import { Wordmark } from './Wordmark';
 
 /**
  * The contact address is imported rather than retyped — it is published in two
@@ -10,11 +9,20 @@ import { Wordmark } from './Wordmark';
  */
 export function Footer() {
     return (
-        <footer className="border-t border-border bg-background">
+        <footer className="border-t border-border/60 bg-background">
             <div className="mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 lg:px-8">
                 <div className="flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between">
                     <div className="max-w-xs space-y-3">
-                        <Wordmark />
+                        <div className="flex items-center gap-2.5">
+                            <img
+                                src="/logo.png"
+                                alt=""
+                                className="h-8 w-auto drop-shadow-[0_0_8px_hsl(190_100%_50%/0.45)]"
+                            />
+                            <p className="font-heading text-base font-bold tracking-tight text-foreground">
+                                Patronus
+                            </p>
+                        </div>
                         <p className="text-[13px] leading-relaxed text-muted-foreground">
                             The private, evidence-backed record of your working life.
                         </p>
@@ -22,28 +30,28 @@ export function Footer() {
 
                     <div className="flex flex-wrap gap-x-14 gap-y-8">
                         <div>
-                            <p className="eyebrow">
+                            <p className="ledger text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                                 Product
                             </p>
                             <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
-                                <Link href="/score" className="rounded-sm transition-colors duration-150 hover:text-foreground">
+                                <Link href="/score" className="transition-colors hover:text-primary">
                                     Check resume
                                 </Link>
                                 <Link
                                     href="/#how-it-works"
-                                    className="rounded-sm transition-colors duration-150 hover:text-foreground"
+                                    className="transition-colors hover:text-primary"
                                 >
                                     How it works
                                 </Link>
                                 <Link
                                     href="/#job-search"
-                                    className="rounded-sm transition-colors duration-150 hover:text-foreground"
+                                    className="transition-colors hover:text-primary"
                                 >
                                     Job search
                                 </Link>
                                 <Link
                                     href={START_FREE_HREF}
-                                    className="rounded-sm transition-colors duration-150 hover:text-foreground"
+                                    className="transition-colors hover:text-primary"
                                 >
                                     Start free
                                 </Link>
@@ -51,18 +59,18 @@ export function Footer() {
                         </div>
 
                         <div>
-                            <p className="eyebrow">
+                            <p className="ledger text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                                 Company
                             </p>
                             <div className="mt-4 flex flex-col gap-2.5 text-[13px] text-muted-foreground">
                                 {POLICY_LINKS.map((link) => (
-                                    <Link key={link.href} href={link.href} className="rounded-sm transition-colors duration-150 hover:text-foreground">
+                                    <Link key={link.href} href={link.href} className="transition-colors hover:text-primary">
                                         {link.label}
                                     </Link>
                                 ))}
                                 <a
                                     href={`mailto:${CONTACT_EMAIL}`}
-                                    className="rounded-sm transition-colors duration-150 hover:text-foreground"
+                                    className="transition-colors hover:text-primary"
                                 >
                                     {CONTACT_EMAIL}
                                 </a>
@@ -71,7 +79,7 @@ export function Footer() {
                     </div>
                 </div>
 
-                <div className="mt-12 border-t border-border pt-6">
+                <div className="mt-12 border-t border-border/40 pt-6">
                     <p className="text-xs text-muted-foreground">
                         Never sold, never used to train anything. Operated by {OPERATOR}, {OPERATOR_LOCATION}.
                     </p>

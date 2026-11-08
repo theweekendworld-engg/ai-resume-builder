@@ -42,7 +42,7 @@ import { isActive, NAV_GROUPS, NAV_ROUTES, SETTINGS_ROUTE, type NavDestination }
  *
  * Dossier (2026-11-08): ink on paper, grouped into Search / Record / Goals
  * (`NAV_GROUPS`) under letterspaced eyebrows. The current page is marked by a
- * 2px teal bar on the inner edge and ink text, not a filled pill, so the nav
+ * 2px blue bar on the inner edge and ink text, not a filled pill, so the nav
  * stays quiet and the one accent means "you are here". The phone tab bar uses
  * the same bar along its top edge.
  */
@@ -71,7 +71,7 @@ const DESTINATIONS = Object.fromEntries(
 /** On a phone, four tabs and "More". Chosen by how often each is opened. */
 const MOBILE_TABS: NavDestination[] = ['overview', 'chat', 'scout', 'log'];
 
-/** A phone tab: 64px tall, the full width share, the teal bar on top when current. */
+/** A phone tab: 64px tall, the full width share, the blue bar on top when current. */
 const TAB_CLASS = 'relative flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors duration-150';
 
 const OWNS_CHROME = [/^\/editor(\/|$)/, /^\/welcome(\/|$)/, /\/print(\/|$)/, /^\/admin(\/|$)/];
@@ -118,7 +118,7 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
             title={item.label}
             className={cn(
                 'relative flex h-10 items-center justify-center gap-3 rounded-md px-2.5 text-sm transition-colors duration-150 lg:justify-start',
-                // Ink on paper when active (15:1), with the teal bar; muted
+                // Ink on paper when active (15:1), with the blue bar; muted
                 // ink (6.1:1) otherwise. The old filled pill is gone.
                 active
                     ? 'bg-card font-medium text-foreground shadow-[0_0_0_1px_hsl(var(--border))]'

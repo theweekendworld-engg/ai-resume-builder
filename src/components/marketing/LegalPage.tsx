@@ -13,8 +13,8 @@ export const POLICY_UPDATED = '27 September 2026';
 export function LegalPage({ title, children }: { title: string; children: ReactNode }) {
     return (
         <section className="mx-auto w-full max-w-3xl px-5 py-16 sm:px-6">
-            <h1 className="font-display text-4xl font-semibold tracking-[-0.015em] text-foreground">{title}</h1>
-            <p className="ledger mt-3 border-b border-border pb-6 text-[11.5px] leading-relaxed text-muted-foreground">
+            <h1 className="font-heading text-3xl font-semibold tracking-tight">{title}</h1>
+            <p className="mt-2 text-xs text-muted-foreground">
                 Last updated {POLICY_UPDATED} · Patronus is operated by {OPERATOR}, {OPERATOR_LOCATION} ·{' '}
                 <a href={`mailto:${CONTACT_EMAIL}`} className="underline-offset-4 hover:underline">
                     {CONTACT_EMAIL}
@@ -28,7 +28,7 @@ export function LegalPage({ title, children }: { title: string; children: ReactN
 export function LegalSection({ heading, children }: { heading: string; children: ReactNode }) {
     return (
         <div>
-            <h2 className="font-display text-xl font-semibold text-foreground">{heading}</h2>
+            <h2 className="font-heading text-lg font-semibold text-foreground">{heading}</h2>
             <div className="mt-2 space-y-3">{children}</div>
         </div>
     );

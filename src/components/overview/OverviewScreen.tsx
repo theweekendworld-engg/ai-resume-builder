@@ -37,7 +37,7 @@ import { AskBar } from './AskBar';
  * Read top to bottom like the first page of a file: a serif greeting and one
  * sentence of status, the pipeline as a ruled strip of numbers, then the
  * parts. "Needs you" leads because it is the only part that asks for
- * something, and it is the only place amber appears. Jobs in motion each show
+ * something, and it is the only place warning appears. Jobs in motion each show
  * their four stages on a ProgressRail. Everything else is state, each part
  * linking to where it is changed. Parts are separated by hairline rules, not
  * boxed into floating cards.
@@ -94,7 +94,7 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                 description={overviewStatusLine(data)}
                 actions={
                     chat ? null : (
-                        // One teal button per view: on a new account the first
+                        // One blue button per view: on a new account the first
                         // step owns it, so this one steps back to outline.
                         <Button asChild variant={resumeStep ? 'outline' : 'default'}>
                             <Link href="/build">
@@ -154,7 +154,7 @@ export function OverviewScreen({ data, chat }: { data: Overview; chat: boolean }
                                         return (
                                             <li key={item.key}>
                                                 <Link href={item.href} className={cn(ROW, 'py-3 pl-5 pr-2')}>
-                                                    {/* The amber mark: this row is waiting on you. */}
+                                                    {/* The warning mark: this row is waiting on you. */}
                                                     <span aria-hidden className="absolute inset-y-3 left-2 w-0.5 rounded-full bg-warning" />
                                                     <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                                                     <span className="min-w-0 flex-1">

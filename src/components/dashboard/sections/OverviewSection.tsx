@@ -84,7 +84,7 @@ export function OverviewSection({ overview, usageStats }: OverviewSectionProps) 
       {step ? (() => {
         const Icon = step.icon === 'upload' ? FileUp : PenLine;
         return (
-          // Dossier first step: a white card with a teal rule on its leading
+          // Dossier first step: a white card with a blue rule on its leading
           // edge — the one action on the page, marked without a tinted panel.
           <section className="relative flex flex-col gap-4 overflow-hidden rounded-lg border border-border bg-card p-5 pl-6 sm:flex-row sm:items-center sm:justify-between">
             <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-primary" />

@@ -26,16 +26,16 @@ import { StatStrip } from './stat-strip';
 import { typeStyles } from './tokens';
 
 const SWATCHES: Array<{ token: string; name: string; light: string; dark: string; on: string }> = [
-    { token: 'background', name: 'Paper', light: '#FAF8F5', dark: '#0F1524', on: 'foreground 15.0 / 15.1' },
-    { token: 'card', name: 'Card', light: '#FFFFFF', dark: '#151E32', on: 'foreground 15.9 / 13.7' },
-    { token: 'foreground', name: 'Ink', light: '#14213E', dark: '#EEEAE3', on: 'on paper 15.0 / 15.1' },
-    { token: 'muted-foreground', name: 'Muted ink', light: '#585F6F', dark: '#A2A7B4', on: 'on paper 6.1 / 7.6' },
-    { token: 'primary', name: 'Teal', light: '#0F756D', dark: '#5BC2B5', on: 'white on it 5.5 · as text 5.2' },
-    { token: 'warning', name: 'Amber · needs you', light: '#A54C09', dark: '#E8A359', on: 'on paper 5.4 / 8.5' },
-    { token: 'success', name: 'Success', light: '#1E6B44', dark: '#61C28E', on: 'on paper 6.1 / 8.3' },
-    { token: 'danger', name: 'Danger', light: '#B42318', dark: '#F07F70', on: 'on paper 6.2 / 6.9' },
-    { token: 'border', name: 'Hairline', light: '#E4DFD7', dark: '#26324A', on: 'decorative, 1.3' },
-    { token: 'border-strong', name: 'Control edge', light: '#8B8579', dark: '#5F6C86', on: '3.7 / 3.1 on card' },
+    { token: 'background', name: 'Ground', light: '#FCFCFD', dark: '#090D16', on: 'foreground 16.9 / 17.8' },
+    { token: 'card', name: 'Card', light: '#FFFFFF', dark: '#10141E', on: 'foreground 17.4 / 16.8' },
+    { token: 'foreground', name: 'Ink', light: '#141A29', dark: '#F3F5F7', on: 'on ground 16.9 / 17.8' },
+    { token: 'muted-foreground', name: 'Muted ink', light: '#5C697A', dark: '#768293', on: 'on ground 5.5 / 5.0' },
+    { token: 'primary', name: 'Patronus blue', light: '#1879BF', dark: '#7BC2F4', on: 'white on it 4.6 · as text 4.5' },
+    { token: 'warning', name: 'Needs you', light: '#9A6304', dark: '#F3B549', on: 'on ground 4.9 / 10.7' },
+    { token: 'success', name: 'Success', light: '#1D7C50', dark: '#53C690', on: 'on ground 5.1 / 9.1' },
+    { token: 'danger', name: 'Danger', light: '#C52626', dark: '#E14747', on: 'on ground 5.6 / 4.8' },
+    { token: 'border', name: 'Hairline', light: '#DEE2E8', dark: '#202732', on: 'decorative, 1.3' },
+    { token: 'border-strong', name: 'Control edge', light: '#8392A5', dark: '#5E6D82', on: '3.2 / 3.5 on card' },
 ];
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -244,7 +244,7 @@ export function DossierSection() {
                             <Button disabled>Disabled</Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <Badge>Teal</Badge>
+                            <Badge>Blue</Badge>
                             <Badge variant="secondary">Secondary</Badge>
                             <Badge variant="outline">Outline</Badge>
                             <Badge variant="attention">Needs you</Badge>

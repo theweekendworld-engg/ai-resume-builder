@@ -41,7 +41,7 @@ export function Channels() {
                 eyebrow="Wherever you are"
                 title={
                     <>
-                        One assistant. <span className="mk-quiet">Every place you work.</span>
+                        One assistant. <span className="text-primary">Every place you work.</span>
                     </>
                 }
                 lead="Something worth remembering happens at your desk, in a meeting, or on the way home. Tell Patronus where you are, and it is in your record everywhere."
@@ -54,14 +54,19 @@ export function Channels() {
                     return (
                         <Reveal key={channel.title} delay={index * 120} className="mk-card p-7">
                             <div className="flex items-center justify-between">
-                                <Icon className="h-5 w-5 text-muted-foreground" strokeWidth={1.75} aria-hidden />
-                                {/* A quiet status, the app's Pill: colour on the dot only. */}
-                                <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border bg-card px-2 text-[11.5px] font-medium text-foreground">
-                                    <span aria-hidden className={cn('size-1.5 rounded-full', live ? 'bg-success' : 'bg-muted-foreground/50')} />
+                                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary">
+                                    <Icon className="h-5 w-5" strokeWidth={1.75} />
+                                </span>
+                                <span
+                                    className={cn(
+                                        'ledger rounded-full border px-2 py-[3px] text-[10.5px]',
+                                        live ? 'border-success/30 bg-success/10 text-success' : 'border-border text-muted-foreground',
+                                    )}
+                                >
                                     {channel.status}
                                 </span>
                             </div>
-                            <h3 className="mt-6 font-display text-xl font-semibold leading-snug tracking-[-0.01em]">{channel.title}</h3>
+                            <h3 className="font-heading mt-5 text-lg font-bold leading-snug tracking-tight">{channel.title}</h3>
                             <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{channel.body}</p>
                         </Reveal>
                     );

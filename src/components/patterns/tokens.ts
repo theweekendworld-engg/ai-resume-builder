@@ -46,7 +46,7 @@ export const typeStyles = {
 /**
  * §9 — the focus ring, identical on every custom interactive element so that
  * keyboard users get one visual language rather than a per-component lottery.
- * Teal (`--ring`): 5.52:1 on a card, 5.20:1 on paper.
+ * Blue (`--ring`): 4.6:1 on a card, 4.5:1 on the ground.
  */
 export const focusRing =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';

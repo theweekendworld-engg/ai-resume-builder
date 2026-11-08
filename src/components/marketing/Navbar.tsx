@@ -7,22 +7,26 @@ import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { START_FREE_HREF } from './links';
-import { Wordmark } from './Wordmark';
 
 /**
  * ── Two changes worth explaining ────────────────────────────────────────────
  *
- * **It grows a hairline on scroll.** At the top of the page the bar sits on
- * the same paper as the hero, with no rule, so the page opens as one sheet.
- * Past 12px a solid paper fill and a hairline come in, because by then the
- * bar is over content and needs an edge. Solid, not translucent: the Dossier
- * rules retire backdrop blur everywhere (docs/design/03-dossier.md §8), and a
- * blurred bar over paper only muddies the text scrolling under it.
+ * **It grows a background on scroll.** At the top of the page the bar is
+ * transparent, so the hero's glow runs unbroken to the top edge — a permanent
+ * translucent strip cuts a visible seam across it. Past 12px the surface fades
+ * in, because by then the bar is over content and needs to be legible. The
+ * threshold is small on purpose: the transition should happen while the reader
+ * is still at the top, not as a surprise a third of the way down.
  *
  * **It has a mobile menu.** The previous version hid the nav entirely below
  * `md`, which meant a phone reader could reach no section of the page except by
  * scrolling past all of it. The links are the table of contents; on the
  * narrowest screen is where that matters most.
+ *
+ * `backdrop-blur` is deliberate here and does not contradict the design rule
+ * against it — that rule (CLAUDE.md, Conventions) is about scrolling LISTS,
+ * where each blurred element costs a compositing layer per row. This is one
+ * fixed element.
  */
 
 const LINKS = [
@@ -57,19 +61,32 @@ export function Navbar() {
     return (
         <header
             className={cn(
-                'sticky top-0 z-50 border-b bg-background transition-colors duration-200',
-                scrolled || open ? 'border-border' : 'border-transparent',
+                'sticky top-0 z-50 transition-all duration-300',
+                scrolled || open
+                    ? 'border-b border-border/60 bg-background/85 backdrop-blur-xl'
+                    : 'border-b border-transparent bg-transparent',
             )}
         >
             <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-6 lg:px-8">
-                <Wordmark onClick={() => setOpen(false)} />
+                <Link
+                    href="/"
+                    className="font-heading flex items-center gap-2.5 text-base font-bold tracking-tight text-foreground"
+                    onClick={() => setOpen(false)}
+                >
+                    <img
+                        src="/logo.png"
+                        alt=""
+                        className="h-8 w-auto drop-shadow-[0_0_10px_hsl(190_100%_50%/0.55)]"
+                    />
+                    Patronus
+                </Link>
 
-                <nav aria-label="Sections" className="hidden items-center gap-6 text-[13px] font-medium text-muted-foreground lg:flex xl:gap-7">
+                <nav aria-label="Sections" className="hidden items-center gap-6 text-[13px] font-medium text-muted-foreground lg:flex xl:gap-8">
                     {LINKS.map((link) => (
                         <Link
                             key={link.href}
                             href={link.href}
-                            className="rounded-sm transition-colors duration-150 hover:text-foreground"
+                            className="transition-colors hover:text-primary"
                         >
                             {link.label}
                         </Link>
@@ -104,7 +121,7 @@ export function Navbar() {
                     <button
                         type="button"
                         onClick={() => setOpen((v) => !v)}
-                        className="flex h-11 w-11 items-center justify-center rounded-md border border-border-strong/60 bg-card text-foreground transition-colors hover:border-foreground lg:hidden"
+                        className="flex h-11 w-11 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:text-foreground lg:hidden"
                         aria-label={open ? 'Close menu' : 'Open menu'}
                         aria-expanded={open}
                         aria-controls="marketing-mobile-nav"
@@ -115,13 +132,13 @@ export function Navbar() {
             </div>
 
             {open ? (
-                <nav id="marketing-mobile-nav" aria-label="Sections" className="border-t border-border bg-background px-5 pb-6 pt-2 sm:px-6 lg:hidden">
+                <nav id="marketing-mobile-nav" aria-label="Sections" className="border-t border-border/60 px-5 pb-6 pt-2 sm:px-6 lg:hidden">
                     {LINKS.map((link) => (
                         <Link
                             key={link.href}
                             href={link.href}
                             onClick={() => setOpen(false)}
-                            className="block border-b border-border py-3.5 text-sm font-medium text-foreground transition-colors last:border-0 hover:text-primary"
+                            className="block border-b border-border/40 py-3.5 text-sm font-medium text-muted-foreground transition-colors last:border-0 hover:text-primary"
                         >
                             {link.label}
                         </Link>
