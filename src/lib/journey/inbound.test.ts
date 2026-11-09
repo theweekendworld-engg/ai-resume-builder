@@ -43,6 +43,23 @@ describe('parseInbound', () => {
         });
     });
 
+    // Production, 2026-11-09: Gmail's confirmation carried no code, only the link.
+    test('a link-only Gmail confirmation still yields the link', () => {
+        const parsed = parseInbound(payload({
+            From: 'forwarding-noreply@google.com',
+            FromFull: { Email: 'forwarding-noreply@google.com' },
+            Subject: '(Gmail Forwarding Confirmation - Receive Mail from jai@gmail.com',
+            TextBody: 'please click the link below to confirm the request:\n\nhttps://mail.google.com/mail/vf-%5BANGjdJ-abc%5D-xyz\n\nIf you click the link and it appears to be broken',
+        }), DOMAIN);
+        expect(parsed).toEqual({
+            kind: 'forwarding_confirmation',
+            token: TOKEN,
+            code: null,
+            confirmUrl: 'https://mail.google.com/mail/vf-%5BANGjdJ-abc%5D-xyz',
+            forwardingFrom: 'jai@gmail.com',
+        });
+    });
+
     test('a hand-forwarded message is unwrapped to the original sender and subject', () => {
         const parsed = parseInbound(payload({
             From: 'Jai <jai@gmail.com>',

@@ -101,7 +101,10 @@ export async function receiveInbound(payload: InboundPayload): Promise<ReceiveOu
             where: { userId },
             data: { forwardingCode: parsed.code, forwardingConfirmUrl: parsed.confirmUrl, forwardingSeenAt: new Date() },
         });
-        await notifyTelegram(userId, `Gmail asked to confirm forwarding to Patronus.${parsed.code ? `\n\nConfirmation code: ${parsed.code}` : ''}\n\nFinish setup: ${appUrl()}/settings/email`);
+        const confirm = parsed.code
+            ? `\n\nConfirmation code: ${parsed.code}`
+            : parsed.confirmUrl ? `\n\nOpen this link and click Confirm: ${parsed.confirmUrl}` : '';
+        await notifyTelegram(userId, `Gmail asked to confirm forwarding to Patronus.${confirm}\n\nFinish setup: ${appUrl()}/settings/email`);
         return { status: 'forwarding_confirmation', userId };
     }
 
