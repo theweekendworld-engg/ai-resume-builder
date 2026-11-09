@@ -61,8 +61,10 @@ const isSelfAuthenticatedApiRoute = createRouteMatcher([
     '/api/whatsapp/webhook',
     // Svix-signed (src/app/api/clerk/webhook/route.ts).
     '/api/clerk/webhook',
-    // Forwarded job email: INBOUND_EMAIL_SECRET (src/app/api/inbound/email/route.ts).
+    // Forwarded job email: INBOUND_EMAIL_SECRET (src/app/api/inbound/email/route.ts)
+    // or Resend's Svix signature (src/app/api/inbound/resend/route.ts).
     '/api/inbound/email',
+    '/api/inbound/resend',
     // Personal API keys (src/lib/apiKeys.ts); the user comes from the key.
     '/api/cli(.*)',
 ]);
@@ -110,7 +112,7 @@ export default clerkMiddleware(async (auth, req) => {
     const pathname = req.nextUrl.pathname;
     // Provider webhooks are signed and retried by the provider; a per-IP limit
     // would 429 a burst of renewals arriving from the same few addresses.
-    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/dodo/webhook') && !pathname.startsWith('/api/inbound/email');
+    const shouldRateLimit = pathname.startsWith('/api/') && !pathname.startsWith('/api/telegram/webhook') && !pathname.startsWith('/api/stripe/webhook') && !pathname.startsWith('/api/dodo/webhook') && !pathname.startsWith('/api/inbound/');
     if (!shouldRateLimit) {
         return NextResponse.next();
     }

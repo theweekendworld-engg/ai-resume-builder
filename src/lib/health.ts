@@ -98,10 +98,11 @@ export function configHealth(env: Env = process.env): HealthCheck[] {
         // the variable names live here, on /admin/ops and in the boot log.
         {
             id: 'inbound_email',
-            ok: has(env, 'INBOUND_EMAIL_DOMAIN', 'INBOUND_EMAIL_SECRET'),
+            // Either provider: Resend Inbound (signed, body fetched by API key) or a Postmark-format one.
+            ok: has(env, 'INBOUND_EMAIL_DOMAIN') && (has(env, 'RESEND_INBOUND_WEBHOOK_SECRET', 'RESEND_API_KEY') || has(env, 'INBOUND_EMAIL_SECRET')),
             severity: 'warn',
             impact: 'Job-email forwarding is off: Settings shows "Email forwarding is coming soon" and no application tracks itself from email.',
-            fix: 'INBOUND_EMAIL_DOMAIN and INBOUND_EMAIL_SECRET (and point the inbound provider at /api/inbound/email)',
+            fix: 'INBOUND_EMAIL_DOMAIN plus RESEND_INBOUND_WEBHOOK_SECRET and RESEND_API_KEY (Resend webhook → /api/inbound/resend), or INBOUND_EMAIL_SECRET for a Postmark-format provider (/api/inbound/email)',
         },
         {
             id: 'google_calendar',

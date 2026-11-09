@@ -34,7 +34,12 @@ no paid assessment.
 
 - Address: `jobs+<token>@<INBOUND_EMAIL_DOMAIN>` (`EmailInbox`). The token is
   the credential; "New address" rotates it.
-- Provider: any inbound service that posts Postmark's inbound JSON to
+- Provider: **Resend Inbound** (chosen 2026-11-09: free tier covers launch
+  volume). Resend posts `email.received` to `POST /api/inbound/resend`,
+  signed with Svix (`RESEND_INBOUND_WEBHOOK_SECRET`); the body and headers
+  are fetched by id with `RESEND_API_KEY` and mapped onto the same payload
+  (`src/lib/journey/inboundResend.ts`). Unset = 503 (closed).
+- Still supported: any service that posts Postmark's inbound JSON to
   `POST /api/inbound/email`. Auth: `INBOUND_EMAIL_SECRET` as the basic-auth
   password in the webhook URL, or `?secret=`. Unset = 503 (closed).
 - Gmail's forwarding confirmation is recognised and its code shown in
@@ -85,11 +90,14 @@ summary and timeline stay.
 
 ## 9. Owner setup
 
-1. **Inbound email.** Pick a provider that posts Postmark-format inbound JSON
-   (Postmark Inbound is the reference). Point MX for a subdomain (e.g.
-   `in.patronus.cv`) at it, set the webhook to
+1. **Inbound email (Resend).** Resend → Domains: add `in.patronus.cv` and
+   enable receiving; add the MX record it shows at the DNS host (Namecheap),
+   on the subdomain only, so the root domain's mail is untouched. Resend →
+   Webhooks: endpoint `https://www.patronus.cv/api/inbound/resend`, event
+   `email.received`; copy its signing secret. Env: `INBOUND_EMAIL_DOMAIN=in.patronus.cv`,
+   `RESEND_INBOUND_WEBHOOK_SECRET`, `RESEND_API_KEY` (full access, so it can
+   read received mail). For a Postmark-format provider instead, point it at
    `https://inbound:<INBOUND_EMAIL_SECRET>@www.patronus.cv/api/inbound/email`.
-   Env: `INBOUND_EMAIL_DOMAIN`, `INBOUND_EMAIL_SECRET`.
 2. **Google Calendar.** Google Cloud project → OAuth consent screen (scopes:
    `openid`, `email`, `calendar.events`) → OAuth client (Web), redirect URI
    `https://www.patronus.cv/api/google/callback`. Env: `GOOGLE_CLIENT_ID`,

@@ -586,3 +586,18 @@ export async function notifyTelegram(userId: string, text: string): Promise<void
         console.warn('[journey] telegram alert failed', { userId, error: String(error) });
     }
 }
+
+/**
+ * Store one inbound message and file it straight away, so the job moves while
+ * the user is looking. A filing failure is left `failed` for the daily job to
+ * re-file; it never fails the webhook. Shared by every inbound provider route.
+ */
+export async function receiveAndFile(payload: InboundPayload, source: string): Promise<ReceiveOutcome> {
+    const outcome = await receiveInbound(payload);
+    if (outcome.status === 'stored') {
+        await fileEmail(outcome.emailId).catch((error: unknown) => {
+            console.error(`[inbound/${source}] filing failed`, { emailId: outcome.emailId, error: String(error) });
+        });
+    }
+    return outcome;
+}

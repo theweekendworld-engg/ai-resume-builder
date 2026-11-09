@@ -2,10 +2,11 @@ import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { InboundPayloadSchema } from '@/lib/journey/inbound';
-import { fileEmail, receiveInbound } from '@/services/journey';
+import { receiveAndFile } from '@/services/journey';
 
 /**
- * Forwarded job email, from the inbound mail provider (docs/prd/11 §3).
+ * Forwarded job email from a Postmark-format inbound provider (docs/prd/11 §3).
+ * Resend Inbound posts to /api/inbound/resend instead.
  *
  * Auth: INBOUND_EMAIL_SECRET as the basic-auth password in the webhook URL
  * (https://inbound:<secret>@www.patronus.cv/api/inbound/email), or as
@@ -57,13 +58,6 @@ export async function POST(request: Request) {
     const parsed = InboundPayloadSchema.safeParse(json);
     if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
 
-    const outcome = await receiveInbound(parsed.data);
-    if (outcome.status === 'stored') {
-        // Filed now so the job moves while the user is looking; a failure is
-        // left `failed` and the daily job re-files it.
-        await fileEmail(outcome.emailId).catch((error: unknown) => {
-            console.error('[inbound/email] filing failed', { emailId: outcome.emailId, error: String(error) });
-        });
-    }
+    const outcome = await receiveAndFile(parsed.data, 'email');
     return NextResponse.json({ ok: true, status: outcome.status });
 }

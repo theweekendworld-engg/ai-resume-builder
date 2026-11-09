@@ -62,6 +62,13 @@ describe('configHealth', () => {
         expect(failing.find((c) => c.id === 'inbound_email')?.fix).toContain('INBOUND_EMAIL_DOMAIN');
     });
 
+    test('inbound email is configured by either provider', () => {
+        const inbound = (env: Record<string, string>) => configHealth({ ...FULL, ...env }).find((c) => c.id === 'inbound_email')?.ok;
+        expect(inbound({ INBOUND_EMAIL_SECRET: '', RESEND_INBOUND_WEBHOOK_SECRET: 'whsec_x' })).toBe(true);
+        expect(inbound({ INBOUND_EMAIL_SECRET: '', RESEND_INBOUND_WEBHOOK_SECRET: 'whsec_x', RESEND_API_KEY: '' })).toBe(false);
+        expect(inbound({ INBOUND_EMAIL_SECRET: '', RESEND_INBOUND_WEBHOOK_SECRET: '' })).toBe(false);
+    });
+
     test('a protected vercel.app URL is flagged', () => {
         const check = configHealth({ ...FULL, NEXT_PUBLIC_APP_URL: 'https://x.vercel.app' }).find((c) => c.id === 'app_url');
         expect(check?.ok).toBe(false);
