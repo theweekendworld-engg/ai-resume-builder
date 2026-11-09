@@ -144,8 +144,16 @@ export function EmailSetup({
                                             ) : null}
                                         </div>
                                     </>
+                                ) : inbox.forwardingConfirmUrl ? (
+                                    // Gmail's newer confirmation carries only the link (production, 2026-11-09).
+                                    <>
+                                        <p>Gmail sent a confirmation link. Open it and click Confirm.</p>
+                                        <Button asChild size="sm" className="h-8 gap-1.5">
+                                            <a href={inbox.forwardingConfirmUrl} target="_blank" rel="noopener noreferrer">Confirm in Gmail <ExternalLink className="size-3.5" aria-hidden /></a>
+                                        </Button>
+                                    </>
                                 ) : (
-                                    <p>Gmail sends a confirmation code to Patronus. It appears here within a minute, and on Telegram if it is linked. Refresh this page after adding the address.</p>
+                                    <p>Gmail sends a confirmation code or link to Patronus. It appears here within a minute, and on Telegram if it is linked. Refresh this page after adding the address.</p>
                                 )}
                             </Step>
                             <Step n={3} title="Forward only job mail, with a filter" done={inbox.received > 0}>
