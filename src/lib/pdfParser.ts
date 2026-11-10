@@ -162,8 +162,21 @@ async function ensureDomMatrix(): Promise<void> {
   g.DOMMatrix = (mod as { default?: unknown }).default ?? mod;
 }
 
+/*
+ * pdf.js runs its worker in-process on the server and finds it at
+ * `globalThis.pdfjsWorker`. Otherwise it imports pdf.worker.mjs by a computed
+ * path, which Vercel's file tracing misses ("Setting up fake worker failed").
+ * A literal import keeps the file in the bundle.
+ */
+async function ensurePdfWorker(): Promise<void> {
+  const g = globalThis as { pdfjsWorker?: unknown };
+  if (g.pdfjsWorker) return;
+  g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+}
+
 async function loadPdfJs(): Promise<PdfJsModule> {
   await ensureDomMatrix();
+  await ensurePdfWorker();
   const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
   return mod as unknown as PdfJsModule;
 }
