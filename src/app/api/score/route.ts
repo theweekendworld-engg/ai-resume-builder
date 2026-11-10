@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sniffUpload } from '@/lib/fileSniff';
-import { PDFParse } from 'pdf-parse';
+import { extractTextFromPdf } from '@/lib/pdfParser';
 import { checkAnonScoreRateLimit } from '@/lib/rateLimit';
 import { scoreResumeText } from '@/lib/anonScore';
 import { extractDocxText } from '@/lib/docxParser';
@@ -39,15 +39,14 @@ function getClientIp(req: NextRequest): string {
     return req.headers.get('x-real-ip')?.trim() || 'anonymous';
 }
 
+/*
+ * The same pdf.js loader as resume import (production, 2026-11-10). pdf-parse
+ * v2 needs the browser's DOMMatrix, which Vercel's Node runtime lacks, so
+ * every PDF upload here failed with a 500 while module loading. The buffer is
+ * never persisted.
+ */
 async function extractPdfText(buffer: Buffer): Promise<string> {
-    const parser = new PDFParse({ data: buffer });
-    try {
-        const result = await parser.getText();
-        return result.text ?? '';
-    } finally {
-        // Free pdfjs resources; the buffer is never persisted.
-        await parser.destroy();
-    }
+    return extractTextFromPdf(buffer);
 }
 
 export async function POST(req: NextRequest) {

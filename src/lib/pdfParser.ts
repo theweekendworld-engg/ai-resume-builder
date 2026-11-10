@@ -149,7 +149,34 @@ export async function countPdfPages(buffer: Buffer | Uint8Array): Promise<number
   }
 }
 
+/*
+ * pdf.js 5 needs DOMMatrix while it loads. Node has none; pdf.js borrows it
+ * from the native @napi-rs/canvas, which Vercel does not bundle, so every PDF
+ * read failed in production (2026-11-10). A pure-JS DOMMatrix is installed
+ * first. Text extraction never renders, so the polyfill's maths is enough.
+ */
+async function ensureDomMatrix(): Promise<void> {
+  const g = globalThis as { DOMMatrix?: unknown };
+  if (g.DOMMatrix) return;
+  const mod = await import('@thednp/dommatrix');
+  g.DOMMatrix = (mod as { default?: unknown }).default ?? mod;
+}
+
+/*
+ * pdf.js runs its worker in-process on the server and finds it at
+ * `globalThis.pdfjsWorker`. Otherwise it imports pdf.worker.mjs by a computed
+ * path, which Vercel's file tracing misses ("Setting up fake worker failed").
+ * A literal import keeps the file in the bundle.
+ */
+async function ensurePdfWorker(): Promise<void> {
+  const g = globalThis as { pdfjsWorker?: unknown };
+  if (g.pdfjsWorker) return;
+  g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+}
+
 async function loadPdfJs(): Promise<PdfJsModule> {
+  await ensureDomMatrix();
+  await ensurePdfWorker();
   const mod = await import('pdfjs-dist/legacy/build/pdf.mjs');
   return mod as unknown as PdfJsModule;
 }
